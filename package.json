@@ -1,10 +1,9 @@
 {
-  "name": "launchpad",
+  "name": "physio-poc",
   "version": "0.0.0",
   "private": true,
-  "description": "GitHub template: repo hygiene, docs, agent instructions, and quality gates for new projects.",
-  "license": "MIT",
-  "launchpadTemplate": true,
+  "description": "Proof of Concept for a Physio tool",
+  "license": "UNLICENSED",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
