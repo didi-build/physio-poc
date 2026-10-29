@@ -51,7 +51,7 @@ export async function readWebRequest(req: IncomingMessage): Promise<Request> {
   return new Request(url, {
     method: req.method,
     headers,
-    body: body ?? null,
+    body: body ? Buffer.from(body) : null,
   });
 }
 
