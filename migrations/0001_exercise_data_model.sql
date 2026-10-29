@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS exercises (
 CREATE TABLE IF NOT EXISTS exercise_versions (
   id TEXT PRIMARY KEY,
   exercise_id TEXT NOT NULL REFERENCES exercises (id),
-  version_number INTEGER NOT NULL,
+  version_number INTEGER NOT NULL CHECK (version_number >= 1),
   status TEXT NOT NULL CHECK (status IN ('draft', 'approved')),
   approved_by TEXT REFERENCES practitioners (id),
   approved_at TEXT,
@@ -39,7 +39,12 @@ CREATE TABLE IF NOT EXISTS exercise_versions (
   media_set_id TEXT,
   change_summary TEXT,
   created_at TEXT NOT NULL,
-  UNIQUE (exercise_id, version_number)
+  UNIQUE (exercise_id, version_number),
+  CHECK (length(trim(title)) BETWEEN 1 AND 80),
+  CHECK (
+    (status = 'approved' AND approved_by IS NOT NULL AND approved_at IS NOT NULL)
+    OR (status = 'draft' AND approved_by IS NULL AND approved_at IS NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS exercise_aliases (
@@ -66,7 +71,7 @@ CREATE TABLE IF NOT EXISTS exercise_body_regions (
 
 CREATE TABLE IF NOT EXISTS exercise_requests (
   id TEXT PRIMARY KEY,
-  requested_name TEXT NOT NULL,
+  requested_name TEXT NOT NULL CHECK (length(trim(requested_name)) >= 1),
   note TEXT,
   requested_by TEXT NOT NULL REFERENCES practitioners (id),
   status TEXT NOT NULL CHECK (
@@ -85,8 +90,19 @@ CREATE TABLE IF NOT EXISTS type_defaults (
     type IN ('stretching', 'isometric', 'concentric', 'eccentric')
   ),
   params_json TEXT NOT NULL,
-  UNIQUE (scope, practitioner_id, type)
+  CHECK (
+    (scope = 'global' AND practitioner_id IS NULL)
+    OR (scope = 'practitioner' AND practitioner_id IS NOT NULL)
+  )
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_type_defaults_global_type ON type_defaults (type)
+WHERE
+  scope = 'global';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_type_defaults_practitioner_type ON type_defaults (practitioner_id, type)
+WHERE
+  scope = 'practitioner';
 
 CREATE TABLE IF NOT EXISTS practitioner_exercises (
   practitioner_id TEXT NOT NULL REFERENCES practitioners (id),

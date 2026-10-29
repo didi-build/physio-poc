@@ -7,7 +7,7 @@ d1_tables:
       storage: D1
       processors: [Cloudflare]
       retention: indefinite
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
@@ -18,14 +18,14 @@ d1_tables:
     defaults:
       storage: D1
       processors: [Cloudflare]
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
       id:
-        whose: operational
+        whose: practitioner
         data: Opaque practitioner id
-        purpose: identify practitioner rows
+        purpose: identify practitioner account and link activity rows
         processors: [Cloudflare]
         retention: until account deletion
       email:
@@ -35,59 +35,105 @@ d1_tables:
         processors: [Cloudflare]
         retention: until account deletion
       created_at:
-        whose: operational
-        data: Row creation timestamp
+        whose: practitioner
+        data: Account creation timestamp
         purpose: audit
         processors: [Cloudflare]
         retention: until account deletion
 
   exercises:
     defaults:
-      whose: operational
       storage: D1
       processors: [Cloudflare]
       retention: until exercise deleted
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
-      id: {}
-      category: {}
-      created_by: {}
-      created_at: {}
+      id:
+        whose: operational
+      category:
+        whose: operational
+      created_by:
+        whose: practitioner
+        data: Practitioner id of exercise author
+        purpose: shared library attribution
+        processors: [Cloudflare]
+        retention: until exercise deleted
+      created_at:
+        whose: operational
 
   exercise_versions:
     defaults:
-      whose: operational
       storage: D1
       processors: [Cloudflare]
       retention: until exercise deleted
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
-      id: {}
-      exercise_id: {}
-      version_number: {}
-      status: {}
-      approved_by: {}
-      approved_at: {}
-      title: {}
-      description: {}
-      equipment: {}
-      starting_position: {}
-      steps: {}
-      common_mistakes: {}
-      regressions: {}
-      progressions: {}
-      precautions: {}
-      cue_stretching: {}
-      cue_isometric: {}
-      cue_concentric: {}
-      cue_eccentric: {}
-      media_set_id: {}
-      change_summary: {}
-      created_at: {}
+      id:
+        whose: operational
+      exercise_id:
+        whose: operational
+      version_number:
+        whose: operational
+      status:
+        whose: operational
+      approved_by:
+        whose: practitioner
+        data: Practitioner id of approver
+        purpose: shared library audit
+        processors: [Cloudflare]
+        retention: until exercise deleted
+      approved_at:
+        whose: operational
+      title:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      description:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      equipment:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      starting_position:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      steps:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      common_mistakes:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      regressions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      progressions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      precautions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_stretching:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_isometric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_concentric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_eccentric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      media_set_id:
+        whose: operational
+      change_summary:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      created_at:
+        whose: operational
 
   exercise_aliases:
     defaults:
@@ -95,13 +141,14 @@ d1_tables:
       storage: D1
       processors: [Cloudflare]
       retention: until exercise deleted
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
       id: {}
       exercise_id: {}
-      alias: {}
+      alias:
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
       created_at: {}
 
   body_regions:
@@ -110,7 +157,7 @@ d1_tables:
       storage: D1
       processors: [Cloudflare]
       retention: indefinite
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
@@ -123,7 +170,7 @@ d1_tables:
       storage: D1
       processors: [Cloudflare]
       retention: until exercise deleted
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
@@ -132,55 +179,110 @@ d1_tables:
 
   exercise_requests:
     defaults:
-      whose: operational
       storage: D1
       processors: [Cloudflare]
       retention: until request closed
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
-      id: {}
-      requested_name: {}
-      note: {}
-      requested_by: {}
-      status: {}
-      exercise_id: {}
-      created_at: {}
-      updated_at: {}
+      id:
+        whose: operational
+      requested_name:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      note:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      requested_by:
+        whose: practitioner
+        data: Practitioner id of requester
+        purpose: shared requests and drafts list
+        processors: [Cloudflare]
+        retention: until request closed
+      status:
+        whose: operational
+      exercise_id:
+        whose: operational
+      created_at:
+        whose: operational
+      updated_at:
+        whose: operational
 
   type_defaults:
     defaults:
-      whose: operational
       storage: D1
       processors: [Cloudflare]
       retention: until practitioner or global row deleted
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
-      id: {}
-      scope: {}
-      practitioner_id: {}
-      type: {}
-      params_json: {}
+      id:
+        whose: operational
+      scope:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for My defaults override row
+        purpose: per-practitioner type defaults
+        processors: [Cloudflare]
+        retention: until row deleted or reset to global
+      type:
+        whose: operational
+      params_json:
+        whose: operational
 
   practitioner_exercises:
     defaults:
-      whose: operational
       storage: D1
       processors: [Cloudflare]
-      retention: until practitioner removes exercise from My exercises
-      who_can_see: operator
+      who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:
-      practitioner_id: {}
-      exercise_id: {}
-      favourite: {}
-      saved_at: {}
-      last_used_at: {}
-      text_overrides_json: {}
-      param_overrides_json: {}
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for My exercises row
+        purpose: favourites and overrides
+        processors: [Cloudflare]
+        retention: until row deleted
+      exercise_id:
+        whose: practitioner
+        data: Linked library exercise id
+        purpose: My exercises membership
+        processors: [Cloudflare]
+        retention: until row deleted
+      favourite:
+        whose: practitioner
+        data: Pinned or favourite flag
+        purpose: My exercises ordering
+        processors: [Cloudflare]
+        retention: until row deleted
+      saved_at:
+        whose: practitioner
+        data: Saved timestamp
+        purpose: My exercises activity
+        processors: [Cloudflare]
+        retention: until row deleted
+      last_used_at:
+        whose: practitioner
+        data: Last used timestamp
+        purpose: My exercises activity
+        processors: [Cloudflare]
+        retention: until row deleted
+      text_overrides_json:
+        whose: practitioner
+        data: Validated partial text overrides JSON
+        purpose: My copy edits
+        processors: [Cloudflare]
+        retention: until row deleted
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      param_overrides_json:
+        whose: practitioner
+        data: Validated param overrides JSON by type
+        purpose: My copy dose overrides
+        processors: [Cloudflare]
+        retention: until row deleted
 
 other_items: []

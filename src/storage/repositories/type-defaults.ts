@@ -5,6 +5,7 @@ import {
 } from "../../domain/exercise-types.js";
 import {
   parseExerciseParamsJson,
+  validateExerciseParams,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 
@@ -52,11 +53,12 @@ export class TypeDefaultsRepository {
     type: PrescriptionType,
     params: ExerciseParams,
   ): Promise<void> {
+    const validated = validateExerciseParams(params);
     await this.sql.run(
       `INSERT INTO type_defaults (id, scope, practitioner_id, type, params_json)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(scope, practitioner_id, type) DO UPDATE SET params_json = excluded.params_json`,
-      [id, "practitioner", practitionerId, type, JSON.stringify(params)],
+       ON CONFLICT(practitioner_id, type) DO UPDATE SET params_json = excluded.params_json`,
+      [id, "practitioner", practitionerId, type, JSON.stringify(validated)],
     );
   }
 

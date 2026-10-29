@@ -61,4 +61,9 @@ export class BetterSqliteStorage implements SqlStoragePort {
   close(): void {
     this.db.close();
   }
+
+  foreignKeysEnabled(): boolean {
+    const row = this.db.pragma("foreign_keys", { simple: true }) as number;
+    return row === 1;
+  }
 }

@@ -21,6 +21,20 @@ export type ParamOverridesByType = Partial<Record<PrescriptionType, ExercisePara
 
 const PARAM_KEY_SET = new Set<string>(PARAM_KEYS);
 
+const INTEGER_PARAM_KEYS = new Set<ParamKey>([
+  "reps",
+  "sets",
+  "per_day",
+  "days_per_week",
+]);
+
+const SECONDS_PARAM_KEYS = new Set<ParamKey>([
+  "hold_s",
+  "ascent_s",
+  "descent_s",
+  "rest_s",
+]);
+
 export class ParamValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -32,27 +46,60 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validateNumericOrRange(value: unknown, key: string): NumericOrRange {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
+function validatePositiveInteger(value: number, key: string): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ParamValidationError(`${key} must be a positive integer`);
   }
-  if (isPlainObject(value) && "min" in value && "max" in value) {
-    const min = value.min;
-    const max = value.max;
-    if (
-      typeof min === "number" &&
-      typeof max === "number" &&
-      Number.isFinite(min) &&
-      Number.isFinite(max) &&
-      min <= max
-    ) {
-      if (Object.keys(value).length !== 2) {
-        throw new ParamValidationError(`Range for ${key} must only have min and max`);
-      }
-      return { min, max };
+  return value;
+}
+
+function validatePerDayRange(value: Record<string, unknown>): NumericOrRange {
+  if (Object.keys(value).length !== 2 || !("min" in value) || !("max" in value)) {
+    throw new ParamValidationError("Range for per_day must only have min and max");
+  }
+  const min = value.min;
+  const max = value.max;
+  if (typeof min !== "number" || typeof max !== "number") {
+    throw new ParamValidationError("Invalid per_day range");
+  }
+  const minInt = validatePositiveInteger(min, "per_day.min");
+  const maxInt = validatePositiveInteger(max, "per_day.max");
+  if (minInt > maxInt) {
+    throw new ParamValidationError("per_day range min must be <= max");
+  }
+  return { min: minInt, max: maxInt };
+}
+
+function validateParamValue(key: ParamKey, raw: unknown): NumericOrRange {
+  if (key === "per_day") {
+    if (typeof raw === "number") {
+      return validatePositiveInteger(raw, key);
     }
+    if (isPlainObject(raw)) {
+      return validatePerDayRange(raw);
+    }
+    throw new ParamValidationError(`Invalid value for ${key}`);
   }
-  throw new ParamValidationError(`Invalid value for ${key}`);
+
+  if (INTEGER_PARAM_KEYS.has(key)) {
+    if (typeof raw !== "number") {
+      throw new ParamValidationError(`${key} must be a number`);
+    }
+    const asInt = validatePositiveInteger(raw, key);
+    if (key === "days_per_week" && (asInt < 1 || asInt > 7)) {
+      throw new ParamValidationError("days_per_week must be between 1 and 7");
+    }
+    return asInt;
+  }
+
+  if (SECONDS_PARAM_KEYS.has(key)) {
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) {
+      throw new ParamValidationError(`${key} must be a non-negative number`);
+    }
+    return raw;
+  }
+
+  throw new ParamValidationError(`Unknown param key: ${key}`);
 }
 
 export function parseExerciseParamsJson(json: string): ExerciseParams {
@@ -74,7 +121,7 @@ export function validateExerciseParams(value: unknown): ExerciseParams {
     if (!PARAM_KEY_SET.has(key)) {
       throw new ParamValidationError(`Unknown param key: ${key}`);
     }
-    result[key as ParamKey] = validateNumericOrRange(raw, key);
+    result[key as ParamKey] = validateParamValue(key as ParamKey, raw);
   }
   return result;
 }

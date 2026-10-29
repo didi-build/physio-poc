@@ -1,4 +1,5 @@
 import type { PrescriptionType } from "./exercise-types.js";
+import { validateTextOverrideValue } from "./exercise-free-text.js";
 
 export const TEXT_OVERRIDE_KEYS = [
   "title",
@@ -38,7 +39,12 @@ export function validateTextOverrides(value: unknown): TextOverrides {
     if (typeof raw !== "string") {
       throw new TextOverrideValidationError(`Override ${key} must be a string`);
     }
-    result[key as TextOverrideKey] = raw;
+    try {
+      result[key as TextOverrideKey] = validateTextOverrideValue(key, raw);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new TextOverrideValidationError(message);
+    }
   }
   return result;
 }

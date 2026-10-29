@@ -2,7 +2,7 @@ import type { PrescriptionType } from "./exercise-types.js";
 import type { ExerciseParams } from "./exercise-params.js";
 
 /**
- * Oct 23, 2026 CTO seed table (DIDI-594 comment, global seed from Kojo).
+ * Oct 23, 2026 CTO seed table (DIDI-594 data model comment).
  */
 export const GLOBAL_TYPE_DEFAULTS_SEED: Record<PrescriptionType, ExerciseParams> = {
   stretching: {
