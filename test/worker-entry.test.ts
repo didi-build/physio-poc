@@ -21,10 +21,36 @@ describe("Worker entry (integration)", () => {
   it("returns 404 for unauthenticated exercise API routes", async () => {
     const cases: { method: string; path: string; body?: string }[] = [
       { method: "GET", path: `${apiBase}/exercises/approved/search` },
+      { method: "GET", path: `${apiBase}/exercises/${exerciseId}` },
+      { method: "GET", path: `${apiBase}/my-exercises` },
       {
         method: "POST",
         path: `${apiBase}/my-exercises/${exerciseId}`,
         body: JSON.stringify({ action: "save" }),
+      },
+      {
+        method: "POST",
+        path: `${apiBase}/my-exercises/${exerciseId}`,
+        body: JSON.stringify({ action: "pin", pinned: true }),
+      },
+      {
+        method: "POST",
+        path: `${apiBase}/my-exercises/${exerciseId}`,
+        body: JSON.stringify({
+          action: "undo",
+          undo: {
+            practitioner_id: practitionerId,
+            exercise_id: exerciseId,
+            snapshot: {
+              had_row: false,
+              favourite: false,
+              saved_at: null,
+              last_used_at: null,
+              text_overrides_json: "{}",
+              param_overrides_json: "{}",
+            },
+          },
+        }),
       },
       {
         method: "PATCH",

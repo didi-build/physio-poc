@@ -212,8 +212,8 @@ describe("ExerciseLibraryService (integration, SQLite)", () => {
       const { exerciseId } = await seedApprovedStretch(storage, practId);
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
 
-      const saved = await service.saveToMyExercises(practId, exerciseId, TS);
-      const listAfterSave = await service.listMyExercises(practId);
+      const saved = await service.saveToMyExercises(practId, exerciseId);
+      const listAfterSave = await service.listMyExercises({ practitionerId: practId });
       const totalSaved =
         listAfterSave.sections.new_from_requests.length +
         listAfterSave.sections.pinned.length +
@@ -221,15 +221,17 @@ describe("ExerciseLibraryService (integration, SQLite)", () => {
       expect(totalSaved).toBe(1);
 
       const removed = await service.removeFromMyExercises(practId, exerciseId);
-      const listAfterRemove = await service.listMyExercises(practId);
+      const listAfterRemove = await service.listMyExercises({
+        practitionerId: practId,
+      });
       expect(
         listAfterRemove.sections.new_from_requests.length +
           listAfterRemove.sections.pinned.length +
           listAfterRemove.sections.recently_used_and_saved.length,
       ).toBe(0);
 
-      await service.applyUndo(removed.undo);
-      const listAfterUndo = await service.listMyExercises(practId);
+      await service.applyUndo(practId, exerciseId, removed.undo);
+      const listAfterUndo = await service.listMyExercises({ practitionerId: practId });
       expect(
         listAfterUndo.sections.new_from_requests.length +
           listAfterUndo.sections.pinned.length +

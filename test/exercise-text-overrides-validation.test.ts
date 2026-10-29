@@ -68,19 +68,32 @@ describe("text override entry validation (unit)", () => {
     ).toThrow(TextOverrideValidationError);
   });
 
-  it("does not apply title length cap to base", () => {
-    expect(
+  it("rejects base over the field cap", () => {
+    expect(() =>
       validateTextOverrides({
         description: {
           value: "Short override",
           base: "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 5),
         },
       }),
+    ).toThrow(TextOverrideValidationError);
+  });
+
+  it("rejects patient details in base", () => {
+    expect(() =>
+      validateTextOverrides({
+        title: { value: "My title", base: "Reach patient@example.com" },
+      }),
+    ).toThrow(TextOverrideValidationError);
+  });
+
+  it("allows empty base for a null library cue field", () => {
+    expect(
+      validateTextOverrides({
+        cue_stretching: { value: "Hold", base: "" },
+      }),
     ).toEqual({
-      description: {
-        value: "Short override",
-        base: "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 5),
-      },
+      cue_stretching: { value: "Hold", base: "" },
     });
   });
 });
