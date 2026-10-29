@@ -6,6 +6,13 @@ import type {
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
 
+export class NestedSqlTransactionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NestedSqlTransactionError";
+  }
+}
+
 function normalizeBinding(value: SqlValue): SqlValue {
   if (typeof value === "boolean") {
     return value ? 1 : 0;
@@ -17,6 +24,8 @@ function normalizeBinding(value: SqlValue): SqlValue {
  * SQLite-backed SqlStoragePort for local tests and the Node adapter path.
  */
 export class BetterSqliteStorage implements SqlStoragePort {
+  private transactionDepth = 0;
+
   constructor(private readonly db: Database.Database) {}
 
   static openInMemory(): BetterSqliteStorage {
@@ -36,6 +45,22 @@ export class BetterSqliteStorage implements SqlStoragePort {
   }
 
   async run(sql: string, bindings: SqlBindings = []): Promise<SqlRunResult> {
+    const normalized = sql.trim().replace(/\s+/g, " ");
+    if (/^BEGIN$/i.test(normalized)) {
+      if (this.transactionDepth > 0) {
+        throw new NestedSqlTransactionError(
+          "Nested SQL transactions are not supported",
+        );
+      }
+      this.transactionDepth += 1;
+    } else if (/^COMMIT$/i.test(normalized) || /^ROLLBACK$/i.test(normalized)) {
+      if (this.transactionDepth === 0) {
+        throw new NestedSqlTransactionError(
+          "COMMIT or ROLLBACK without an open transaction",
+        );
+      }
+      this.transactionDepth -= 1;
+    }
     const stmt = this.db.prepare(sql);
     const result = stmt.run(...bindings.map(normalizeBinding));
     return { rowsAffected: result.changes };
