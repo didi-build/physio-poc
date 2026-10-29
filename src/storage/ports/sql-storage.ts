@@ -1,3 +1,4 @@
+/** D1-compatible values. Boolean bindings are stored and read as 1 or 0 in adapters. */
 export type SqlValue = string | number | boolean | null;
 
 export type SqlBindings = readonly SqlValue[];

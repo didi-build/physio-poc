@@ -1,64 +1,95 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  findPortableViolations,
+  listPortableSourceFiles,
+  scanPortableTree,
+} from "../scripts/lib/portable-import-guard.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
-const PORTABLE_DIRS = [
-  join(REPO_ROOT, "src/domain"),
-  join(REPO_ROOT, "src/services"),
-  join(REPO_ROOT, "src/storage"),
-  join(REPO_ROOT, "src/http"),
-];
-
-function listTypeScriptFiles(dir: string): string[] {
-  const entries = readdirSync(dir);
-  const files: string[] = [];
-  for (const entry of entries) {
-    const fullPath = join(dir, entry);
-    const stat = statSync(fullPath);
-    if (stat.isDirectory()) {
-      files.push(...listTypeScriptFiles(fullPath));
-      continue;
-    }
-    if (fullPath.endsWith(".ts")) {
-      files.push(fullPath);
-    }
-  }
-  return files;
-}
+const SRC_ROOT = join(REPO_ROOT, "src");
 
 describe("portable runtime import guard (unit)", () => {
-  it("domain, services, storage, and http avoid platform imports", () => {
-    const forbiddenSpecifiers =
-      /(?:from\s+["'](?!\.)([^"']+)["'])|(?:import\s*["'](?!\.)([^"']+)["'])|(?:import\s*\(\s*["'](?!\.)([^"']+)["'])|(?:require\s*\(\s*["'](?!\.)([^"']+)["'])/;
-    const bannedTokens = [
-      /\bprocess\./,
-      /globalThis\.env/,
-      /\bR2Bucket\b/,
-      /\bD1Database\b/,
-      /\bKVNamespace\b/,
-      /\bDurableObjectNamespace\b/,
-      /\bfrom\s+["']node:/,
-      /\bfrom\s+["']cloudflare:/,
-      /\b@cloudflare\//,
-    ];
+  it("scans a non-zero set of portable files under src/", () => {
+    const files = listPortableSourceFiles(SRC_ROOT);
+    expect(files.length).toBeGreaterThan(0);
+  });
 
-    for (const dir of PORTABLE_DIRS) {
-      for (const file of listTypeScriptFiles(dir)) {
-        const source = readFileSync(file, "utf8");
-        for (const line of source.split("\n")) {
-          expect(
-            forbiddenSpecifiers.test(line),
-            `non-relative import in ${relative(REPO_ROOT, file)}: ${line}`,
-          ).toBe(false);
-        }
-        for (const token of bannedTokens) {
-          expect(
-            token.test(source),
-            `banned token in ${relative(REPO_ROOT, file)}`,
-          ).toBe(false);
-        }
-      }
-    }
+  it("finds no violations in the repository portable tree", () => {
+    const { files, violations } = scanPortableTree(REPO_ROOT);
+    expect(files.length).toBeGreaterThan(0);
+    expect(violations).toEqual([]);
+  });
+
+  it("detects multi-line package imports", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "import fs\nfrom 'node:fs'",
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects template dynamic import()", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const spec = `node:fs`; import(spec);",
+    );
+    expect(messages.some((m) => m.includes("dynamic import()"))).toBe(true);
+  });
+
+  it("detects variable dynamic import()", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const spec = 'node:fs'; import(spec);",
+    );
+    expect(messages.some((m) => m.includes("dynamic import()"))).toBe(true);
+  });
+
+  it("detects destructured process", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const { env } = process;",
+    );
+    expect(messages.some((m) => m.includes("process identifier"))).toBe(true);
+  });
+
+  it("detects globalThis process access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'globalThis["process"].env;',
+    );
+    expect(messages.some((m) => m.includes("globalThis process"))).toBe(true);
+  });
+
+  it("detects triple-slash references", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      '/// <reference types="@cloudflare/workers-types" />',
+    );
+    expect(messages.some((m) => m.includes("triple-slash"))).toBe(true);
+  });
+
+  it("detects imports of src/entry from portable code", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "export { createNodeServer } from '../entry/node.js';",
+    );
+    expect(messages.some((m) => m.includes("src/entry"))).toBe(true);
+  });
+
+  it("detects violations in .tsx sources", () => {
+    const messages = findPortableViolations(
+      "src/ui/Example.tsx",
+      "import React from 'react';",
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects violations in .mjs sources", () => {
+    const messages = findPortableViolations(
+      "src/http/example.mjs",
+      "import fs from 'node:fs';",
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
   });
 });

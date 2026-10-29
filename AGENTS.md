@@ -52,6 +52,7 @@ This file is the single source of truth for how agents work in this repository. 
 | Script                       | Purpose                                                                                                                                                                |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`              | Conflict markers, format, lint, typecheck, test, secret scan, placeholders, attribution, nodrift (when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists) |
+| `npm run dev`                | Local Node HTTP entry (`tsx src/entry/node.ts`)                                                                                                                        |
 | `npm run nodrift`            | `@didi-build/nodrift check` when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists; skipped otherwise                                                     |
 | `npm run lint`               | ESLint                                                                                                                                                                 |
 | `npm run format`             | Prettier write                                                                                                                                                         |

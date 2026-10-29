@@ -1,6 +1,9 @@
-import { getHealth, type HealthDependencies } from "../../services/health.js";
+import { getHealth } from "../../services/health.js";
 
-export async function handleHealthRequest(deps: HealthDependencies): Promise<Response> {
-  const payload = await getHealth(deps);
-  return Response.json(payload, { status: 200 });
+export async function handleHealthRequest(): Promise<Response> {
+  const payload = getHealth();
+  return Response.json(payload, {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 }

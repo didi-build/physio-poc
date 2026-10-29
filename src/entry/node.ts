@@ -72,16 +72,24 @@ export function createNodeServer(options: NodeServerOptions = {}) {
   const port = options.port ?? 8787;
   const host = options.host ?? "127.0.0.1";
 
-  return createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     try {
       const request = await readWebRequest(req);
       const response = await handleRequest(request, deps);
       await writeWebResponse(res, response);
-    } catch {
+    } catch (error) {
+      console.error("request_failed", error);
       res.statusCode = 500;
       res.end("internal_error");
     }
-  }).listen(port, host);
+  });
+
+  server.on("error", (error) => {
+    console.error("server_listen_failed", error);
+  });
+
+  server.listen(port, host);
+  return server;
 }
 
 const isMain =

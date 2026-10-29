@@ -24,6 +24,9 @@ export default {
         async get() {
           throw new Error("ObjectStoragePort binding not configured");
         },
+        async head() {
+          throw new Error("ObjectStoragePort binding not configured");
+        },
         async delete() {
           throw new Error("ObjectStoragePort binding not configured");
         },

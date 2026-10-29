@@ -1,1 +1,1 @@
-export { getHealth, type HealthDependencies, type HealthPayload } from "./health.js";
+export { getHealth, type HealthPayload } from "./health.js";
