@@ -30,7 +30,10 @@ describe("Physio MCP Worker (wrangler dev --local smoke)", () => {
       new URL(`http://127.0.0.1${MCP_PATH}`),
       {
         fetch: (input, init) =>
-          worker!.fetch(input, init as Parameters<Unstable_DevWorker["fetch"]>[1]),
+          worker!.fetch(
+            input,
+            init as Parameters<Unstable_DevWorker["fetch"]>[1],
+          ) as unknown as Promise<Response>,
       },
     );
     const client = new Client({ name: "physio-mcp-worker-test", version: "0.0.0" });
