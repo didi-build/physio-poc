@@ -1,4 +1,4 @@
-# 0004. Exercise media visual style and model (five-exercise test)
+# 0005. Exercise media visual style and model (five-exercise test)
 
 - **Status:** proposed
 - **Date:** 2026-10-29
