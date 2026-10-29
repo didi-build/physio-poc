@@ -1,0 +1,29 @@
+@keyframes mp-xfade-end {
+  0%, 22% { opacity: 0; }
+  42%, 72% { opacity: 1; }
+  92%, 100% { opacity: 0; }
+}
+@keyframes mp-drift {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+  100% { transform: scale(1); }
+}
+@keyframes mp-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.mp-loop-end { animation: mp-xfade-end 6s ease-in-out infinite; }
+.mp-loop-stage { animation: mp-drift 6s ease-in-out infinite; }
+.mp-loop-bar { animation: mp-progress 6s linear infinite; transform-origin: left; }
+.mp-paused .mp-loop-end, .mp-paused .mp-loop-stage, .mp-paused .mp-loop-bar { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .mp-loop-stage { animation: none; }
+}
+@keyframes mp-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.mp-shimmer { position: absolute; inset: 0; overflow: hidden; background: rgba(241, 245, 249, 0.72); }
+.mp-shimmer::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent); animation: mp-shimmer 1.3s ease-in-out infinite; }
+.mp-noscrollbar { scrollbar-width: none; }
+.mp-noscrollbar::-webkit-scrollbar { display: none; }
