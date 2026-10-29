@@ -116,6 +116,36 @@ describe("QA round 3: patient-detail rejection by field (unit)", () => {
 });
 
 describe("QA round 3: exercise versions repository (integration, SQLite)", () => {
+  it("inserts a valid draft exercise version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const exId = await seedExercise(storage, practId);
+      const versions = new ExerciseVersionsRepository(storage);
+      await versions.insert({
+        id: "ver-happy-path",
+        exerciseId: exId,
+        versionNumber: 1,
+        status: "draft",
+        approvedBy: null,
+        approvedAt: null,
+        title: "Heel slide",
+        steps: "Slide heel toward hip, then return.",
+        createdAt: TS,
+      });
+      const row = await storage.first<{ title: string; steps: string }>(
+        "SELECT title, steps FROM exercise_versions WHERE id = ? LIMIT 1",
+        ["ver-happy-path"],
+      );
+      expect(row).toEqual({
+        title: "Heel slide",
+        steps: "Slide heel toward hip, then return.",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects when only title is invalid and steps are valid", async () => {
     const storage = await openMigratedDatabase();
     try {

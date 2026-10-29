@@ -40,6 +40,7 @@ function parseSelectWhere(
 
 /**
  * Plain TypeScript fake for tests. Not SQLite; DIDI-997 adds better-sqlite3 for real SQL tests.
+ * BEGIN/COMMIT/ROLLBACK are no-ops: there is no atomicity or rollback (see src/storage/migrations/README.md).
  */
 export class InMemorySqlStorage implements SqlStoragePort {
   private readonly tables = new Map<string, Row[]>();

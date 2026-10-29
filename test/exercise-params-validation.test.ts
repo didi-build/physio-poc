@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { GLOBAL_TYPE_DEFAULTS_SEED } from "../src/domain/global-type-defaults-seed.js";
 import {
+  PARAM_VALUE_BOUNDS,
   ParamValidationError,
   parseExerciseParamsJson,
   validateExerciseParams,
@@ -45,15 +47,6 @@ describe("exercise params validation (unit)", () => {
     ).toThrow(ParamValidationError);
   });
 
-  it("rejects non-integer and out-of-range integer params", () => {
-    expect(() => validateExerciseParams({ sets: 2.5 })).toThrow(ParamValidationError);
-    expect(() => validateExerciseParams({ reps: 0 })).toThrow(ParamValidationError);
-    expect(() => validateExerciseParams({ days_per_week: 8 })).toThrow(
-      ParamValidationError,
-    );
-    expect(() => validateExerciseParams({ hold_s: -1 })).toThrow(ParamValidationError);
-  });
-
   it("rejects range objects on non-per_day keys", () => {
     expect(() => validateExerciseParams({ hold_s: { min: 1, max: 2 } })).toThrow(
       ParamValidationError,
@@ -71,8 +64,177 @@ describe("exercise params validation (unit)", () => {
     );
   });
 
+  it("rejects param_overrides when a nested value is out of bounds", () => {
+    expect(() =>
+      validateParamOverridesByType({
+        eccentric: { descent_s: 11 },
+      }),
+    ).toThrow(ParamValidationError);
+    expect(() =>
+      validateParamOverridesByType({
+        stretching: { per_day: { min: 0, max: 2 } },
+      }),
+    ).toThrow(ParamValidationError);
+  });
+
   it("parseExerciseParamsJson throws on invalid JSON instead of returning {}", () => {
     expect(() => parseExerciseParamsJson("{")).toThrow(ParamValidationError);
+  });
+});
+
+describe("PARAM_VALUE_BOUNDS pinned to programModel PARAM_META", () => {
+  it("matches design/reference/web-app/generated/programModel.ts lines 23 to 31", () => {
+    expect(PARAM_VALUE_BOUNDS).toEqual({
+      reps: { min: 1, max: 50, integer: true },
+      sets: { min: 1, max: 10, integer: true },
+      hold_s: { min: 1, max: 120, integer: true },
+      ascent_s: { min: 1, max: 10, integer: true },
+      descent_s: { min: 1, max: 10, integer: true },
+      rest_s: { min: 10, max: 300, integer: true },
+      per_day: { min: 1, max: 5, integer: true },
+      days_per_week: { min: 1, max: 7, integer: true },
+    });
+  });
+});
+
+describe("global type defaults seed stays within param bounds", () => {
+  it("validates every seeded param map", () => {
+    for (const params of Object.values(GLOBAL_TYPE_DEFAULTS_SEED)) {
+      expect(validateExerciseParams(params)).toEqual(params);
+    }
+  });
+});
+
+describe("param bounds edges (hard-coded, programModel PARAM_META)", () => {
+  it("reps accepts 1 and 50, rejects 0 and 51", () => {
+    expect(validateExerciseParams({ reps: 1 })).toEqual({ reps: 1 });
+    expect(validateExerciseParams({ reps: 50 })).toEqual({ reps: 50 });
+    expect(() => validateExerciseParams({ reps: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ reps: 51 })).toThrow(ParamValidationError);
+  });
+
+  it("sets accepts 1 and 10, rejects 0 and 11", () => {
+    expect(validateExerciseParams({ sets: 1 })).toEqual({ sets: 1 });
+    expect(validateExerciseParams({ sets: 10 })).toEqual({ sets: 10 });
+    expect(() => validateExerciseParams({ sets: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ sets: 11 })).toThrow(ParamValidationError);
+  });
+
+  it("hold_s accepts 1 and 120, rejects 0 and 121", () => {
+    expect(validateExerciseParams({ hold_s: 1 })).toEqual({ hold_s: 1 });
+    expect(validateExerciseParams({ hold_s: 120 })).toEqual({ hold_s: 120 });
+    expect(() => validateExerciseParams({ hold_s: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ hold_s: 121 })).toThrow(ParamValidationError);
+  });
+
+  it("ascent_s accepts 1 and 10, rejects 0 and 11", () => {
+    expect(validateExerciseParams({ ascent_s: 1 })).toEqual({ ascent_s: 1 });
+    expect(validateExerciseParams({ ascent_s: 10 })).toEqual({ ascent_s: 10 });
+    expect(() => validateExerciseParams({ ascent_s: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ ascent_s: 11 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("descent_s accepts 1 and 10, rejects 0 and 11", () => {
+    expect(validateExerciseParams({ descent_s: 1 })).toEqual({ descent_s: 1 });
+    expect(validateExerciseParams({ descent_s: 10 })).toEqual({ descent_s: 10 });
+    expect(() => validateExerciseParams({ descent_s: 0 })).toThrow(
+      ParamValidationError,
+    );
+    expect(() => validateExerciseParams({ descent_s: 11 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("rest_s accepts 10 and 300, rejects 9 and 301", () => {
+    expect(validateExerciseParams({ rest_s: 10 })).toEqual({ rest_s: 10 });
+    expect(validateExerciseParams({ rest_s: 300 })).toEqual({ rest_s: 300 });
+    expect(() => validateExerciseParams({ rest_s: 9 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ rest_s: 301 })).toThrow(ParamValidationError);
+  });
+
+  it("per_day scalar accepts 1 and 5, rejects 0 and 6", () => {
+    expect(validateExerciseParams({ per_day: 1 })).toEqual({ per_day: 1 });
+    expect(validateExerciseParams({ per_day: 5 })).toEqual({ per_day: 5 });
+    expect(() => validateExerciseParams({ per_day: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ per_day: 6 })).toThrow(ParamValidationError);
+  });
+
+  it("per_day range accepts edges 1 to 5 and rejects out-of-range endpoints", () => {
+    expect(validateExerciseParams({ per_day: { min: 1, max: 5 } })).toEqual({
+      per_day: { min: 1, max: 5 },
+    });
+    expect(() => validateExerciseParams({ per_day: { min: 0, max: 5 } })).toThrow(
+      ParamValidationError,
+    );
+    expect(() => validateExerciseParams({ per_day: { min: 1, max: 6 } })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("days_per_week accepts 1 and 7, rejects 0 and 8", () => {
+    expect(validateExerciseParams({ days_per_week: 1 })).toEqual({ days_per_week: 1 });
+    expect(validateExerciseParams({ days_per_week: 7 })).toEqual({ days_per_week: 7 });
+    expect(() => validateExerciseParams({ days_per_week: 0 })).toThrow(
+      ParamValidationError,
+    );
+    expect(() => validateExerciseParams({ days_per_week: 8 })).toThrow(
+      ParamValidationError,
+    );
+  });
+});
+
+describe("param bounds reject fractions (hard-coded)", () => {
+  it("reps rejects 1.5", () => {
+    expect(() => validateExerciseParams({ reps: 1.5 })).toThrow(ParamValidationError);
+  });
+
+  it("sets rejects 1.5", () => {
+    expect(() => validateExerciseParams({ sets: 1.5 })).toThrow(ParamValidationError);
+  });
+
+  it("hold_s rejects 1.5", () => {
+    expect(() => validateExerciseParams({ hold_s: 1.5 })).toThrow(ParamValidationError);
+  });
+
+  it("ascent_s rejects 1.5", () => {
+    expect(() => validateExerciseParams({ ascent_s: 1.5 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("descent_s rejects 1.5", () => {
+    expect(() => validateExerciseParams({ descent_s: 1.5 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("rest_s rejects 10.5", () => {
+    expect(() => validateExerciseParams({ rest_s: 10.5 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("per_day scalar rejects 1.5", () => {
+    expect(() => validateExerciseParams({ per_day: 1.5 })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("per_day range rejects fractional min and max", () => {
+    expect(() => validateExerciseParams({ per_day: { min: 1.5, max: 3 } })).toThrow(
+      ParamValidationError,
+    );
+    expect(() => validateExerciseParams({ per_day: { min: 1, max: 2.5 } })).toThrow(
+      ParamValidationError,
+    );
+  });
+
+  it("days_per_week rejects 1.5", () => {
+    expect(() => validateExerciseParams({ days_per_week: 1.5 })).toThrow(
+      ParamValidationError,
+    );
   });
 });
 
