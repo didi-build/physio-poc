@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
+import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
   ACCOUNT_MY_DEFAULTS_DETAIL,
@@ -96,6 +97,14 @@ export type AccountMenuProps = {
 
 export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const closeMenu = () => {
+    onCloseRef.current();
+    triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!open || !menuRef.current) {
@@ -106,10 +115,12 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
     ];
 
+    menuItems()[0]?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        closeMenu();
         return;
       }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
@@ -137,12 +148,13 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
     return () => {
       menu.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   return (
     <div className="shell-header-actions">
       <div className="shell-account-wrap">
         <button
+          ref={triggerRef}
           type="button"
           className="shell-account-trigger"
           aria-haspopup="menu"
@@ -153,16 +165,16 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
           <span className="shell-account-avatar" aria-hidden>
             K
           </span>
-          <span className="shell-account-name">Kojo</span>
+          <span className="shell-account-name">{ACCOUNT_DISPLAY_NAME}</span>
         </button>
         {open ? (
           <>
             <button
               type="button"
               className="shell-menu-backdrop"
-              aria-label="Close menu"
+              aria-label={ARIA_CLOSE_MENU}
               tabIndex={-1}
-              onClick={onClose}
+              onClick={closeMenu}
             />
             <div ref={menuRef} role="menu" className="shell-menu-panel">
               <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
@@ -170,7 +182,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                 to="/defaults"
                 role="menuitem"
                 className="shell-menu-item"
-                onClick={onClose}
+                onClick={closeMenu}
               >
                 <span>{ACCOUNT_MY_DEFAULTS}</span>
                 <span className="shell-menu-item-detail">
@@ -183,7 +195,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                 className="shell-menu-item shell-menu-sign-out"
                 onClick={(event) => {
                   event.preventDefault();
-                  onClose();
+                  closeMenu();
                 }}
               >
                 {ACCOUNT_SIGN_OUT}

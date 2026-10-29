@@ -62,7 +62,16 @@ describe("app shell nav (integration)", () => {
     expect(container.querySelectorAll(".shell-tab-count")).toHaveLength(1);
   });
 
-  it("sets aria-current on the active tab", () => {
+  it("sets aria-current on the active desktop top nav link", () => {
+    renderApp("/programs", 0);
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    expect(within(topNav).getByRole("link", { name: "Programs" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("sets aria-current on the active phone tab", () => {
     renderApp("/routines", 0);
     const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
     expect(within(tabNav).getByRole("link", { name: "Routines" })).toHaveAttribute(
@@ -94,6 +103,41 @@ describe("app shell nav (integration)", () => {
 
     await user.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("moves focus into the menu and supports arrow keys and Escape", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    expect(document.activeElement).toBe(defaultsItem);
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(signOutItem);
+
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(defaultsItem);
+
+    await user.keyboard("{ArrowUp}");
+    expect(document.activeElement).toBe(signOutItem);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("returns focus to the trigger after choosing My defaults", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: /My defaults/ }));
+
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("closes the menu after choosing My defaults", async () => {

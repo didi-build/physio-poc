@@ -30,6 +30,17 @@ describe("Toast", () => {
     );
   }
 
+  it("uses a persistent aria-live region", () => {
+    const { container } = render(
+      <ToastProvider>
+        <span>Child</span>
+      </ToastProvider>,
+    );
+    const live = container.querySelector('[aria-live="polite"]');
+    expect(live).toBeInTheDocument();
+    expect(live).toHaveAttribute("aria-atomic", "true");
+  });
+
   it("dismisses a toast with Undo after 5 seconds", () => {
     render(
       <ToastProvider>
@@ -38,12 +49,12 @@ describe("Toast", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("Saved to My exercises")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(5000);
     });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved to My exercises")).not.toBeInTheDocument();
   });
 
   it("dismisses a plain toast after 2.6 seconds", () => {
@@ -54,12 +65,12 @@ describe("Toast", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("Link copied")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(2600);
     });
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Link copied")).not.toBeInTheDocument();
   });
 
   it("calls Undo once and removes the toast", () => {
@@ -74,6 +85,8 @@ describe("Toast", () => {
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     expect(onUndo).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Removed Example from My exercises"),
+    ).not.toBeInTheDocument();
   });
 });

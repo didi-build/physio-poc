@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { ARIA_CLOSE_SHEET } from "../copy/a11y.js";
 
 export type ConfirmSheetProps = {
   open: boolean;
@@ -40,6 +41,8 @@ export function ConfirmSheet({
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) {
@@ -50,7 +53,7 @@ export function ConfirmSheet({
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !panelRef.current) {
@@ -78,7 +81,7 @@ export function ConfirmSheet({
       window.removeEventListener("keydown", onKeyDown);
       previousFocusRef.current?.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -96,7 +99,9 @@ export function ConfirmSheet({
         className="shell-sheet-scrim"
         aria-label="Close"
         tabIndex={-1}
-        onClick={onClose}
+        onClick={() => {
+          onCloseRef.current();
+        }}
       />
       <div ref={panelRef} className="shell-sheet-panel">
         <div className="shell-sheet-grab" aria-hidden />
@@ -111,8 +116,10 @@ export function ConfirmSheet({
             ref={closeButtonRef}
             type="button"
             className="shell-sheet-close"
-            aria-label="Close sheet"
-            onClick={onClose}
+            aria-label={ARIA_CLOSE_SHEET}
+            onClick={() => {
+              onCloseRef.current();
+            }}
           >
             <CloseIcon />
           </button>

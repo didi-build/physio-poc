@@ -137,6 +137,22 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
+  it("checks the platform denylist before the UI allowlist under src/ui/", () => {
+    const nodeMessages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import fs from 'node:fs';",
+    );
+    expect(nodeMessages.some((m) => m.includes("platform module in ui"))).toBe(true);
+    expect(nodeMessages.some((m) => m.includes("disallowed ui import"))).toBe(false);
+    expect(nodeMessages.some((m) => m.includes("disallowed bare module"))).toBe(false);
+
+    const allowedMessages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import { useState } from 'react';",
+    );
+    expect(allowedMessages).toEqual([]);
+  });
+
   it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {
     expect(
       findPortableViolations(

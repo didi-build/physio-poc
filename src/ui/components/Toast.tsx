@@ -50,23 +50,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {toast ? (
-        <div role="status" className="shell-toast">
-          <span className="shell-toast-message">{toast.message}</span>
-          {toast.onUndo ? (
-            <button
-              type="button"
-              className="shell-toast-undo"
-              onClick={() => {
-                toast.onUndo?.();
-                dismissToast();
-              }}
-            >
-              {TOAST_UNDO}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div
+        aria-live="polite"
+        aria-atomic="true"
+        className={toast ? "shell-toast" : "shell-toast-live sr-only"}
+      >
+        {toast ? (
+          <>
+            <span className="shell-toast-message">{toast.message}</span>
+            {toast.onUndo ? (
+              <button
+                type="button"
+                className="shell-toast-undo"
+                onClick={() => {
+                  toast.onUndo?.();
+                  dismissToast();
+                }}
+              >
+                {TOAST_UNDO}
+              </button>
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </ToastContext.Provider>
   );
 }
