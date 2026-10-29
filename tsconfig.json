@@ -26,6 +26,7 @@
     "scripts/lib/gh-api-errors.mjs",
     "scripts/lib/bootstrap.mjs",
     "vitest.config.ts",
+    "vite.config.ts",
     "eslint.config.js"
   ]
 }

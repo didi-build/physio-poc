@@ -2,45 +2,78 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { render, screen } from "@testing-library/react";
-import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider, useToast } from "../../src/ui/components/Toast.js";
 
 describe("Toast", () => {
-  it("renders bottom toast with Undo", async () => {
-    const user = userEvent.setup();
-    const onUndo = vi.fn();
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
 
-    function Probe() {
-      const { showToast } = useToast();
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            showToast({
-              message: "Removed Example from My exercises",
-              onUndo,
-            });
-          }}
-        >
-          Show
-        </button>
-      );
-    }
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
+  function ToastProbe({ message, onUndo }: { message: string; onUndo?: () => void }) {
+    const { showToast } = useToast();
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          showToast({ message, onUndo });
+        }}
+      >
+        Show toast
+      </button>
+    );
+  }
+
+  it("dismisses a toast with Undo after 5 seconds", () => {
     render(
       <ToastProvider>
-        <Probe />
+        <ToastProbe message="Saved to My exercises" onUndo={() => {}} />
       </ToastProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "Show" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
 
-    const status = screen.getByRole("status");
-    expect(status).toHaveClass("shell-toast");
-    expect(screen.getByText("Removed Example from My exercises")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Undo" }));
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("dismisses a plain toast after 2.6 seconds", () => {
+    render(
+      <ToastProvider>
+        <ToastProbe message="Link copied" />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2600);
+    });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("calls Undo once and removes the toast", () => {
+    const onUndo = vi.fn();
+    render(
+      <ToastProvider>
+        <ToastProbe message="Removed Example from My exercises" onUndo={onUndo} />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show toast" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
     expect(onUndo).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

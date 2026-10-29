@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 export type ConfirmSheetProps = {
   open: boolean;
@@ -10,6 +10,24 @@ export type ConfirmSheetProps = {
   footer: ReactNode;
 };
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function CloseIcon() {
+  return (
+    <svg
+      aria-hidden
+      className="shell-sheet-close-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function ConfirmSheet({
   open,
   title,
@@ -19,18 +37,46 @@ export function ConfirmSheet({
   children,
   footer,
 }: ConfirmSheetProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) {
       return;
     }
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panelRef.current) {
+        return;
+      }
+      const focusables = [
+        ...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ];
+      if (focusables.length === 0) {
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
+
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      previousFocusRef.current?.focus();
     };
   }, [open, onClose]);
 
@@ -52,7 +98,7 @@ export function ConfirmSheet({
         tabIndex={-1}
         onClick={onClose}
       />
-      <div className="shell-sheet-panel">
+      <div ref={panelRef} className="shell-sheet-panel">
         <div className="shell-sheet-grab" aria-hidden />
         <div className="shell-sheet-header">
           <div>
@@ -62,12 +108,13 @@ export function ConfirmSheet({
             {subtitle ? <p className="shell-sheet-subtitle">{subtitle}</p> : null}
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             className="shell-sheet-close"
-            aria-label="Close"
+            aria-label="Close sheet"
             onClick={onClose}
           >
-            ×
+            <CloseIcon />
           </button>
         </div>
         {children ? <div className="shell-sheet-body">{children}</div> : null}

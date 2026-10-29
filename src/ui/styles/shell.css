@@ -471,8 +471,15 @@ body {
   border-radius: 0.75rem;
   background: transparent;
   color: var(--shell-slate-600);
-  font-size: 1.25rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shell-sheet-close-icon {
+  height: 1.25rem;
+  width: 1.25rem;
 }
 
 .shell-sheet-body {

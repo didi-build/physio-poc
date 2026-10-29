@@ -20,6 +20,40 @@ const UI_SOURCE_PREFIX = "src/ui/";
 /** @type {readonly string[]} */
 const UI_PACKAGE_ALLOWLIST = ["react", "react-dom", "react-router-dom"];
 
+/** Bare Node built-ins and other runtime modules that must not be imported in UI. */
+const UI_DISALLOWED_BARE_MODULES = new Set([
+  "assert",
+  "buffer",
+  "child_process",
+  "cluster",
+  "crypto",
+  "dgram",
+  "dns",
+  "events",
+  "fs",
+  "http",
+  "https",
+  "module",
+  "net",
+  "os",
+  "path",
+  "process",
+  "querystring",
+  "readline",
+  "stream",
+  "string_decoder",
+  "timers",
+  "tls",
+  "tty",
+  "url",
+  "util",
+  "v8",
+  "vm",
+  "worker_threads",
+  "workerd",
+  "zlib",
+]);
+
 /**
  * @param {string} repoRelativePath
  * @returns {boolean}
@@ -33,9 +67,23 @@ function isUiSourceFile(repoRelativePath) {
  * @returns {boolean}
  */
 function isAllowedUiModuleSpecifier(specifierText) {
+  if (specifierText.includes("..")) {
+    return false;
+  }
   return UI_PACKAGE_ALLOWLIST.some(
     (pkg) => specifierText === pkg || specifierText.startsWith(`${pkg}/`),
   );
+}
+
+/**
+ * @param {string} specifierText
+ * @returns {boolean}
+ */
+function isDisallowedBareUiModule(specifierText) {
+  if (specifierText.includes("/") || specifierText.startsWith("@")) {
+    return false;
+  }
+  return UI_DISALLOWED_BARE_MODULES.has(specifierText);
 }
 
 /**
@@ -172,6 +220,14 @@ export function findPortableViolations(repoRelativePath, source) {
     if (isUiSourceFile(repoRelativePath)) {
       if (isPlatformModuleSpecifier(text)) {
         violations.push(`${kind} platform module in ui: ${text}`);
+        return;
+      }
+      if (text.includes("..")) {
+        violations.push(`${kind} ui import with parent segments: ${text}`);
+        return;
+      }
+      if (isDisallowedBareUiModule(text)) {
+        violations.push(`${kind} disallowed bare module in ui: ${text}`);
         return;
       }
       if (isAllowedUiModuleSpecifier(text)) {

@@ -137,36 +137,81 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
-  it("allows allowlisted UI imports under src/ui/", () => {
-    const messages = findPortableViolations(
-      "src/ui/main.tsx",
-      "import { createRoot } from 'react-dom/client';",
-    );
-    expect(messages).toEqual([]);
+  it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {
+    expect(
+      findPortableViolations(
+        "src/ui/App.tsx",
+        "import { jsx as _jsx } from 'react/jsx-runtime';",
+      ),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/ui/main.tsx",
+        "import { createRoot } from 'react-dom/client';",
+      ),
+    ).toEqual([]);
   });
 
-  it("blocks disallowed npm imports under src/ui/", () => {
-    const messages = findPortableViolations(
-      "src/ui/App.tsx",
-      "import debounce from 'lodash';",
-    );
-    expect(messages.some((m) => m.includes("disallowed ui import"))).toBe(true);
+  it("blocks lodash, fs, workerd and child_process under src/ui/", () => {
+    expect(
+      findPortableViolations("src/ui/App.tsx", "import debounce from 'lodash';").some(
+        (m) => m.includes("disallowed ui import"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/ui/App.tsx", "import fs from 'fs';").some((m) =>
+        m.includes("disallowed bare module in ui"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/ui/App.tsx", "import x from 'workerd';").some((m) =>
+        m.includes("disallowed bare module in ui"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/ui/App.tsx", "import cp from 'child_process';").some(
+        (m) => m.includes("disallowed bare module in ui"),
+      ),
+    ).toBe(true);
   });
 
-  it("blocks node: imports under src/ui/", () => {
-    const messages = findPortableViolations(
-      "src/ui/App.tsx",
-      "import fs from 'node:fs';",
-    );
-    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
+  it("blocks react/../node:fs and node: look-alikes under src/ui/", () => {
+    expect(
+      findPortableViolations(
+        "src/ui/App.tsx",
+        "import fs from 'react/../node:fs';",
+      ).some((m) => m.includes("ui import with parent segments")),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/ui/App.tsx", "import fs from 'node:fs';").some((m) =>
+        m.includes("platform module in ui"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations(
+        "src/ui/App.tsx",
+        "import x from 'cloudflare:workers';",
+      ).some((m) => m.includes("platform module in ui")),
+    ).toBe(true);
   });
 
-  it("blocks cloudflare: imports under src/ui/", () => {
-    const messages = findPortableViolations(
-      "src/ui/App.tsx",
-      "import x from 'cloudflare:workers';",
-    );
-    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
+  it("still blocks process, require and globalThis under src/ui/", () => {
+    expect(
+      findPortableViolations("src/ui/App.tsx", "const { env } = process;").some((m) =>
+        m.includes("process identifier"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations(
+        "src/ui/App.tsx",
+        'declare const require: NodeRequire; require("fs");',
+      ).some((m) => m.includes("require identifier")),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/ui/App.tsx", 'globalThis["process"].env;').some((m) =>
+        m.includes("process string element access"),
+      ),
+    ).toBe(true);
   });
 
   it("blocks platform npm imports under src/ui/", () => {

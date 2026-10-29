@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import {
   ACCOUNT_MY_DEFAULTS,
@@ -56,16 +57,12 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
               `shell-top-nav-link${isActive ? " shell-top-nav-link--active" : ""}`
             }
           >
-            {({ isActive }) => (
-              <>
-                <span aria-current={isActive ? "page" : undefined}>
-                  {tab.desktopLabel}
-                </span>
-                {tab.showCount && requestsReviewCount > 0 ? (
-                  <span className="shell-count-badge">{requestsReviewCount}</span>
-                ) : null}
-              </>
-            )}
+            <>
+              {tab.desktopLabel}
+              {tab.showCount && requestsReviewCount > 0 ? (
+                <span className="shell-count-badge">{requestsReviewCount}</span>
+              ) : null}
+            </>
           </NavLink>
         ))}
       </nav>
@@ -77,17 +74,13 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
       <div className="shell-tab-bar-inner">
         {tabs.map((tab) => (
           <NavLink key={tab.to} to={tab.to} end className="shell-tab-link">
-            {({ isActive }) => (
-              <>
-                <span className="shell-tab-icon-wrap" aria-hidden />
-                <span aria-current={isActive ? "page" : undefined}>
-                  {tab.phoneLabel}
-                </span>
-                {tab.showCount && requestsReviewCount > 0 ? (
-                  <span className="shell-tab-count">{requestsReviewCount}</span>
-                ) : null}
-              </>
-            )}
+            <>
+              <span className="shell-tab-icon-wrap" aria-hidden />
+              {tab.phoneLabel}
+              {tab.showCount && requestsReviewCount > 0 ? (
+                <span className="shell-tab-count">{requestsReviewCount}</span>
+              ) : null}
+            </>
           </NavLink>
         ))}
       </div>
@@ -102,6 +95,50 @@ export type AccountMenuProps = {
 };
 
 export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || !menuRef.current) {
+      return;
+    }
+    const menu = menuRef.current;
+    const menuItems = () => [
+      ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ];
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+        return;
+      }
+      event.preventDefault();
+      const items = menuItems();
+      if (items.length === 0) {
+        return;
+      }
+      const activeIndex = items.indexOf(document.activeElement as HTMLElement);
+      let nextIndex = 0;
+      if (event.key === "ArrowDown") {
+        nextIndex = activeIndex < 0 ? 0 : (activeIndex + 1) % items.length;
+      } else {
+        nextIndex =
+          activeIndex < 0
+            ? items.length - 1
+            : (activeIndex - 1 + items.length) % items.length;
+      }
+      items[nextIndex]?.focus();
+    };
+
+    menu.addEventListener("keydown", onKeyDown);
+    return () => {
+      menu.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onClose]);
+
   return (
     <div className="shell-header-actions">
       <div className="shell-account-wrap">
@@ -127,7 +164,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
               tabIndex={-1}
               onClick={onClose}
             />
-            <div role="menu" className="shell-menu-panel">
+            <div ref={menuRef} role="menu" className="shell-menu-panel">
               <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
               <NavLink
                 to="/defaults"
