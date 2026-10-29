@@ -1,8 +1,17 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { dirname, join, normalize, relative, sep } from "node:path";
 import ts from "typescript";
 
-const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs"]);
+const SCAN_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+]);
 
 const PLATFORM_PREFIXES = ["entry/", "adapters/node/", "adapters/workers/"];
 
@@ -38,6 +47,50 @@ export function listPortableSourceFiles(srcRoot) {
 }
 
 /**
+ * @param {string} importerRepoPath repo-relative path e.g. src/http/app.ts
+ * @param {string} specifierText
+ * @returns {string} normalized repo-relative path
+ */
+function resolveRelativeImport(importerRepoPath, specifierText) {
+  const importerDir = dirname(importerRepoPath);
+  return normalize(join(importerDir, specifierText)).split(sep).join("/");
+}
+
+/**
+ * @param {string} resolvedRepoPath
+ * @returns {boolean}
+ */
+function landsInPlatformTree(resolvedRepoPath) {
+  const normalized = resolvedRepoPath.split(sep).join("/");
+  let withinSrc = normalized;
+  if (normalized.startsWith("src/")) {
+    withinSrc = normalized.slice("src/".length);
+  }
+  return PLATFORM_PREFIXES.some((prefix) => withinSrc.startsWith(prefix));
+}
+
+/**
+ * @param {import("typescript").Expression} node
+ * @returns {import("typescript").Expression}
+ */
+function unwrapExpression(node) {
+  let current = node;
+  while (true) {
+    if (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isNonNullExpression(current)
+    ) {
+      current = current.expression;
+      continue;
+    }
+    break;
+  }
+  return current;
+}
+
+/**
  * @param {string} repoRelativePath e.g. src/http/app.ts
  * @param {string} source
  * @returns {string[]} violation messages
@@ -62,15 +115,11 @@ export function findPortableViolations(repoRelativePath, source) {
       return;
     }
     const text = specifier.text;
-    if (
-      text.includes("/entry/") ||
-      text.endsWith("/entry") ||
-      text === "../entry/node.js"
-    ) {
-      violations.push(`${kind} imports src/entry: ${text}`);
-      return;
-    }
     if (text.startsWith(".")) {
+      const resolved = resolveRelativeImport(repoRelativePath, text);
+      if (landsInPlatformTree(resolved)) {
+        violations.push(`${kind} imports platform tree: ${text} -> ${resolved}`);
+      }
       return;
     }
     violations.push(`${kind} non-relative import: ${text}`);
@@ -87,6 +136,16 @@ export function findPortableViolations(repoRelativePath, source) {
     ) {
       checkModuleSpecifier(node.moduleSpecifier, "export");
     }
+    if (ts.isImportEqualsDeclaration(node)) {
+      const ref = node.moduleReference;
+      if (
+        ts.isExternalModuleReference(ref) &&
+        ref.expression &&
+        ts.isStringLiteral(ref.expression)
+      ) {
+        checkModuleSpecifier(ref.expression, "import=");
+      }
+    }
     if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword
@@ -101,15 +160,31 @@ export function findPortableViolations(repoRelativePath, source) {
     if (ts.isIdentifier(node) && node.text === "process") {
       violations.push("process identifier");
     }
+    if (ts.isIdentifier(node) && node.text === "require") {
+      violations.push("require identifier");
+    }
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "require") {
+      violations.push("require property access");
+    }
     if (
       ts.isElementAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "globalThis" &&
       node.argumentExpression &&
       ts.isStringLiteral(node.argumentExpression) &&
       node.argumentExpression.text === "process"
     ) {
-      violations.push("globalThis process access");
+      violations.push("process string element access");
+    }
+    if (ts.isElementAccessExpression(node)) {
+      const receiver = unwrapExpression(node.expression);
+      if (
+        ts.isIdentifier(receiver) &&
+        receiver.text === "globalThis" &&
+        node.argumentExpression &&
+        ts.isStringLiteral(node.argumentExpression) &&
+        node.argumentExpression.text === "process"
+      ) {
+        violations.push("globalThis process access");
+      }
     }
     ts.forEachChild(node, visit);
   }

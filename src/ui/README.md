@@ -6,4 +6,4 @@ Future implementation of the Physio web app shell and screens.
 - Nav and copy come from feature specs under `design/app/` (no new user-facing strings in code until UI tickets).
 - UI components call `src/services/` only; they do not import storage adapters or platform entry modules.
 
-DIDI-996 does not add screens or a UI framework choice here.
+- UI stack: **React with Vite** (ADR 0004 item 6), built to static assets served by the same entry. DIDI-996 does not add screens here.

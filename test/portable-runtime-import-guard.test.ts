@@ -58,7 +58,51 @@ describe("portable runtime import guard (unit)", () => {
       "src/http/example.ts",
       'globalThis["process"].env;',
     );
-    expect(messages.some((m) => m.includes("globalThis process"))).toBe(true);
+    expect(messages.some((m) => m.includes("process string element access"))).toBe(
+      true,
+    );
+  });
+
+  it("detects cast globalThis process access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      '(globalThis as any)["process"].env;',
+    );
+    expect(messages.some((m) => m.includes("process string element access"))).toBe(
+      true,
+    );
+  });
+
+  it("detects require() call identifier", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'declare const require: NodeRequire; require("node:fs");',
+    );
+    expect(messages.some((m) => m.includes("require identifier"))).toBe(true);
+  });
+
+  it("detects import equals require", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'import fs = require("node:fs");',
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects import equals require in .cts", () => {
+    const messages = findPortableViolations(
+      "src/http/example.cts",
+      'import fs = require("node:fs");',
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects globalThis require property access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      '(globalThis as any).require("node:fs");',
+    );
+    expect(messages.some((m) => m.includes("require property access"))).toBe(true);
   });
 
   it("detects triple-slash references", () => {
@@ -69,17 +113,41 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("triple-slash"))).toBe(true);
   });
 
-  it("detects imports of src/entry from portable code", () => {
+  it("detects relative imports into src/entry", () => {
     const messages = findPortableViolations(
       "src/http/example.ts",
       "export { createNodeServer } from '../entry/node.js';",
     );
-    expect(messages.some((m) => m.includes("src/entry"))).toBe(true);
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects relative imports into src/entry via parent segments", () => {
+    const messages = findPortableViolations(
+      "src/services/example.ts",
+      "export { x } from '../../entry/worker.js';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects relative imports into src/adapters/workers", () => {
+    const messages = findPortableViolations(
+      "src/services/example.ts",
+      "export { x } from '../adapters/workers/x.js';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
   it("detects violations in .tsx sources", () => {
     const messages = findPortableViolations(
       "src/ui/Example.tsx",
+      "import React from 'react';",
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects violations in .jsx sources", () => {
+    const messages = findPortableViolations(
+      "src/ui/Example.jsx",
       "import React from 'react';",
     );
     expect(messages.some((m) => m.includes("non-relative"))).toBe(true);

@@ -60,4 +60,14 @@ describe("health route (integration)", () => {
     expect(sqlRun).not.toHaveBeenCalled();
     expect(objectGet).not.toHaveBeenCalled();
   });
+
+  it("HEAD /health returns 200 with an empty body", async () => {
+    const response = await handleRequest(
+      new Request("http://127.0.0.1/health", { method: "HEAD" }),
+      testDeps(),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBeNull();
+    expect(await response.text()).toBe("");
+  });
 });

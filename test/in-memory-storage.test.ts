@@ -13,6 +13,19 @@ describe("InMemoryObjectStorage (unit)", () => {
     expect(new TextDecoder().decode(roundTrip?.body)).toBe("demo-bytes");
   });
 
+  it("copies bytes on get so mutating a result does not change stored data", async () => {
+    const storage = new InMemoryObjectStorage();
+    const body = new TextEncoder().encode("demo-bytes");
+    await storage.put("media/exercise/demo.png", body, "image/png");
+    const first = await storage.get("media/exercise/demo.png");
+    if (!first) {
+      throw new Error("expected object");
+    }
+    first.body[0] = 0xaa;
+    const second = await storage.get("media/exercise/demo.png");
+    expect(second?.body[0]).toBe("demo-bytes".charCodeAt(0));
+  });
+
   it("head reports size and content-type", async () => {
     const storage = new InMemoryObjectStorage();
     const body = new TextEncoder().encode("abc");
@@ -62,6 +75,20 @@ describe("InMemorySqlStorage (unit)", () => {
     expect(again?.label).toBe("alpha");
   });
 
+  it("first() returns null for a missing id", async () => {
+    const sql = new InMemorySqlStorage();
+    await expect(
+      sql.first("SELECT * FROM items WHERE id = ? LIMIT 1", ["missing"]),
+    ).resolves.toBeNull();
+  });
+
+  it("run() returns rowsAffected 1 on insert", async () => {
+    const sql = new InMemorySqlStorage();
+    await expect(
+      sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["item-1", "alpha"]),
+    ).resolves.toEqual({ rowsAffected: 1 });
+  });
+
   it("all() returns every matching row without LIMIT 1", async () => {
     const sql = new InMemorySqlStorage();
     await sql.run("INSERT INTO items (id, status) VALUES (?, ?)", ["a", "open"]);
@@ -80,6 +107,27 @@ describe("InMemorySqlStorage (unit)", () => {
     await expect(
       sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["dup", "two"]),
     ).rejects.toThrow(/Duplicate id/);
+  });
+
+  it("rejects binding count mismatch on insert", async () => {
+    const sql = new InMemorySqlStorage();
+    await expect(
+      sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["only-one"]),
+    ).rejects.toThrow(/column count must match bindings/);
+  });
+
+  it("rejects non-? placeholders on insert", async () => {
+    const sql = new InMemorySqlStorage();
+    await expect(
+      sql.run("INSERT INTO items (id, label) VALUES ($1, ?)", ["a", "b"]),
+    ).rejects.toThrow(/Only \? placeholders/);
+  });
+
+  it("rejects unsupported SQL such as UPDATE", async () => {
+    const sql = new InMemorySqlStorage();
+    await expect(
+      sql.run("UPDATE items SET label = ? WHERE id = ?", ["x", "item-1"]),
+    ).rejects.toThrow(/Unsupported SQL/);
   });
 
   it("stores boolean bindings as 1 or 0 like D1", async () => {
