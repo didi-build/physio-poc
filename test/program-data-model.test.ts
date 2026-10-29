@@ -75,6 +75,13 @@ describe("program codes (unit + repository)", () => {
       });
       expect(await programs.findByCode("TEST")).toEqual(created);
       expect(await programs.findByCode("PRG-TEST")).toEqual(created);
+      await programs.create({
+        id: "prog-2",
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-PRG7",
+      });
+      expect((await programs.findByCode("PRG7"))?.id).toBe("prog-2");
     } finally {
       storage.close();
     }
@@ -82,13 +89,13 @@ describe("program codes (unit + repository)", () => {
 });
 
 describe("share links and expiry (repository, SQLite)", () => {
-  it("allows never and custom dates from tomorrow", () => {
-    const tomorrow = new Date("2026-02-01T12:00:00.000Z");
-    expect(validateCustomLinkExpiryDate("2026-02-02", tomorrow)).toBe("2026-02-02");
-    expect(() => validateCustomLinkExpiryDate("2026-02-01", tomorrow)).toThrow();
+  it("allows never and custom dates from tomorrow in America/Toronto", () => {
+    const now = new Date("2026-10-30T00:30:00.000Z");
+    expect(validateCustomLinkExpiryDate("2026-10-30", now)).toBe("2026-10-30");
+    expect(() => validateCustomLinkExpiryDate("2026-10-29", now)).toThrow();
     const neverAt = resolveShareLinkExpiresAt(
       { expiresIn: SHARE_LINK_EXPIRES_IN.never },
-      tomorrow,
+      now,
     );
     expect(neverAt).toBeNull();
   });
@@ -281,9 +288,10 @@ describe("publish snapshots and delete or restore (repository, SQLite)", () => {
       expect((await programs.findById("prog-1"))?.deleted_at).toBeNull();
       expect(await links.findOpenByProgramId("prog-1")).toBeNull();
       await programs.softDelete("prog-1", "2020-01-01T00:00:00.000Z");
-      const purgeable = await programs.listPurgeableDeleted("2020-02-01T00:00:00.000Z");
+      const purgeNow = new Date("2020-02-15T00:00:00.000Z");
+      const purgeable = await programs.listPurgeableDeleted(purgeNow);
       expect(purgeable.map((p) => p.id)).toContain("prog-1");
-      await programs.purgeDeleted("prog-1");
+      await programs.purgeDeleted("prog-1", purgeNow);
       expect(await programs.findById("prog-1")).toBeNull();
     } finally {
       storage.close();

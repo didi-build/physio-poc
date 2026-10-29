@@ -83,6 +83,10 @@ CREATE TABLE IF NOT EXISTS share_links (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_share_links_token ON share_links (token);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_share_links_one_open_per_program ON share_links (program_id)
+WHERE
+  closed_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS share_link_defaults (
   id TEXT PRIMARY KEY,
   scope TEXT NOT NULL CHECK (scope IN ('global', 'practitioner')),

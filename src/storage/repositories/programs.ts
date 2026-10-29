@@ -13,12 +13,8 @@ import {
   validateExerciseParams,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
-import {
-  generateProgramCode,
-  isValidProgramCodeFormat,
-  normalizeProgramCode,
-  programCodeSearchKeys,
-} from "../../domain/program-code.js";
+import * as programCodeDomain from "../../domain/program-code.js";
+import { validateProgramRowTextSnapshot } from "../../domain/program-row-text.js";
 import {
   parseProgramRowTextSnapshotJson,
   parsePublishedProgramSnapshotJson,
@@ -28,7 +24,6 @@ import {
 } from "../../domain/program-types.js";
 import { generateShareLinkToken } from "../../domain/share-link-token.js";
 import {
-  GLOBAL_SHARE_LINK_DEFAULT_EXPIRES_IN,
   resolveShareLinkExpiresAt,
   validateShareLinkExpiryChoice,
   type ShareLinkExpiryChoice,
@@ -72,7 +67,7 @@ export type ProgramRecord = {
   link_expires_on: string | null;
 };
 
-const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
@@ -94,6 +89,26 @@ function rowToSnapshot(row: ProgramRow): ProgramRowSnapshot {
   };
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("UNIQUE constraint failed") ||
+    message.includes("idx_share_links_one_open_per_program") ||
+    message.includes("idx_programs_code")
+  );
+}
+
+function rethrowOpenShareLinkError(error: unknown): never {
+  if (isUniqueConstraintError(error)) {
+    throw new ProgramRepositoryError("Program already has an open share link");
+  }
+  throw error;
+}
+
+function purgeCutoffIso(now: Date): string {
+  return new Date(now.getTime() - PROGRAM_RESTORE_AND_PURGE_WINDOW_MS).toISOString();
+}
+
 export class ProgramsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
@@ -105,8 +120,10 @@ export class ProgramsRepository {
     code?: string;
   }): Promise<ProgramRecord> {
     const name = validateOptionalProgramName(input.name ?? null);
-    let code = input.code ? normalizeProgramCode(input.code) : generateProgramCode();
-    if (!isValidProgramCodeFormat(code)) {
+    let code = input.code
+      ? programCodeDomain.normalizeProgramCode(input.code)
+      : programCodeDomain.generateProgramCode();
+    if (!programCodeDomain.isValidProgramCodeFormat(code)) {
       throw new ProgramRepositoryError("Program code format is invalid");
     }
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -124,10 +141,17 @@ export class ProgramsRepository {
         }
         return created;
       } catch (error) {
-        if (input.code || attempt >= 7) {
+        if (input.code) {
+          if (isUniqueConstraintError(error)) {
+            throw new ProgramRepositoryError("Program code is already in use");
+          }
           throw error;
         }
-        code = generateProgramCode();
+        if (isUniqueConstraintError(error) && attempt < 7) {
+          code = programCodeDomain.generateProgramCode();
+          continue;
+        }
+        throw error;
       }
     }
     throw new ProgramRepositoryError("Could not allocate a unique program code");
@@ -144,15 +168,14 @@ export class ProgramsRepository {
   }
 
   async findByCode(query: string): Promise<ProgramRecord | null> {
-    const keys = programCodeSearchKeys(query);
+    const keys = programCodeDomain.programCodeSearchKeys(query);
     for (const key of keys) {
-      const normalized = normalizeProgramCode(key);
       const row = await this.sql.first<ProgramRecord>(
         `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
                 published_version, published_name, published_at, published_snapshot_json,
                 deleted_at, link_expires_in, link_expires_on
          FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
-        [normalized],
+        [key],
       );
       if (row) {
         return row;
@@ -170,11 +193,30 @@ export class ProgramsRepository {
     );
   }
 
-  async setLinkExpiry(programId: string, choice: ShareLinkExpiryChoice): Promise<void> {
-    const validated = validateShareLinkExpiryChoice(choice);
+  async setLinkExpiry(
+    programId: string,
+    choice: ShareLinkExpiryChoice,
+    now: Date = new Date(),
+  ): Promise<void> {
+    const validated = validateShareLinkExpiryChoice(choice, now);
     await this.sql.run(
       `UPDATE programs SET link_expires_in = ?, link_expires_on = ? WHERE id = ? AND deleted_at IS NULL`,
       [validated.expiresIn, validated.customExpiresOn ?? null, programId],
+    );
+    const program = await this.findById(programId);
+    if (!program || program.deleted_at) {
+      return;
+    }
+    const open = await new ShareLinksRepository(this.sql).findOpenByProgramId(
+      programId,
+    );
+    if (!open) {
+      return;
+    }
+    const expiresAt = resolveShareLinkExpiresAt(validated, now);
+    await this.sql.run(
+      `UPDATE share_links SET expires_at = ? WHERE id = ? AND closed_at IS NULL`,
+      [expiresAt, open.id],
     );
   }
 
@@ -210,7 +252,7 @@ export class ProgramsRepository {
         published_at = ?,
         published_snapshot_json = ?,
         draft_updated_at = ?
-       WHERE id = ?`,
+       WHERE id = ? AND deleted_at IS NULL`,
       [publishName, publishedAt, snapshotJson, publishedAt, programId],
     );
     return payload;
@@ -224,17 +266,17 @@ export class ProgramsRepository {
   }
 
   async softDelete(programId: string, deletedAt: string): Promise<void> {
-    await this.sql.run(
-      `UPDATE programs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
-      [deletedAt, programId],
-    );
     await new ShareLinksRepository(this.sql).closeOpenLinksForProgram(
       programId,
       deletedAt,
     );
+    await this.sql.run(
+      `UPDATE programs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+      [deletedAt, programId],
+    );
   }
 
-  async restore(programId: string): Promise<void> {
+  async restore(programId: string, now: Date = new Date()): Promise<void> {
     const program = await this.findById(programId);
     if (!program?.deleted_at) {
       throw new ProgramRepositoryError("Program is not deleted");
@@ -243,7 +285,7 @@ export class ProgramsRepository {
     if (Number.isNaN(deletedMs)) {
       throw new ProgramRepositoryError("Invalid deleted_at timestamp");
     }
-    if (Date.now() - deletedMs > RESTORE_WINDOW_MS) {
+    if (now.getTime() - deletedMs > PROGRAM_RESTORE_AND_PURGE_WINDOW_MS) {
       throw new ProgramRepositoryError("Restore window has expired");
     }
     await this.sql.run(`UPDATE programs SET deleted_at = NULL WHERE id = ?`, [
@@ -251,23 +293,43 @@ export class ProgramsRepository {
     ]);
   }
 
-  async listPurgeableDeleted(beforeInstant: string): Promise<ProgramRecord[]> {
+  async listPurgeableDeleted(now: Date = new Date()): Promise<ProgramRecord[]> {
+    const cutoff = purgeCutoffIso(now);
     return this.sql.all<ProgramRecord>(
       `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
               published_version, published_name, published_at, published_snapshot_json,
               deleted_at, link_expires_in, link_expires_on
        FROM programs
        WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
-      [beforeInstant],
+      [cutoff],
     );
   }
 
-  async purgeDeleted(programId: string): Promise<void> {
-    await this.sql.run(`DELETE FROM share_links WHERE program_id = ?`, [programId]);
-    await this.sql.run(`DELETE FROM program_rows WHERE program_id = ?`, [programId]);
-    await this.sql.run(`DELETE FROM programs WHERE id = ? AND deleted_at IS NOT NULL`, [
-      programId,
-    ]);
+  async purgeDeleted(programId: string, now: Date = new Date()): Promise<void> {
+    const cutoff = purgeCutoffIso(now);
+    await this.sql.run(
+      `DELETE FROM share_links
+       WHERE program_id = ?
+         AND program_id IN (
+           SELECT id FROM programs
+           WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?
+         )`,
+      [programId, programId, cutoff],
+    );
+    await this.sql.run(
+      `DELETE FROM program_rows
+       WHERE program_id = ?
+         AND program_id IN (
+           SELECT id FROM programs
+           WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?
+         )`,
+      [programId, programId, cutoff],
+    );
+    await this.sql.run(
+      `DELETE FROM programs
+       WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?`,
+      [programId, cutoff],
+    );
   }
 }
 
@@ -287,8 +349,13 @@ export class ProgramRowsRepository {
     note?: string | null;
     draftUpdatedAt: string;
   }): Promise<void> {
+    const program = await new ProgramsRepository(this.sql).findById(input.programId);
+    if (!program || program.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);
     const paramsJson = JSON.stringify(validateExerciseParams(input.params));
-    const textJson = JSON.stringify(input.textSnapshot);
+    const textJson = JSON.stringify(textSnapshot);
     const note = validateProgramRowNote(input.note ?? null);
     const hasPlaceholder = Boolean(input.exerciseRequestId);
     if (hasPlaceholder) {
@@ -378,16 +445,40 @@ export class ShareLinksRepository {
     expiresAt: string | null;
     token?: string;
   }): Promise<ShareLinkRecord> {
-    const existing = await this.findOpenByProgramId(input.programId);
-    if (existing) {
-      throw new ProgramRepositoryError("Program already has an open share link");
-    }
     const token = input.token ?? generateShareLinkToken();
-    await this.sql.run(
-      `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
-       VALUES (?, ?, ?, ?, NULL, ?)`,
-      [input.id, input.programId, token, input.expiresAt, input.createdAt],
-    );
+    try {
+      const result = await this.sql.run(
+        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+         SELECT ?, ?, ?, ?, NULL, ?
+         FROM programs
+         WHERE id = ? AND deleted_at IS NULL`,
+        [
+          input.id,
+          input.programId,
+          token,
+          input.expiresAt,
+          input.createdAt,
+          input.programId,
+        ],
+      );
+      if (result.rowsAffected === 0) {
+        const program = await new ProgramsRepository(this.sql).findById(
+          input.programId,
+        );
+        if (!program) {
+          throw new ProgramRepositoryError("Program not found");
+        }
+        if (program.deleted_at) {
+          throw new ProgramRepositoryError("Program is deleted");
+        }
+        throw new ProgramRepositoryError("Share link insert failed");
+      }
+    } catch (error) {
+      if (error instanceof ProgramRepositoryError) {
+        throw error;
+      }
+      rethrowOpenShareLinkError(error);
+    }
     const created = await this.findOpenByProgramId(input.programId);
     if (!created) {
       throw new ProgramRepositoryError("Share link insert failed");
@@ -421,10 +512,8 @@ export class ShareLinksRepository {
     if (practitionerChoice) {
       return validateShareLinkExpiryChoice(practitionerChoice, now);
     }
-    return validateShareLinkExpiryChoice(
-      { expiresIn: GLOBAL_SHARE_LINK_DEFAULT_EXPIRES_IN },
-      now,
-    );
+    const globalChoice = await defaults.getGlobalDefault();
+    return validateShareLinkExpiryChoice(globalChoice, now);
   }
 
   async createOpenLinkForProgram(input: {
@@ -437,6 +526,9 @@ export class ShareLinksRepository {
     const program = await new ProgramsRepository(this.sql).findById(input.programId);
     if (!program) {
       throw new ProgramRepositoryError("Program not found");
+    }
+    if (program.deleted_at) {
+      throw new ProgramRepositoryError("Program is deleted");
     }
     const choice = await this.resolveExpiryForProgram(
       program,
@@ -470,7 +562,7 @@ export class ShareLinkDefaultsRepository {
       ["global"],
     );
     if (!row) {
-      return { expiresIn: GLOBAL_SHARE_LINK_DEFAULT_EXPIRES_IN };
+      throw new ProgramRepositoryError("Global share link default is not seeded");
     }
     return validateShareLinkExpiryChoice({
       expiresIn: row.expires_in,

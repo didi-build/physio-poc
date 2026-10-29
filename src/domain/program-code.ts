@@ -35,23 +35,46 @@ export function normalizeProgramCode(input: string): string {
   return `${PROGRAM_CODE_PREFIX}${upper}`;
 }
 
-/** Search keys for a code query (with or without the PRG- prefix). */
+/**
+ * Search keys for a code query (with or without the PRG- prefix).
+ * Also tries PRG- plus the raw trimmed input so PRG7 finds PRG-PRG7.
+ */
 export function programCodeSearchKeys(input: string): string[] {
-  const canonical = normalizeProgramCode(input);
-  const suffix = canonical.slice(PROGRAM_CODE_PREFIX.length);
-  const keys = new Set<string>([canonical]);
-  if (suffix.length > 0) {
-    keys.add(suffix);
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    return [];
+  }
+  const upper = trimmed.toUpperCase();
+  const keys = new Set<string>();
+  keys.add(`${PROGRAM_CODE_PREFIX}${upper}`);
+  if (upper.startsWith(PROGRAM_CODE_PREFIX)) {
+    keys.add(upper);
+  }
+  try {
+    keys.add(normalizeProgramCode(trimmed));
+  } catch {
+    // ignore
+  }
+  const suffix = upper.replace(/^PRG-?/, "");
+  if (suffix.length > 0 && suffix !== upper) {
+    keys.add(`${PROGRAM_CODE_PREFIX}${suffix}`);
     keys.add(`PRG${suffix}`);
   }
   return [...keys];
 }
 
 export function isValidProgramCodeFormat(code: string): boolean {
-  const normalized = normalizeProgramCode(code);
+  let normalized: string;
+  try {
+    normalized = normalizeProgramCode(code);
+  } catch {
+    return false;
+  }
   const suffix = normalized.slice(PROGRAM_CODE_PREFIX.length);
   if (suffix.length !== CODE_SUFFIX_LENGTH) {
     return false;
   }
   return [...suffix].every((char) => CODE_SUFFIX_ALPHABET.includes(char));
 }
+
+export const PROGRAM_CODE_SUFFIX_ALPHABET = CODE_SUFFIX_ALPHABET;

@@ -1,5 +1,10 @@
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+export const SHARE_LINK_TOKEN_BYTE_LENGTH = 32;
+
+/** Base64url encoding of 32 bytes without padding. */
+export const SHARE_LINK_TOKEN_CHAR_LENGTH = 43;
+
 function base64UrlFromBytes(bytes: Uint8Array): string {
   let output = "";
   for (let i = 0; i < bytes.length; i += 3) {
@@ -17,7 +22,11 @@ function base64UrlFromBytes(bytes: Uint8Array): string {
 
 /** Opaque share-link token from a CSPRNG (Web Crypto). */
 export function generateShareLinkToken(): string {
-  const bytes = new Uint8Array(32);
+  const bytes = new Uint8Array(SHARE_LINK_TOKEN_BYTE_LENGTH);
   crypto.getRandomValues(bytes);
+  return base64UrlFromBytes(bytes);
+}
+
+export function encodeShareLinkTokenFromBytes(bytes: Uint8Array): string {
   return base64UrlFromBytes(bytes);
 }

@@ -2,9 +2,19 @@ import {
   SHARE_LINK_EXPIRES_IN,
   type ShareLinkExpiresIn,
 } from "../mcp-connector/share-link-expiry.js";
+import {
+  addTorontoCalendarDays,
+  assertTorontoDateOnlyRoundTrip,
+  compareDateOnly,
+  torontoDateOnlyFromInstant,
+  torontoEndOfDayUtcIso,
+  torontoStartOfDayUtcMs,
+  torontoTomorrowEarliestDateOnly,
+} from "./toronto-calendar.js";
 
 export { SHARE_LINK_EXPIRES_IN, type ShareLinkExpiresIn };
 
+/** Fallback when the seeded global row is missing (matches migration seed). */
 export const GLOBAL_SHARE_LINK_DEFAULT_EXPIRES_IN = SHARE_LINK_EXPIRES_IN.one_year;
 
 export class ShareLinkExpiryValidationError extends Error {
@@ -19,36 +29,14 @@ export type ShareLinkExpiryChoice = {
   customExpiresOn?: string | null;
 };
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
-function utcDateOnly(isoInstant: string): string {
-  return isoInstant.slice(0, 10);
-}
-
-function parseDateOnly(value: string, fieldLabel: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new ShareLinkExpiryValidationError(
-      `${fieldLabel} must be an ISO date (YYYY-MM-DD)`,
-    );
-  }
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new ShareLinkExpiryValidationError(`${fieldLabel} is not a valid date`);
-  }
-  return parsed;
-}
-
-/** Any calendar date from tomorrow (UTC), no maximum. */
+/** Any calendar date from tomorrow in America/Toronto, no maximum. */
 export function validateCustomLinkExpiryDate(
   dateOnly: string,
   now: Date = new Date(),
 ): string {
-  const trimmed = dateOnly.trim();
-  const target = parseDateOnly(trimmed, "Custom expiry date");
-  const tomorrow = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0),
-  );
-  if (target.getTime() < tomorrow.getTime()) {
+  const trimmed = assertTorontoDateOnlyRoundTrip(dateOnly.trim());
+  const earliest = torontoTomorrowEarliestDateOnly(now);
+  if (compareDateOnly(trimmed, earliest) < 0) {
     throw new ShareLinkExpiryValidationError(
       "Custom expiry date must be any date from tomorrow",
     );
@@ -85,18 +73,10 @@ export function resolveShareLinkExpiresAt(
   }
   if (validated.expiresIn === SHARE_LINK_EXPIRES_IN.custom_date) {
     const dateOnly = validated.customExpiresOn ?? "";
-    parseDateOnly(dateOnly, "Custom expiry date");
-    return `${dateOnly}T23:59:59.999Z`;
+    assertTorontoDateOnlyRoundTrip(dateOnly);
+    return torontoEndOfDayUtcIso(dateOnly);
   }
-  const start = Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    0,
-    0,
-    0,
-    0,
-  );
+  const todayToronto = torontoDateOnlyFromInstant(now);
   const dayOffsets: Record<
     Exclude<ShareLinkExpiresIn, "never" | "custom_date">,
     number
@@ -107,10 +87,22 @@ export function resolveShareLinkExpiresAt(
     [SHARE_LINK_EXPIRES_IN.one_year]: 365,
   };
   const offsetDays = dayOffsets[validated.expiresIn];
-  const expiresMs = start + offsetDays * MS_PER_DAY;
-  return new Date(expiresMs + MS_PER_DAY - 1).toISOString();
+  const expiryDateOnly = addTorontoCalendarDays(todayToronto, offsetDays);
+  return torontoEndOfDayUtcIso(expiryDateOnly);
 }
 
 export function shareLinkExpiryDateOnlyFromInstant(isoInstant: string): string {
-  return utcDateOnly(isoInstant);
+  return torontoDateOnlyFromInstant(new Date(isoInstant));
+}
+
+/** Exact one-year expiry instant for tests (Toronto calendar, 365 days). */
+export function resolveOneYearExpiresAt(now: Date): string {
+  return resolveShareLinkExpiresAt(
+    { expiresIn: SHARE_LINK_EXPIRES_IN.one_year },
+    now,
+  ) as string;
+}
+
+export function torontoTodayStartUtcMs(now: Date): number {
+  return torontoStartOfDayUtcMs(torontoDateOnlyFromInstant(now));
 }

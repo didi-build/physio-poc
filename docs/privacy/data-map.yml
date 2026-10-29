@@ -304,7 +304,7 @@ d1_tables:
         notes: PRG- prefixed lookup code; no patient details
       name:
         whose: operational
-        notes: patient_detail_risk; validateProgramName on publish; optional while drafting
+        notes: validateOptionalProgramName on create or rename; validateProgramName on publish
       created_by:
         whose: practitioner
         data: Practitioner id of program owner
@@ -361,7 +361,7 @@ d1_tables:
         whose: operational
       text_snapshot_json:
         whose: operational
-        notes: patient_detail_risk on title, description, cue fields at write
+        notes: validateProgramRowTextSnapshot on write (title, description, cue)
       note:
         whose: operational
         notes: patient_detail_risk; validateProgramRowNote on write
