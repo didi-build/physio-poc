@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAjvFormatsDateVendorSource,
   buildAjvUcs2lengthVendorSource,
-} from "../scripts/generate-mcp-input-validators.mjs";
+} from "../scripts/lib/mcp-input-validators-codegen.mjs";
 
 describe("MCP validator runtime vendor files", () => {
   it("matches ajv ucs2length upstream for the pinned package", () => {

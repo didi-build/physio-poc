@@ -1,4 +1,5 @@
 /* Vendored from ajv@8.20.0 dist/runtime/ucs2length.js. Do not edit. */
+/* License: LICENSES/ajv-MIT.txt */
 export default function ucs2length(str) {
     const len = str.length;
     let length = 0;

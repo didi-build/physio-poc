@@ -1,4 +1,5 @@
 /* Vendored from ajv-formats@3.0.1 dist/formats.js (date helpers). Do not edit. */
+/* License: LICENSES/ajv-formats-MIT.txt */
 function isLeapYear(year) {
     // https://tools.ietf.org/html/rfc3339#appendix-C
     return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
