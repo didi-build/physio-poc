@@ -76,6 +76,10 @@ describe("migration and apply runner (CTO round 2)", () => {
         "exercise_requests",
         "type_defaults",
         "practitioner_exercises",
+        "programs",
+        "program_rows",
+        "share_links",
+        "share_link_defaults",
       ];
       for (const name of tables) {
         const sql = await tableSql(storage, name);

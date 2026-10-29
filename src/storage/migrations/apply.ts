@@ -1,6 +1,7 @@
 import type { SqlStoragePort } from "../ports/sql-storage.js";
 
 export const MIGRATION_0001_ID = "0001_exercise_data_model";
+export const MIGRATION_0002_ID = "0002_program_data_model";
 
 export function splitSqlStatements(sql: string): string[] {
   const withoutComments = sql
