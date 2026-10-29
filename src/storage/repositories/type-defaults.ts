@@ -57,7 +57,7 @@ export class TypeDefaultsRepository {
     await this.sql.run(
       `INSERT INTO type_defaults (id, scope, practitioner_id, type, params_json)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(practitioner_id, type) DO UPDATE SET params_json = excluded.params_json`,
+       ON CONFLICT(practitioner_id, type) WHERE scope = 'practitioner' DO UPDATE SET params_json = excluded.params_json`,
       [id, "practitioner", practitionerId, type, JSON.stringify(validated)],
     );
   }

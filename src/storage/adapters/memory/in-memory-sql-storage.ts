@@ -46,6 +46,12 @@ export class InMemorySqlStorage implements SqlStoragePort {
 
   async run(sql: string, bindings: SqlBindings = []): Promise<SqlRunResult> {
     const normalized = sql.trim().replace(/\s+/g, " ");
+    if (/^BEGIN$/i.test(normalized)) {
+      return { rowsAffected: 0 };
+    }
+    if (/^COMMIT$/i.test(normalized) || /^ROLLBACK$/i.test(normalized)) {
+      return { rowsAffected: 0 };
+    }
     const insertMatch = /^INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\)$/i.exec(
       normalized,
     );

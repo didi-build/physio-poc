@@ -217,6 +217,7 @@ d1_tables:
       who_can_see: all_practitioners
       source: migrations/0001_exercise_data_model.sql
       verified: true
+      notes: Global rows are visible to every practitioner; practitioner scope rows are owner-only (see practitioner_id).
     columns:
       id:
         whose: operational
@@ -228,6 +229,7 @@ d1_tables:
         purpose: per-practitioner type defaults
         processors: [Cloudflare]
         retention: until row deleted or reset to global
+        who_can_see: owner_only
       type:
         whose: operational
       params_json:
@@ -237,7 +239,7 @@ d1_tables:
     defaults:
       storage: D1
       processors: [Cloudflare]
-      who_can_see: all_practitioners
+      who_can_see: owner_only
       source: migrations/0001_exercise_data_model.sql
       verified: true
     columns:

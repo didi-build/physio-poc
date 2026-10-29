@@ -31,12 +31,22 @@ export async function applyMigration(
     return;
   }
 
-  for (const statement of splitSqlStatements(sql)) {
-    await storage.run(statement);
+  await storage.run("BEGIN");
+  try {
+    for (const statement of splitSqlStatements(sql)) {
+      await storage.run(statement);
+    }
+    await storage.run("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)", [
+      migrationId,
+      new Date().toISOString(),
+    ]);
+    await storage.run("COMMIT");
+  } catch (error) {
+    try {
+      await storage.run("ROLLBACK");
+    } catch {
+      // Rollback may fail if the adapter does not support transactions.
+    }
+    throw error;
   }
-
-  await storage.run("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)", [
-    migrationId,
-    new Date().toISOString(),
-  ]);
 }

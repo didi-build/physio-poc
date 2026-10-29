@@ -8,7 +8,7 @@ import {
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
-const MIGRATION_SQL = readFileSync(
+export const MIGRATION_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0001_exercise_data_model.sql"),
   "utf8",
 );
