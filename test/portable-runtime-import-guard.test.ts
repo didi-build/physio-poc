@@ -137,12 +137,36 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
-  it("allows npm UI dependencies under src/ui/", () => {
+  it("allows allowlisted UI imports under src/ui/", () => {
     const messages = findPortableViolations(
-      "src/ui/App.tsx",
-      "import { useState } from 'react';",
+      "src/ui/main.tsx",
+      "import { createRoot } from 'react-dom/client';",
     );
     expect(messages).toEqual([]);
+  });
+
+  it("blocks disallowed npm imports under src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import debounce from 'lodash';",
+    );
+    expect(messages.some((m) => m.includes("disallowed ui import"))).toBe(true);
+  });
+
+  it("blocks node: imports under src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import fs from 'node:fs';",
+    );
+    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
+  });
+
+  it("blocks cloudflare: imports under src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import x from 'cloudflare:workers';",
+    );
+    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
   });
 
   it("blocks platform npm imports under src/ui/", () => {

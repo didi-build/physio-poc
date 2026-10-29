@@ -17,12 +17,25 @@ const PLATFORM_PREFIXES = ["entry/", "adapters/node/", "adapters/workers/"];
 
 const UI_SOURCE_PREFIX = "src/ui/";
 
+/** @type {readonly string[]} */
+const UI_PACKAGE_ALLOWLIST = ["react", "react-dom", "react-router-dom"];
+
 /**
  * @param {string} repoRelativePath
  * @returns {boolean}
  */
 function isUiSourceFile(repoRelativePath) {
   return repoRelativePath.startsWith(UI_SOURCE_PREFIX);
+}
+
+/**
+ * @param {string} specifierText
+ * @returns {boolean}
+ */
+function isAllowedUiModuleSpecifier(specifierText) {
+  return UI_PACKAGE_ALLOWLIST.some(
+    (pkg) => specifierText === pkg || specifierText.startsWith(`${pkg}/`),
+  );
 }
 
 /**
@@ -159,7 +172,12 @@ export function findPortableViolations(repoRelativePath, source) {
     if (isUiSourceFile(repoRelativePath)) {
       if (isPlatformModuleSpecifier(text)) {
         violations.push(`${kind} platform module in ui: ${text}`);
+        return;
       }
+      if (isAllowedUiModuleSpecifier(text)) {
+        return;
+      }
+      violations.push(`${kind} disallowed ui import: ${text}`);
       return;
     }
     violations.push(`${kind} non-relative import: ${text}`);
