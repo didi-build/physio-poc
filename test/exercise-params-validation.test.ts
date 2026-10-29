@@ -79,7 +79,7 @@ describe("exercise params validation (unit)", () => {
 describe("text override validation (unit)", () => {
   it("accepts known text fields and rejects unknown keys", () => {
     expect(validateTextOverrides({ title: "My title" })).toEqual({
-      title: "My title",
+      title: { value: "My title", base: "My title" },
     });
     expect(() => validateTextOverrides({ patient_name: "x" })).toThrow(
       TextOverrideValidationError,
@@ -94,7 +94,7 @@ describe("text override validation (unit)", () => {
 
   it("trims title, enforces length, and rejects patient details", () => {
     expect(validateTextOverrides({ title: "  Heel slide  " })).toEqual({
-      title: "Heel slide",
+      title: { value: "Heel slide", base: "Heel slide" },
     });
     expect(() => validateTextOverrides({ title: "a".repeat(81) })).toThrow(
       TextOverrideValidationError,

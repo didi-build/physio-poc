@@ -12,9 +12,39 @@ export const TEXT_OVERRIDE_KEYS = [
 
 export type TextOverrideKey = (typeof TEXT_OVERRIDE_KEYS)[number];
 
-export type TextOverrides = Partial<Record<TextOverrideKey, string>>;
+export type TextOverrideEntry = {
+  value: string;
+  base: string;
+};
+
+export type TextOverrides = Partial<Record<TextOverrideKey, TextOverrideEntry>>;
 
 const TEXT_KEY_SET = new Set<string>(TEXT_OVERRIDE_KEYS);
+
+function parseTextOverrideEntry(key: TextOverrideKey, raw: unknown): TextOverrideEntry {
+  if (typeof raw === "string") {
+    const value = validateTextOverrideValue(key, raw);
+    return { value, base: value };
+  }
+  if (!isPlainObject(raw)) {
+    throw new TextOverrideValidationError(`Override ${key} must be a string or object`);
+  }
+  const valueRaw = raw.value;
+  const baseRaw = raw.base;
+  if (typeof valueRaw !== "string" || typeof baseRaw !== "string") {
+    throw new TextOverrideValidationError(
+      `Override ${key} must have string value and base`,
+    );
+  }
+  return {
+    value: validateTextOverrideValue(key, valueRaw),
+    base: validateTextOverrideValue(key, baseRaw),
+  };
+}
+
+export function serializeTextOverrides(overrides: TextOverrides): string {
+  return JSON.stringify(overrides);
+}
 
 export class TextOverrideValidationError extends Error {
   constructor(message: string) {
@@ -36,11 +66,11 @@ export function validateTextOverrides(value: unknown): TextOverrides {
     if (!TEXT_KEY_SET.has(key)) {
       throw new TextOverrideValidationError(`Unknown text override key: ${key}`);
     }
-    if (typeof raw !== "string") {
-      throw new TextOverrideValidationError(`Override ${key} must be a string`);
-    }
     try {
-      result[key as TextOverrideKey] = validateTextOverrideValue(key, raw);
+      result[key as TextOverrideKey] = parseTextOverrideEntry(
+        key as TextOverrideKey,
+        raw,
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new TextOverrideValidationError(message);
@@ -88,16 +118,54 @@ export function resolveTextField(
   prescriptionType: PrescriptionType,
 ): string {
   if (field === "title") {
-    return overrides.title ?? version.title;
+    return overrides.title?.value ?? version.title;
   }
   if (field === "description") {
-    return overrides.description ?? version.description;
+    return overrides.description?.value ?? version.description;
   }
   const cueKey = cueFieldForType(prescriptionType);
   const overrideCue = overrides[cueKey];
   if (overrideCue !== undefined) {
-    return overrideCue;
+    return overrideCue.value;
   }
   const libraryCue = version[cueKey];
   return libraryCue ?? "";
+}
+
+export function buildTextOverrideEntry(
+  key: TextOverrideKey,
+  value: string,
+  libraryBase: string,
+): TextOverrideEntry {
+  return {
+    value: validateTextOverrideValue(key, value),
+    base: validateTextOverrideValue(key, libraryBase),
+  };
+}
+
+export function applyUseLibraryVersion(
+  overrides: TextOverrides,
+  key: TextOverrideKey,
+): TextOverrides {
+  const next = { ...overrides };
+  delete next[key];
+  return next;
+}
+
+export function applyKeepMine(
+  overrides: TextOverrides,
+  key: TextOverrideKey,
+  libraryValue: string,
+): TextOverrides {
+  const entry = overrides[key];
+  if (!entry) {
+    return overrides;
+  }
+  return {
+    ...overrides,
+    [key]: {
+      value: entry.value,
+      base: validateTextOverrideValue(key, libraryValue),
+    },
+  };
 }
