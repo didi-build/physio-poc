@@ -981,7 +981,7 @@
   },
   {
     "name": "get_program_share_link_or_pdf",
-    "description": "Read or publish a program share link and PDF. Never publishes unless publish is true. Set publish to true only after the practitioner explicitly confirms in the conversation. Without publish, returns draft and published (each null or a version snapshot). When a published version exists, also returns its share_link, pdf_url, and expires_at; share_link and pdf_url are empty strings when nothing is published yet. The summary should ask which version the practitioner wants and whether to publish with defaults or overrides. With publish true, publishes the current draft and returns share_link, pdf_url, and expires_at (republishing replaces the live version at the same share link). Optional overrides.expires_in sets expiry (1_week, 30_days, 90_days, 1_year, never, or custom_date with overrides.custom_date); omit overrides to use the practitioner default. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Deleting a link is web app only.",
+    "description": "Read or publish a program share link and PDF. Provide program_code or program_title. Never publishes unless publish is true. Set publish to true only after the practitioner explicitly confirms in the conversation. Without publish, returns draft and published (each null or a version snapshot). When a published version exists, also returns its share_link, pdf_url, and expires_at; share_link and pdf_url are empty strings when nothing is published yet. The summary should ask which version the practitioner wants and whether to publish with defaults or overrides. With publish true, publishes the current draft and returns share_link, pdf_url, and expires_at (republishing replaces the live version at the same share link). Optional overrides.expires_in sets expiry (1_week, 30_days, 90_days, 1_year, never, or custom_date with overrides.custom_date); omit overrides to use the practitioner default. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Deleting a link is web app only.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -1039,15 +1039,7 @@
             }
           ]
         }
-      },
-      "anyOf": [
-        {
-          "required": ["program_code"]
-        },
-        {
-          "required": ["program_title"]
-        }
-      ]
+      }
     },
     "outputSchema": {
       "type": "object",

@@ -8,12 +8,12 @@ Search tools paginate with `limit` (default 10, max 25) and opaque `cursor`, and
 
 ## Tools
 
-| Tool name                       | Purpose                                                                                                                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_approved_exercises`     | Read-only search over approved exercises visible to the connector.                                                                                                                                        |
-| `search_routines`               | Search community and personal routine copies.                                                                                                                                                             |
-| `build_or_edit_program`         | Create or replace a program (full `rows` list). Create from a routine with `from_routine_id`; edit by `program_code`. Rows use `exercise_version_id` or `exercise_name`.                                  |
-| `get_program_share_link_or_pdf` | Read draft/published state, or publish with `publish: true` after explicit practitioner confirmation. Returns `share_link`, `pdf_url`, and `expires_at` when a published version exists or after publish. |
+| Tool name                       | Purpose                                                                                                                                                                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_approved_exercises`     | Read-only search over approved exercises visible to the connector.                                                                                                                                                                                   |
+| `search_routines`               | Search community and personal routine copies.                                                                                                                                                                                                        |
+| `build_or_edit_program`         | Create or replace a program (full `rows` list). Create from a routine with `from_routine_id`; edit by `program_code`. Rows use `exercise_version_id` or `exercise_name`.                                                                             |
+| `get_program_share_link_or_pdf` | Provide `program_code` or `program_title`. Read draft/published state, or publish with `publish: true` after explicit practitioner confirmation. Returns `share_link`, `pdf_url`, and `expires_at` when a published version exists or after publish. |
 
 ## Shared data shapes
 

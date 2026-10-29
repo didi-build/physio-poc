@@ -378,10 +378,23 @@ describe("Physio MCP connector contract", () => {
     ).toBe(true);
   });
 
-  it("rejects get_program input with neither program_code nor program_title", () => {
-    const validate = ajv.compile(getProgramShareLinkOrPdfInputSchema);
-    expect(validate({})).toBe(false);
-    expect(validate({ publish: false })).toBe(false);
+  it("uses flat object roots on every tool input schema (no root combinators)", () => {
+    const forbiddenRootKeys = [
+      "anyOf",
+      "oneOf",
+      "allOf",
+      "not",
+      "if",
+      "then",
+      "else",
+    ] as const;
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      const schema = tool.inputSchema;
+      expect(schema.type, `${tool.name} input root type`).toBe("object");
+      for (const key of forbiddenRootKeys) {
+        expect(schema[key], `${tool.name} input root ${key}`).toBeUndefined();
+      }
+    }
   });
 
   it("detects nested URL-like input schema shapes in the guard helper", () => {
