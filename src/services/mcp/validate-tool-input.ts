@@ -7,6 +7,7 @@ import {
   validateFreeTextForPatientDetails,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
+import { DATE_FORMAT_FIELD_PATHS } from "./generated/input-validator-meta.js";
 import type { StandaloneValidateFunction } from "./generated/input-validators.js";
 import {
   build_or_edit_program,
@@ -49,9 +50,12 @@ function assertGetProgramLookup(args: Record<string, unknown>): void {
   }
 }
 
-function validateAllStringValues(value: unknown): void {
+function validateAllStringValues(value: unknown, path = ""): void {
   if (typeof value === "string") {
-    const result = validateFreeTextForPatientDetails(value);
+    const skipDateOfBirthHeuristic = DATE_FORMAT_FIELD_PATHS.has(path);
+    const result = validateFreeTextForPatientDetails(value, {
+      skipDateOfBirthHeuristic,
+    });
     if (!result.ok) {
       throw new PhysioMcpToolInputError(result.message);
     }
@@ -59,13 +63,14 @@ function validateAllStringValues(value: unknown): void {
   }
   if (Array.isArray(value)) {
     for (const item of value) {
-      validateAllStringValues(item);
+      validateAllStringValues(item, path);
     }
     return;
   }
   if (value && typeof value === "object") {
-    for (const nested of Object.values(value as Record<string, unknown>)) {
-      validateAllStringValues(nested);
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      const nestedPath = path ? `${path}.${key}` : key;
+      validateAllStringValues(nested, nestedPath);
     }
   }
 }

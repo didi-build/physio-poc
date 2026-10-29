@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import AjvModule from "ajv";
 import addFormatsModule from "ajv-formats";
+import { parse as parseJsonc } from "jsonc-parser";
 import { describe, expect, it } from "vitest";
 import {
   BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
@@ -59,15 +60,16 @@ const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: { program_code: "PRG-STUB01" },
 };
 
-function parseWranglerJsonc(text: string): { name?: string } {
-  const withoutBlockComments = text.replace(/\/\*[\s\S]*?\*\//g, "");
-  const withoutLineComments = withoutBlockComments
-    .split("\n")
-    .map((line) => line.replace(/\/\/.*$/, ""))
-    .join("\n")
-    .replace(/,\s*([}\]])/g, "$1");
-  return JSON.parse(withoutLineComments) as { name?: string };
+function parseWranglerJsonc(text: string): Record<string, unknown> {
+  return parseJsonc(text) as Record<string, unknown>;
 }
+
+const EXPECTED_WRANGLER_TOP_LEVEL_KEYS = [
+  "compatibility_date",
+  "main",
+  "name",
+  "observability",
+];
 
 describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
   it("lists tools deep-equal to the golden fixture with flat input roots", async () => {
@@ -321,6 +323,41 @@ describe("Physio MCP HTTP validation", () => {
     });
   });
 
+  it("rejects date-of-birth-like text in row_notes", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        arguments: {
+          program_title: "Balance plan",
+          rows: [
+            {
+              exercise_name: "Heel slides",
+              prescription_type: "stretching",
+              params: { sets: 3 },
+              row_notes: "Patient born 1990-05-12",
+            },
+          ],
+        },
+      });
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toBe(PATIENT_DETAIL_REJECTION_MESSAGE);
+    });
+  });
+
+  it("accepts a valid custom_date on publish overrides", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: {
+          program_code: "PRG-STUB01",
+          publish: true,
+          overrides: { expires_in: "custom_date", custom_date: "2027-06-15" },
+        },
+      });
+      expect(result.isError).not.toBe(true);
+    });
+  });
+
   it("rejects patient-detail text in opaque cursor and id string fields", async () => {
     await withMcpClient(async (client) => {
       const searchCursor = await client.callTool({
@@ -356,5 +393,12 @@ describe("wrangler worker name pin", () => {
     const text = readFileSync(wranglerPath, "utf8");
     const parsed = parseWranglerJsonc(text);
     expect(parsed.name).toBe("physio-poc");
+  });
+
+  it("allows only expected top-level keys (no bindings)", () => {
+    const wranglerPath = join(process.cwd(), "wrangler.jsonc");
+    const text = readFileSync(wranglerPath, "utf8");
+    const parsed = parseWranglerJsonc(text);
+    expect(Object.keys(parsed).sort()).toEqual(EXPECTED_WRANGLER_TOP_LEVEL_KEYS);
   });
 });

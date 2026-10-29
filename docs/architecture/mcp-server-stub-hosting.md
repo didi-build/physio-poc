@@ -19,7 +19,7 @@ Platform-specific code stays under `src/entry/` and `src/adapters/workers/`. Dep
 
 - Workflow: `.github/workflows/deploy-physio-mcp-worker.yml`
 - Runs on push to `main` or `workflow_dispatch` on `main` only (never on pull requests).
-- GitHub Environment: `production` (Diadem approves the first run).
+- GitHub Environment: `production` (Diadem's required reviewers apply to every deploy run).
 - Secrets (environment secrets on `production` only): `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 - Token TTL and expiry are set by Diadem on DIDI-994; check them before the token lapses (no fixed date in this repo).
 
