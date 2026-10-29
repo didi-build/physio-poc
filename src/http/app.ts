@@ -1,11 +1,18 @@
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
+import type { PhysioServerConfig } from "./config.js";
 import { handleHealthRequest } from "./routes/health.js";
+
+export type McpHttpHandler = (request: Request) => Promise<Response>;
 
 export type AppDependencies = {
   sql: SqlStoragePort;
   objects: ObjectStoragePort;
+  config: PhysioServerConfig;
+  mcp: McpHttpHandler;
 };
+
+export const MCP_PATH = "/mcp";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -13,7 +20,8 @@ export async function handleRequest(
   request: Request,
   deps: AppDependencies,
 ): Promise<Response> {
-  void deps;
+  void deps.sql;
+  void deps.objects;
   const url = new URL(request.url);
 
   if (
@@ -31,6 +39,10 @@ export async function handleRequest(
       { error: "method_not_allowed" },
       { status: 405, headers: JSON_HEADERS },
     );
+  }
+
+  if (url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`) {
+    return deps.mcp(request);
   }
 
   return Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS });

@@ -1,0 +1,8 @@
+{
+  "name": "physio-poc",
+  "main": "src/entry/worker.ts",
+  "compatibility_date": "2025-10-29",
+  "observability": {
+    "enabled": true,
+  },
+}
