@@ -16,4 +16,4 @@ On D1, wrangler applies migrations and tracks them in **`d1_migrations`**. The `
 
 ## Nested transactions
 
-`BetterSqliteStorage` rejects a second `BEGIN` while a transaction is already open (`NestedSqlTransactionError`). Only one transaction depth is supported.
+`BetterSqliteStorage` tracks transaction depth for the exact statements `BEGIN`, `COMMIT`, and `ROLLBACK` only (after trim and whitespace collapse). It does not treat `BEGIN TRANSACTION`, `BEGIN IMMEDIATE`, `END`, or a trailing semicolon as transaction control. A second `BEGIN` while depth is already 1 throws `NestedSqlTransactionError`. `COMMIT` or `ROLLBACK` with depth 0 throws the same error.

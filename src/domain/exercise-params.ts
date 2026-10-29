@@ -20,8 +20,9 @@ export type ExerciseParams = Partial<Record<ParamKey, NumericOrRange>>;
 export type ParamOverridesByType = Partial<Record<PrescriptionType, ExerciseParams>>;
 
 /**
- * Inclusive bounds aligned to the approved web UI (design/reference/web-app/generated/programModel.ts
- * PARAM_META), cited from the approved design revision in design/app/exercise-library/spec.md.
+ * Inclusive bounds aligned to PARAM_META in
+ * design/reference/web-app/generated/programModel.ts (lines 23 to 31), per CTO
+ * ruling on DIDI-1034 (Oct 29, 2026).
  */
 export const PARAM_VALUE_BOUNDS: Record<
   ParamKey,

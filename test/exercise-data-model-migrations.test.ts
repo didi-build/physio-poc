@@ -67,12 +67,22 @@ describe("exercise data model migrations (integration, SQLite)", () => {
     }
   });
 
-  it("rejects nested BEGIN with NestedSqlTransactionError", async () => {
+  it("tracks transaction depth for BEGIN, COMMIT, and ROLLBACK", async () => {
     const storage = BetterSqliteStorage.openInMemory();
     try {
       await storage.run("BEGIN");
       await expect(storage.run("BEGIN")).rejects.toThrow(NestedSqlTransactionError);
       await storage.run("ROLLBACK");
+
+      await storage.run("BEGIN");
+      await storage.run("COMMIT");
+      await storage.run("BEGIN");
+      await storage.run("ROLLBACK");
+      await storage.run("BEGIN");
+      await storage.run("COMMIT");
+
+      await expect(storage.run("COMMIT")).rejects.toThrow(NestedSqlTransactionError);
+      await expect(storage.run("ROLLBACK")).rejects.toThrow(NestedSqlTransactionError);
     } finally {
       storage.close();
     }
