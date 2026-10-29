@@ -78,30 +78,42 @@ describe("exercise params validation (unit)", () => {
 
 describe("text override validation (unit)", () => {
   it("accepts known text fields and rejects unknown keys", () => {
-    expect(validateTextOverrides({ title: "My title" })).toEqual({
-      title: { value: "My title", base: "My title" },
+    expect(
+      validateTextOverrides({
+        title: { value: "My title", base: "Library title" },
+      }),
+    ).toEqual({
+      title: { value: "My title", base: "Library title" },
     });
     expect(() => validateTextOverrides({ patient_name: "x" })).toThrow(
       TextOverrideValidationError,
     );
   });
 
-  it("rejects non-string override values", () => {
+  it("rejects non-object field entries", () => {
     expect(() => validateTextOverrides({ title: 42 } as unknown as never)).toThrow(
       TextOverrideValidationError,
     );
   });
 
-  it("trims title, enforces length, and rejects patient details", () => {
-    expect(validateTextOverrides({ title: "  Heel slide  " })).toEqual({
+  it("trims title value, enforces length, and rejects patient details", () => {
+    expect(
+      validateTextOverrides({
+        title: { value: "  Heel slide  ", base: "Heel slide" },
+      }),
+    ).toEqual({
       title: { value: "Heel slide", base: "Heel slide" },
     });
-    expect(() => validateTextOverrides({ title: "a".repeat(81) })).toThrow(
-      TextOverrideValidationError,
-    );
-    expect(() => validateTextOverrides({ title: "Reach patient@example.com" })).toThrow(
-      TextOverrideValidationError,
-    );
+    expect(() =>
+      validateTextOverrides({
+        title: { value: "a".repeat(81), base: "Heel slide" },
+      }),
+    ).toThrow(TextOverrideValidationError);
+    expect(() =>
+      validateTextOverrides({
+        title: { value: "Reach patient@example.com", base: "Heel slide" },
+      }),
+    ).toThrow(TextOverrideValidationError);
   });
 });
 

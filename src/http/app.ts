@@ -11,6 +11,8 @@ export type AppDependencies = {
   objects: ObjectStoragePort;
   config: PhysioServerConfig;
   mcp: McpHttpHandler;
+  /** When true, registers unauthenticated practitioner exercise API routes (Node dev and tests only). */
+  enableUnauthenticatedApi?: boolean;
 };
 
 export const MCP_PATH = "/mcp";
@@ -46,9 +48,11 @@ export async function handleRequest(
     return deps.mcp(request);
   }
 
-  const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
-  if (exerciseResponse) {
-    return exerciseResponse;
+  if (deps.enableUnauthenticatedApi === true) {
+    const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
+    if (exerciseResponse) {
+      return exerciseResponse;
+    }
   }
 
   return Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS });

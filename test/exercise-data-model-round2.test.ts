@@ -238,7 +238,12 @@ describe("free-text validation survivors (unit)", () => {
     ).toThrow(FreeTextValidationError);
 
     expect(() =>
-      validateTextOverrides({ description: "patient@example.com in note" }),
+      validateTextOverrides({
+        description: {
+          value: "patient@example.com in note",
+          base: "library description",
+        },
+      }),
     ).toThrow();
 
     expect(() => validateRequestedExerciseName("bad patient@example.com name")).toThrow(

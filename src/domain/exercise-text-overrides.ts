@@ -20,25 +20,44 @@ export type TextOverrideEntry = {
 export type TextOverrides = Partial<Record<TextOverrideKey, TextOverrideEntry>>;
 
 const TEXT_KEY_SET = new Set<string>(TEXT_OVERRIDE_KEYS);
+const TEXT_OVERRIDE_ENTRY_KEYS = new Set<string>(["value", "base"]);
+
+function assertTextOverrideBaseString(key: TextOverrideKey, base: string): string {
+  if (typeof base !== "string") {
+    throw new TextOverrideValidationError(`Override ${key} base must be a string`);
+  }
+  return base;
+}
 
 function parseTextOverrideEntry(key: TextOverrideKey, raw: unknown): TextOverrideEntry {
-  if (typeof raw === "string") {
-    const value = validateTextOverrideValue(key, raw);
-    return { value, base: value };
-  }
   if (!isPlainObject(raw)) {
-    throw new TextOverrideValidationError(`Override ${key} must be a string or object`);
+    throw new TextOverrideValidationError(
+      `Override ${key} must be an object with value and base`,
+    );
+  }
+  for (const entryKey of Object.keys(raw)) {
+    if (!TEXT_OVERRIDE_ENTRY_KEYS.has(entryKey)) {
+      throw new TextOverrideValidationError(
+        `Unknown key in ${key} override: ${entryKey}`,
+      );
+    }
+  }
+  if (!("value" in raw) || !("base" in raw)) {
+    throw new TextOverrideValidationError(
+      `Override ${key} must include value and base`,
+    );
   }
   const valueRaw = raw.value;
   const baseRaw = raw.base;
-  if (typeof valueRaw !== "string" || typeof baseRaw !== "string") {
-    throw new TextOverrideValidationError(
-      `Override ${key} must have string value and base`,
-    );
+  if (typeof valueRaw !== "string") {
+    throw new TextOverrideValidationError(`Override ${key} value must be a string`);
+  }
+  if (typeof baseRaw !== "string") {
+    throw new TextOverrideValidationError(`Override ${key} base must be a string`);
   }
   return {
     value: validateTextOverrideValue(key, valueRaw),
-    base: validateTextOverrideValue(key, baseRaw),
+    base: assertTextOverrideBaseString(key, baseRaw),
   };
 }
 
@@ -139,7 +158,7 @@ export function buildTextOverrideEntry(
 ): TextOverrideEntry {
   return {
     value: validateTextOverrideValue(key, value),
-    base: validateTextOverrideValue(key, libraryBase),
+    base: assertTextOverrideBaseString(key, libraryBase),
   };
 }
 
@@ -165,7 +184,7 @@ export function applyKeepMine(
     ...overrides,
     [key]: {
       value: entry.value,
-      base: validateTextOverrideValue(key, libraryValue),
+      base: assertTextOverrideBaseString(key, libraryValue),
     },
   };
 }
