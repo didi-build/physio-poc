@@ -22,7 +22,7 @@ import {
   shareLinkOutputProperty,
   summaryOutputProperty,
 } from "./json-schema.js";
-import { MAX_LENGTH_QUERY } from "./text-limits.js";
+import { FREE_TEXT_NO_PATIENT_DETAILS, MAX_LENGTH_QUERY } from "./text-limits.js";
 
 export const SEARCH_APPROVED_EXERCISES_TOOL_NAME = "search_approved_exercises" as const;
 
@@ -38,8 +38,7 @@ export const searchApprovedExercisesInputSchema: JsonSchema = {
       type: "string",
       minLength: 1,
       maxLength: MAX_LENGTH_QUERY,
-      description:
-        "Search text (exercise name or keywords). Do not include patient names, contact details, health card numbers, or dates of birth.",
+      description: `Search text (exercise name or keywords). ${FREE_TEXT_NO_PATIENT_DETAILS}`,
     },
     category: exerciseCategorySchema,
     body_region: {
@@ -71,12 +70,25 @@ export const searchApprovedExercisesOutputSchema: JsonSchema = {
     next_cursor: paginationNextCursorOutputProperty,
     search_link: searchLinkOutputProperty,
   },
+  allOf: [
+    {
+      if: {
+        properties: {
+          exercises: { type: "array", maxItems: 0 },
+        },
+        required: ["exercises"],
+      },
+      then: {
+        required: ["search_link"],
+      },
+    },
+  ],
 };
 
 export const SEARCH_ROUTINES_TOOL_NAME = "search_routines" as const;
 
 export const searchRoutinesDescription =
-  "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. When nothing matches, routines is empty and search_link is the prefilled web app search URL (built from server config). Do not pass patient information.";
+  "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.";
 
 export const searchRoutinesInputSchema: JsonSchema = {
   type: "object",
@@ -87,8 +99,7 @@ export const searchRoutinesInputSchema: JsonSchema = {
       type: "string",
       minLength: 1,
       maxLength: MAX_LENGTH_QUERY,
-      description:
-        "Search text (routine name or keywords). Do not include patient names, contact details, health card numbers, or dates of birth.",
+      description: `Search text (routine name or keywords). ${FREE_TEXT_NO_PATIENT_DETAILS}`,
     },
     limit: paginationLimitProperty,
     cursor: paginationCursorInputProperty,
@@ -109,7 +120,6 @@ export const searchRoutinesOutputSchema: JsonSchema = {
       description: "Matching routines, empty when none match.",
     },
     next_cursor: paginationNextCursorOutputProperty,
-    search_link: searchLinkOutputProperty,
   },
 };
 
@@ -191,6 +201,7 @@ export const getProgramShareLinkOrPdfInputSchema: JsonSchema = {
     },
     overrides: publishOverridesInputSchema,
   },
+  anyOf: [{ required: ["program_code"] }, { required: ["program_title"] }],
 };
 
 export const getProgramShareLinkOrPdfOutputSchema: JsonSchema = {

@@ -11,7 +11,6 @@ export const MCP_SAMPLE_SEARCH_ROUTINES_OUTPUT = {
   share_link: "",
   manage_url: "https://app.example.com/routines",
   routines: [],
-  search_link: "https://app.example.com/exercises/search?q=knee",
 } as const;
 
 export const MCP_SAMPLE_BUILD_PROGRAM_OUTPUT = {

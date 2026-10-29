@@ -33,6 +33,10 @@ import {
   MCP_SAMPLE_SEARCH_EXERCISES_OUTPUT,
   MCP_SAMPLE_SEARCH_ROUTINES_OUTPUT,
 } from "./mcp-connector-schema-samples.js";
+import {
+  collectInputUrlLikeViolations,
+  visitSchemaNodes,
+} from "./mcp-connector-schema-test-utils.js";
 
 const MCP_CONNECTOR_DIR = join(process.cwd(), "src/mcp-connector");
 
@@ -72,7 +76,6 @@ const ALLOWED_SCHEMA_PROPERTY_NAMES: Record<
       "manage_url",
       "routines",
       "next_cursor",
-      "search_link",
       "routine_id",
       "routine_name",
       "routine_version",
@@ -197,22 +200,6 @@ function isPatientInfoPropertyName(name: string): boolean {
   return PATIENT_INFO_PROPERTY_PATTERNS.some((pattern) => pattern.test(name));
 }
 
-const SCHEMA_WALK_KEYS = [
-  "properties",
-  "items",
-  "prefixItems",
-  "anyOf",
-  "oneOf",
-  "allOf",
-  "not",
-  "if",
-  "then",
-  "else",
-  "$defs",
-  "definitions",
-  "dependentSchemas",
-] as const;
-
 function collectPropertyNames(schema: JsonSchema, into: Set<string>): void {
   visitSchemaNodes(schema, (node) => {
     const props = node.properties;
@@ -224,52 +211,10 @@ function collectPropertyNames(schema: JsonSchema, into: Set<string>): void {
   });
 }
 
-function visitSchemaNodes(schema: unknown, visit: (node: JsonSchema) => void): void {
-  if (!schema || typeof schema !== "object") return;
-  const node = schema as JsonSchema;
-  visit(node);
-
-  if (node.patternProperties) {
-    throw new Error("patternProperties is not allowed in connector schemas");
-  }
-
-  for (const key of SCHEMA_WALK_KEYS) {
-    const branch = node[key];
-    if (Array.isArray(branch)) {
-      for (const sub of branch) visitSchemaNodes(sub, visit);
-    } else if (branch && typeof branch === "object") {
-      if (key === "properties" || key === "dependentSchemas") {
-        for (const sub of Object.values(branch as Record<string, unknown>)) {
-          visitSchemaNodes(sub, visit);
-        }
-      } else {
-        visitSchemaNodes(branch, visit);
-      }
-    }
-  }
-
-  const additional = node.additionalProperties;
-  if (additional && typeof additional === "object") {
-    visitSchemaNodes(additional, visit);
-  }
-}
-
 function assertNestedObjectsClosed(schema: JsonSchema, label: string): void {
   visitSchemaNodes(schema, (node) => {
     if (node.type === "object" && node.additionalProperties !== false) {
       throw new Error(`${label}: object schema must set additionalProperties: false`);
-    }
-  });
-}
-
-function collectInputUriFields(schema: JsonSchema, into: string[]): void {
-  visitSchemaNodes(schema, (node) => {
-    const props = node.properties;
-    if (!props || typeof props !== "object") return;
-    for (const [key, sub] of Object.entries(props as Record<string, JsonSchema>)) {
-      if (sub && typeof sub === "object" && sub.format === "uri") {
-        into.push(key);
-      }
     }
   });
 }
@@ -280,7 +225,7 @@ function listConnectorFiles(dir: string): string[] {
   for (const entry of entries) {
     const path = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...listConnectorFiles(path));
-    else if (/\.(ts|js|mjs)$/.test(entry.name)) files.push(path);
+    else if (/\.(ts|tsx|js|mjs|cjs|mts|cts)$/.test(entry.name)) files.push(path);
   }
   return files;
 }
@@ -392,12 +337,66 @@ describe("Physio MCP connector contract", () => {
     }
   });
 
-  it("has no URL fields on any tool input schema", () => {
+  it("has no URL-like fields on any tool input schema", () => {
     for (const tool of PHYSIO_MCP_TOOLS) {
-      const uriFields: string[] = [];
-      collectInputUriFields(tool.inputSchema, uriFields);
-      expect(uriFields, `${tool.name} input URI fields`).toEqual([]);
+      visitSchemaNodes(tool.inputSchema, (node) => {
+        if (node.patternProperties) {
+          throw new Error(`${tool.name}: patternProperties is not allowed`);
+        }
+      });
+      const violations = collectInputUrlLikeViolations(tool.inputSchema);
+      expect(violations, `${tool.name} input URL-like violations`).toEqual([]);
     }
+  });
+
+  it("rejects zero-result exercise search output without search_link", () => {
+    const validate = ajv.compile(PHYSIO_MCP_TOOLS[0].outputSchema);
+    expect(validate(MCP_SAMPLE_SEARCH_EXERCISES_OUTPUT)).toBe(true);
+    expect(
+      validate({
+        summary: "No matches",
+        share_link: "",
+        manage_url: "https://app.example.com/exercises",
+        exercises: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects publish overrides with custom_date expiry but no custom_date field", () => {
+    const validate = ajv.compile(getProgramShareLinkOrPdfInputSchema);
+    expect(
+      validate({
+        program_code: "PRG-TEST1",
+        overrides: { expires_in: "custom_date" },
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        program_code: "PRG-TEST1",
+        overrides: { expires_in: "custom_date", custom_date: "2026-11-01" },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects get_program input with neither program_code nor program_title", () => {
+    const validate = ajv.compile(getProgramShareLinkOrPdfInputSchema);
+    expect(validate({})).toBe(false);
+    expect(validate({ publish: false })).toBe(false);
+  });
+
+  it("detects nested URL-like input schema shapes in the guard helper", () => {
+    const nested: JsonSchema = {
+      type: "object",
+      properties: {
+        nested_choice: {
+          oneOf: [{ type: "string", format: "iri" }, { type: "string" }],
+        },
+        web_app_base_url: { type: "string", pattern: "^https://" },
+      },
+    };
+    expect(collectInputUrlLikeViolations(nested).sort()).toEqual(
+      ["format:iri", "pattern:^https://", "property:web_app_base_url"].sort(),
+    );
   });
 
   it("guards src/mcp-connector against platform imports and bindings", () => {
@@ -443,23 +442,36 @@ describe("Physio MCP connector contract", () => {
 });
 
 describe("validateFreeTextForPatientDetails", () => {
-  it("accepts benign exercise text", () => {
-    expect(validateFreeTextForPatientDetails("Heel slides, 3 x 10")).toEqual({
-      ok: true,
-    });
+  it("accepts benign exercise and dose text", () => {
+    for (const text of [
+      "Heel slides, 3 x 10",
+      "3x10 each side",
+      "30 s hold between reps",
+    ]) {
+      expect(validateFreeTextForPatientDetails(text)).toEqual({ ok: true });
+    }
   });
 
-  it("rejects fixture patient-detail patterns with the standard message", () => {
-    const cases = [
-      "Contact user@example.com for updates",
-      "Call 416-555-0100 tomorrow",
-      "Card 1234 567 890 on file",
-      "Born 03/15/1990",
+  it("rejects fixture patient-detail patterns with reason and message", () => {
+    const cases: Array<{ text: string; reason: string }> = [
+      { text: "Contact user@example.com for updates", reason: "email" },
+      { text: "Call 416-555-0100 tomorrow", reason: "phone" },
+      { text: "Call +44 20 7946 0958 for follow-up", reason: "phone" },
+      { text: "Card 1234-567-890 on file", reason: "health_card" },
+      { text: "Card 1234 567 890 on file", reason: "health_card" },
+      { text: "Born 03/15/1990", reason: "date_of_birth" },
+      { text: "Born 25/12/1980", reason: "date_of_birth" },
+      { text: "May 12, 1980 intake note", reason: "date_of_birth" },
+      { text: "Started 12.05.1980 program", reason: "date_of_birth" },
+      { text: "DOB 05/12/80 on chart", reason: "date_of_birth" },
+      { text: "Review 2026-10-29 progress week 2", reason: "date_of_birth" },
+      { text: "Since 12 May 1980 flare-ups", reason: "date_of_birth" },
     ];
-    for (const text of cases) {
+    for (const { text, reason } of cases) {
       const result = validateFreeTextForPatientDetails(text);
-      expect(result.ok).toBe(false);
+      expect(result.ok, text).toBe(false);
       if (!result.ok) {
+        expect(result.reason).toBe(reason);
         expect(result.message).toBe(PATIENT_DETAIL_REJECTION_MESSAGE);
       }
     }
@@ -523,8 +535,11 @@ describe("get_program_share_link_or_pdf contract", () => {
 });
 
 describe("contract regression guards (mutant killers)", () => {
-  it("rejects renamed tool names", () => {
-    expect(LOCKED_TOOL_NAMES).not.toContain("search_routine");
+  it("exports locked tool name constants matching registry order", () => {
+    expect(SEARCH_APPROVED_EXERCISES_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[0]);
+    expect(SEARCH_ROUTINES_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[1]);
+    expect(BUILD_OR_EDIT_PROGRAM_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[2]);
+    expect(GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[3]);
   });
 
   it("rejects patient-like property names in isolation", () => {

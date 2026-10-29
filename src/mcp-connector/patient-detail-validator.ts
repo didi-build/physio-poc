@@ -14,17 +14,24 @@ export const PATIENT_DETAIL_REJECTION_MESSAGE =
 
 const EMAIL_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 
-/** North American and common international phone shapes (fixture-safe). */
-const PHONE_PATTERN =
+const INTERNATIONAL_PHONE_PATTERN =
+  /\+\d{1,3}[\s.-]?\(?\d{1,4}\)?[\s.-]?\d{3,4}[\s.-]?\d{3,4}\b/;
+
+/** North American phone shapes (fixture-safe). */
+const NORTH_AMERICAN_PHONE_PATTERN =
   /\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?){2}\d{4}\b|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/;
 
-/** Ontario health card style: 10 digits in 4-3-3 groups. */
+/** Ontario health card: 10 digits in 4-3-3 groups with spaces or dashes. */
 const ONTARIO_HEALTH_CARD_PATTERN = /\b\d{4}[-\s]\d{3}[-\s]\d{3}\b/;
 
 const DATE_OF_BIRTH_PATTERNS: readonly RegExp[] = [
   /\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:19|20)\d{2}\b/,
+  /\b(?:0?[1-9]|[12]\d|3[01])[/-](?:0?[1-9]|1[0-2])[/-](?:19|20)\d{2}\b/,
   /\b(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])\b/,
   /\b(?:0?[1-9]|[12]\d|3[01])\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:19|20)\d{2}\b/i,
+  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:0?[1-9]|[12]\d|3[01]),?\s+(?:19|20)\d{2}\b/i,
+  /\b(?:0?[1-9]|[12]\d|3[01])\.(?:0?[1-9]|1[0-2])\.(?:19|20)\d{2}\b/,
+  /\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-]\d{2}\b/,
 ];
 
 export function validateFreeTextForPatientDetails(
@@ -37,7 +44,14 @@ export function validateFreeTextForPatientDetails(
       message: PATIENT_DETAIL_REJECTION_MESSAGE,
     };
   }
-  if (PHONE_PATTERN.test(text)) {
+  if (INTERNATIONAL_PHONE_PATTERN.test(text)) {
+    return {
+      ok: false,
+      reason: "phone",
+      message: PATIENT_DETAIL_REJECTION_MESSAGE,
+    };
+  }
+  if (NORTH_AMERICAN_PHONE_PATTERN.test(text)) {
     return {
       ok: false,
       reason: "phone",

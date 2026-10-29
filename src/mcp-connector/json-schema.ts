@@ -122,6 +122,19 @@ export const publishOverridesInputSchema: JsonSchema = {
         "Required when expires_in is custom_date. Any calendar date from tomorrow onward per product rules.",
     },
   },
+  allOf: [
+    {
+      if: {
+        properties: {
+          expires_in: { const: "custom_date" },
+        },
+        required: ["expires_in"],
+      },
+      then: {
+        required: ["custom_date"],
+      },
+    },
+  ],
 };
 
 export const exerciseCategorySchema: JsonSchema = {
@@ -284,7 +297,11 @@ export const routineSummarySchema: JsonSchema = {
   required: ["routine_id", "routine_name", "routine_version"],
   properties: {
     routine_id: { type: "string" },
-    routine_name: { type: "string", maxLength: MAX_LENGTH_ROUTINE_NAME },
+    routine_name: {
+      type: "string",
+      maxLength: MAX_LENGTH_ROUTINE_NAME,
+      description: `Routine display name. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+    },
     routine_version: { type: "integer", minimum: 1 },
     exercise_count: { type: "integer", minimum: 0 },
     source: {
@@ -333,17 +350,5 @@ export const ambiguousProgramMatchSchema: JsonSchema = {
       format: "date-time",
       description: "When this program was last updated.",
     },
-  },
-};
-
-/** @deprecated Use flat per-tool output schemas in tools.ts */
-export const toolResponseBaseSchema: JsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["summary", "share_link", "manage_url"],
-  properties: {
-    summary: summaryOutputProperty,
-    share_link: shareLinkOutputProperty,
-    manage_url: manageUrlOutputProperty,
   },
 };

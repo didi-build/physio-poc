@@ -83,5 +83,4 @@ export {
   searchLinkOutputProperty,
   shareLinkOutputProperty,
   summaryOutputProperty,
-  toolResponseBaseSchema,
 } from "./json-schema.js";
