@@ -351,10 +351,10 @@ describe("Physio MCP HTTP validation", () => {
 });
 
 describe("wrangler worker name pin", () => {
-  it("uses the physio-poc-mcp worker name", () => {
+  it("uses the physio-poc worker name", () => {
     const wranglerPath = join(process.cwd(), "wrangler.jsonc");
     const text = readFileSync(wranglerPath, "utf8");
     const parsed = parseWranglerJsonc(text);
-    expect(parsed.name).toBe("physio-poc-mcp");
+    expect(parsed.name).toBe("physio-poc");
   });
 });

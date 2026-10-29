@@ -3,13 +3,13 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { PHYSIO_MCP_TOOLS } from "../../mcp-connector/index.js";
-import type { PhysioServerConfig } from "../config.js";
-import { invokePhysioMcpStubTool } from "../../services/mcp/stub-tool-handler.js";
+import { PHYSIO_MCP_TOOLS } from "../../../mcp-connector/index.js";
+import type { PhysioServerConfig } from "../../../http/config.js";
+import { invokePhysioMcpStubTool } from "../../../services/mcp/stub-tool-handler.js";
 
 export function createPhysioMcpServer(config: PhysioServerConfig): Server {
   const server = new Server(
-    { name: "physio-poc-mcp", version: "0.0.0" },
+    { name: "physio-poc", version: "0.0.0" },
     { capabilities: { tools: {} } },
   );
 

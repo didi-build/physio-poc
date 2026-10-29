@@ -1,6 +1,6 @@
 {
-  "name": "physio-poc-mcp",
-  "main": "src/entry/workers/physio-mcp-worker.ts",
+  "name": "physio-poc",
+  "main": "src/entry/worker.ts",
   "compatibility_date": "2025-10-29",
   "observability": {
     "enabled": true,

@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { PhysioServerConfig } from "../config.js";
+import type { PhysioServerConfig } from "../../../http/config.js";
 import { createPhysioMcpServer } from "./create-physio-mcp-server.js";
 
 const MCP_CORS_HEADERS: Record<string, string> = {
@@ -33,4 +33,10 @@ export async function handleMcpHttpRequest(
     statusText: response.statusText,
     headers,
   });
+}
+
+export function createPhysioMcpHttpHandler(
+  config: PhysioServerConfig,
+): (request: Request) => Promise<Response> {
+  return (request: Request) => handleMcpHttpRequest(request, config);
 }
