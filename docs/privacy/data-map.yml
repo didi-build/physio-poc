@@ -1,3 +1,290 @@
 schema_version: 1
-d1_tables: {}
+
+d1_tables:
+  schema_migrations:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      applied_at: {}
+
+  practitioners:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: practitioner
+        data: Opaque practitioner id
+        purpose: identify practitioner account and link activity rows
+        processors: [Cloudflare]
+        retention: until account deletion
+      email:
+        whose: practitioner
+        data: Practitioner sign-in email
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      created_at:
+        whose: practitioner
+        data: Account creation timestamp
+        purpose: audit
+        processors: [Cloudflare]
+        retention: until account deletion
+
+  exercises:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      category:
+        whose: operational
+      created_by:
+        whose: practitioner
+        data: Practitioner id of exercise author
+        purpose: shared library attribution
+        processors: [Cloudflare]
+        retention: until exercise deleted
+      created_at:
+        whose: operational
+
+  exercise_versions:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      exercise_id:
+        whose: operational
+      version_number:
+        whose: operational
+      status:
+        whose: operational
+      approved_by:
+        whose: practitioner
+        data: Practitioner id of approver
+        purpose: shared library audit
+        processors: [Cloudflare]
+        retention: until exercise deleted
+      approved_at:
+        whose: operational
+      title:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      description:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      equipment:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      starting_position:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      steps:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      common_mistakes:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      regressions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      progressions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      precautions:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_stretching:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_isometric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_concentric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      cue_eccentric:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      media_set_id:
+        whose: operational
+      change_summary:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      created_at:
+        whose: operational
+
+  exercise_aliases:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      exercise_id: {}
+      alias:
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      created_at: {}
+
+  body_regions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      label: {}
+
+  exercise_body_regions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      exercise_id: {}
+      body_region_id: {}
+
+  exercise_requests:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until request closed
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      requested_name:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      note:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      requested_by:
+        whose: practitioner
+        data: Practitioner id of requester
+        purpose: shared requests and drafts list
+        processors: [Cloudflare]
+        retention: until request closed
+      status:
+        whose: operational
+      exercise_id:
+        whose: operational
+      created_at:
+        whose: operational
+      updated_at:
+        whose: operational
+
+  type_defaults:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until practitioner or global row deleted
+      who_can_see: all_practitioners
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+      notes: Global rows are visible to every practitioner; practitioner scope rows are owner-only (see practitioner_id).
+    columns:
+      id:
+        whose: operational
+      scope:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for My defaults override row
+        purpose: per-practitioner type defaults
+        processors: [Cloudflare]
+        retention: until row deleted or reset to global
+        who_can_see: owner_only
+      type:
+        whose: operational
+      params_json:
+        whose: operational
+
+  practitioner_exercises:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for My exercises row
+        purpose: favourites and overrides
+        processors: [Cloudflare]
+        retention: until row deleted
+      exercise_id:
+        whose: practitioner
+        data: Linked library exercise id
+        purpose: My exercises membership
+        processors: [Cloudflare]
+        retention: until row deleted
+      favourite:
+        whose: practitioner
+        data: Pinned or favourite flag
+        purpose: My exercises ordering
+        processors: [Cloudflare]
+        retention: until row deleted
+      saved_at:
+        whose: practitioner
+        data: Saved timestamp
+        purpose: My exercises activity
+        processors: [Cloudflare]
+        retention: until row deleted
+      last_used_at:
+        whose: practitioner
+        data: Last used timestamp
+        purpose: My exercises activity
+        processors: [Cloudflare]
+        retention: until row deleted
+      text_overrides_json:
+        whose: practitioner
+        data: Validated partial text overrides JSON
+        purpose: My copy edits
+        processors: [Cloudflare]
+        retention: until row deleted
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      param_overrides_json:
+        whose: practitioner
+        data: Validated param overrides JSON by type
+        purpose: My copy dose overrides
+        processors: [Cloudflare]
+        retention: until row deleted
+
 other_items: []
