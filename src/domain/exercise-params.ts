@@ -19,6 +19,24 @@ export type ExerciseParams = Partial<Record<ParamKey, NumericOrRange>>;
 
 export type ParamOverridesByType = Partial<Record<PrescriptionType, ExerciseParams>>;
 
+/**
+ * Inclusive bounds aligned to the approved web UI (design/reference/web-app/generated/programModel.ts
+ * PARAM_META), cited from the approved design revision in design/app/exercise-library/spec.md.
+ */
+export const PARAM_VALUE_BOUNDS: Record<
+  ParamKey,
+  { min: number; max: number; integer: boolean }
+> = {
+  reps: { min: 1, max: 50, integer: true },
+  sets: { min: 1, max: 10, integer: true },
+  hold_s: { min: 1, max: 120, integer: true },
+  ascent_s: { min: 1, max: 10, integer: true },
+  descent_s: { min: 1, max: 10, integer: true },
+  rest_s: { min: 10, max: 300, integer: true },
+  per_day: { min: 1, max: 5, integer: true },
+  days_per_week: { min: 1, max: 7, integer: true },
+};
+
 const PARAM_KEY_SET = new Set<string>(PARAM_KEYS);
 
 const INTEGER_PARAM_KEYS = new Set<ParamKey>([
@@ -46,9 +64,21 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function validatePositiveInteger(value: number, key: string): number {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new ParamValidationError(`${key} must be a positive integer`);
+function validateBoundedNumber(
+  value: number,
+  key: string,
+  bounds: { min: number; max: number; integer: boolean },
+): number {
+  if (!Number.isFinite(value)) {
+    throw new ParamValidationError(`${key} must be a finite number`);
+  }
+  if (bounds.integer && !Number.isInteger(value)) {
+    throw new ParamValidationError(`${key} must be a whole number`);
+  }
+  if (value < bounds.min || value > bounds.max) {
+    throw new ParamValidationError(
+      `${key} must be between ${bounds.min} and ${bounds.max}`,
+    );
   }
   return value;
 }
@@ -62,8 +92,9 @@ function validatePerDayRange(value: Record<string, unknown>): NumericOrRange {
   if (typeof min !== "number" || typeof max !== "number") {
     throw new ParamValidationError("Invalid per_day range");
   }
-  const minInt = validatePositiveInteger(min, "per_day.min");
-  const maxInt = validatePositiveInteger(max, "per_day.max");
+  const bounds = PARAM_VALUE_BOUNDS.per_day;
+  const minInt = validateBoundedNumber(min, "per_day.min", bounds);
+  const maxInt = validateBoundedNumber(max, "per_day.max", bounds);
   if (minInt > maxInt) {
     throw new ParamValidationError("per_day range min must be <= max");
   }
@@ -71,9 +102,11 @@ function validatePerDayRange(value: Record<string, unknown>): NumericOrRange {
 }
 
 function validateParamValue(key: ParamKey, raw: unknown): NumericOrRange {
+  const bounds = PARAM_VALUE_BOUNDS[key];
+
   if (key === "per_day") {
     if (typeof raw === "number") {
-      return validatePositiveInteger(raw, key);
+      return validateBoundedNumber(raw, key, bounds);
     }
     if (isPlainObject(raw)) {
       return validatePerDayRange(raw);
@@ -85,18 +118,14 @@ function validateParamValue(key: ParamKey, raw: unknown): NumericOrRange {
     if (typeof raw !== "number") {
       throw new ParamValidationError(`${key} must be a number`);
     }
-    const asInt = validatePositiveInteger(raw, key);
-    if (key === "days_per_week" && (asInt < 1 || asInt > 7)) {
-      throw new ParamValidationError("days_per_week must be between 1 and 7");
-    }
-    return asInt;
+    return validateBoundedNumber(raw, key, bounds);
   }
 
   if (SECONDS_PARAM_KEYS.has(key)) {
-    if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) {
-      throw new ParamValidationError(`${key} must be a non-negative number`);
+    if (typeof raw !== "number") {
+      throw new ParamValidationError(`${key} must be a number`);
     }
-    return raw;
+    return validateBoundedNumber(raw, key, bounds);
   }
 
   throw new ParamValidationError(`Unknown param key: ${key}`);

@@ -1,5 +1,6 @@
 import type { SqlStoragePort } from "../ports/sql-storage.js";
 
+/** See src/storage/migrations/README.md (Node test runner only; not used on Workers/D1). */
 export const MIGRATION_0001_ID = "0001_exercise_data_model";
 
 export function splitSqlStatements(sql: string): string[] {

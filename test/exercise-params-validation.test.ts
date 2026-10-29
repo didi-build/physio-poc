@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  PARAM_KEYS,
+  PARAM_VALUE_BOUNDS,
   ParamValidationError,
   parseExerciseParamsJson,
   validateExerciseParams,
@@ -51,7 +53,15 @@ describe("exercise params validation (unit)", () => {
     expect(() => validateExerciseParams({ days_per_week: 8 })).toThrow(
       ParamValidationError,
     );
-    expect(() => validateExerciseParams({ hold_s: -1 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ hold_s: 0 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ rest_s: 9 })).toThrow(ParamValidationError);
+  });
+
+  it("rejects values above approved UI max bounds", () => {
+    expect(() => validateExerciseParams({ reps: 51 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ sets: 11 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ hold_s: 121 })).toThrow(ParamValidationError);
+    expect(() => validateExerciseParams({ per_day: 6 })).toThrow(ParamValidationError);
   });
 
   it("rejects range objects on non-per_day keys", () => {
@@ -73,6 +83,57 @@ describe("exercise params validation (unit)", () => {
 
   it("parseExerciseParamsJson throws on invalid JSON instead of returning {}", () => {
     expect(() => parseExerciseParamsJson("{")).toThrow(ParamValidationError);
+  });
+});
+
+describe("param value bounds (unit, approved UI ranges)", () => {
+  it.each(PARAM_KEYS)("%s accepts min and max inclusive edges", (key) => {
+    const bounds = PARAM_VALUE_BOUNDS[key];
+    if (key === "per_day") {
+      expect(validateExerciseParams({ per_day: bounds.min })).toEqual({
+        per_day: bounds.min,
+      });
+      expect(validateExerciseParams({ per_day: bounds.max })).toEqual({
+        per_day: bounds.max,
+      });
+      expect(
+        validateExerciseParams({ per_day: { min: bounds.min, max: bounds.max } }),
+      ).toEqual({ per_day: { min: bounds.min, max: bounds.max } });
+      return;
+    }
+    expect(validateExerciseParams({ [key]: bounds.min })).toEqual({
+      [key]: bounds.min,
+    });
+    expect(validateExerciseParams({ [key]: bounds.max })).toEqual({
+      [key]: bounds.max,
+    });
+  });
+
+  it.each(PARAM_KEYS)("%s rejects one below min and one above max", (key) => {
+    const bounds = PARAM_VALUE_BOUNDS[key];
+    const below = bounds.min - 1;
+    const above = bounds.max + 1;
+    if (key === "per_day") {
+      expect(() => validateExerciseParams({ per_day: below })).toThrow(
+        ParamValidationError,
+      );
+      expect(() => validateExerciseParams({ per_day: above })).toThrow(
+        ParamValidationError,
+      );
+      expect(() =>
+        validateExerciseParams({ per_day: { min: below, max: bounds.max } }),
+      ).toThrow(ParamValidationError);
+      expect(() =>
+        validateExerciseParams({ per_day: { min: bounds.min, max: above } }),
+      ).toThrow(ParamValidationError);
+      return;
+    }
+    expect(() => validateExerciseParams({ [key]: below })).toThrow(
+      ParamValidationError,
+    );
+    expect(() => validateExerciseParams({ [key]: above })).toThrow(
+      ParamValidationError,
+    );
   });
 });
 
