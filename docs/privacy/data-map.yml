@@ -1,3 +1,186 @@
 schema_version: 1
-d1_tables: {}
+
+d1_tables:
+  schema_migrations:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      applied_at: {}
+
+  practitioners:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+        data: Opaque practitioner id
+        purpose: identify practitioner rows
+        processors: [Cloudflare]
+        retention: until account deletion
+      email:
+        whose: practitioner
+        data: Practitioner sign-in email
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      created_at:
+        whose: operational
+        data: Row creation timestamp
+        purpose: audit
+        processors: [Cloudflare]
+        retention: until account deletion
+
+  exercises:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      category: {}
+      created_by: {}
+      created_at: {}
+
+  exercise_versions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      exercise_id: {}
+      version_number: {}
+      status: {}
+      approved_by: {}
+      approved_at: {}
+      title: {}
+      description: {}
+      equipment: {}
+      starting_position: {}
+      steps: {}
+      common_mistakes: {}
+      regressions: {}
+      progressions: {}
+      precautions: {}
+      cue_stretching: {}
+      cue_isometric: {}
+      cue_concentric: {}
+      cue_eccentric: {}
+      media_set_id: {}
+      change_summary: {}
+      created_at: {}
+
+  exercise_aliases:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      exercise_id: {}
+      alias: {}
+      created_at: {}
+
+  body_regions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      label: {}
+
+  exercise_body_regions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      exercise_id: {}
+      body_region_id: {}
+
+  exercise_requests:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until request closed
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      requested_name: {}
+      note: {}
+      requested_by: {}
+      status: {}
+      exercise_id: {}
+      created_at: {}
+      updated_at: {}
+
+  type_defaults:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until practitioner or global row deleted
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      id: {}
+      scope: {}
+      practitioner_id: {}
+      type: {}
+      params_json: {}
+
+  practitioner_exercises:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until practitioner removes exercise from My exercises
+      who_can_see: operator
+      source: migrations/0001_exercise_data_model.sql
+      verified: true
+    columns:
+      practitioner_id: {}
+      exercise_id: {}
+      favourite: {}
+      saved_at: {}
+      last_used_at: {}
+      text_overrides_json: {}
+      param_overrides_json: {}
+
 other_items: []
