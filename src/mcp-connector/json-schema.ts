@@ -3,33 +3,125 @@
  * No runtime or platform imports.
  */
 
+import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
+import {
+  FREE_TEXT_NO_PATIENT_DETAILS,
+  MAX_LENGTH_PROGRAM_TITLE,
+  MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+  MAX_LENGTH_ROUTINE_NAME,
+  MAX_LENGTH_ROW_NOTES,
+  MAX_LENGTH_SUMMARY,
+} from "./text-limits.js";
+
 export type JsonSchema = {
   readonly [key: string]: unknown;
 };
 
-export const WEB_APP_BASE_URL_PARAM = {
-  name: "web_app_base_url",
-  description:
-    "HTTPS origin for the Physio web app (no trailing slash). Used to build exercise search links when an exercise is not found. Do not put patient information in this URL.",
-} as const;
+export const uriOrEmptyStringSchema: JsonSchema = {
+  oneOf: [
+    { type: "string", format: "uri" },
+    { type: "string", enum: [""] },
+  ],
+  description: "HTTPS URL, or an empty string when no link applies.",
+};
 
-export const webAppBaseUrlProperty: JsonSchema = {
+export const paginationLimitProperty: JsonSchema = {
+  type: "integer",
+  minimum: 1,
+  maximum: 25,
+  default: 10,
+  description: "Maximum results to return (default 10, max 25).",
+};
+
+export const paginationCursorInputProperty: JsonSchema = {
   type: "string",
-  format: "uri",
-  description: WEB_APP_BASE_URL_PARAM.description,
+  description:
+    "Opaque cursor from a previous response next_cursor. Omit on the first page.",
+};
+
+export const paginationNextCursorOutputProperty: JsonSchema = {
+  type: "string",
+  description: "Opaque cursor for the next page. Omit when there are no more results.",
 };
 
 export const summaryOutputProperty: JsonSchema = {
   type: "string",
-  description:
-    "Plain text summary for the assistant to read aloud or show. Must not contain patient information.",
+  maxLength: MAX_LENGTH_SUMMARY,
+  description: `Plain text summary for the assistant. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
 export const shareLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies.",
+};
+
+export const pdfUrlOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "HTTPS URL of the server-rendered program PDF. Never inline bytes. Empty when no published PDF applies.",
+};
+
+export const searchLinkOutputProperty: JsonSchema = {
   type: "string",
   format: "uri",
   description:
-    "HTTPS share link for the program when this call affects or returns one program. Empty string when no program link applies.",
+    "Prefilled web app exercise search URL when the query returned zero approved exercises. Built from server-configured base URL.",
+};
+
+export const manageUrlOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies.",
+};
+
+export const expiresAtOutputProperty: JsonSchema = {
+  type: "string",
+  format: "date-time",
+  description:
+    "When the published share link expires. Omitted when there is no published link.",
+};
+
+export const programVersionRefSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "updated_at"],
+  properties: {
+    version: {
+      type: "integer",
+      minimum: 1,
+      description: "Monotonic program version number for this snapshot.",
+    },
+    updated_at: {
+      type: "string",
+      format: "date-time",
+      description: "When this version was last saved.",
+    },
+  },
+};
+
+export const nullableProgramVersionRefSchema: JsonSchema = {
+  oneOf: [{ type: "null" }, programVersionRefSchema],
+  description: "Null when that side (draft or published) does not exist.",
+};
+
+export const publishOverridesInputSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    expires_in: {
+      type: "string",
+      enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
+      description:
+        "Share link expiry for this publish. Omit overrides entirely to use the practitioner default.",
+    },
+    custom_date: {
+      type: "string",
+      format: "date",
+      description:
+        "Required when expires_in is custom_date. Any calendar date from tomorrow onward per product rules.",
+    },
+  },
 };
 
 export const exerciseCategorySchema: JsonSchema = {
@@ -80,9 +172,8 @@ export const rowParamsSchema: JsonSchema = {
 
 export const programTitleProperty: JsonSchema = {
   type: "string",
-  maxLength: 200,
-  description:
-    "Non-identifying program title the practitioner uses to recognise this program later. Do not use patient names, initials, dates of birth, diagnoses, or any text that identifies a person.",
+  maxLength: MAX_LENGTH_PROGRAM_TITLE,
+  description: `Non-identifying program title the practitioner uses to recognise this program later. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
 export const programCodeProperty: JsonSchema = {
@@ -91,26 +182,66 @@ export const programCodeProperty: JsonSchema = {
   description: "Stable program code assigned by the system (for example PRG-7K3Q).",
 };
 
-export const programRowSchema: JsonSchema = {
+const programRowSharedProperties: Record<string, JsonSchema> = {
+  prescription_type: prescriptionTypeSchema,
+  params: rowParamsSchema,
+  row_notes: {
+    type: "string",
+    maxLength: MAX_LENGTH_ROW_NOTES,
+    description: `Optional notes about the exercise prescription on this row only. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+  },
+};
+
+export const programRowInputSchema: JsonSchema = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["exercise_version_id", "prescription_type", "params"],
+      properties: {
+        exercise_version_id: {
+          type: "string",
+          description: "Pinned approved exercise version id for this row.",
+        },
+        ...programRowSharedProperties,
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["exercise_name", "prescription_type", "params"],
+      properties: {
+        exercise_name: {
+          type: "string",
+          minLength: 1,
+          maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+          description: `Approved exercise display name or alias; server resolves case-insensitively. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+        },
+        ...programRowSharedProperties,
+      },
+    },
+  ],
+  description:
+    "One row in a program request. Provide exercise_version_id or exercise_name, not both. Same exercise may appear more than once.",
+};
+
+export const programRowOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["exercise_version_id", "prescription_type", "params"],
+  required: ["exercise_version_id", "exercise_name", "prescription_type", "params"],
   properties: {
     exercise_version_id: {
       type: "string",
-      description: "Pinned approved exercise version id for this row.",
+      description: "Pinned approved exercise version id saved on this row.",
     },
-    prescription_type: prescriptionTypeSchema,
-    params: rowParamsSchema,
-    row_notes: {
+    exercise_name: {
       type: "string",
-      maxLength: 500,
-      description:
-        "Optional notes about the exercise prescription on this row only. Do not include patient information.",
+      description: "Display name snapshot for this row.",
     },
+    ...programRowSharedProperties,
   },
   description:
-    "One row in a program. Snapshots params and text; the same exercise may appear more than once.",
+    "One saved program row. Snapshots params and text; unresolved names are omitted from rows and listed under exercises_not_found.",
 };
 
 export const approvedExerciseSummarySchema: JsonSchema = {
@@ -137,13 +268,23 @@ export const approvedExerciseSummarySchema: JsonSchema = {
   },
 };
 
+export const exerciseNotFoundCandidateSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["exercise_version_id", "exercise_name"],
+  properties: {
+    exercise_version_id: { type: "string" },
+    exercise_name: { type: "string" },
+  },
+};
+
 export const routineSummarySchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
   required: ["routine_id", "routine_name", "routine_version"],
   properties: {
     routine_id: { type: "string" },
-    routine_name: { type: "string" },
+    routine_name: { type: "string", maxLength: MAX_LENGTH_ROUTINE_NAME },
     routine_version: { type: "integer", minimum: 1 },
     exercise_count: { type: "integer", minimum: 0 },
     source: {
@@ -161,23 +302,48 @@ export const exerciseNotFoundSchema: JsonSchema = {
   properties: {
     requested_exercise_name: {
       type: "string",
-      description: "Exercise name that has no approved match in the connector.",
+      maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+      description: `Exercise name that could not be resolved to exactly one approved exercise. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+    },
+    candidate_matches: {
+      type: "array",
+      maxItems: 3,
+      items: exerciseNotFoundCandidateSchema,
+      description:
+        "Up to three similar approved exercises when the name was ambiguous.",
     },
     web_app_exercise_search_url: {
       type: "string",
       format: "uri",
       description:
-        "Web app exercise search URL with the query prefilled, built from web_app_base_url and the requested name.",
+        "Web app exercise search URL with the query prefilled, built from server-configured web app base URL and the requested name.",
     },
   },
 };
 
+export const ambiguousProgramMatchSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["program_code", "program_title", "updated_at"],
+  properties: {
+    program_code: programCodeProperty,
+    program_title: programTitleProperty,
+    updated_at: {
+      type: "string",
+      format: "date-time",
+      description: "When this program was last updated.",
+    },
+  },
+};
+
+/** @deprecated Use flat per-tool output schemas in tools.ts */
 export const toolResponseBaseSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "share_link"],
+  required: ["summary", "share_link", "manage_url"],
   properties: {
     summary: summaryOutputProperty,
     share_link: shareLinkOutputProperty,
+    manage_url: manageUrlOutputProperty,
   },
 };
