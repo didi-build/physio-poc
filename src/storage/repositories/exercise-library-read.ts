@@ -4,6 +4,9 @@ import {
   prescriptionTypesForCategory,
   type PrescriptionType,
 } from "../../domain/exercise-types.js";
+import { likeContainsPattern } from "../../domain/sql-like.js";
+
+const LIKE_ESCAPE_SQL = " ESCAPE '\\'";
 
 export type ApprovedExerciseSearchSort = "most_used" | "newest" | "a_to_z";
 
@@ -77,7 +80,11 @@ export class ExerciseLibraryReadRepository {
     sort: ApprovedExerciseSearchSort;
     limit: number;
     offset: number;
+    exerciseIdsIn?: readonly string[];
   }): Promise<ApprovedExerciseSearchRow[]> {
+    if (input.exerciseIdsIn && input.exerciseIdsIn.length === 0) {
+      return [];
+    }
     const bindings: SqlValue[] = [];
     const whereParts: string[] = [];
 
@@ -104,17 +111,17 @@ export class ExerciseLibraryReadRepository {
 
     const trimmedQuery = input.query?.trim();
     if (trimmedQuery) {
-      const like = `%${trimmedQuery.replace(/%/g, "")}%`;
+      const like = likeContainsPattern(trimmedQuery);
       whereParts.push(`(
-        ev.title LIKE ? COLLATE NOCASE
+        ev.title LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         OR EXISTS (
           SELECT 1 FROM exercise_aliases ea
-          WHERE ea.exercise_id = e.id AND ea.alias LIKE ? COLLATE NOCASE
+          WHERE ea.exercise_id = e.id AND ea.alias LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         )
         OR EXISTS (
           SELECT 1 FROM exercise_body_regions ebr
           INNER JOIN body_regions br ON br.id = ebr.body_region_id
-          WHERE ebr.exercise_id = e.id AND br.label LIKE ? COLLATE NOCASE
+          WHERE ebr.exercise_id = e.id AND br.label LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         )
       )`);
       bindings.push(like, like, like);
@@ -127,6 +134,12 @@ export class ExerciseLibraryReadRepository {
         WHERE ebr.exercise_id = e.id AND br.label = ? COLLATE NOCASE
       )`);
       bindings.push(input.bodyRegionLabel.trim());
+    }
+
+    if (input.exerciseIdsIn && input.exerciseIdsIn.length > 0) {
+      const placeholders = input.exerciseIdsIn.map(() => "?").join(", ");
+      whereParts.push(`e.id IN (${placeholders})`);
+      bindings.push(...input.exerciseIdsIn);
     }
 
     const whereSql = whereParts.length > 0 ? `AND ${whereParts.join(" AND ")}` : "";
@@ -148,8 +161,8 @@ export class ExerciseLibraryReadRepository {
           FROM exercise_aliases ea
           WHERE ea.exercise_id = e.id
             AND ? != ''
-            AND ea.alias LIKE ? COLLATE NOCASE
-            AND ev.title NOT LIKE ? COLLATE NOCASE
+            AND ea.alias LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
+            AND ev.title NOT LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
           ORDER BY length(ea.alias) ASC
           LIMIT 1
         ) AS matched_alias,
@@ -167,7 +180,7 @@ export class ExerciseLibraryReadRepository {
     `;
 
     const aliasNeedle = trimmedQuery ?? "";
-    const aliasLike = trimmedQuery ? `%${trimmedQuery.replace(/%/g, "")}%` : "";
+    const aliasLike = trimmedQuery ? likeContainsPattern(trimmedQuery) : "";
     const titleLike = aliasLike;
 
     return this.sql.all<ApprovedExerciseSearchRow>(sql, [
@@ -185,7 +198,11 @@ export class ExerciseLibraryReadRepository {
     category?: ExerciseCategory;
     bodyRegionLabel?: string;
     prescriptionType?: PrescriptionType;
+    exerciseIdsIn?: readonly string[];
   }): Promise<number> {
+    if (input.exerciseIdsIn && input.exerciseIdsIn.length === 0) {
+      return 0;
+    }
     const bindings: SqlValue[] = [];
     const whereParts: string[] = [];
 
@@ -212,17 +229,17 @@ export class ExerciseLibraryReadRepository {
 
     const trimmedQuery = input.query?.trim();
     if (trimmedQuery) {
-      const like = `%${trimmedQuery.replace(/%/g, "")}%`;
+      const like = likeContainsPattern(trimmedQuery);
       whereParts.push(`(
-        ev.title LIKE ? COLLATE NOCASE
+        ev.title LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         OR EXISTS (
           SELECT 1 FROM exercise_aliases ea
-          WHERE ea.exercise_id = e.id AND ea.alias LIKE ? COLLATE NOCASE
+          WHERE ea.exercise_id = e.id AND ea.alias LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         )
         OR EXISTS (
           SELECT 1 FROM exercise_body_regions ebr
           INNER JOIN body_regions br ON br.id = ebr.body_region_id
-          WHERE ebr.exercise_id = e.id AND br.label LIKE ? COLLATE NOCASE
+          WHERE ebr.exercise_id = e.id AND br.label LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
         )
       )`);
       bindings.push(like, like, like);
@@ -235,6 +252,12 @@ export class ExerciseLibraryReadRepository {
         WHERE ebr.exercise_id = e.id AND br.label = ? COLLATE NOCASE
       )`);
       bindings.push(input.bodyRegionLabel.trim());
+    }
+
+    if (input.exerciseIdsIn && input.exerciseIdsIn.length > 0) {
+      const placeholders = input.exerciseIdsIn.map(() => "?").join(", ");
+      whereParts.push(`e.id IN (${placeholders})`);
+      bindings.push(...input.exerciseIdsIn);
     }
 
     const whereSql = whereParts.length > 0 ? `AND ${whereParts.join(" AND ")}` : "";

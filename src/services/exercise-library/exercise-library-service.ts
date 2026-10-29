@@ -11,13 +11,20 @@ import {
 import {
   applyKeepMine,
   applyUseLibraryVersion,
-  buildTextOverrideEntry,
   parseTextOverridesJson,
+  TextOverrideLegacyShapeError,
+  TextOverrideValidationError,
+  validateTextOverrides,
   TEXT_OVERRIDE_KEYS,
   type LibraryVersionText,
   type TextOverrideKey,
+  type TextOverrides,
 } from "../../domain/exercise-text-overrides.js";
-import { validateParamOverridesByType } from "../../domain/exercise-params.js";
+import {
+  ParamValidationError,
+  validateParamOverridesForCategory,
+  type ParamOverridesByType,
+} from "../../domain/exercise-params.js";
 import { resolveExerciseParams } from "../../domain/resolve-exercise-params.js";
 import { buildWebAppExerciseSearchUrl } from "../../mcp-connector/urls.js";
 import type { PhysioServerConfig } from "../../http/config.js";
@@ -54,7 +61,9 @@ export class ExerciseLibraryServiceError extends Error {
       | "practitioner_not_found"
       | "exercise_not_found"
       | "my_exercise_not_found"
-      | "invalid_input",
+      | "invalid_input"
+      | "undo_mismatch"
+      | "text_overrides_invalid_shape",
   ) {
     super(message);
     this.name = "ExerciseLibraryServiceError";
@@ -94,6 +103,33 @@ function decodeCursor(cursor: string): number {
   }
 }
 
+function isIsoDateTimeString(value: string): boolean {
+  if (Number.isNaN(Date.parse(value))) {
+    return false;
+  }
+  return /^\d{4}-\d{2}-\d{2}T/.test(value);
+}
+
+function mapTextOverrideReadError(err: unknown): never {
+  if (err instanceof TextOverrideLegacyShapeError) {
+    throw new ExerciseLibraryServiceError(
+      "Text overrides use an invalid stored shape",
+      "text_overrides_invalid_shape",
+    );
+  }
+  if (err instanceof TextOverrideValidationError) {
+    throw new ExerciseLibraryServiceError(err.message, "invalid_input");
+  }
+  throw err;
+}
+
+function mapParamValidationError(err: unknown): never {
+  if (err instanceof ParamValidationError) {
+    throw new ExerciseLibraryServiceError(err.message, "invalid_input");
+  }
+  throw err;
+}
+
 function toLibraryVersionText(row: {
   title: string;
   description: string;
@@ -116,7 +152,7 @@ function buildResolvedTextFields(
   version: LibraryVersionText,
   overridesJson: string,
 ): ResolvedTextField[] {
-  const overrides = parseTextOverridesJson(overridesJson);
+  const overrides = parseStoredTextOverrides(overridesJson);
   const updatedKeys = new Set(listLibraryUpdatedTextFields(overrides, version));
   return TEXT_OVERRIDE_KEYS.map((key) => {
     const libraryValue = libraryTextForKey(version, key);
@@ -128,6 +164,14 @@ function buildResolvedTextFields(
       library_updated: entry ? updatedKeys.has(key) : false,
     };
   });
+}
+
+function parseStoredTextOverrides(json: string): TextOverrides {
+  try {
+    return parseTextOverridesJson(json);
+  } catch (err) {
+    mapTextOverrideReadError(err);
+  }
 }
 
 function mapSearchRow(
@@ -148,22 +192,32 @@ function mapSearchRow(
   };
 }
 
+type ListMyExercisesInput = {
+  practitionerId: string;
+  query?: string;
+  category?: "Stretching" | "Strengthening";
+  bodyRegion?: string;
+};
+
 export class ExerciseLibraryService {
   private readonly libraryRead: ExerciseLibraryReadRepository;
   private readonly myExercisesRead: PractitionerMyExercisesRepository;
   private readonly practitionerExercises: PractitionerExercisesRepository;
   private readonly practitioners: PractitionersRepository;
   private readonly typeDefaults: TypeDefaultsRepository;
+  private readonly now: () => string;
 
   constructor(
     sql: SqlStoragePort,
     private readonly config: PhysioServerConfig,
+    options?: { now?: () => string },
   ) {
     this.libraryRead = new ExerciseLibraryReadRepository(sql);
     this.myExercisesRead = new PractitionerMyExercisesRepository(sql);
     this.practitionerExercises = new PractitionerExercisesRepository(sql);
     this.practitioners = new PractitionersRepository(sql);
     this.typeDefaults = new TypeDefaultsRepository(sql);
+    this.now = options?.now ?? (() => new Date().toISOString());
   }
 
   buildExerciseSearchUrl(query: string): string {
@@ -237,7 +291,12 @@ export class ExerciseLibraryService {
     const bodyRegions =
       await this.libraryRead.listBodyRegionLabelsForExercise(exerciseId);
     const aliases = await this.libraryRead.listAliasesForExercise(exerciseId);
-    const myRow = await this.practitionerExercises.find(practitionerId, exerciseId);
+    let myRow: Awaited<ReturnType<PractitionerExercisesRepository["find"]>> = null;
+    try {
+      myRow = await this.practitionerExercises.find(practitionerId, exerciseId);
+    } catch (err) {
+      mapTextOverrideReadError(err);
+    }
     const libraryVersion = toLibraryVersionText(version);
 
     const resolvedParamsByType: ExerciseDetailsResult["resolved_params_by_type"] = {};
@@ -297,12 +356,71 @@ export class ExerciseLibraryService {
     };
   }
 
-  async listMyExercises(practitionerId: string): Promise<MyExercisesListResult> {
-    await this.requirePractitioner(practitionerId);
-    const rows = await this.myExercisesRead.listForPractitioner(practitionerId);
+  async listMyExercises(input: ListMyExercisesInput): Promise<MyExercisesListResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const rows = await this.myExercisesRead.listForPractitioner(input.practitionerId);
+
+    const trimmedQuery = input.query?.trim() ?? "";
+    const categoryDb =
+      input.category === "Stretching"
+        ? "stretch"
+        : input.category === "Strengthening"
+          ? "strengthening"
+          : undefined;
+    const bodyRegion = input.bodyRegion?.trim();
+    const hasFilters = !!(trimmedQuery || categoryDb || bodyRegion);
+
+    const emptySections: MyExercisesListResult["sections"] = {
+      new_from_requests: [],
+      pinned: [],
+      recently_used_and_saved: [],
+    };
+
+    if (hasFilters && rows.length === 0) {
+      return {
+        list_state: "no_saved_exercises_with_filters",
+        sections: emptySections,
+      };
+    }
+
+    let allowedIds: Set<string> | null = null;
+    const matchedAliasById = new Map<string, string | null>();
+
+    if (hasFilters) {
+      const ids = rows.map((row) => row.exercise_id);
+      const searchRows = await this.libraryRead.searchApproved({
+        query: trimmedQuery || undefined,
+        category: categoryDb,
+        bodyRegionLabel: bodyRegion,
+        sort: "most_used",
+        limit: ids.length,
+        offset: 0,
+        exerciseIdsIn: ids,
+      });
+      allowedIds = new Set(searchRows.map((row) => row.exercise_id));
+      for (const row of searchRows) {
+        matchedAliasById.set(row.exercise_id, row.matched_alias);
+      }
+      if (allowedIds.size === 0) {
+        if (trimmedQuery) {
+          return {
+            list_state: "nothing_in_my_exercises_matches",
+            search_query: trimmedQuery,
+            sections: emptySections,
+          };
+        }
+        return {
+          list_state: "no_saved_exercises_with_filters",
+          sections: emptySections,
+        };
+      }
+    }
 
     const items: MyExerciseListItem[] = [];
     for (const row of rows) {
+      if (allowedIds && !allowedIds.has(row.exercise_id)) {
+        continue;
+      }
       const version = await this.libraryRead.getLatestApprovedByExerciseId(
         row.exercise_id,
       );
@@ -310,7 +428,15 @@ export class ExerciseLibraryService {
         continue;
       }
       const libraryVersion = toLibraryVersionText(version);
-      const overrides = parseTextOverridesJson(row.text_overrides_json);
+      let overrides: TextOverrides;
+      try {
+        overrides = parseStoredTextOverrides(row.text_overrides_json);
+      } catch (err) {
+        if (err instanceof ExerciseLibraryServiceError) {
+          throw err;
+        }
+        mapTextOverrideReadError(err);
+      }
       const libraryUpdatedFields = listLibraryUpdatedTextFields(
         overrides,
         libraryVersion,
@@ -331,7 +457,9 @@ export class ExerciseLibraryService {
         edited: hasAnyTextOverride(overrides),
         library_updated: libraryUpdatedFields.length > 0,
         library_updated_fields: libraryUpdatedFields,
-        matched_alias: null,
+        matched_alias: hasFilters
+          ? (matchedAliasById.get(row.exercise_id) ?? null)
+          : null,
         body_regions: bodyRegions,
       });
     }
@@ -342,8 +470,10 @@ export class ExerciseLibraryService {
       recently_used_and_saved: [],
     };
 
+    const rowByExerciseId = new Map(rows.map((row) => [row.exercise_id, row]));
+
     for (const item of items) {
-      const source = rows.find((row) => row.exercise_id === item.exercise_id);
+      const source = rowByExerciseId.get(item.exercise_id);
       const isNewFromRequest = !!source?.request_updated_at;
       if (isNewFromRequest) {
         sections.new_from_requests.push({ ...item, section: "new_from_requests" });
@@ -362,13 +492,12 @@ export class ExerciseLibraryService {
       return bUsed.localeCompare(aUsed);
     });
 
-    return { sections };
+    return { list_state: "ok", sections };
   }
 
   async saveToMyExercises(
     practitionerId: string,
     exerciseId: string,
-    savedAt: string,
   ): Promise<{ undo: ExerciseMutationUndo }> {
     await this.requirePractitioner(practitionerId);
     const version = await this.libraryRead.getLatestApprovedByExerciseId(exerciseId);
@@ -378,6 +507,7 @@ export class ExerciseLibraryService {
 
     const undo = await this.captureUndoSnapshot(practitionerId, exerciseId);
     const existing = await this.practitionerExercises.find(practitionerId, exerciseId);
+    const savedAt = this.now();
     await this.practitionerExercises.upsert({
       practitionerId,
       exerciseId,
@@ -435,22 +565,64 @@ export class ExerciseLibraryService {
     return { undo };
   }
 
-  async applyUndo(snapshot: ExerciseMutationUndo): Promise<void> {
-    await this.requirePractitioner(snapshot.practitioner_id);
-    if (!snapshot.snapshot.had_row) {
-      await this.myExercisesRead.delete(snapshot.practitioner_id, snapshot.exercise_id);
+  async applyUndo(
+    urlPractitionerId: string,
+    urlExerciseId: string,
+    snapshot: ExerciseMutationUndo,
+  ): Promise<void> {
+    if (
+      snapshot.practitioner_id !== urlPractitionerId ||
+      snapshot.exercise_id !== urlExerciseId
+    ) {
+      throw new ExerciseLibraryServiceError(
+        "Undo snapshot does not match URL",
+        "undo_mismatch",
+      );
+    }
+
+    await this.requirePractitioner(urlPractitionerId);
+    const snap = snapshot.snapshot;
+
+    if (snap.saved_at !== null && !isIsoDateTimeString(snap.saved_at)) {
+      throw new ExerciseLibraryServiceError(
+        "Invalid saved_at in undo",
+        "invalid_input",
+      );
+    }
+    if (snap.last_used_at !== null && !isIsoDateTimeString(snap.last_used_at)) {
+      throw new ExerciseLibraryServiceError(
+        "Invalid last_used_at in undo",
+        "invalid_input",
+      );
+    }
+
+    if (!snap.had_row) {
+      await this.myExercisesRead.delete(urlPractitionerId, urlExerciseId);
       return;
     }
-    const overrides = parseTextOverridesJson(snapshot.snapshot.text_overrides_json);
-    const paramOverrides = validateParamOverridesByType(
-      JSON.parse(snapshot.snapshot.param_overrides_json) as unknown,
-    );
+
+    const version = await this.libraryRead.getLatestApprovedByExerciseId(urlExerciseId);
+    if (!version) {
+      throw new ExerciseLibraryServiceError("Exercise not found", "exercise_not_found");
+    }
+
+    const overrides = parseStoredTextOverrides(snap.text_overrides_json);
+    let paramOverrides: ParamOverridesByType;
+    try {
+      paramOverrides = validateParamOverridesForCategory(
+        version.category,
+        JSON.parse(snap.param_overrides_json) as unknown,
+      );
+    } catch (err) {
+      mapParamValidationError(err);
+    }
+
     await this.practitionerExercises.upsert({
-      practitionerId: snapshot.practitioner_id,
-      exerciseId: snapshot.exercise_id,
-      favourite: snapshot.snapshot.favourite,
-      savedAt: snapshot.snapshot.saved_at ?? new Date().toISOString(),
-      lastUsedAt: snapshot.snapshot.last_used_at,
+      practitionerId: urlPractitionerId,
+      exerciseId: urlExerciseId,
+      favourite: snap.favourite,
+      savedAt: snap.saved_at ?? this.now(),
+      lastUsedAt: snap.last_used_at,
       textOverrides: overrides,
       paramOverrides,
     });
@@ -459,7 +631,7 @@ export class ExerciseLibraryService {
   async updateMyCopy(input: {
     practitionerId: string;
     exerciseId: string;
-    textOverrides?: Record<string, string>;
+    textOverrides?: TextOverrides;
     paramOverrides?: Record<string, unknown>;
     useLibraryVersion?: TextOverrideKey[];
     keepMine?: TextOverrideKey[];
@@ -494,31 +666,29 @@ export class ExerciseLibraryService {
     }
 
     if (input.textOverrides) {
-      for (const [rawKey, rawValue] of Object.entries(input.textOverrides)) {
-        if (!TEXT_OVERRIDE_KEYS.includes(rawKey as TextOverrideKey)) {
+      try {
+        overrides = validateTextOverrides({ ...overrides, ...input.textOverrides });
+      } catch (err) {
+        if (err instanceof TextOverrideLegacyShapeError) {
           throw new ExerciseLibraryServiceError(
-            `Unknown text override key: ${rawKey}`,
-            "invalid_input",
+            "Text overrides use an invalid stored shape",
+            "text_overrides_invalid_shape",
           );
         }
-        const key = rawKey as TextOverrideKey;
-        overrides = {
-          ...overrides,
-          [key]: buildTextOverrideEntry(
-            key,
-            rawValue,
-            libraryTextForKey(libraryVersion, key),
-          ),
-        };
+        mapTextOverrideReadError(err);
       }
     }
 
     let paramOverrides = existing.paramOverrides;
     if (input.paramOverrides) {
-      paramOverrides = validateParamOverridesByType({
-        ...paramOverrides,
-        ...(input.paramOverrides as typeof paramOverrides),
-      });
+      try {
+        paramOverrides = validateParamOverridesForCategory(version.category, {
+          ...paramOverrides,
+          ...(input.paramOverrides as ParamOverridesByType),
+        });
+      } catch (err) {
+        mapParamValidationError(err);
+      }
     }
 
     await this.practitionerExercises.upsert({

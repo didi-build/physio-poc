@@ -59,7 +59,13 @@ export type MyExerciseListItem = {
   body_regions: string[];
 };
 
+export type MyExercisesListState =
+  "ok" | "no_saved_exercises_with_filters" | "nothing_in_my_exercises_matches";
+
 export type MyExercisesListResult = {
+  list_state: MyExercisesListState;
+  /** Present when list_state is nothing_in_my_exercises_matches. */
+  search_query?: string;
   sections: {
     new_from_requests: MyExerciseListItem[];
     pinned: MyExerciseListItem[];

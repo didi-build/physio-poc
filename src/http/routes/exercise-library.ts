@@ -3,12 +3,17 @@ import { parseExerciseCategoryLabel } from "../../domain/exercise-category-label
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import {
+  TextOverrideLegacyShapeError,
+  TextOverrideValidationError,
+  validateTextOverrides,
+  TEXT_OVERRIDE_KEYS,
+  type TextOverrideKey,
+} from "../../domain/exercise-text-overrides.js";
+import {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
   type ExerciseSearchSort,
 } from "../../services/exercise-library/index.js";
-import type { TextOverrideKey } from "../../domain/exercise-text-overrides.js";
-import { TEXT_OVERRIDE_KEYS } from "../../domain/exercise-text-overrides.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -17,13 +22,30 @@ function service(deps: AppDependencies): ExerciseLibraryService {
 }
 
 function errorResponse(error: unknown): Response {
+  if (error instanceof TextOverrideLegacyShapeError) {
+    return Response.json(
+      {
+        error: "text_overrides_invalid_shape",
+        message: error.message,
+      },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  if (error instanceof TextOverrideValidationError) {
+    return Response.json(
+      { error: "invalid_input", message: error.message },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
   if (error instanceof ExerciseLibraryServiceError) {
     const status =
       error.code === "practitioner_not_found" || error.code === "exercise_not_found"
         ? 404
         : error.code === "my_exercise_not_found"
           ? 404
-          : error.code === "invalid_input"
+          : error.code === "invalid_input" ||
+              error.code === "undo_mismatch" ||
+              error.code === "text_overrides_invalid_shape"
             ? 400
             : 400;
     return Response.json(
@@ -34,11 +56,11 @@ function errorResponse(error: unknown): Response {
   throw error;
 }
 
-function parseSort(raw: string | null): ExerciseSearchSort {
+function parseSort(raw: string | null): ExerciseSearchSort | null {
   if (raw === "newest" || raw === "a_to_z" || raw === "most_used") {
     return raw;
   }
-  return "most_used";
+  return null;
 }
 
 function parsePrescriptionType(raw: string | null): PrescriptionType | undefined {
@@ -69,16 +91,30 @@ export async function handleExerciseLibraryRequest(
         { status: 400, headers: JSON_HEADERS },
       );
     }
+    const sortParam = url.searchParams.get("sort");
+    const sort =
+      sortParam === null ? ("most_used" as ExerciseSearchSort) : parseSort(sortParam);
+    if (sort === null) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid sort" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    const prescriptionTypeRaw = url.searchParams.get("prescription_type");
+    if (prescriptionTypeRaw && !parsePrescriptionType(prescriptionTypeRaw)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid prescription_type" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
     try {
       const result = await service(deps).searchApprovedExercises({
         practitionerId,
         query: url.searchParams.get("q") ?? undefined,
         category: category ?? undefined,
         bodyRegion: url.searchParams.get("body_region") ?? undefined,
-        prescriptionType: parsePrescriptionType(
-          url.searchParams.get("prescription_type"),
-        ),
-        sort: parseSort(url.searchParams.get("sort")),
+        prescriptionType: parsePrescriptionType(prescriptionTypeRaw),
+        sort,
         limit: url.searchParams.get("limit")
           ? Number(url.searchParams.get("limit"))
           : undefined,
@@ -103,8 +139,22 @@ export async function handleExerciseLibraryRequest(
 
   const myListMatch = /^\/api\/practitioners\/([^/]+)\/my-exercises$/.exec(path);
   if (myListMatch && request.method === "GET") {
+    const practitionerId = myListMatch[1];
+    const categoryRaw = url.searchParams.get("category");
+    const category = categoryRaw ? parseExerciseCategoryLabel(categoryRaw) : undefined;
+    if (categoryRaw && !category) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid category" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
     try {
-      const result = await service(deps).listMyExercises(myListMatch[1]);
+      const result = await service(deps).listMyExercises({
+        practitionerId,
+        query: url.searchParams.get("q") ?? undefined,
+        category: category ?? undefined,
+        bodyRegion: url.searchParams.get("body_region") ?? undefined,
+      });
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
@@ -139,13 +189,10 @@ export async function handleExerciseLibraryRequest(
       }
       const action = body.action;
       if (action === "save") {
-        const savedAt =
-          typeof body.saved_at === "string" ? body.saved_at : new Date().toISOString();
         try {
           const result = await service(deps).saveToMyExercises(
             practitionerId,
             exerciseId,
-            savedAt,
           );
           return Response.json(result, { headers: JSON_HEADERS });
         } catch (error) {
@@ -178,7 +225,7 @@ export async function handleExerciseLibraryRequest(
           );
         }
         try {
-          await service(deps).applyUndo(body.undo as never);
+          await service(deps).applyUndo(practitionerId, exerciseId, body.undo as never);
           return Response.json({ ok: true }, { headers: JSON_HEADERS });
         } catch (error) {
           return errorResponse(error);
@@ -205,14 +252,28 @@ export async function handleExerciseLibraryRequest(
             TEXT_OVERRIDE_KEYS.includes(key as TextOverrideKey),
           )
         : undefined;
+      let textOverrides: ReturnType<typeof validateTextOverrides> | undefined;
+      if (body.text_overrides !== undefined) {
+        try {
+          if (
+            typeof body.text_overrides !== "object" ||
+            body.text_overrides === null ||
+            Array.isArray(body.text_overrides)
+          ) {
+            throw new TextOverrideValidationError(
+              "Text overrides must be a JSON object",
+            );
+          }
+          textOverrides = validateTextOverrides(body.text_overrides);
+        } catch (error) {
+          return errorResponse(error);
+        }
+      }
       try {
         const result = await service(deps).updateMyCopy({
           practitionerId,
           exerciseId,
-          textOverrides:
-            body.text_overrides && typeof body.text_overrides === "object"
-              ? (body.text_overrides as Record<string, string>)
-              : undefined,
+          textOverrides,
           paramOverrides:
             body.param_overrides && typeof body.param_overrides === "object"
               ? (body.param_overrides as Record<string, unknown>)

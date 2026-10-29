@@ -22,14 +22,39 @@ export type TextOverrides = Partial<Record<TextOverrideKey, TextOverrideEntry>>;
 const TEXT_KEY_SET = new Set<string>(TEXT_OVERRIDE_KEYS);
 const TEXT_OVERRIDE_ENTRY_KEYS = new Set<string>(["value", "base"]);
 
-function assertTextOverrideBaseString(key: TextOverrideKey, base: string): string {
+export class TextOverrideValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TextOverrideValidationError";
+  }
+}
+
+/** Stored JSON used plain strings per field; reject on read. */
+export class TextOverrideLegacyShapeError extends TextOverrideValidationError {
+  constructor() {
+    super("Text overrides must use { value, base } objects");
+    this.name = "TextOverrideLegacyShapeError";
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateTextOverrideBase(key: TextOverrideKey, base: string): string {
   if (typeof base !== "string") {
     throw new TextOverrideValidationError(`Override ${key} base must be a string`);
   }
-  return base;
+  if (key.startsWith("cue_") && base === "") {
+    return "";
+  }
+  return validateTextOverrideValue(key, base);
 }
 
 function parseTextOverrideEntry(key: TextOverrideKey, raw: unknown): TextOverrideEntry {
+  if (typeof raw === "string") {
+    throw new TextOverrideLegacyShapeError();
+  }
   if (!isPlainObject(raw)) {
     throw new TextOverrideValidationError(
       `Override ${key} must be an object with value and base`,
@@ -57,23 +82,12 @@ function parseTextOverrideEntry(key: TextOverrideKey, raw: unknown): TextOverrid
   }
   return {
     value: validateTextOverrideValue(key, valueRaw),
-    base: assertTextOverrideBaseString(key, baseRaw),
+    base: validateTextOverrideBase(key, baseRaw),
   };
 }
 
 export function serializeTextOverrides(overrides: TextOverrides): string {
   return JSON.stringify(overrides);
-}
-
-export class TextOverrideValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "TextOverrideValidationError";
-  }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function validateTextOverrides(value: unknown): TextOverrides {
@@ -91,6 +105,9 @@ export function validateTextOverrides(value: unknown): TextOverrides {
         raw,
       );
     } catch (err) {
+      if (err instanceof TextOverrideLegacyShapeError) {
+        throw err;
+      }
       const message = err instanceof Error ? err.message : String(err);
       throw new TextOverrideValidationError(message);
     }
@@ -156,9 +173,10 @@ export function buildTextOverrideEntry(
   value: string,
   libraryBase: string,
 ): TextOverrideEntry {
+  const baseForEntry = libraryBase === "" && key.startsWith("cue_") ? "" : libraryBase;
   return {
     value: validateTextOverrideValue(key, value),
-    base: assertTextOverrideBaseString(key, libraryBase),
+    base: validateTextOverrideBase(key, baseForEntry),
   };
 }
 
@@ -180,11 +198,13 @@ export function applyKeepMine(
   if (!entry) {
     return overrides;
   }
+  const baseForEntry =
+    libraryValue === "" && key.startsWith("cue_") ? "" : libraryValue;
   return {
     ...overrides,
     [key]: {
       value: entry.value,
-      base: assertTextOverrideBaseString(key, libraryValue),
+      base: validateTextOverrideBase(key, baseForEntry),
     },
   };
 }

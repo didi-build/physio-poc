@@ -1,4 +1,5 @@
-import type { PrescriptionType } from "./exercise-types.js";
+import type { ExerciseCategory, PrescriptionType } from "./exercise-types.js";
+import { prescriptionTypesForCategory } from "./exercise-types.js";
 
 export const PARAM_KEYS = [
   "reps",
@@ -175,6 +176,22 @@ export function validateParamOverridesByType(value: unknown): ParamOverridesByTy
     result[typeKey] = validateExerciseParams(params);
   }
   return result;
+}
+
+export function validateParamOverridesForCategory(
+  category: ExerciseCategory,
+  value: unknown,
+): ParamOverridesByType {
+  const validated = validateParamOverridesByType(value);
+  const allowed = new Set<PrescriptionType>(prescriptionTypesForCategory(category));
+  for (const typeKey of Object.keys(validated)) {
+    if (!allowed.has(typeKey as PrescriptionType)) {
+      throw new ParamValidationError(
+        `Prescription type ${typeKey} is not allowed for category ${category}`,
+      );
+    }
+  }
+  return validated;
 }
 
 export function mergeExerciseParams(
