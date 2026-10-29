@@ -15,6 +15,40 @@ const SCAN_EXTENSIONS = new Set([
 
 const PLATFORM_PREFIXES = ["entry/", "adapters/node/", "adapters/workers/"];
 
+const UI_SOURCE_PREFIX = "src/ui/";
+
+/**
+ * @param {string} repoRelativePath
+ * @returns {boolean}
+ */
+function isUiSourceFile(repoRelativePath) {
+  return repoRelativePath.startsWith(UI_SOURCE_PREFIX);
+}
+
+/**
+ * Runtime or vendor platform modules that must not appear outside entry/adapters.
+ * @param {string} specifierText
+ * @returns {boolean}
+ */
+function isPlatformModuleSpecifier(specifierText) {
+  if (specifierText.startsWith("node:")) {
+    return true;
+  }
+  if (specifierText.startsWith("cloudflare:")) {
+    return true;
+  }
+  if (specifierText.startsWith("@cloudflare/")) {
+    return true;
+  }
+  if (specifierText === "cloudflare" || specifierText.startsWith("cloudflare/")) {
+    return true;
+  }
+  if (specifierText === "wrangler" || specifierText.startsWith("wrangler/")) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * @param {string} srcRoot absolute path to src/
  * @returns {string[]} repo-relative paths like src/http/app.ts
@@ -119,6 +153,12 @@ export function findPortableViolations(repoRelativePath, source) {
       const resolved = resolveRelativeImport(repoRelativePath, text);
       if (landsInPlatformTree(resolved)) {
         violations.push(`${kind} imports platform tree: ${text} -> ${resolved}`);
+      }
+      return;
+    }
+    if (isUiSourceFile(repoRelativePath)) {
+      if (isPlatformModuleSpecifier(text)) {
+        violations.push(`${kind} platform module in ui: ${text}`);
       }
       return;
     }

@@ -137,17 +137,33 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
-  it("detects violations in .tsx sources", () => {
+  it("allows npm UI dependencies under src/ui/", () => {
     const messages = findPortableViolations(
-      "src/ui/Example.tsx",
+      "src/ui/App.tsx",
+      "import { useState } from 'react';",
+    );
+    expect(messages).toEqual([]);
+  });
+
+  it("blocks platform npm imports under src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      "import type { D1Database } from '@cloudflare/workers-types';",
+    );
+    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
+  });
+
+  it("detects violations in .tsx sources outside ui/", () => {
+    const messages = findPortableViolations(
+      "src/services/Example.tsx",
       "import React from 'react';",
     );
     expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
   });
 
-  it("detects violations in .jsx sources", () => {
+  it("detects violations in .jsx sources outside ui/", () => {
     const messages = findPortableViolations(
-      "src/ui/Example.jsx",
+      "src/services/Example.jsx",
       "import React from 'react';",
     );
     expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
