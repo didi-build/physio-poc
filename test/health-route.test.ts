@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleRequest } from "../src/http/app.js";
+import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
 
@@ -7,6 +8,12 @@ function testDeps() {
   return {
     sql: new InMemorySqlStorage(),
     objects: new InMemoryObjectStorage(),
+    config: MCP_TEST_CONFIG,
+    mcp: async () =>
+      Response.json(
+        { error: "not_found" },
+        { status: 404, headers: { "content-type": "application/json" } },
+      ),
   };
 }
 

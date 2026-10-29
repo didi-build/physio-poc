@@ -1,6 +1,6 @@
 # MCP connector tool contract
 
-Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements DIDI-989; server and data are follow-up work (DIDI-991 and later).
+Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements DIDI-989; stub hosting is DIDI-991 (`docs/architecture/mcp-server-stub-hosting.md`).
 
 ## Location
 

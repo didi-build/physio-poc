@@ -39,3 +39,4 @@ Thumbs.db
 # Tooling caches
 .eslintcache
 .cache/
+.wrangler/

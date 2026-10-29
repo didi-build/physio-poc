@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
+import { createPhysioMcpHttpHandler } from "../adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest, type AppDependencies } from "../http/app.js";
+import { resolveWebAppBaseUrl } from "../http/config.js";
 import { InMemoryObjectStorage } from "../storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../storage/adapters/memory/in-memory-sql-storage.js";
 
@@ -11,9 +13,14 @@ export type NodeServerOptions = {
 };
 
 function defaultDependencies(): AppDependencies {
+  const config = {
+    webAppBaseUrl: resolveWebAppBaseUrl(process.env.WEB_APP_BASE_URL),
+  };
   return {
     sql: new InMemorySqlStorage(),
     objects: new InMemoryObjectStorage(),
+    config,
+    mcp: createPhysioMcpHttpHandler(config),
   };
 }
 

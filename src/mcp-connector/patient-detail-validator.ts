@@ -36,6 +36,7 @@ const DATE_OF_BIRTH_PATTERNS: readonly RegExp[] = [
 
 export function validateFreeTextForPatientDetails(
   text: string,
+  options?: { skipDateOfBirthHeuristic?: boolean },
 ): PatientDetailValidationResult {
   if (EMAIL_PATTERN.test(text)) {
     return {
@@ -65,13 +66,15 @@ export function validateFreeTextForPatientDetails(
       message: PATIENT_DETAIL_REJECTION_MESSAGE,
     };
   }
-  for (const pattern of DATE_OF_BIRTH_PATTERNS) {
-    if (pattern.test(text)) {
-      return {
-        ok: false,
-        reason: "date_of_birth",
-        message: PATIENT_DETAIL_REJECTION_MESSAGE,
-      };
+  if (!options?.skipDateOfBirthHeuristic) {
+    for (const pattern of DATE_OF_BIRTH_PATTERNS) {
+      if (pattern.test(text)) {
+        return {
+          ok: false,
+          reason: "date_of_birth",
+          message: PATIENT_DETAIL_REJECTION_MESSAGE,
+        };
+      }
     }
   }
   return { ok: true };
