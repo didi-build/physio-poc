@@ -1,4 +1,4 @@
-# Architecture overview — Physio POC
+# Architecture overview: Physio POC
 
 Proof of concept for practitioner exercise library, routines, programs, and an AI assistant connector. Approved design: [`design/README.md`](../../design/README.md). Accepted runtime decision: [`docs/decisions/0004-portable-runtime-and-storage-ports.md`](../decisions/0004-portable-runtime-and-storage-ports.md).
 
