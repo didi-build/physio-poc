@@ -1,58 +1,37 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import AjvModule from "ajv";
 import addFormatsModule from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import {
+  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+  PATIENT_DETAIL_REJECTION_MESSAGE,
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
   getPhysioMcpTool,
 } from "../src/mcp-connector/index.js";
-import { handleRequest, MCP_PATH } from "../src/http/handle-request.js";
+import {
+  STUB_SEARCH_NO_MATCH_QUERY,
+  STUB_UNRESOLVED_EXERCISE_NAME,
+} from "../src/services/mcp/stub-tool-handler.js";
+import { buildWebAppExerciseSearchUrl } from "../src/mcp-connector/index.js";
+import {
+  MCP_TEST_CONFIG,
+  toolErrorText,
+  withMcpClient,
+} from "./mcp-server-test-utils.js";
+
+const goldenTools = JSON.parse(
+  readFileSync(
+    join(process.cwd(), "test/fixtures/physio-mcp-tools.golden.json"),
+    "utf8",
+  ),
+);
 
 const Ajv = AjvModule.default ?? AjvModule;
 const addFormats = addFormatsModule.default ?? addFormatsModule;
-
-const TEST_CONFIG = {
-  webAppBaseUrl: "https://app.example.com",
-} as const;
-
-const MCP_BASE = "https://physio-mcp.test.example";
-
-function createMcpFetch(): FetchLike {
-  return async (input, init) => {
-    const parsed = new URL(input instanceof URL ? input.href : input);
-    const localUrl = `${MCP_BASE}${parsed.pathname}${parsed.search}`;
-    const request = new Request(localUrl, {
-      method: init?.method ?? "GET",
-      headers: init?.headers,
-      body: init?.body ?? undefined,
-    });
-    return handleRequest(request, TEST_CONFIG);
-  };
-}
-
-async function withMcpClient<T>(run: (client: Client) => Promise<T>): Promise<T> {
-  const transport = new StreamableHTTPClientTransport(
-    new URL(`${MCP_BASE}${MCP_PATH}`),
-    {
-      fetch: createMcpFetch(),
-    },
-  );
-  const client = new Client({ name: "physio-mcp-test", version: "0.0.0" });
-  await client.connect(transport);
-  try {
-    return await run(client);
-  } finally {
-    await client.close();
-  }
-}
 
 const ajv = new Ajv({
   strict: false,
@@ -61,6 +40,8 @@ const ajv = new Ajv({
   allErrors: true,
 });
 addFormats(ajv);
+
+const patientDetailSample = "Contact user@example.com for updates";
 
 const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: { query: "calf stretch" },
@@ -78,13 +59,28 @@ const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: { program_code: "PRG-STUB01" },
 };
 
+function parseWranglerJsonc(text: string): { name?: string } {
+  const withoutBlockComments = text.replace(/\/\*[\s\S]*?\*\//g, "");
+  const withoutLineComments = withoutBlockComments
+    .split("\n")
+    .map((line) => line.replace(/\/\/.*$/, ""))
+    .join("\n")
+    .replace(/,\s*([}\]])/g, "$1");
+  return JSON.parse(withoutLineComments) as { name?: string };
+}
+
 describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
-  it("lists every DIDI-989 tool", async () => {
+  it("lists tools deep-equal to the golden fixture with flat input roots", async () => {
     await withMcpClient(async (client) => {
       const { tools } = await client.listTools();
-      expect(tools?.map((tool) => tool.name).sort()).toEqual(
-        [...PHYSIO_MCP_TOOL_NAMES].sort(),
-      );
+      expect(tools).toEqual(goldenTools);
+      for (const tool of tools ?? []) {
+        const schema = tool.inputSchema as Record<string, unknown>;
+        expect(schema.type).toBe("object");
+        for (const key of ["anyOf", "oneOf", "allOf", "not"] as const) {
+          expect(schema[key]).toBeUndefined();
+        }
+      }
     });
   });
 
@@ -108,6 +104,82 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
+  it("uses Example response prefix on publish true branch", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: { program_code: "PRG-STUB01", publish: true },
+      });
+      expect(result.isError).not.toBe(true);
+      const summary = (result.structuredContent as { summary?: string }).summary;
+      expect(String(summary)).toMatch(/^Example response:/);
+    });
+  });
+
+  it("returns empty search results with search_link for the fixed no-match query", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: STUB_SEARCH_NO_MATCH_QUERY },
+      });
+      expect(result.isError).not.toBe(true);
+      const body = result.structuredContent as {
+        exercises?: unknown[];
+        search_link?: string;
+      };
+      expect(body.exercises).toEqual([]);
+      expect(body.search_link).toBe(
+        buildWebAppExerciseSearchUrl(
+          MCP_TEST_CONFIG.webAppBaseUrl,
+          STUB_SEARCH_NO_MATCH_QUERY,
+        ),
+      );
+    });
+  });
+
+  it("returns exercises_not_found without echoing unresolved rows", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        arguments: {
+          program_title: "Sample balance plan",
+          rows: [
+            {
+              exercise_name: STUB_UNRESOLVED_EXERCISE_NAME,
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 5 },
+            },
+            {
+              exercise_name: "Heel slides",
+              prescription_type: "stretching",
+              params: { sets: 3, reps: 10 },
+            },
+          ],
+        },
+      });
+      expect(result.isError).not.toBe(true);
+      const body = result.structuredContent as {
+        rows?: Array<{ exercise_name?: string }>;
+        exercises_not_found?: Array<{
+          requested_exercise_name?: string;
+          web_app_exercise_search_url?: string;
+        }>;
+      };
+      expect(body.rows?.map((row) => row.exercise_name)).toEqual(["Heel slides"]);
+      expect(body.exercises_not_found).toEqual([
+        {
+          requested_exercise_name: STUB_UNRESOLVED_EXERCISE_NAME,
+          web_app_exercise_search_url: buildWebAppExerciseSearchUrl(
+            MCP_TEST_CONFIG.webAppBaseUrl,
+            STUB_UNRESOLVED_EXERCISE_NAME,
+          ),
+        },
+      ]);
+    });
+  });
+});
+
+describe("Physio MCP HTTP validation", () => {
   it("rejects get_program_share_link_or_pdf without program_code or program_title", async () => {
     await withMcpClient(async (client) => {
       const result = await client.callTool({
@@ -115,17 +187,165 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
         arguments: { publish: false },
       });
       expect(result.isError).toBe(true);
-      const firstContent = Array.isArray(result.content)
-        ? result.content[0]
-        : undefined;
-      const message =
-        firstContent &&
-        typeof firstContent === "object" &&
-        "text" in firstContent &&
-        typeof firstContent.text === "string"
-          ? firstContent.text
-          : "";
-      expect(message).toMatch(/program_code or program_title/i);
+      expect(toolErrorText(result)).toMatch(/program_code or program_title/i);
+    });
+  });
+
+  it("rejects whitespace-only program_code without program_title", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: { program_code: "   ", publish: false },
+      });
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toMatch(/program_code or program_title/i);
+    });
+  });
+
+  it("rejects unknown properties on tool inputs", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: "calf", unexpected_field: true },
+      });
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toMatch(/additional properties/i);
+    });
+  });
+
+  it("rejects over-cap free-text values", async () => {
+    const cases: Array<{ tool: string; args: Record<string, unknown> }> = [
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        args: { query: "x".repeat(101) },
+      },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        args: { query: "x".repeat(101) },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: { program_title: "x".repeat(81) },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: {
+          rows: [
+            {
+              exercise_name: "x".repeat(101),
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 1 },
+            },
+          ],
+        },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: {
+          rows: [
+            {
+              exercise_name: "Heel slides",
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 1 },
+              row_notes: "x".repeat(301),
+            },
+          ],
+        },
+      },
+    ];
+
+    await withMcpClient(async (client) => {
+      for (const { tool, args } of cases) {
+        const result = await client.callTool({ name: tool, arguments: args });
+        expect(result.isError, tool).toBe(true);
+        expect(toolErrorText(result), tool).toMatch(/must NOT have more than/i);
+      }
+    });
+  });
+
+  it("rejects patient-detail patterns in every free-text field", async () => {
+    const cases: Array<{ tool: string; args: Record<string, unknown> }> = [
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        args: { query: patientDetailSample },
+      },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        args: { query: patientDetailSample },
+      },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        args: { query: "calf", body_region: patientDetailSample },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: { program_title: patientDetailSample },
+      },
+      {
+        tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        args: { program_title: patientDetailSample },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: {
+          rows: [
+            {
+              exercise_name: patientDetailSample,
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 1 },
+            },
+          ],
+        },
+      },
+      {
+        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        args: {
+          rows: [
+            {
+              exercise_name: "Heel slides",
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 1 },
+              row_notes: patientDetailSample,
+            },
+          ],
+        },
+      },
+    ];
+
+    await withMcpClient(async (client) => {
+      for (const { tool, args } of cases) {
+        const result = await client.callTool({ name: tool, arguments: args });
+        expect(result.isError, tool).toBe(true);
+        expect(toolErrorText(result), tool).toBe(PATIENT_DETAIL_REJECTION_MESSAGE);
+      }
+    });
+  });
+
+  it("rejects patient-detail text in opaque cursor and id string fields", async () => {
+    await withMcpClient(async (client) => {
+      const searchCursor = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: "calf", cursor: patientDetailSample },
+      });
+      expect(searchCursor.isError).toBe(true);
+      expect(toolErrorText(searchCursor)).toBe(PATIENT_DETAIL_REJECTION_MESSAGE);
+
+      const buildIds = await client.callTool({
+        name: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        arguments: {
+          program_code: "PRG-STUB01",
+          from_routine_id: patientDetailSample,
+          rows: [
+            {
+              exercise_version_id: patientDetailSample,
+              prescription_type: "stretching",
+              params: { sets: 1, reps: 1 },
+            },
+          ],
+        },
+      });
+      expect(buildIds.isError).toBe(true);
+      expect(toolErrorText(buildIds)).toBe(PATIENT_DETAIL_REJECTION_MESSAGE);
     });
   });
 });
@@ -134,6 +354,7 @@ describe("wrangler worker name pin", () => {
   it("uses the physio-poc-mcp worker name", () => {
     const wranglerPath = join(process.cwd(), "wrangler.jsonc");
     const text = readFileSync(wranglerPath, "utf8");
-    expect(text).toMatch(/"name"\s*:\s*"physio-poc-mcp"/);
+    const parsed = parseWranglerJsonc(text);
+    expect(parsed.name).toBe("physio-poc-mcp");
   });
 });

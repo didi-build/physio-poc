@@ -3,4 +3,5 @@ node_modules/
 dist/
 coverage/
 test-results/
+src/services/mcp/generated/
 package-lock.json

@@ -1,43 +1,40 @@
-import AjvModule from "ajv";
-import addFormatsModule from "ajv-formats";
 import {
   BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-  getPhysioMcpTool,
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
   validateFreeTextForPatientDetails,
-  type JsonSchema,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
-
-const Ajv = AjvModule.default ?? AjvModule;
-const addFormats = addFormatsModule.default ?? addFormatsModule;
-
-const ajv = new Ajv({
-  strict: false,
-  validateFormats: true,
-  validateSchema: false,
-  allErrors: true,
-});
-addFormats(ajv);
-
-const validators = new Map<PhysioMcpToolName, ReturnType<typeof ajv.compile>>();
-
-for (const name of PHYSIO_MCP_TOOL_NAMES) {
-  const tool = getPhysioMcpTool(name);
-  if (!tool) {
-    throw new Error(`Missing tool definition for ${name}`);
-  }
-  validators.set(name, ajv.compile(tool.inputSchema as JsonSchema));
-}
+import type { StandaloneValidateFunction } from "./generated/input-validators.js";
+import {
+  build_or_edit_program,
+  get_program_share_link_or_pdf,
+  search_approved_exercises,
+  search_routines,
+} from "./generated/input-validators.js";
 
 export class PhysioMcpToolInputError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "PhysioMcpToolInputError";
   }
+}
+
+const validators: Record<PhysioMcpToolName, StandaloneValidateFunction> = {
+  [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
+  [SEARCH_ROUTINES_TOOL_NAME]: search_routines,
+  [BUILD_OR_EDIT_PROGRAM_TOOL_NAME]: build_or_edit_program,
+  [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: get_program_share_link_or_pdf,
+};
+
+function formatStandaloneErrors(validate: StandaloneValidateFunction): string {
+  const errors = validate.errors;
+  if (!errors || errors.length === 0) {
+    return "Invalid tool arguments.";
+  }
+  return errors.map((entry) => entry.message ?? "Invalid tool arguments.").join("; ");
 }
 
 function assertGetProgramLookup(args: Record<string, unknown>): void {
@@ -52,34 +49,25 @@ function assertGetProgramLookup(args: Record<string, unknown>): void {
   }
 }
 
-function collectFreeTextFields(
-  toolName: PhysioMcpToolName,
-  args: Record<string, unknown>,
-): string[] {
-  const texts: string[] = [];
-  if (toolName === SEARCH_APPROVED_EXERCISES_TOOL_NAME) {
-    if (typeof args.query === "string") texts.push(args.query);
+function validateAllStringValues(value: unknown): void {
+  if (typeof value === "string") {
+    const result = validateFreeTextForPatientDetails(value);
+    if (!result.ok) {
+      throw new PhysioMcpToolInputError(result.message);
+    }
+    return;
   }
-  if (toolName === SEARCH_ROUTINES_TOOL_NAME) {
-    if (typeof args.query === "string") texts.push(args.query);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      validateAllStringValues(item);
+    }
+    return;
   }
-  if (toolName === BUILD_OR_EDIT_PROGRAM_TOOL_NAME) {
-    if (typeof args.program_title === "string") texts.push(args.program_title);
-    if (Array.isArray(args.rows)) {
-      for (const row of args.rows) {
-        if (row && typeof row === "object") {
-          const record = row as Record<string, unknown>;
-          if (typeof record.row_notes === "string") texts.push(record.row_notes);
-          if (typeof record.exercise_name === "string")
-            texts.push(record.exercise_name);
-        }
-      }
+  if (value && typeof value === "object") {
+    for (const nested of Object.values(value as Record<string, unknown>)) {
+      validateAllStringValues(nested);
     }
   }
-  if (toolName === GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME) {
-    if (typeof args.program_title === "string") texts.push(args.program_title);
-  }
-  return texts;
 }
 
 export function validatePhysioMcpToolInput(
@@ -99,23 +87,12 @@ export function validatePhysioMcpToolInput(
     assertGetProgramLookup(record);
   }
 
-  const validate = validators.get(name);
-  if (!validate) {
-    throw new PhysioMcpToolInputError(`Missing validator for ${name}`);
-  }
+  const validate = validators[name];
   if (!validate(record)) {
-    const detail = ajv.errorsText(validate.errors, { separator: "; " });
-    throw new PhysioMcpToolInputError(
-      detail.length > 0 ? detail : "Invalid tool arguments.",
-    );
+    throw new PhysioMcpToolInputError(formatStandaloneErrors(validate));
   }
 
-  for (const text of collectFreeTextFields(name, record)) {
-    const result = validateFreeTextForPatientDetails(text);
-    if (!result.ok) {
-      throw new PhysioMcpToolInputError(result.message);
-    }
-  }
+  validateAllStringValues(record);
 
   return record;
 }

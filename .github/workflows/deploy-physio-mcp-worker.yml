@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: physio-mcp-production
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -22,9 +26,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: npm ci
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@5a6b8d26847f6ab196fd2441fc52dc87b72c1b99 # v3.2.0
+        uses: cloudflare/wrangler-action@2ef9f398b9175c68f953e40d679493850d640a85 # v4.1.3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

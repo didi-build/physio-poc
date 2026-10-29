@@ -13,6 +13,12 @@ import {
   validatePhysioMcpToolInput,
 } from "./validate-tool-input.js";
 
+/** Fixed query that returns zero exercises plus search_link (stub ruling B). */
+export const STUB_SEARCH_NO_MATCH_QUERY = "zzzz-stub-no-approved-match";
+
+/** Fixed exercise name that stays unresolved in build (stub ruling B). */
+export const STUB_UNRESOLVED_EXERCISE_NAME = "zzzz-stub-unlisted-exercise";
+
 const EXAMPLE_LABEL = "Example response";
 
 function exampleSummary(detail: string): string {
@@ -50,29 +56,39 @@ function stubSearchApprovedExercises(
   config: PhysioServerConfig,
 ): Record<string, unknown> {
   const query = String(input.query ?? "");
-  const exercises = [
-    {
-      exercise_version_id: "ex-v-stub-001",
-      exercise_name: "Standing calf stretch",
-      category: "Stretching",
-      body_regions: ["Lower leg"],
-      allowed_prescription_types: ["stretching", "isometric"],
-    },
-    {
-      exercise_version_id: "ex-v-stub-002",
-      exercise_name: "Seated hamstring stretch",
-      category: "Stretching",
-      body_regions: ["Posterior thigh"],
-      allowed_prescription_types: ["stretching"],
-    },
-  ];
+  const searchLink = buildWebAppExerciseSearchUrl(config.webAppBaseUrl, query);
+
+  if (query === STUB_SEARCH_NO_MATCH_QUERY) {
+    return {
+      summary: exampleSummary(`No approved exercises matched "${query}" (not stored).`),
+      share_link: "",
+      manage_url: manageUrl(config, "/exercises"),
+      exercises: [],
+      search_link: searchLink,
+    };
+  }
 
   return {
     summary: exampleSummary(`Approved exercises matching "${query}" (not stored).`),
     share_link: "",
     manage_url: manageUrl(config, "/exercises"),
-    exercises,
-    search_link: buildWebAppExerciseSearchUrl(config.webAppBaseUrl, query),
+    exercises: [
+      {
+        exercise_version_id: "ex-v-stub-001",
+        exercise_name: "Standing calf stretch",
+        category: "Stretching",
+        body_regions: ["Lower leg"],
+        allowed_prescription_types: ["stretching", "isometric"],
+      },
+      {
+        exercise_version_id: "ex-v-stub-002",
+        exercise_name: "Seated hamstring stretch",
+        category: "Stretching",
+        body_regions: ["Posterior thigh"],
+        allowed_prescription_types: ["stretching"],
+      },
+    ],
+    search_link: searchLink,
   };
 }
 
@@ -111,28 +127,58 @@ function stubBuildOrEditProgram(
       : "Sample balance plan";
 
   const rowsInput = Array.isArray(input.rows) ? input.rows : [];
-  const rows = rowsInput.map((row, index) => {
+  const rows: Array<Record<string, unknown>> = [];
+  const exercisesNotFound: Array<Record<string, unknown>> = [];
+
+  for (const row of rowsInput) {
     const record = row as Record<string, unknown>;
     const exerciseName =
-      typeof record.exercise_name === "string" ? record.exercise_name : "Heel slides";
-    return {
-      exercise_version_id:
-        typeof record.exercise_version_id === "string"
-          ? record.exercise_version_id
-          : `ex-v-stub-row-${index + 1}`,
-      exercise_name: exerciseName,
-      prescription_type:
-        typeof record.prescription_type === "string"
-          ? record.prescription_type
-          : "stretching",
-      params:
-        record.params && typeof record.params === "object"
-          ? record.params
-          : { sets: 3, reps: 10 },
-    };
-  });
+      typeof record.exercise_name === "string" ? record.exercise_name : undefined;
+    if (exerciseName === STUB_UNRESOLVED_EXERCISE_NAME) {
+      exercisesNotFound.push({
+        requested_exercise_name: exerciseName,
+        web_app_exercise_search_url: buildWebAppExerciseSearchUrl(
+          config.webAppBaseUrl,
+          exerciseName,
+        ),
+      });
+      continue;
+    }
+    if (typeof record.exercise_version_id === "string") {
+      rows.push({
+        exercise_version_id: record.exercise_version_id,
+        exercise_name:
+          typeof record.exercise_name === "string"
+            ? record.exercise_name
+            : "Heel slides",
+        prescription_type:
+          typeof record.prescription_type === "string"
+            ? record.prescription_type
+            : "stretching",
+        params:
+          record.params && typeof record.params === "object"
+            ? record.params
+            : { sets: 3, reps: 10 },
+      });
+      continue;
+    }
+    if (exerciseName) {
+      rows.push({
+        exercise_version_id: "ex-v-stub-resolved",
+        exercise_name: exerciseName,
+        prescription_type:
+          typeof record.prescription_type === "string"
+            ? record.prescription_type
+            : "stretching",
+        params:
+          record.params && typeof record.params === "object"
+            ? record.params
+            : { sets: 3, reps: 10 },
+      });
+    }
+  }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && exercisesNotFound.length === 0) {
     rows.push({
       exercise_version_id: "ex-v-stub-default",
       exercise_name: "Ankle circles",
@@ -141,7 +187,7 @@ function stubBuildOrEditProgram(
     });
   }
 
-  return {
+  const output: Record<string, unknown> = {
     summary: exampleSummary(
       `Program ${programCode} saved in memory only; nothing persisted.`,
     ),
@@ -151,6 +197,10 @@ function stubBuildOrEditProgram(
     program_title: programTitle,
     rows,
   };
+  if (exercisesNotFound.length > 0) {
+    output.exercises_not_found = exercisesNotFound;
+  }
+  return output;
 }
 
 function stubGetProgramShareLinkOrPdf(
