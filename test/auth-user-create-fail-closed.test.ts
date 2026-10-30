@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { betterAuth } from "better-auth";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
-import { createBetterAuthInstance } from "../src/adapters/node/create-better-auth.js";
+import {
+  ALLOWLIST_REFUSAL_ERROR,
+  isEmailAllowlisted,
+} from "../src/auth/allowed-emails.js";
+import { buildPhysioBetterAuthOptions } from "../src/adapters/node/create-better-auth.js";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
+import { installFakeGoogleFetch } from "../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import {
   PhysioPractitionerBindingError,
@@ -22,6 +28,7 @@ import { MIGRATION_0001_SQL } from "./helpers/exercise-sqlite-fixture.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import type { BetterAuthRuntime } from "../src/adapters/node/better-auth-types.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const MIGRATION_0004_SQL = readFileSync(
@@ -40,6 +47,47 @@ async function countAuthTables(
   const session =
     (await storage.first<{ c: number }>('SELECT count(*) as c FROM "session"'))?.c ?? 0;
   return { user, account, session };
+}
+
+function createAllowlistOnlyValidateUserInfo(
+  config: ReturnType<typeof resolveTestPhysioServerConfig>["auth"],
+) {
+  return async ({
+    user,
+    source,
+  }: Parameters<
+    NonNullable<
+      NonNullable<Parameters<typeof betterAuth>[0]["user"]>["validateUserInfo"]
+    >
+  >[0]) => {
+    if (source.oauth?.providerId !== "google") {
+      return;
+    }
+    const email = typeof user.email === "string" ? user.email : null;
+    const verified =
+      user.emailVerified === true ||
+      (user as { email_verified?: boolean }).email_verified === true;
+    if (!verified) {
+      return { error: ALLOWLIST_REFUSAL_ERROR };
+    }
+    if (!isEmailAllowlisted(config.allowedGoogleEmails, email)) {
+      return { error: ALLOWLIST_REFUSAL_ERROR };
+    }
+  };
+}
+
+function createBetterAuthWithAllowlistOnlyValidateUserInfo(
+  storage: BetterSqliteStorage,
+  serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
+) {
+  installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
+  const auth = betterAuth({
+    ...buildPhysioBetterAuthOptions(storage, serverConfig.auth, {
+      validateUserInfo: createAllowlistOnlyValidateUserInfo(serverConfig.auth),
+    }),
+    database: storage.nativeDatabase(),
+  });
+  return auth as BetterAuthRuntime;
 }
 
 describe("runPhysioUserCreateBeforeHook (unit)", () => {
@@ -63,7 +111,7 @@ describe("runPhysioUserCreateBeforeHook (unit)", () => {
 });
 
 describe("OAuth user-create hook fail-closed (integration)", () => {
-  it("writes zero auth rows when validateUserInfo practitioner check is bypassed but the hook rejects", async () => {
+  it("writes zero auth rows when validateUserInfo skips practitioner check but the create hook rejects", async () => {
     const storage = BetterSqliteStorage.openInMemory();
     try {
       await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
@@ -74,11 +122,9 @@ describe("OAuth user-create hook fail-closed (integration)", () => {
           authBaseUrl: BASE,
         },
       );
-      const { auth: runtime } = createBetterAuthInstance(
-        storage.nativeDatabase(),
-        serverConfig.auth,
+      const runtime = createBetterAuthWithAllowlistOnlyValidateUserInfo(
         storage,
-        { skipValidateUserInfoPractitionerCheck: true },
+        serverConfig,
       );
       const deps = {
         sql: storage,

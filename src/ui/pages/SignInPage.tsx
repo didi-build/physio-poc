@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { normalizeReturnTo } from "../routing/return-to.js";
 import { postAuthSignInSocial } from "../api/auth-client.js";
 import { SIGN_IN_WITH_GOOGLE_LABEL, AUTH_ERROR_MESSAGE } from "../copy/sign-in.js";
 import "../styles/sign-in.css";
@@ -10,7 +11,7 @@ export type SignInPageProps = {
 
 export function SignInPage({ returnTo, authError }: SignInPageProps) {
   const [busy, setBusy] = useState(false);
-  const safeReturn = returnTo.startsWith("/") ? returnTo : "/";
+  const safeReturn = normalizeReturnTo(returnTo);
 
   async function signInWithGoogle() {
     setBusy(true);

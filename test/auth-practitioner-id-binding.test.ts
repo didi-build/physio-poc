@@ -5,6 +5,7 @@ import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-stor
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import * as resolveBound from "../src/auth/resolve-bound-practitioner-session.js";
 import { stripClientPractitionerId } from "../src/auth/better-auth-minimal-storage.js";
+import { AUTH_REFUSAL_MESSAGE } from "../src/http/auth-pages.js";
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import {
@@ -177,9 +178,85 @@ describe("Better Auth practitionerId binding guards", () => {
       [allowedId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
     );
 
-    await completeGoogleSignIn(BASE, deps, "allowed");
+    const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
     expect(await readUserPractitionerId(deps)).toBe(allowedId);
     expect(await readUserPractitionerId(deps)).not.toBe(otherId);
+    expect(await countAuthSessions(deps)).toBe(1);
+    const api = await requestWithJar(
+      BASE,
+      `${BASE}/api/practitioners/${allowedId}/my-exercises`,
+      deps,
+      jar,
+    );
+    expect(api.status).toBe(200);
+  });
+
+  it("binds by email on re-sign-in when user.practitionerId is null and two practitioner rows exist", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: BASE,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const otherId = generateOpaqueEntityId();
+    const allowedId = generateOpaqueEntityId();
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [otherId, "other.practitioner@example.com", "2026-01-01T00:00:00.000Z"],
+    );
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [allowedId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+    await completeGoogleSignIn(BASE, deps, "allowed");
+    await deps.sql.run('UPDATE "user" SET "practitionerId" = NULL WHERE email = ?', [
+      FAKE_GOOGLE_ALLOWED_EMAIL,
+    ]);
+    await deps.sql.run('DELETE FROM "session"');
+
+    const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
+    expect(await readUserPractitionerId(deps)).toBe(allowedId);
+    expect(await readUserPractitionerId(deps)).not.toBe(otherId);
+    expect(await countAuthSessions(deps)).toBe(1);
+    const api = await requestWithJar(
+      BASE,
+      `${BASE}/api/practitioners/${allowedId}/my-exercises`,
+      deps,
+      jar,
+    );
+    expect(api.status).toBe(200);
+  });
+
+  it("refuses OAuth sign-in without creating a session when practitionerId and email lookup disagree", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: BASE,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const staleId = generateOpaqueEntityId();
+    const currentId = generateOpaqueEntityId();
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [staleId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+    await completeGoogleSignIn(BASE, deps, "allowed");
+    await deps.sql.run("UPDATE practitioners SET email = ? WHERE id = ?", [
+      "moved-off-allowlist@example.com",
+      staleId,
+    ]);
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [currentId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+    await deps.sql.run('DELETE FROM "session"');
+
+    const { lastResponse } = await completeGoogleSignIn(BASE, deps, "allowed");
+    expect(lastResponse.status).not.toBe(500);
+    expect(await countAuthSessions(deps)).toBe(0);
+    expect(await readUserPractitionerId(deps)).toBe(staleId);
+    const html = await lastResponse.text();
+    expect(html).toContain(AUTH_REFUSAL_MESSAGE);
   });
 
   it("returns null and deletes the session when user.practitionerId disagrees with email lookup", async () => {

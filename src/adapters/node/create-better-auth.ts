@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { genericOAuth } from "better-auth/plugins";
 import {
   ALLOWLIST_REFUSAL_ERROR,
@@ -12,6 +12,7 @@ import {
 } from "../../auth/better-auth-minimal-storage.js";
 import {
   bindPractitionerForSessionUser,
+  PhysioPractitionerBindingError,
   runPhysioUserCreateBeforeHook,
   runPhysioUserUpdateBeforeHook,
 } from "../../auth/physio-better-auth-hooks.js";
@@ -24,12 +25,10 @@ import { findPractitionerByEmail } from "../../storage/repositories/practitioner
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
 
-export type CreateBetterAuthInstanceOptions = {
-  /** Test-only: exercise user-create hook fail-closed without validateUserInfo practitioner check. */
-  skipValidateUserInfoPractitionerCheck?: boolean;
-};
-
-function mergePhysioDatabaseHooks(sql: SqlStoragePort, authConfig: PhysioAuthConfig) {
+export function createPhysioBetterAuthDatabaseHooks(
+  sql: SqlStoragePort,
+  authConfig: PhysioAuthConfig,
+) {
   const storageHooks = createMinimalStorageDatabaseHooks();
   return {
     ...storageHooks,
@@ -47,11 +46,53 @@ function mergePhysioDatabaseHooks(sql: SqlStoragePort, authConfig: PhysioAuthCon
       ...storageHooks.session,
       create: {
         before: async (session: Record<string, unknown>) => {
-          await bindPractitionerForSessionUser(sql, session);
+          try {
+            await bindPractitionerForSessionUser(sql, session);
+          } catch (error) {
+            if (
+              error instanceof PhysioPractitionerBindingError &&
+              error.message === "practitioner_id_email_mismatch"
+            ) {
+              throw new APIError("FORBIDDEN", {
+                code: ALLOWLIST_REFUSAL_ERROR,
+                message: ALLOWLIST_REFUSAL_ERROR,
+              });
+            }
+            throw error;
+          }
           return { data: stripPhysioSessionMetadata(session) };
         },
       },
     },
+  };
+}
+
+export function createDefaultPhysioValidateUserInfo(
+  sql: SqlStoragePort,
+  config: PhysioAuthConfig,
+): NonNullable<
+  NonNullable<Parameters<typeof betterAuth>[0]["user"]>["validateUserInfo"]
+> {
+  return async ({ user, source }) => {
+    if (source.oauth?.providerId !== "google") {
+      return;
+    }
+    const email = typeof user.email === "string" ? user.email : null;
+    const verified =
+      user.emailVerified === true ||
+      (user as { email_verified?: boolean }).email_verified === true;
+    if (!verified) {
+      return { error: ALLOWLIST_REFUSAL_ERROR };
+    }
+    if (!isEmailAllowlisted(config.allowedGoogleEmails, email)) {
+      return { error: ALLOWLIST_REFUSAL_ERROR };
+    }
+    if (email) {
+      const practitioner = await findPractitionerByEmail(sql, email);
+      if (!practitioner) {
+        return { error: ALLOWLIST_REFUSAL_ERROR };
+      }
+    }
   };
 }
 
@@ -101,26 +142,26 @@ function googleSocialProvider(config: PhysioAuthConfig) {
   };
 }
 
-export function createBetterAuthInstance(
-  database: Database.Database,
-  config: PhysioAuthConfig,
-  sql: SqlStoragePort,
-  options: CreateBetterAuthInstanceOptions = {},
-): BetterAuthHandle {
-  const plugins = config.fakeGoogleProviderEnabled ? [fakeGooglePlugin(config)] : [];
-  if (config.fakeGoogleProviderEnabled) {
-    installFakeGoogleFetch(config.authBaseUrl);
-  }
+export type BuildPhysioBetterAuthOptionsOverrides = {
+  validateUserInfo?: NonNullable<
+    NonNullable<Parameters<typeof betterAuth>[0]["user"]>["validateUserInfo"]
+  >;
+};
 
+export function buildPhysioBetterAuthOptions(
+  sql: SqlStoragePort,
+  config: PhysioAuthConfig,
+  overrides: BuildPhysioBetterAuthOptionsOverrides = {},
+): Parameters<typeof betterAuth>[0] {
+  const plugins = config.fakeGoogleProviderEnabled ? [fakeGooglePlugin(config)] : [];
   const secret = resolveBetterAuthSecretForRuntime(config.betterAuthSecret);
   const trustedOrigin = new URL(config.authBaseUrl).origin;
-
-  const auth = betterAuth({
+  return {
     secret,
     baseURL: config.authBaseUrl,
     basePath: "/api/auth",
     trustedOrigins: [trustedOrigin],
-    database,
+    database: undefined as unknown as Database.Database,
     emailAndPassword: { enabled: false },
     rateLimit: { enabled: false },
     telemetry: { enabled: false },
@@ -128,7 +169,7 @@ export function createBetterAuthInstance(
       ? {}
       : googleSocialProvider(config),
     account: PHYSIO_BETTER_AUTH_ACCOUNT,
-    databaseHooks: mergePhysioDatabaseHooks(sql, config) as NonNullable<
+    databaseHooks: createPhysioBetterAuthDatabaseHooks(sql, config) as NonNullable<
       Parameters<typeof betterAuth>[0]["databaseHooks"]
     >,
     plugins,
@@ -140,27 +181,8 @@ export function createBetterAuthInstance(
           input: false,
         },
       },
-      validateUserInfo: async ({ user, source }) => {
-        if (source.oauth?.providerId !== "google") {
-          return;
-        }
-        const email = typeof user.email === "string" ? user.email : null;
-        const verified =
-          user.emailVerified === true ||
-          (user as { email_verified?: boolean }).email_verified === true;
-        if (!verified) {
-          return { error: ALLOWLIST_REFUSAL_ERROR };
-        }
-        if (!isEmailAllowlisted(config.allowedGoogleEmails, email)) {
-          return { error: ALLOWLIST_REFUSAL_ERROR };
-        }
-        if (email && !options.skipValidateUserInfoPractitionerCheck) {
-          const practitioner = await findPractitionerByEmail(sql, email);
-          if (!practitioner) {
-            return { error: ALLOWLIST_REFUSAL_ERROR };
-          }
-        }
-      },
+      validateUserInfo:
+        overrides.validateUserInfo ?? createDefaultPhysioValidateUserInfo(sql, config),
     },
     onAPIError: {
       errorURL: "/api/auth/oauth-error",
@@ -178,6 +200,21 @@ export function createBetterAuthInstance(
         sameSite: "lax",
       },
     },
+  };
+}
+
+export function createBetterAuthInstance(
+  database: Database.Database,
+  config: PhysioAuthConfig,
+  sql: SqlStoragePort,
+): BetterAuthHandle {
+  if (config.fakeGoogleProviderEnabled) {
+    installFakeGoogleFetch(config.authBaseUrl);
+  }
+
+  const auth = betterAuth({
+    ...buildPhysioBetterAuthOptions(sql, config),
+    database,
   });
 
   return {
