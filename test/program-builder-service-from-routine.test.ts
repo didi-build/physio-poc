@@ -1754,13 +1754,23 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       const verB2 = id("tri-ver-b2");
       const verC1 = id("tri-ver-c1");
       const verC2 = id("tri-ver-c2");
-      await seedStretchApprovedExercise(
-        storage,
-        practitionerA,
-        exA,
-        verA1,
-        1,
-        "Row A v1",
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [exA, "stretch", practitionerA, TS],
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verA1,
+          exercise_id: exA,
+          version_number: 1,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row A v1",
+          description: "Fixture desc A v1",
+          cue_stretching: "Fixture cue A v1",
+        }),
       );
       await storage.run(
         VERSION_INSERT_SQL,
@@ -1772,14 +1782,27 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           approved_by: practitionerA,
           approved_at: TS,
           title: "Row A v2",
+          description: "Fixture desc A v2",
+          cue_stretching: "Fixture cue A v2",
         }),
       );
-      await seedStrengtheningApprovedExercise(
-        storage,
-        practitionerA,
-        exB,
-        verB1,
-        "Row B v1",
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [exB, "strengthening", practitionerA, TS],
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verB1,
+          exercise_id: exB,
+          version_number: 1,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row B v1",
+          description: "Fixture desc B v1",
+          cue_isometric: "Fixture cue B v1 isometric",
+        }),
       );
       await storage.run(
         VERSION_INSERT_SQL,
@@ -1791,15 +1814,27 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           approved_by: practitionerA,
           approved_at: TS,
           title: "Row B v2",
+          description: "Fixture desc B v2",
+          cue_concentric: "Fixture cue B v2 concentric",
         }),
       );
-      await seedStretchApprovedExercise(
-        storage,
-        practitionerA,
-        exC,
-        verC1,
-        1,
-        "Row C v1",
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [exC, "stretch", practitionerA, TS],
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verC1,
+          exercise_id: exC,
+          version_number: 1,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row C v1",
+          description: "Fixture desc C v1",
+          cue_stretching: "Fixture cue C v1",
+        }),
       );
       await storage.run(
         VERSION_INSERT_SQL,
@@ -1811,6 +1846,8 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           approved_by: practitionerA,
           approved_at: TS,
           title: "Row C v2",
+          description: "Fixture desc C v2",
+          cue_stretching: "Fixture cue C v2",
         }),
       );
       const routines = new RoutinesRepository(storage);
@@ -1838,6 +1875,52 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         hold_s: 22,
         per_day: { min: 1, max: 2 },
         days_per_week: 6,
+      };
+      const communityParamsA = {
+        hold_s: 99,
+        per_day: { min: 2, max: 3 },
+        days_per_week: 3,
+      };
+      const communityParamsB = {
+        reps: 8,
+        sets: 2,
+        hold_s: 10,
+        days_per_week: 3,
+      };
+      const communityParamsC = {
+        hold_s: 88,
+        per_day: { min: 2, max: 3 },
+        days_per_week: 3,
+      };
+      const textSnapshotA1 = {
+        title: "Row A v1",
+        description: "Fixture desc A v1",
+        cue: "Fixture cue A v1",
+      };
+      const textSnapshotA2 = {
+        title: "Row A v2",
+        description: "Fixture desc A v2",
+        cue: "Fixture cue A v2",
+      };
+      const textSnapshotB1 = {
+        title: "Row B v1",
+        description: "Fixture desc B v1",
+        cue: "Fixture cue B v1 isometric",
+      };
+      const textSnapshotB2 = {
+        title: "Row B v2",
+        description: "Fixture desc B v2",
+        cue: "Fixture cue B v2 concentric",
+      };
+      const textSnapshotC1 = {
+        title: "Row C v1",
+        description: "Fixture desc C v1",
+        cue: "Fixture cue C v1",
+      };
+      const textSnapshotC2 = {
+        title: "Row C v2",
+        description: "Fixture desc C v2",
+        cue: "Fixture cue C v2",
       };
       await rvRows.replaceDraftRow({
         id: id("tri-rvr1"),
@@ -1924,28 +2007,15 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       expect(v2Rows).toHaveLength(3);
       await storage.run(
         `UPDATE routine_version_rows SET exercise_version_id = ?, params_json = ? WHERE id = ?`,
-        [
-          verA2,
-          JSON.stringify({ hold_s: 99, per_day: { min: 2, max: 3 }, days_per_week: 3 }),
-          v2Rows[0]!.id,
-        ],
+        [verA2, JSON.stringify(communityParamsA), v2Rows[0]!.id],
       );
       await storage.run(
         `UPDATE routine_version_rows SET exercise_version_id = ?, prescription_type = ?, params_json = ? WHERE id = ?`,
-        [
-          verB2,
-          "concentric",
-          JSON.stringify({ reps: 8, sets: 2, hold_s: 10, days_per_week: 3 }),
-          v2Rows[1]!.id,
-        ],
+        [verB2, "concentric", JSON.stringify(communityParamsB), v2Rows[1]!.id],
       );
       await storage.run(
         `UPDATE routine_version_rows SET exercise_version_id = ?, params_json = ? WHERE id = ?`,
-        [
-          verC2,
-          JSON.stringify({ hold_s: 88, per_day: { min: 2, max: 3 }, days_per_week: 3 }),
-          v2Rows[2]!.id,
-        ],
+        [verC2, JSON.stringify(communityParamsC), v2Rows[2]!.id],
       );
 
       const expectMyCopyRows = (
@@ -1960,25 +2030,68 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           used_as: "used_as_is",
         });
         expect(view.rows).toHaveLength(3);
-        expect(view.rows.map((row) => row.id)).toEqual(rowIds);
-        expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
-        expect(view.rows[0]).toMatchObject({
+        expect(view.rows[0]).toEqual({
+          id: rowIds[0],
+          position: 0,
+          kind: "exercise",
           exercise_id: exA,
           exercise_version_id: verA1,
+          exercise_request_id: null,
+          pinned_version_number: 1,
           prescription_type: "stretching",
           params: paramsA,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotA1,
+          note: null,
+          library_update: {
+            row_id: rowIds[0],
+            exercise_id: exA,
+            exercise_title: textSnapshotA1.title,
+            pinned_version_number: 1,
+            latest_version_number: 2,
+          },
         });
-        expect(view.rows[1]).toMatchObject({
+        expect(view.rows[1]).toEqual({
+          id: rowIds[1],
+          position: 1,
+          kind: "exercise",
           exercise_id: exB,
           exercise_version_id: verB1,
+          exercise_request_id: null,
+          pinned_version_number: 1,
           prescription_type: "isometric",
           params: paramsB,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotB1,
+          note: null,
+          library_update: {
+            row_id: rowIds[1],
+            exercise_id: exB,
+            exercise_title: textSnapshotB1.title,
+            pinned_version_number: 1,
+            latest_version_number: 2,
+          },
         });
-        expect(view.rows[2]).toMatchObject({
+        expect(view.rows[2]).toEqual({
+          id: rowIds[2],
+          position: 2,
+          kind: "exercise",
           exercise_id: exC,
           exercise_version_id: verC1,
+          exercise_request_id: null,
+          pinned_version_number: 1,
           prescription_type: "stretching",
           params: paramsC,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotC1,
+          note: null,
+          library_update: {
+            row_id: rowIds[2],
+            exercise_id: exC,
+            exercise_title: textSnapshotC1.title,
+            pinned_version_number: 1,
+            latest_version_number: 2,
+          },
         });
       };
 
@@ -1994,26 +2107,51 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           used_as: "used_as_is",
         });
         expect(view.rows).toHaveLength(3);
-        expect(view.rows.map((row) => row.id)).toEqual(rowIds);
-        expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
-        expect(view.rows[0]).toMatchObject({
+        expect(view.rows[0]).toEqual({
+          id: rowIds[0],
+          position: 0,
+          kind: "exercise",
           exercise_id: exA,
           exercise_version_id: verA2,
+          exercise_request_id: null,
+          pinned_version_number: 2,
           prescription_type: "stretching",
+          params: communityParamsA,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotA2,
+          note: null,
+          library_update: null,
         });
-        expect(view.rows[0]?.params.hold_s).toBe(99);
-        expect(view.rows[1]).toMatchObject({
+        expect(view.rows[1]).toEqual({
+          id: rowIds[1],
+          position: 1,
+          kind: "exercise",
           exercise_id: exB,
           exercise_version_id: verB2,
+          exercise_request_id: null,
+          pinned_version_number: 2,
           prescription_type: "concentric",
+          params: communityParamsB,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotB2,
+          note: null,
+          library_update: null,
         });
-        expect(view.rows[1]?.params.reps).toBe(8);
-        expect(view.rows[2]).toMatchObject({
+        expect(view.rows[2]).toEqual({
+          id: rowIds[2],
+          position: 2,
+          kind: "exercise",
           exercise_id: exC,
           exercise_version_id: verC2,
+          exercise_request_id: null,
+          pinned_version_number: 2,
           prescription_type: "stretching",
+          params: communityParamsC,
+          params_source: "global_defaults",
+          text_snapshot: textSnapshotC2,
+          note: null,
+          library_update: null,
         });
-        expect(view.rows[2]?.params.hold_s).toBe(88);
       };
 
       const communityRowIds = [id("tri-prog-r1"), id("tri-prog-r2"), id("tri-prog-r3")];
