@@ -55,12 +55,16 @@ export class TypeDefaultsRepository {
     params: ExerciseParams,
   ): Promise<void> {
     const opaqueId = validateOpaqueEntityId(id, "Type default id");
+    const opaquePractitionerId = validateOpaqueEntityId(
+      practitionerId,
+      "Practitioner id",
+    );
     const validated = validateExerciseParams(params);
     await this.sql.run(
       `INSERT INTO type_defaults (id, scope, practitioner_id, type, params_json)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(practitioner_id, type) WHERE scope = 'practitioner' DO UPDATE SET params_json = excluded.params_json`,
-      [opaqueId, "practitioner", practitionerId, type, JSON.stringify(validated)],
+      [opaqueId, "practitioner", opaquePractitionerId, type, JSON.stringify(validated)],
     );
   }
 

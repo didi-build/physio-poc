@@ -150,12 +150,12 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-low",
+        exerciseId: id("ex-low"),
         title: "AAA low usage",
         approvedAt: "2026-03-01T00:00:00.000Z",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-high",
+        exerciseId: id("ex-high"),
         title: "ZZZ high usage",
         approvedAt: "2026-01-01T00:00:00.000Z",
       });
@@ -163,12 +163,12 @@ describe("Exercise library QA round 2 (integration)", () => {
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-low",
+        exerciseId: id("ex-low"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-high",
+        exerciseId: id("ex-high"),
         savedAt: TS,
         lastUsedAt: TS,
       });
@@ -177,13 +177,13 @@ describe("Exercise library QA round 2 (integration)", () => {
       const defaultSort = await service.searchApprovedExercises({
         practitionerId: practId,
       });
-      expect(defaultSort.exercises[0]?.exercise_id).toBe("ex-high");
+      expect(defaultSort.exercises[0]?.exercise_id).toBe(id("ex-high"));
 
       const newest = await service.searchApprovedExercises({
         practitionerId: practId,
         sort: "newest",
       });
-      expect(newest.exercises[0]?.exercise_id).toBe("ex-low");
+      expect(newest.exercises[0]?.exercise_id).toBe(id("ex-low"));
     } finally {
       storage.close();
     }
@@ -196,7 +196,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
 
       const { exerciseId: freshId } = await seedApproved(storage, practId, {
-        exerciseId: "ex-fresh",
+        exerciseId: id("ex-fresh"),
         title: "Fresh",
       });
       const firstSave = await service.saveToMyExercises(practId, freshId);
@@ -207,7 +207,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       ).toBeNull();
 
       const { exerciseId } = await seedApproved(storage, practId, {
-        exerciseId: "ex-undo",
+        exerciseId: id("ex-undo"),
         title: "Lib",
       });
       await service.saveToMyExercises(practId, exerciseId);
@@ -304,11 +304,11 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-percent",
+        exerciseId: id("ex-percent"),
         title: "100% effort",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-other",
+        exerciseId: id("ex-other"),
         title: "100X effort",
       });
 
@@ -318,7 +318,7 @@ describe("Exercise library QA round 2 (integration)", () => {
         query: "100%",
       });
       expect(hit.exercises).toHaveLength(1);
-      expect(hit.exercises[0]?.exercise_id).toBe("ex-percent");
+      expect(hit.exercises[0]?.exercise_id).toBe(id("ex-percent"));
     } finally {
       storage.close();
     }
@@ -329,24 +329,24 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-knee",
+        exerciseId: id("ex-knee"),
         title: "Knee move",
         bodyRegionId: "br-knee",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-hip",
+        exerciseId: id("ex-hip"),
         title: "Hip move",
         bodyRegionId: "br-hip",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-knee",
+        exerciseId: id("ex-knee"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-hip",
+        exerciseId: id("ex-hip"),
         savedAt: TS,
       });
 
@@ -362,7 +362,7 @@ describe("Exercise library QA round 2 (integration)", () => {
         ...list.sections.recently_used_and_saved,
       ];
       expect(allItems).toHaveLength(1);
-      expect(allItems[0]?.exercise_id).toBe("ex-knee");
+      expect(allItems[0]?.exercise_id).toBe(id("ex-knee"));
     } finally {
       storage.close();
     }
@@ -379,12 +379,12 @@ describe("Exercise library QA round 2 (integration)", () => {
         });
       }
       await seedApproved(storage, practId, {
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         title: "Saved unique title",
       });
       await new PractitionerExercisesRepository(storage).upsert({
         practitionerId: practId,
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         savedAt: TS,
       });
 

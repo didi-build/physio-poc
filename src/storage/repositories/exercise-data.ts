@@ -64,6 +64,11 @@ export class PractitionerExercisesRepository {
   }): Promise<void> {
     const textOverrides = validateTextOverrides(input.textOverrides ?? {});
     const paramOverrides = validateParamOverridesByType(input.paramOverrides ?? {});
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
     const textJson = serializeTextOverrides(textOverrides);
     const paramJson = JSON.stringify(paramOverrides);
 
@@ -79,8 +84,8 @@ export class PractitionerExercisesRepository {
         text_overrides_json = excluded.text_overrides_json,
         param_overrides_json = excluded.param_overrides_json`,
       [
-        input.practitionerId,
-        input.exerciseId,
+        practitionerId,
+        exerciseId,
         input.favourite ? 1 : 0,
         input.savedAt,
         input.lastUsedAt ?? null,
@@ -305,9 +310,10 @@ export class ExerciseBodyRegionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async link(exerciseId: string, bodyRegionId: string): Promise<void> {
+    const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");
     await this.sql.run(
       "INSERT INTO exercise_body_regions (exercise_id, body_region_id) VALUES (?, ?)",
-      [exerciseId, bodyRegionId],
+      [opaqueExerciseId, bodyRegionId],
     );
   }
 }

@@ -82,7 +82,7 @@ describe("Exercise library QA round 1 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-approved",
+        exerciseId: id("ex-approved"),
         title: "Other",
       });
       await seedExercise(storage, practId, "ex-draft-only");
@@ -114,7 +114,7 @@ describe("Exercise library QA round 1 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId, {
-        exerciseId: "ex-both",
+        exerciseId: id("ex-both"),
         title: "Approved title",
       });
       await storage.run(VERSION_INSERT_SQL, [
@@ -153,7 +153,11 @@ describe("Exercise library QA round 1 (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
-      const pract2 = await seedPractitioner(storage, "pract-2", "coach2@example.com");
+      const pract2 = await seedPractitioner(
+        storage,
+        id("pract-2"),
+        "coach2@example.com",
+      );
       const exAaa = id("ex-aaa");
       const exZzz = id("ex-zzz");
       await seedApproved(storage, practId, {
@@ -218,12 +222,12 @@ describe("Exercise library QA round 1 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-knee",
+        exerciseId: id("ex-knee"),
         title: "Knee move",
         bodyRegionId: "br-knee",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-hip",
+        exerciseId: id("ex-hip"),
         title: "Hip move",
         bodyRegionId: "br-hip",
       });
@@ -392,13 +396,14 @@ describe("Exercise library QA round 1 (integration)", () => {
         service.applyUndo(practId, "ex-draft", snapshot),
       ).rejects.toMatchObject({ code: "exercise_not_found" });
 
+      const exOne = id("ex-1");
       const badTime = {
         ...snapshot,
-        exercise_id: "ex-1",
+        exercise_id: exOne,
         snapshot: { ...snapshot.snapshot, saved_at: "not-a-date" },
       };
-      await seedApproved(storage, practId, { exerciseId: "ex-1" });
-      await expect(service.applyUndo(practId, "ex-1", badTime)).rejects.toMatchObject({
+      await seedApproved(storage, practId, { exerciseId: exOne });
+      await expect(service.applyUndo(practId, exOne, badTime)).rejects.toMatchObject({
         code: "invalid_input",
       });
     } finally {
@@ -620,11 +625,11 @@ describe("Exercise library QA round 1 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-under",
+        exerciseId: id("ex-under"),
         title: "move_a_b",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-plain",
+        exerciseId: id("ex-plain"),
         title: "moveaxb",
       });
 
@@ -634,7 +639,7 @@ describe("Exercise library QA round 1 (integration)", () => {
         query: "move_a_b",
       });
       expect(hit.exercises).toHaveLength(1);
-      expect(hit.exercises[0]?.exercise_id).toBe("ex-under");
+      expect(hit.exercises[0]?.exercise_id).toBe(id("ex-under"));
     } finally {
       storage.close();
     }
