@@ -13,6 +13,7 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const exerciseId = "ex-1";
@@ -120,10 +121,15 @@ describe("Worker exercise library routes (integration)", () => {
       objects: new InMemoryObjectStorage(),
     };
 
+    function authedRequest(url: string, init: RequestInit = {}): Request {
+      const withCsrf = mutatingAppApiRequestInit(url, init);
+      const headers = new Headers(withCsrf.headers);
+      headers.set("cookie", sessionCookie);
+      return new Request(url, { ...withCsrf, headers });
+    }
+
     const searchResponse = await handleRequest(
-      new Request(`${apiBase}/exercises/approved/search`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedRequest(`${apiBase}/exercises/approved/search`),
       deps,
     );
     expect(searchResponse.status).toBe(200);
@@ -131,17 +137,14 @@ describe("Worker exercise library routes (integration)", () => {
     expect(searchBody.exercises).toHaveLength(1);
 
     const detailsResponse = await handleRequest(
-      new Request(`${apiBase}/exercises/${exerciseId}`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedRequest(`${apiBase}/exercises/${exerciseId}`),
       deps,
     );
     expect(detailsResponse.status).toBe(200);
 
     const saveResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedRequest(`${apiBase}/my-exercises/${exerciseId}`, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "save" }),
       }),
       deps,
@@ -149,9 +152,8 @@ describe("Worker exercise library routes (integration)", () => {
     expect(saveResponse.status).toBe(200);
 
     const pinResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedRequest(`${apiBase}/my-exercises/${exerciseId}`, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "pin", pinned: true }),
       }),
       deps,
@@ -160,9 +162,8 @@ describe("Worker exercise library routes (integration)", () => {
     const pinBody = (await pinResponse.json()) as { undo: unknown };
 
     const patchResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedRequest(`${apiBase}/my-exercises/${exerciseId}`, {
         method: "PATCH",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ text_overrides: { title: "My title" } }),
       }),
       deps,
@@ -170,9 +171,7 @@ describe("Worker exercise library routes (integration)", () => {
     expect(patchResponse.status).toBe(200);
 
     const listResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedRequest(`${apiBase}/my-exercises`),
       deps,
     );
     expect(listResponse.status).toBe(200);
@@ -180,9 +179,8 @@ describe("Worker exercise library routes (integration)", () => {
     expect(listBody.list_state).toBe("ok");
 
     const undoResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedRequest(`${apiBase}/my-exercises/${exerciseId}`, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: pinBody.undo }),
       }),
       deps,
@@ -190,9 +188,8 @@ describe("Worker exercise library routes (integration)", () => {
     expect(undoResponse.status).toBe(200);
 
     const deleteResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedRequest(`${apiBase}/my-exercises/${exerciseId}`, {
         method: "DELETE",
-        headers: { cookie: sessionCookie },
       }),
       deps,
     );

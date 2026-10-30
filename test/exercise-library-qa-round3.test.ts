@@ -97,7 +97,11 @@ function undoPost(
       `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
       {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
+        headers: {
+          cookie: sessionCookie,
+          origin: "https://example.test",
+          "content-type": "application/json",
+        },
         body: JSON.stringify({ action: "undo", undo: undoBody }),
       },
     ),

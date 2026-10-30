@@ -473,7 +473,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const missingSnapshot = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({ action: "undo", undo: { practitioner_id: practId } }),
         }),
         deps,
@@ -483,7 +487,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badJson = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -507,7 +515,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const looseDate = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -536,7 +548,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badParams = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {

@@ -7,6 +7,7 @@ import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
+import { rejectMutatingAppApiCsrf } from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleHealthRequest } from "./routes/health.js";
@@ -169,6 +170,10 @@ async function guardAndRun(
       return jsonUnauthorized();
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);
+  }
+  const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+  if (csrfRejection) {
+    return csrfRejection;
   }
   return next();
 }
