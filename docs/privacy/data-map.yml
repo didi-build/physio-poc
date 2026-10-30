@@ -333,6 +333,15 @@ d1_tables:
         whose: operational
       link_expires_on:
         whose: operational
+      source_routine_id:
+        whose: operational
+        notes: Nullable; set when program was created from a routine
+      source_routine_version_id:
+        whose: operational
+        notes: Pinned community routine version at program creation; later routine edits do not change program
+      source_routine_origin:
+        whose: operational
+        notes: used_as_is or tweaked when from routine; null when built from scratch
 
   program_rows:
     defaults:
@@ -415,6 +424,173 @@ d1_tables:
       expires_in:
         whose: operational
       custom_expires_on:
+        whose: operational
+
+  conditions:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until row deleted
+      who_can_see: all_practitioners
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+      notes: Fixed v1 list seeded empty; practitioners cannot add conditions.
+    columns:
+      id:
+        whose: operational
+      label:
+        whose: operational
+        notes: Clinical template label only; no patient details.
+      sort_order:
+        whose: operational
+
+  routines:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until routine removed from community (no community delete in v1)
+      who_can_see: all_practitioners
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+      notes: Community routine metadata; draft-only rows visible to author via repository.
+    columns:
+      id:
+        whose: operational
+      created_by:
+        whose: practitioner
+        data: Author practitioner id
+        purpose: draft visibility and attribution
+        processors: [Cloudflare]
+        retention: until routine deleted
+      created_at:
+        whose: operational
+      condition_id:
+        whose: operational
+        notes: Nullable when condition list is empty or unset.
+      body_region_id:
+        whose: operational
+      who_its_for:
+        whose: operational
+        notes: patient_detail_risk; optional general audience line only; validateRoutineWhoItsFor on write
+      published_version:
+        whose: operational
+      draft_updated_at:
+        whose: operational
+
+  routine_versions:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until routine deleted
+      who_can_see: all_practitioners
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      routine_id:
+        whose: operational
+      version_number:
+        whose: operational
+      status:
+        whose: operational
+        notes: draft visible to author only; published visible in All routines
+      name:
+        whose: operational
+        notes: patient_detail_risk; validateRoutineName on publish
+      change_summary:
+        whose: operational
+        notes: patient_detail_risk; validateChangeSummary on write
+      restored_from_version_id:
+        whose: operational
+      created_by:
+        whose: practitioner
+        data: Practitioner id who saved the version
+        purpose: audit
+        processors: [Cloudflare]
+        retention: until routine deleted
+      created_at:
+        whose: operational
+
+  routine_version_rows:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until routine version deleted
+      who_can_see: all_practitioners
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      routine_version_id:
+        whose: operational
+      position:
+        whose: operational
+      exercise_id:
+        whose: operational
+      exercise_version_id:
+        whose: operational
+        notes: Pinned approved exercise version at save time
+      prescription_type:
+        whose: operational
+      params_json:
+        whose: operational
+
+  practitioner_routines:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until practitioner removes from My routines
+      who_can_see: owner_only
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+      notes: Frozen saved copy; community updates do not mutate rows.
+    columns:
+      id:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Owner practitioner id
+        purpose: My routines membership
+        processors: [Cloudflare]
+        retention: until row deleted
+      routine_id:
+        whose: operational
+      source_routine_version_id:
+        whose: operational
+      source_version_number:
+        whose: operational
+        notes: Used to flag when community published_version is newer
+      saved_at:
+        whose: operational
+      last_used_at:
+        whose: operational
+      edited:
+        whose: operational
+
+  practitioner_routine_rows:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until practitioner_routines row deleted
+      who_can_see: owner_only
+      source: migrations/0005_routine_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      practitioner_routine_id:
+        whose: operational
+      position:
+        whose: operational
+      exercise_id:
+        whose: operational
+      exercise_version_id:
+        whose: operational
+      prescription_type:
+        whose: operational
+      params_json:
         whose: operational
 
 other_items: []

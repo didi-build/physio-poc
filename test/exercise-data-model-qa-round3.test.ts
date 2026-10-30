@@ -182,7 +182,7 @@ describe("QA round 3: foreign key list (integration, SQLite)", () => {
     const storage = await openMigratedDatabase();
     try {
       const fks = await foreignKeysAcrossSchema(storage);
-      expect(fks).toHaveLength(18);
+      expect(fks).toHaveLength(35);
       for (const fk of fks) {
         expect(fk.on_delete).toBe("RESTRICT");
       }

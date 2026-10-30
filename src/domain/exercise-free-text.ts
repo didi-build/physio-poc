@@ -141,6 +141,27 @@ export function validateRequestNote(note: string | null | undefined): string | n
   return note;
 }
 
+/** Routine name: optional while drafting; required to publish. No patient details. */
+export function validateRoutineName(name: string): string {
+  return validateProgramName(name);
+}
+
+export function validateOptionalRoutineName(
+  name: string | null | undefined,
+): string | null {
+  return validateOptionalProgramName(name);
+}
+
+/** Who it is for: optional general audience line; must not hold patient details. */
+export function validateRoutineWhoItsFor(
+  text: string | null | undefined,
+): string | null {
+  if (text === null || text === undefined || text.trim() === "") {
+    return null;
+  }
+  return validateExerciseTemplateText(text.trim(), "Who it is for");
+}
+
 /** Text override description (partial field edits allowed, but not empty whitespace). */
 export function validateTextOverrideValue(key: string, value: string): string {
   if (key === "title") {
