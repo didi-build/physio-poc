@@ -28,6 +28,8 @@ const MS_DAY = 24 * 60 * 60 * 1000;
 const BAD_OPAQUE_ID = "not-a-valid-opaque-id";
 const PROGRAM_ID_OPAQUE_MESSAGE = "Program id must be a UUID v4 opaque id";
 const ROW_ID_OPAQUE_MESSAGE = "Program row id must be a UUID v4 opaque id";
+const EXERCISE_VERSION_ID_OPAQUE_MESSAGE =
+  "Exercise version id must be a UUID v4 opaque id";
 const HOLD_S_RANGE_MESSAGE = "hold_s must be between 1 and 120";
 const LINK_VERSION_MISMATCH_MESSAGE =
   "approvedVersionId does not match the exercise request";
@@ -1168,7 +1170,10 @@ describe("ProgramBuilderService opaque id validation (extra entry points)", () =
           exerciseId: FIXTURE_EXERCISE_ID,
           exerciseVersionId: badId,
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: EXERCISE_VERSION_ID_OPAQUE_MESSAGE,
+      });
     } finally {
       storage.close();
     }
