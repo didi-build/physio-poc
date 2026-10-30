@@ -31,6 +31,7 @@ import {
   MCP_SAMPLE_SEARCH_ROUTINES_OUTPUT,
 } from "./mcp-connector-schema-samples.js";
 import {
+  assertNoOutputPatternProperties,
   collectInputUrlLikeViolations,
   visitSchemaNodes,
 } from "./mcp-connector-schema-test-utils.js";
@@ -338,13 +339,7 @@ describe("Physio MCP connector contract", () => {
   });
 
   it("has no patternProperties on any tool output schema", () => {
-    for (const tool of PHYSIO_MCP_TOOLS) {
-      visitSchemaNodes(tool.outputSchema, (node) => {
-        if (node.patternProperties) {
-          throw new Error(`${tool.name} output: patternProperties is not allowed`);
-        }
-      });
-    }
+    assertNoOutputPatternProperties(PHYSIO_MCP_TOOLS);
   });
 
   it("rejects zero-result exercise search output without search_link", () => {
