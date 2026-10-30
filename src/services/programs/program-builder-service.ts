@@ -63,8 +63,7 @@ export class ProgramBuilderServiceError extends Error {
       | "exercise_not_found"
       | "exercise_request_not_found"
       | "invalid_input"
-      | "restore_window_expired"
-      | "forbidden",
+      | "restore_window_expired",
   ) {
     super(message);
     this.name = "ProgramBuilderServiceError";
@@ -120,11 +119,9 @@ export class ProgramBuilderService {
     programId: string,
   ): Promise<ProgramBuilderView> {
     const validatedProgramId = this.parseOpaqueId(programId, "Program id");
-    await this.requirePractitioner(practitionerId);
-    const program = await this.requireOwnedProgram(practitionerId, validatedProgramId, {
+    return this.buildProgramView(practitionerId, validatedProgramId, {
       allowDeleted: true,
     });
-    return this.buildProgramView(practitionerId, validatedProgramId, program);
   }
 
   /**
@@ -267,7 +264,9 @@ export class ProgramBuilderService {
       this.mapFreeTextError(err);
     }
     await this.programs.touchDraft(validatedProgramId, this.now());
-    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
+    return {
+      program: await this.buildProgramView(practitionerId, validatedProgramId),
+    };
   }
 
   async addExerciseRow(
@@ -684,14 +683,9 @@ export class ProgramBuilderService {
     await this.requireOwnedProgram(practitionerId, validatedProgramId);
     await this.programs.softDelete(validatedProgramId, this.now());
     return {
-      program: await this.buildProgramView(
-        practitionerId,
-        validatedProgramId,
-        undefined,
-        {
-          allowDeleted: true,
-        },
-      ),
+      program: await this.buildProgramView(practitionerId, validatedProgramId, {
+        allowDeleted: true,
+      }),
     };
   }
 
@@ -723,12 +717,11 @@ export class ProgramBuilderService {
   private async buildProgramView(
     practitionerId: string,
     programId: string,
-    programRecord?: ProgramRecord,
     options?: { allowDeleted?: boolean },
   ): Promise<ProgramBuilderView> {
-    const program =
-      programRecord ??
-      (await this.requireOwnedProgram(practitionerId, programId, options));
+    await this.requirePractitioner(practitionerId);
+    const program = await this.programs.findById(programId);
+    this.assertProgramAccess(practitionerId, program, options);
     const rows = program.deleted_at ? [] : await this.rows.listForProgram(programId);
     const builderRows: ProgramBuilderRow[] = [];
     let libraryUpdates = 0;
@@ -762,7 +755,9 @@ export class ProgramBuilderService {
     practitionerId: string,
     record: ProgramRecord,
   ): Promise<ProgramListItem> {
-    const view = await this.buildProgramView(practitionerId, record.id, record);
+    const view = await this.buildProgramView(practitionerId, record.id, {
+      allowDeleted: Boolean(record.deleted_at),
+    });
     return {
       program_id: view.program_id,
       code: view.code,
@@ -1047,6 +1042,19 @@ export class ProgramBuilderService {
     }
   }
 
+  private assertProgramAccess(
+    practitionerId: string,
+    program: ProgramRecord | null | undefined,
+    options?: { allowDeleted?: boolean },
+  ): asserts program is ProgramRecord {
+    if (!program || program.created_by !== practitionerId) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    if (program.deleted_at && !options?.allowDeleted) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+  }
+
   private async requireOwnedProgram(
     practitionerId: string,
     programId: string,
@@ -1054,15 +1062,7 @@ export class ProgramBuilderService {
   ): Promise<ProgramRecord> {
     await this.requirePractitioner(practitionerId);
     const program = await this.programs.findById(programId);
-    if (!program) {
-      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
-    }
-    if (program.created_by !== practitionerId) {
-      throw new ProgramBuilderServiceError("Program not found", "forbidden");
-    }
-    if (program.deleted_at && !options?.allowDeleted) {
-      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
-    }
+    this.assertProgramAccess(practitionerId, program, options);
     return program;
   }
 
