@@ -73,3 +73,45 @@ describe("mutating app API CSRF (unit)", () => {
     expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(415);
   });
 });
+
+describe("mutating app API CSRF regression guards (mutant killers)", () => {
+  it("accepts WEB_APP_BASE_URL origin when the request URL host differs", () => {
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "https://app.example.com",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)).toBeNull();
+  });
+
+  it("returns 403 when Origin is the literal null string", () => {
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "null",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(403);
+  });
+
+  it("prefers Origin over Referer when Origin is invalid", () => {
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "not-a-url",
+        Referer: "https://physio.test.example/programs",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(403);
+  });
+
+  it("guards PUT on app API paths", () => {
+    expect(isMutatingAppApiPath("/api/practitioners/x/my-exercises/y", "PUT")).toBe(
+      true,
+    );
+  });
+});
