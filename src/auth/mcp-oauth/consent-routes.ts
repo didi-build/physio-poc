@@ -186,25 +186,19 @@ async function loadPendingForRequest(
   return { ok: true, pendingId, csrfToken };
 }
 
-export const physioMcpConsentOriginGuard = {
-  refuseCrossOriginConsentPost(request: Request, authBaseUrl: string): Response | null {
-    const origin = request.headers.get("origin");
-    if (origin === null) {
-      return plainStatus(403);
-    }
-    const expected = new URL(authBaseUrl).origin;
-    if (origin !== expected) {
-      return plainStatus(403);
-    }
-    return null;
-  },
-};
-
-export function refuseCrossOriginConsentPost(
+function refuseCrossOriginConsentPost(
   request: Request,
   authBaseUrl: string,
 ): Response | null {
-  return physioMcpConsentOriginGuard.refuseCrossOriginConsentPost(request, authBaseUrl);
+  const origin = request.headers.get("origin");
+  if (origin === null) {
+    return plainStatus(403);
+  }
+  const expected = new URL(authBaseUrl).origin;
+  if (origin !== expected) {
+    return plainStatus(403);
+  }
+  return null;
 }
 
 async function postOAuthConsent(
@@ -230,10 +224,7 @@ async function postOAuthConsent(
 async function handleConsentAllow(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<Response> {
-  const crossOrigin = physioMcpConsentOriginGuard.refuseCrossOriginConsentPost(
-    input.request,
-    input.authBaseUrl,
-  );
+  const crossOrigin = refuseCrossOriginConsentPost(input.request, input.authBaseUrl);
   if (crossOrigin) {
     return crossOrigin;
   }
@@ -290,10 +281,7 @@ async function handleConsentAllow(
 async function handleConsentDeny(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<Response> {
-  const crossOrigin = physioMcpConsentOriginGuard.refuseCrossOriginConsentPost(
-    input.request,
-    input.authBaseUrl,
-  );
+  const crossOrigin = refuseCrossOriginConsentPost(input.request, input.authBaseUrl);
   if (crossOrigin) {
     return crossOrigin;
   }
