@@ -1605,6 +1605,18 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         name: "Draft pinned routine",
       });
       await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: id("draft-pin-ver-newer"),
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Heel slide newer approved",
+        }),
+      );
+      await storage.run(
         `UPDATE exercise_versions SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE id = ?`,
         [FIXTURE_VERSION_ID],
       );
@@ -1887,6 +1899,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
 
       const expectMyCopyRows = (
         view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
+        rowIds: string[],
       ) => {
         expect(view.routine_origin).toEqual({
           routine_id: id("tri-routine"),
@@ -1896,6 +1909,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           used_as: "used_as_is",
         });
         expect(view.rows).toHaveLength(3);
+        expect(view.rows.map((row) => row.id)).toEqual(rowIds);
         expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
         expect(view.rows[0]).toMatchObject({
           exercise_id: exA,
@@ -1919,6 +1933,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
 
       const expectCommunityRows = (
         view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
+        rowIds: string[],
       ) => {
         expect(view.routine_origin).toEqual({
           routine_id: id("tri-routine"),
@@ -1928,6 +1943,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           used_as: "used_as_is",
         });
         expect(view.rows).toHaveLength(3);
+        expect(view.rows.map((row) => row.id)).toEqual(rowIds);
         expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
         expect(view.rows[0]).toMatchObject({
           exercise_id: exA,
@@ -1949,21 +1965,23 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         expect(view.rows[2]?.params.hold_s).toBe(88);
       };
 
+      const communityRowIds = [id("tri-prog-r1"), id("tri-prog-r2"), id("tri-prog-r3")];
+      const copyRowIds = [id("tri-copy-r1"), id("tri-copy-r2"), id("tri-copy-r3")];
       const community = await service.createProgramFromRoutine(practitionerB, {
         programId: id("prog-tri-community"),
         routineId: id("tri-routine"),
         source: "community",
-        rowIds: [id("tri-prog-r1"), id("tri-prog-r2"), id("tri-prog-r3")],
+        rowIds: communityRowIds,
       });
-      expectCommunityRows(community.program);
+      expectCommunityRows(community.program, communityRowIds);
 
       const fromCopy = await service.createProgramFromRoutine(practitionerB, {
         programId: id("prog-tri-my-copy"),
         routineId: id("tri-routine"),
         source: "my_copy",
-        rowIds: [id("tri-copy-r1"), id("tri-copy-r2"), id("tri-copy-r3")],
+        rowIds: copyRowIds,
       });
-      expectMyCopyRows(fromCopy.program);
+      expectMyCopyRows(fromCopy.program, copyRowIds);
     } finally {
       storage.close();
     }
