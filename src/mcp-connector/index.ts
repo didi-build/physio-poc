@@ -82,6 +82,12 @@ export {
 } from "./text-limits.js";
 
 export {
+  OPAQUE_ENTITY_ID_LENGTH,
+  OPAQUE_ENTITY_ID_PATTERN,
+  validateOpaqueEntityId,
+} from "../domain/opaque-entity-id.js";
+
+export {
   ambiguousProgramMatchSchema,
   approvedExerciseSummarySchema,
   exerciseCategorySchema,
@@ -93,7 +99,6 @@ export {
   publishOverridesInputSchema,
   rowParamsSchema,
   routineIdProperty,
-  OPAQUE_ROUTINE_ID_PATTERN,
   routineSummarySchema,
   searchLinkOutputProperty,
   shareLinkOutputProperty,

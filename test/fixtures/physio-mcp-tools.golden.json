@@ -269,8 +269,8 @@
         },
         "from_routine_id": {
           "type": "string",
-          "pattern": "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$",
-          "maxLength": 64,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "maxLength": 36,
           "description": "When creating a new program, open the builder seeded from this routine id."
         }
       }
@@ -323,9 +323,9 @@
         },
         "from_routine_id": {
           "type": "string",
-          "pattern": "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$",
-          "maxLength": 64,
-          "description": "Opaque routine id assigned by the system (for example rtn-knee-oa)."
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "maxLength": 36,
+          "description": "Opaque routine id assigned by the system (UUID v4, for example 550e8400-e29b-41d4-a716-446655440000)."
         }
       }
     },

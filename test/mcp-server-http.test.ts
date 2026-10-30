@@ -15,6 +15,7 @@ import {
   buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   getPhysioMcpTool,
+  validateOpaqueEntityId,
 } from "../src/mcp-connector/index.js";
 import {
   STUB_DRAFT_ONLY_PROGRAM_CODE,
@@ -46,6 +47,14 @@ const ajv = new Ajv({
 addFormats(ajv);
 
 const patientDetailSample = "Contact user@example.com for updates";
+
+const SAMPLE_ROUTINE_UUID = "550e8400-e29b-41d4-a716-446655440000";
+
+function encodedQParamLength(searchLink: string): number {
+  const search = new URL(searchLink).search.slice(1);
+  const prefix = "q=";
+  return search.startsWith(prefix) ? search.slice(prefix.length).length : 0;
+}
 
 const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: { query: "calf stretch" },
@@ -146,14 +155,14 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
 
       const byRoutine = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: "rtn-knee-oa" },
+        arguments: { from_routine_id: SAMPLE_ROUTINE_UUID },
       });
       const routineBody = byRoutine.structuredContent as Record<string, unknown>;
       expect(routineBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=rtn-knee-oa`,
+        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
       );
       expect(routineBody.manage_url).toBe(`${base}/programs/new`);
-      expect(routineBody.from_routine_id).toBe("rtn-knee-oa");
+      expect(routineBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
 
       const blank = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -167,7 +176,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         arguments: {
           program_code: "PRG-STUB01",
-          from_routine_id: "rtn-knee-oa",
+          from_routine_id: SAMPLE_ROUTINE_UUID,
         },
       });
       const bothBody = both.structuredContent as Record<string, unknown>;
@@ -177,13 +186,48 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
 
       const trimmed = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: "  rtn-knee-oa  " },
+        arguments: { from_routine_id: `  ${SAMPLE_ROUTINE_UUID}  ` },
       });
       const trimmedBody = trimmed.structuredContent as Record<string, unknown>;
       expect(trimmedBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=rtn-knee-oa`,
+        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
       );
-      expect(trimmedBody.from_routine_id).toBe("rtn-knee-oa");
+      expect(trimmedBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
+    });
+  });
+
+  it("caps search_link encoded q at 199 for 200 and 201 character queries", async () => {
+    const accentPrefix = "é".repeat(33);
+    const query199 = `${accentPrefix}a`;
+    const query200 = `${accentPrefix}aa`;
+    const query201 = `${accentPrefix}aaa`;
+    expect(query199.length).toBeLessThanOrEqual(100);
+    expect(query200.length).toBeLessThanOrEqual(100);
+    expect(query201.length).toBeLessThanOrEqual(100);
+
+    await withMcpClient(async (client) => {
+      const at199 = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: query199 },
+      });
+      expect(at199.isError).not.toBe(true);
+      const link199 = (at199.structuredContent as { search_link?: string }).search_link;
+      expect(link199).toBeTruthy();
+      expect(encodedQParamLength(link199!)).toBe(199);
+
+      const at200 = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: query200 },
+      });
+      const link200 = (at200.structuredContent as { search_link?: string }).search_link;
+      expect(encodedQParamLength(link200!)).toBe(199);
+
+      const at201 = await client.callTool({
+        name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        arguments: { query: query201 },
+      });
+      const link201 = (at201.structuredContent as { search_link?: string }).search_link;
+      expect(encodedQParamLength(link201!)).toBe(199);
     });
   });
 
@@ -330,14 +374,35 @@ describe("Physio MCP HTTP validation", () => {
     });
   });
 
-  it("rejects free-text from_routine_id that is not an opaque routine id", async () => {
+  it("rejects readable slugs and free text for from_routine_id", async () => {
+    const rejects = [
+      "rtn-john-smith-knee",
+      "john-smith-knee",
+      "Knee mobility starter, neck and shoulder",
+    ];
+    await withMcpClient(async (client) => {
+      for (const from_routine_id of rejects) {
+        const result = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id },
+        });
+        expect(result.isError, from_routine_id).toBe(true);
+        expect(toolErrorText(result)).toMatch(/must match pattern/i);
+      }
+    });
+  });
+
+  it("accepts a generated UUID v4 for from_routine_id", async () => {
+    const generatedId = crypto.randomUUID();
+    expect(validateOpaqueEntityId(generatedId)).toBe(true);
     await withMcpClient(async (client) => {
       const result = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: "Knee mobility starter, neck and shoulder" },
+        arguments: { from_routine_id: generatedId },
       });
-      expect(result.isError).toBe(true);
-      expect(toolErrorText(result)).toMatch(/must match pattern/i);
+      expect(result.isError).not.toBe(true);
+      const body = result.structuredContent as { from_routine_id?: string };
+      expect(body.from_routine_id).toBe(generatedId);
     });
   });
 

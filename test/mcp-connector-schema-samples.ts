@@ -24,9 +24,10 @@ export const MCP_SAMPLE_GET_PROGRAM_BUILDER_OUTPUT = {
 export const MCP_SAMPLE_GET_PROGRAM_BUILDER_FROM_ROUTINE_OUTPUT = {
   summary: "Open the program builder from a routine.",
   share_link: "",
-  builder_link: "https://app.example.com/programs/new?from_routine_id=rtn-knee-oa",
+  builder_link:
+    "https://app.example.com/programs/new?from_routine_id=550e8400-e29b-41d4-a716-446655440000",
   manage_url: "https://app.example.com/programs/new",
-  from_routine_id: "rtn-knee-oa",
+  from_routine_id: "550e8400-e29b-41d4-a716-446655440000",
 } as const;
 
 export const MCP_SAMPLE_GET_PROGRAM_DRAFT_ONLY_OUTPUT = {

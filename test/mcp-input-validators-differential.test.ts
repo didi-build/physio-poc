@@ -72,7 +72,15 @@ describe("generated MCP validators vs runtime Ajv", () => {
       },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        data: { from_routine_id: "rtn-knee-oa" },
+        data: { from_routine_id: "550e8400-e29b-41d4-a716-446655440000" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "rtn-john-smith-knee" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "john-smith-knee" },
       },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -80,11 +88,10 @@ describe("generated MCP validators vs runtime Ajv", () => {
       },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        data: { from_routine_id: "x".repeat(65) },
-      },
-      {
-        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        data: { program_code: "PRG-STUB01", from_routine_id: "rtn-knee-oa" },
+        data: {
+          program_code: "PRG-STUB01",
+          from_routine_id: "550e8400-e29b-41d4-a716-446655440000",
+        },
       },
       {
         tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,

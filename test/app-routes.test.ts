@@ -21,7 +21,7 @@ import { createPhysioAppRouteObjects } from "../src/ui/physio-app-match-routes.j
 
 const BASE = "https://app.example.com";
 const SAMPLE_PROGRAM_CODE = "PRG-7K3Q";
-const SAMPLE_ROUTINE_ID = "rtn-knee-oa";
+const SAMPLE_ROUTINE_ID = "550e8400-e29b-41d4-a716-446655440000";
 
 const appRouteObjects = createPhysioAppRouteObjects(createElement("div"));
 

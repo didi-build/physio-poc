@@ -6,8 +6,8 @@ export const FREE_TEXT_NO_PATIENT_DETAILS =
 export const MAX_LENGTH_QUERY = 100;
 export const MAX_LENGTH_PROGRAM_TITLE = 80;
 export const MAX_LENGTH_ROUTINE_NAME = 80;
-/** Max length for opaque routine ids (for example rtn-knee-oa). */
-export const MAX_LENGTH_OPAQUE_ROUTINE_ID = 64;
+/** Max length for opaque routine ids (UUID v4). */
+export const MAX_LENGTH_OPAQUE_ROUTINE_ID = 36;
 export const MAX_LENGTH_ROW_NOTES = 300;
 export const MAX_LENGTH_REQUESTED_EXERCISE_NAME = 100;
 export const MAX_LENGTH_SUMMARY = 4000;

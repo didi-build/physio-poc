@@ -5,8 +5,11 @@
 
 import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
 import {
+  OPAQUE_ENTITY_ID_LENGTH,
+  OPAQUE_ENTITY_ID_PATTERN,
+} from "../domain/opaque-entity-id.js";
+import {
   FREE_TEXT_NO_PATIENT_DETAILS,
-  MAX_LENGTH_OPAQUE_ROUTINE_ID,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
@@ -215,13 +218,12 @@ export const programCodeProperty: JsonSchema = {
   description: "Stable program code assigned by the system (for example PRG-7K3Q).",
 };
 
-export const OPAQUE_ROUTINE_ID_PATTERN = "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$";
-
 export const routineIdProperty: JsonSchema = {
   type: "string",
-  pattern: OPAQUE_ROUTINE_ID_PATTERN,
-  maxLength: MAX_LENGTH_OPAQUE_ROUTINE_ID,
-  description: "Opaque routine id assigned by the system (for example rtn-knee-oa).",
+  pattern: OPAQUE_ENTITY_ID_PATTERN,
+  maxLength: OPAQUE_ENTITY_ID_LENGTH,
+  description:
+    "Opaque routine id assigned by the system (UUID v4, for example 550e8400-e29b-41d4-a716-446655440000).",
 };
 
 const programRowSharedProperties: Record<string, JsonSchema> = {
