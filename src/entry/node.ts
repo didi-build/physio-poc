@@ -1,7 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createPhysioMcpHttpHandler } from "../adapters/workers/mcp/handle-mcp-http-request.js";
-import { handleRequest, type AppDependencies } from "../http/app.js";
+import {
+  handleRequest,
+  type AppDependencies,
+  type AppRouteHandler,
+} from "../http/app.js";
+import { handleExerciseMediaRequest } from "../http/routes/exercise-media.js";
 import { resolveWebAppBaseUrl } from "../http/config.js";
 import { InMemoryObjectStorage } from "../storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../storage/adapters/memory/in-memory-sql-storage.js";
@@ -11,6 +16,15 @@ export type NodeServerOptions = {
   host?: string;
   deps?: AppDependencies;
 };
+
+/** Exercise media HTTP routes: Node dev and test entries only (never the Worker entry). */
+export function nodeExerciseMediaRouteHandlers(nodeEnv?: string): AppRouteHandler[] {
+  const resolved = arguments.length >= 1 ? nodeEnv : process.env.NODE_ENV;
+  if (resolved === "development" || resolved === "test") {
+    return [handleExerciseMediaRequest];
+  }
+  return [];
+}
 
 function defaultDependencies(): AppDependencies {
   const config = {
@@ -22,6 +36,7 @@ function defaultDependencies(): AppDependencies {
     config,
     mcp: createPhysioMcpHttpHandler(config),
     enableUnauthenticatedApi: true,
+    extraRouteHandlers: nodeExerciseMediaRouteHandlers(),
   };
 }
 

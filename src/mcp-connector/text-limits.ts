@@ -15,3 +15,5 @@ export const MAX_LENGTH_EXERCISE_TEMPLATE_TEXT = MAX_LENGTH_SUMMARY;
 export const MAX_LENGTH_EXERCISE_CUE = 500;
 export const MAX_LENGTH_EXERCISE_ALIAS = 100;
 export const MAX_LENGTH_EXERCISE_CHANGE_SUMMARY = 300;
+/** Optional practitioner note when regenerating exercise media (prompt only, not stored). */
+export const MAX_LENGTH_MEDIA_REGENERATION_NOTE = 200;
