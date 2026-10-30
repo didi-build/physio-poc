@@ -77,6 +77,10 @@ function assertPrescriptionType(value: string): PrescriptionType {
 }
 
 function rowToSnapshot(row: ProgramRow): ProgramRowSnapshot {
+  const textSnapshot = validateProgramRowTextSnapshot(
+    parseProgramRowTextSnapshotJson(row.text_snapshot_json),
+  );
+  const note = validateProgramRowNote(row.note);
   return {
     position: row.position,
     exerciseId: row.exercise_id,
@@ -84,8 +88,8 @@ function rowToSnapshot(row: ProgramRow): ProgramRowSnapshot {
     exerciseRequestId: row.exercise_request_id,
     prescriptionType: row.prescription_type,
     params: parseExerciseParamsJson(row.params_json),
-    textSnapshot: parseProgramRowTextSnapshotJson(row.text_snapshot_json),
-    note: row.note,
+    textSnapshot,
+    note,
   };
 }
 
