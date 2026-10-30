@@ -1,6 +1,6 @@
 # 0005. Exercise media visual style and model (five-exercise test)
 
-- **Status:** proposed
+- **Status:** superseded by [0006](./0006-didi-1038-flux2-klein-fal-five-exercise-image-test.md) (provider choice; prompts and desk research retained)
 - **Date:** 2026-10-29
 - **Linear:** [DIDI-999](https://linear.app/didi-build/issue/DIDI-999) (desk research under epic [DIDI-594](https://linear.app/didi-build/issue/DIDI-594))
 
