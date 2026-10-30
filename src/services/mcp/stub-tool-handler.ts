@@ -1,9 +1,12 @@
 import {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
+  buildPhysioAppUrl,
+  buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
+  inferGetProgramDisplayState,
   normalizeWebAppBaseUrl,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
@@ -16,8 +19,8 @@ import {
 /** Fixed query that returns zero exercises plus search_link (stub ruling B). */
 export const STUB_SEARCH_NO_MATCH_QUERY = "zzzz-stub-no-approved-match";
 
-/** Fixed exercise name that stays unresolved in build (stub ruling B). */
-export const STUB_UNRESOLVED_EXERCISE_NAME = "zzzz-stub-unlisted-exercise";
+/** Fixed program code that returns draft-only share state in the stub. */
+export const STUB_DRAFT_ONLY_PROGRAM_CODE = "PRG-STUBDRAFT";
 
 const EXAMPLE_LABEL = "Example response";
 
@@ -25,8 +28,12 @@ function exampleSummary(detail: string): string {
   return `${EXAMPLE_LABEL}: ${detail}`;
 }
 
-function manageUrl(config: PhysioServerConfig, path: string): string {
-  return `${normalizeWebAppBaseUrl(config.webAppBaseUrl)}${path}`;
+function appUrl(
+  config: PhysioServerConfig,
+  routeName: Parameters<typeof buildPhysioAppUrl>[1],
+  options?: Parameters<typeof buildPhysioAppUrl>[2],
+): string {
+  return buildPhysioAppUrl(config.webAppBaseUrl, routeName, options);
 }
 
 export async function invokePhysioMcpStubTool(
@@ -42,8 +49,8 @@ export async function invokePhysioMcpStubTool(
       return stubSearchApprovedExercises(input, config);
     case SEARCH_ROUTINES_TOOL_NAME:
       return stubSearchRoutines(input, config);
-    case BUILD_OR_EDIT_PROGRAM_TOOL_NAME:
-      return stubBuildOrEditProgram(input, config);
+    case GET_PROGRAM_BUILDER_LINK_TOOL_NAME:
+      return stubGetProgramBuilderLink(input, config);
     case GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME:
       return stubGetProgramShareLinkOrPdf(input, config);
     default:
@@ -62,7 +69,7 @@ function stubSearchApprovedExercises(
     return {
       summary: exampleSummary(`No approved exercises matched "${query}" (not stored).`),
       share_link: "",
-      manage_url: manageUrl(config, "/exercises"),
+      manage_url: appUrl(config, "exercises"),
       exercises: [],
       search_link: searchLink,
     };
@@ -71,7 +78,7 @@ function stubSearchApprovedExercises(
   return {
     summary: exampleSummary(`Approved exercises matching "${query}" (not stored).`),
     share_link: "",
-    manage_url: manageUrl(config, "/exercises"),
+    manage_url: appUrl(config, "exercises"),
     exercises: [
       {
         exercise_version_id: "ex-v-stub-001",
@@ -100,7 +107,7 @@ function stubSearchRoutines(
   return {
     summary: exampleSummary(`Routines matching "${query}" (not stored).`),
     share_link: "",
-    manage_url: manageUrl(config, "/routines"),
+    manage_url: appUrl(config, "routines"),
     routines: [
       {
         routine_id: "rtn-stub-knee",
@@ -113,92 +120,39 @@ function stubSearchRoutines(
   };
 }
 
-function stubBuildOrEditProgram(
+function stubGetProgramBuilderLink(
   input: Record<string, unknown>,
   config: PhysioServerConfig,
 ): Record<string, unknown> {
+  const builderLink = buildProgramBuilderLink(config.webAppBaseUrl, {
+    program_code:
+      typeof input.program_code === "string" ? input.program_code : undefined,
+    from_routine_id:
+      typeof input.from_routine_id === "string" ? input.from_routine_id : undefined,
+  });
+
   const programCode =
     typeof input.program_code === "string" && input.program_code.trim().length > 0
       ? input.program_code.trim()
-      : "PRG-STUB01";
-  const programTitle =
-    typeof input.program_title === "string" && input.program_title.trim().length > 0
-      ? input.program_title.trim()
-      : "Sample balance plan";
-
-  const rowsInput = Array.isArray(input.rows) ? input.rows : [];
-  const rows: Array<Record<string, unknown>> = [];
-  const exercisesNotFound: Array<Record<string, unknown>> = [];
-
-  for (const row of rowsInput) {
-    const record = row as Record<string, unknown>;
-    const exerciseName =
-      typeof record.exercise_name === "string" ? record.exercise_name : undefined;
-    if (exerciseName === STUB_UNRESOLVED_EXERCISE_NAME) {
-      exercisesNotFound.push({
-        requested_exercise_name: exerciseName,
-        web_app_exercise_search_url: buildWebAppExerciseSearchUrl(
-          config.webAppBaseUrl,
-          exerciseName,
-        ),
-      });
-      continue;
-    }
-    if (typeof record.exercise_version_id === "string") {
-      rows.push({
-        exercise_version_id: record.exercise_version_id,
-        exercise_name:
-          typeof record.exercise_name === "string"
-            ? record.exercise_name
-            : "Heel slides",
-        prescription_type:
-          typeof record.prescription_type === "string"
-            ? record.prescription_type
-            : "stretching",
-        params:
-          record.params && typeof record.params === "object"
-            ? record.params
-            : { sets: 3, reps: 10 },
-      });
-      continue;
-    }
-    if (exerciseName) {
-      rows.push({
-        exercise_version_id: "ex-v-stub-resolved",
-        exercise_name: exerciseName,
-        prescription_type:
-          typeof record.prescription_type === "string"
-            ? record.prescription_type
-            : "stretching",
-        params:
-          record.params && typeof record.params === "object"
-            ? record.params
-            : { sets: 3, reps: 10 },
-      });
-    }
-  }
-
-  if (rows.length === 0 && exercisesNotFound.length === 0) {
-    rows.push({
-      exercise_version_id: "ex-v-stub-default",
-      exercise_name: "Ankle circles",
-      prescription_type: "stretching",
-      params: { sets: 2, reps: 12 },
-    });
-  }
+      : undefined;
+  const routineId =
+    typeof input.from_routine_id === "string" && input.from_routine_id.trim().length > 0
+      ? input.from_routine_id.trim()
+      : undefined;
 
   const output: Record<string, unknown> = {
-    summary: exampleSummary(
-      `Program ${programCode} saved in memory only; nothing persisted.`,
-    ),
+    summary: exampleSummary("Open the program builder in the web app (not stored)."),
     share_link: "",
-    manage_url: manageUrl(config, `/programs/${programCode}`),
-    program_code: programCode,
-    program_title: programTitle,
-    rows,
+    builder_link: builderLink,
+    manage_url: programCode
+      ? appUrl(config, "programBuilder", { routeParams: { programCode } })
+      : appUrl(config, "programNew"),
   };
-  if (exercisesNotFound.length > 0) {
-    output.exercises_not_found = exercisesNotFound;
+  if (programCode) {
+    output.program_code = programCode;
+  }
+  if (routineId) {
+    output.from_routine_id = routineId;
   }
   return output;
 }
@@ -211,29 +165,68 @@ function stubGetProgramShareLinkOrPdf(
     typeof input.program_code === "string" && input.program_code.trim().length > 0
       ? input.program_code.trim()
       : "PRG-STUB01";
-  const publish = input.publish === true;
 
-  if (publish) {
+  const draftOnly = programCode === STUB_DRAFT_ONLY_PROGRAM_CODE;
+  const draft = draftOnly
+    ? { version: 1, updated_at: "2026-10-29T12:00:00Z" }
+    : { version: 1, updated_at: "2026-10-29T12:00:00Z" };
+  const published = draftOnly
+    ? null
+    : { version: 2, updated_at: "2026-10-28T12:00:00Z" };
+  const state = inferGetProgramDisplayState(draft, published);
+
+  const manageLink = appUrl(config, "programShare", {
+    routeParams: { programCode },
+  });
+  const publishLink = appUrl(config, "programPublish", {
+    routeParams: { programCode },
+  });
+  const manageUrl = appUrl(config, "programBuilder", {
+    routeParams: { programCode },
+  });
+  const shareUrl = `${normalizeWebAppBaseUrl(config.webAppBaseUrl)}/l/stub-share`;
+
+  if (state === "draft_only") {
     return {
-      summary: exampleSummary("Published stub program with default expiry."),
-      share_link: manageUrl(config, "/l/stub-share"),
-      pdf_url: `${manageUrl(config, "/l/stub-share")}.pdf`,
-      manage_url: manageUrl(config, `/programs/${programCode}`),
+      summary: exampleSummary("Draft only; open the publish page in the web app."),
+      share_link: "",
+      pdf_url: "",
+      manage_url: manageUrl,
+      publish_link: publishLink,
+      manage_link: manageLink,
+      draft,
+      published: null,
+      program_code: programCode,
+    };
+  }
+
+  if (state === "published_only") {
+    return {
+      summary: exampleSummary("Published program on file (stub, not stored)."),
+      share_link: shareUrl,
+      pdf_url: `${shareUrl}.pdf`,
+      manage_url: manageUrl,
+      publish_link: "",
+      manage_link: manageLink,
       expires_at: "2027-10-29T12:00:00Z",
       draft: null,
-      published: { version: 2, updated_at: "2026-10-29T15:00:00Z" },
+      published,
       program_code: programCode,
     };
   }
 
   return {
-    summary: exampleSummary("Draft and published snapshots (stub, not stored)."),
-    share_link: manageUrl(config, "/l/stub-share"),
-    pdf_url: `${manageUrl(config, "/l/stub-share")}.pdf`,
-    manage_url: manageUrl(config, `/programs/${programCode}`),
+    summary: exampleSummary(
+      "Published link live; newer draft not published (stub, not stored).",
+    ),
+    share_link: shareUrl,
+    pdf_url: `${shareUrl}.pdf`,
+    manage_url: manageUrl,
+    publish_link: publishLink,
+    manage_link: manageLink,
     expires_at: "2027-10-29T12:00:00Z",
-    draft: { version: 1, updated_at: "2026-10-29T12:00:00Z" },
-    published: { version: 2, updated_at: "2026-10-28T12:00:00Z" },
+    draft,
+    published,
     program_code: programCode,
   };
 }

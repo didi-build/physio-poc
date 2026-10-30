@@ -9,7 +9,7 @@ Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements
 
 ## Tools (locked product direction)
 
-Exactly four tools; no exercise creation; no patient-identifying field names in any schema. Delete and link expiry are web app only in v1.
+Exactly four read-only tools; no exercise creation; no patient-identifying field names in any schema. Program writes (build, edit, publish, delete, link expiry) open the matching web app page via deep links.
 
 ## Privacy
 

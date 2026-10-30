@@ -1,4 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import {
+  PHYSIO_APP_ROUTE_PATTERNS,
+  PHYSIO_APP_SPA_ROUTE_NAMES,
+  physioAppSpaRoutePath,
+} from "../app-routes.js";
 import { AppShell } from "./layout/AppShell.js";
 
 export type PhysioAppProps = {
@@ -9,12 +14,17 @@ export function PhysioApp({ requestsReviewCount = 0 }: PhysioAppProps) {
   return (
     <Routes>
       <Route element={<AppShell requestsReviewCount={requestsReviewCount} />}>
-        <Route index element={<Navigate to="/exercises" replace />} />
-        <Route path="exercises" element={null} />
-        <Route path="routines" element={null} />
-        <Route path="programs" element={null} />
-        <Route path="requests" element={null} />
-        <Route path="defaults" element={null} />
+        <Route
+          index
+          element={<Navigate to={PHYSIO_APP_ROUTE_PATTERNS.exercises} replace />}
+        />
+        {PHYSIO_APP_SPA_ROUTE_NAMES.map((routeName) => (
+          <Route
+            key={routeName}
+            path={physioAppSpaRoutePath(routeName)}
+            element={null}
+          />
+        ))}
       </Route>
     </Routes>
   );

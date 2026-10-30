@@ -1,20 +1,20 @@
 import {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  validateFreeTextForPatientDetails,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
 import { DATE_FORMAT_FIELD_PATHS } from "./generated/input-validator-meta.js";
 import type { StandaloneValidateFunction } from "./generated/input-validators.js";
 import {
-  build_or_edit_program,
+  get_program_builder_link,
   get_program_share_link_or_pdf,
   search_approved_exercises,
   search_routines,
 } from "./generated/input-validators.js";
+import { validateFreeTextForPatientDetails } from "../../mcp-connector/index.js";
 
 export class PhysioMcpToolInputError extends Error {
   constructor(message: string) {
@@ -26,7 +26,7 @@ export class PhysioMcpToolInputError extends Error {
 const validators: Record<PhysioMcpToolName, StandaloneValidateFunction> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
   [SEARCH_ROUTINES_TOOL_NAME]: search_routines,
-  [BUILD_OR_EDIT_PROGRAM_TOOL_NAME]: build_or_edit_program,
+  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: get_program_builder_link,
   [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: get_program_share_link_or_pdf,
 };
 
@@ -52,7 +52,9 @@ function assertGetProgramLookup(args: Record<string, unknown>): void {
 
 function validateAllStringValues(value: unknown, path = ""): void {
   if (typeof value === "string") {
-    const skipDateOfBirthHeuristic = DATE_FORMAT_FIELD_PATHS.has(path);
+    const skipDateOfBirthHeuristic = (
+      DATE_FORMAT_FIELD_PATHS as ReadonlySet<string>
+    ).has(path);
     const result = validateFreeTextForPatientDetails(value, {
       skipDateOfBirthHeuristic,
     });

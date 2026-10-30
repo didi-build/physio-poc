@@ -72,7 +72,26 @@ export const searchLinkOutputProperty: JsonSchema = {
 export const manageUrlOutputProperty: JsonSchema = {
   ...uriOrEmptyStringSchema,
   description:
-    "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies.",
+    "HTTPS link to open the related screen in the web app. Empty when no screen applies.",
+};
+
+export const builderLinkOutputProperty: JsonSchema = {
+  type: "string",
+  format: "uri",
+  description:
+    "Deep link to the program builder in the web app (built from server-configured base URL and shared route table).",
+};
+
+export const publishLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program publish page when a draft needs publishing. Empty when no draft publish page applies.",
+};
+
+export const manageLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program share page in the web app (expiry, close link, delete). Empty when no program applies.",
 };
 
 export const expiresAtOutputProperty: JsonSchema = {
