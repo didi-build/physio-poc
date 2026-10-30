@@ -77,4 +77,18 @@ export class TypeDefaultsRepository {
       ["practitioner", practitionerId, type],
     );
   }
+
+  async listPractitionerDefaults(
+    practitionerId: string,
+  ): Promise<Partial<Record<PrescriptionType, ExerciseParams>>> {
+    const rows = await this.sql.all<TypeDefaultsRow>(
+      "SELECT scope, practitioner_id, type, params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ?",
+      ["practitioner", practitionerId],
+    );
+    const result: Partial<Record<PrescriptionType, ExerciseParams>> = {};
+    for (const row of rows) {
+      result[row.type] = parseExerciseParamsJson(row.params_json);
+    }
+    return result;
+  }
 }
