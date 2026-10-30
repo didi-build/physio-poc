@@ -1,24 +1,35 @@
+import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import type { AuthPort, PractitionerSession } from "../../auth/auth-port.js";
 import {
   deleteAuthSessionByToken,
   resolveBoundPractitionerSession,
 } from "../../auth/resolve-bound-practitioner-session.js";
+import { handlePhysioMcpConsentRoutes } from "../../auth/mcp-oauth/consent-routes.js";
+import {
+  PHYSIO_MCP_OAUTH_AUTH_SERVER_METADATA_PATH,
+  isPhysioMcpOAuthConsentPath,
+} from "../../auth/mcp-oauth/paths.js";
 import {
   handleAuthOAuthErrorRequest,
   isAuthOAuthErrorPath,
 } from "../../http/auth-oauth-error.js";
 import type { PhysioAuthConfig } from "../../http/config.js";
+import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { BetterAuthRuntime } from "./better-auth-types.js";
 
 const AUTH_PREFIX = "/api/auth";
 
 export class BetterAuthPort implements AuthPort {
+  private readonly authSecret: string;
+
   constructor(
     private readonly auth: BetterAuthRuntime,
     private readonly sql: SqlStoragePort,
     private readonly authConfig: PhysioAuthConfig,
-  ) {}
+  ) {
+    this.authSecret = resolveBetterAuthSecretForRuntime(authConfig.betterAuthSecret);
+  }
 
   async getPractitioner(request: Request): Promise<PractitionerSession | null> {
     const payload = await this.auth.api.getSession({
@@ -48,10 +59,37 @@ export class BetterAuthPort implements AuthPort {
     if (isAuthOAuthErrorPath(url.pathname)) {
       return handleAuthOAuthErrorRequest(url);
     }
-    if (!url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
-      return null;
+
+    if (isPhysioMcpOAuthConsentPath(url.pathname)) {
+      const practitioner = await this.getPractitioner(request);
+      const consentResponse = await handlePhysioMcpConsentRoutes({
+        request,
+        pathname: url.pathname,
+        auth: this.auth,
+        sql: this.sql,
+        authBaseUrl: this.authConfig.authBaseUrl,
+        authSecret: this.authSecret,
+        practitioner,
+        verifyOAuthQueryParams: (oauthQuery, secret) =>
+          verifyOAuthQueryParams(oauthQuery, secret),
+      });
+      if (consentResponse) {
+        return consentResponse;
+      }
     }
-    return this.auth.handler(request);
+
+    if (url.pathname === PHYSIO_MCP_OAUTH_AUTH_SERVER_METADATA_PATH) {
+      return oauthProviderAuthServerMetadata(this.auth as never)(request);
+    }
+
+    if (
+      url.pathname.startsWith(`${AUTH_PREFIX}/`) ||
+      url.pathname.startsWith("/.well-known/")
+    ) {
+      return this.auth.handler(request);
+    }
+
+    return null;
   }
 
   async signOut(request: Request): Promise<Response> {
@@ -61,5 +99,9 @@ export class BetterAuthPort implements AuthPort {
         headers: request.headers,
       }),
     );
+  }
+
+  getBetterAuthRuntime(): BetterAuthRuntime {
+    return this.auth;
   }
 }
