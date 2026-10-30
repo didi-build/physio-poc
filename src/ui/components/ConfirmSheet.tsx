@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { ARIA_CLOSE_SHEET } from "../copy/a11y.js";
+import { ARIA_CLOSE_SCRIM, ARIA_CLOSE_SHEET } from "../copy/a11y.js";
 
 export type ConfirmSheetProps = {
   open: boolean;
@@ -97,7 +97,7 @@ export function ConfirmSheet({
       <button
         type="button"
         className="shell-sheet-scrim"
-        aria-label="Close"
+        aria-label={ARIA_CLOSE_SCRIM}
         tabIndex={-1}
         onClick={() => {
           onCloseRef.current();
