@@ -2,6 +2,7 @@ import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleHealthRequest } from "./routes/health.js";
+import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
@@ -10,6 +11,8 @@ export type AppDependencies = {
   objects: ObjectStoragePort;
   config: PhysioServerConfig;
   mcp: McpHttpHandler;
+  /** When true, registers unauthenticated practitioner exercise API routes (Node dev and tests only). */
+  enableUnauthenticatedApi?: boolean;
 };
 
 export const MCP_PATH = "/mcp";
@@ -43,6 +46,13 @@ export async function handleRequest(
 
   if (url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`) {
     return deps.mcp(request);
+  }
+
+  if (deps.enableUnauthenticatedApi === true) {
+    const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
+    if (exerciseResponse) {
+      return exerciseResponse;
+    }
   }
 
   return Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS });
