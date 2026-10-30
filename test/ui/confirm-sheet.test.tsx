@@ -1,18 +1,24 @@
 /**
  * @vitest-environment jsdom
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import "./setup.js";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmSheet } from "../../src/ui/components/ConfirmSheet.js";
-import { ARIA_CLOSE_SHEET } from "../../src/ui/copy/a11y.js";
+import { ARIA_CLOSE_SCRIM, ARIA_CLOSE_SHEET } from "../../src/ui/copy/a11y.js";
 
 afterEach(() => {
   cleanup();
 });
 
 const CONFIRM_TITLE = "Restore version 2?";
+const CONFIRM_SHEET_PATH = join(
+  import.meta.dirname,
+  "../../src/ui/components/ConfirmSheet.tsx",
+);
 
 describe("ConfirmSheet", () => {
   it("renders nothing when open is false", () => {
@@ -207,6 +213,26 @@ describe("ConfirmSheet", () => {
     const dialog = screen.getByRole("dialog", { name: CONFIRM_TITLE });
     fireEvent.click(within(dialog).getByRole("button", { name: ARIA_CLOSE_SHEET }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("labels the scrim from the a11y copy module", () => {
+    const source = readFileSync(CONFIRM_SHEET_PATH, "utf8");
+    expect(source).toContain("ARIA_CLOSE_SCRIM");
+    expect(source).toMatch(/aria-label=\{ARIA_CLOSE_SCRIM\}/);
+
+    render(
+      <ConfirmSheet
+        open
+        title={CONFIRM_TITLE}
+        titleId="confirm-scrim-label"
+        onClose={() => {}}
+        footer={<span />}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: ARIA_CLOSE_SCRIM })).toHaveClass(
+      "shell-sheet-scrim",
+    );
   });
 
   it("closes when the scrim is clicked", () => {

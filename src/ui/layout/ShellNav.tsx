@@ -97,6 +97,7 @@ export type AccountMenuProps = {
 };
 
 export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -108,10 +109,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
   };
 
   useEffect(() => {
-    if (!open || !menuRef.current) {
+    if (!open || !menuRef.current || !wrapRef.current) {
       return;
     }
     const menu = menuRef.current;
+    const wrap = wrapRef.current;
     const menuItems = () => [
       ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
     ];
@@ -145,15 +147,28 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       items[nextIndex]?.focus();
     };
 
+    const onFocusOut = (event: FocusEvent) => {
+      if (!menu.contains(event.target as Node)) {
+        return;
+      }
+      const related = event.relatedTarget as Node | null;
+      if (related && wrap.contains(related)) {
+        return;
+      }
+      onCloseRef.current();
+    };
+
     menu.addEventListener("keydown", onKeyDown);
+    wrap.addEventListener("focusout", onFocusOut);
     return () => {
       menu.removeEventListener("keydown", onKeyDown);
+      wrap.removeEventListener("focusout", onFocusOut);
     };
   }, [open]);
 
   return (
     <div className="shell-header-actions">
-      <div className="shell-account-wrap">
+      <div ref={wrapRef} className="shell-account-wrap">
         <button
           ref={triggerRef}
           type="button"

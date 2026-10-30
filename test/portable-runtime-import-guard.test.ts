@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +9,10 @@ import {
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
+const PORTABLE_IMPORT_GUARD_PATH = join(
+  REPO_ROOT,
+  "scripts/lib/portable-import-guard.mjs",
+);
 
 describe("portable runtime import guard (unit)", () => {
   it("scans a non-zero set of portable files under src/", () => {
@@ -151,6 +156,20 @@ describe("portable runtime import guard (unit)", () => {
       "import { useState } from 'react';",
     );
     expect(allowedMessages).toEqual([]);
+  });
+
+  it("pins denylist-before-allowlist order in checkModuleSpecifier (structural)", () => {
+    const source = readFileSync(PORTABLE_IMPORT_GUARD_PATH, "utf8");
+    const fnStart = source.indexOf("function checkModuleSpecifier");
+    expect(fnStart).toBeGreaterThan(-1);
+    const uiBranch = source.indexOf("if (isUiSourceFile(repoRelativePath))", fnStart);
+    expect(uiBranch).toBeGreaterThan(-1);
+    const uiSection = source.slice(uiBranch);
+    const platformCheck = uiSection.indexOf("isPlatformModuleSpecifier(text)");
+    const allowlistCheck = uiSection.indexOf("isAllowedUiModuleSpecifier(text)");
+    expect(platformCheck).toBeGreaterThan(-1);
+    expect(allowlistCheck).toBeGreaterThan(-1);
+    expect(platformCheck).toBeLessThan(allowlistCheck);
   });
 
   it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {

@@ -2,7 +2,9 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -144,16 +146,55 @@ describe("app shell nav (integration)", () => {
 
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(signOutItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(defaultsItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{ArrowUp}");
     expect(document.activeElement).toBe(signOutItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes the account menu when focus leaves the menu panel", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    const outsideTarget = within(topNav).getByRole("link", { name: "Exercises" });
+
+    await user.click(trigger);
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    signOutItem.focus();
+    fireEvent.focusOut(signOutItem, { relatedTarget: outsideTarget });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("pins account menu focus-out wiring in ShellNav (structural)", () => {
+    const source = readFileSync(
+      join(import.meta.dirname, "../../src/ui/layout/ShellNav.tsx"),
+      "utf8",
+    );
+    expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
+    expect(source).toContain("wrap.contains(related)");
+  });
+
+  it("keeps the account menu open when arrow keys move focus between items", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    await user.keyboard("{ArrowDown}{ArrowUp}");
+    expect(screen.getByRole("menu")).toBeInTheDocument();
   });
 
   it("returns focus to the trigger after choosing My defaults", async () => {
