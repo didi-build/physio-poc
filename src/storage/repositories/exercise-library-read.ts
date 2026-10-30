@@ -82,7 +82,7 @@ const LATEST_APPROVED_JOIN = `
 function sortClause(sort: ApprovedExerciseSearchSort): string {
   switch (sort) {
     case "most_used":
-      return "usage_count DESC, ev.title COLLATE NOCASE ASC";
+      return "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
     case "newest":
       return "ev.approved_at DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
     case "a_to_z":
