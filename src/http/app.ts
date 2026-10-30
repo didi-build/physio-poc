@@ -79,7 +79,10 @@ export async function handleRequest(
   }
 
   if (deps.enableFakeGoogleRoutes) {
-    const fakeGoogle = await handleFakeGoogleRequest(request);
+    const fakeGoogle = await handleFakeGoogleRequest(
+      request,
+      deps.config.auth.authBaseUrl,
+    );
     if (fakeGoogle) {
       return fakeGoogle;
     }
