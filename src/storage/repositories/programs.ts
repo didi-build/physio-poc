@@ -548,9 +548,11 @@ export class ProgramRowsRepository {
   }
 
   /**
-   * Approval batch only: link one placeholder row to an approved exercise version.
-   * Allows soft-deleted programs. Does not accept note or program name changes;
-   * prescription_type and note stay as stored on the row.
+   * Approval batch only. Call from linkApprovedPlaceholders only
+   * (program-builder-service.ts). Allows soft deleted programs and does not
+   * check program ownership; must not be used from user facing row APIs.
+   * Does not accept note or program name changes; prescription_type and note
+   * stay as stored on the row.
    */
   async linkPlaceholderRowToApprovedVersion(input: {
     programId: string;
