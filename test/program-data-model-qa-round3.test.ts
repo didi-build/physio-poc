@@ -51,14 +51,67 @@ async function expectSqliteError(
 }
 
 describe("DIDI-1000 QA round 3", () => {
-  it("resolves preset expiry in bounded time", () => {
-    const now = new Date("2026-03-01T15:00:00.000Z");
-    const start = performance.now();
-    for (let i = 0; i < 25; i += 1) {
-      resolveShareLinkExpiresAt({ expiresIn: SHARE_LINK_EXPIRES_IN.one_year }, now);
-      resolveShareLinkExpiresAt({ expiresIn: SHARE_LINK_EXPIRES_IN.ninety_days }, now);
+  it("resolves preset expiry to Toronto end-of-day instants", () => {
+    // Toronto end of day is the last millisecond before the next Toronto calendar day
+    // (03:59:59.999Z when EDT, 04:59:59.999Z when EST).
+    const cases: {
+      nowIso: string;
+      oneWeek: string;
+      ninetyDays: string;
+      oneYear: string;
+    }[] = [
+      {
+        nowIso: "2026-03-01T15:00:00.000Z",
+        oneWeek: "2026-03-09T03:59:59.999Z",
+        ninetyDays: "2026-05-31T03:59:59.999Z",
+        oneYear: "2027-03-02T04:59:59.999Z",
+      },
+      {
+        nowIso: "2026-03-07T23:00:00.000Z",
+        oneWeek: "2026-03-15T03:59:59.999Z",
+        ninetyDays: "2026-06-06T03:59:59.999Z",
+        oneYear: "2027-03-08T04:59:59.999Z",
+      },
+      {
+        nowIso: "2026-03-08T12:00:00.000Z",
+        oneWeek: "2026-03-16T03:59:59.999Z",
+        ninetyDays: "2026-06-07T03:59:59.999Z",
+        oneYear: "2027-03-09T04:59:59.999Z",
+      },
+      {
+        nowIso: "2026-10-31T23:00:00.000Z",
+        oneWeek: "2026-11-08T04:59:59.999Z",
+        ninetyDays: "2027-01-30T04:59:59.999Z",
+        oneYear: "2027-11-01T03:59:59.999Z",
+      },
+      {
+        nowIso: "2026-11-01T12:00:00.000Z",
+        oneWeek: "2026-11-09T04:59:59.999Z",
+        ninetyDays: "2027-01-31T04:59:59.999Z",
+        oneYear: "2027-11-02T03:59:59.999Z",
+      },
+      {
+        nowIso: "2026-12-31T23:30:00.000Z",
+        oneWeek: "2027-01-08T04:59:59.999Z",
+        ninetyDays: "2027-04-01T03:59:59.999Z",
+        oneYear: "2028-01-01T04:59:59.999Z",
+      },
+    ];
+    for (const c of cases) {
+      const now = new Date(c.nowIso);
+      expect(
+        resolveShareLinkExpiresAt({ expiresIn: SHARE_LINK_EXPIRES_IN.one_week }, now),
+      ).toBe(c.oneWeek);
+      expect(
+        resolveShareLinkExpiresAt(
+          { expiresIn: SHARE_LINK_EXPIRES_IN.ninety_days },
+          now,
+        ),
+      ).toBe(c.ninetyDays);
+      expect(
+        resolveShareLinkExpiresAt({ expiresIn: SHARE_LINK_EXPIRES_IN.one_year }, now),
+      ).toBe(c.oneYear);
     }
-    expect(performance.now() - start).toBeLessThan(150);
   });
 
   it("uses America/Toronto for expiry calendar", () => {
