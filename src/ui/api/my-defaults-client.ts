@@ -11,7 +11,6 @@ import {
   myDefaultsShareLinkExpiryPath,
   myDefaultsTypePath,
 } from "../../my-defaults-api-paths.js";
-import { mutatingAppApiRequestInitForRelativePath } from "./mutating-app-api-request.js";
 
 export type FetchFn = (
   input: RequestInfo | URL,
@@ -20,9 +19,17 @@ export type FetchFn = (
 
 export type MyDefaultsClientOptions = {
   fetchFn?: FetchFn;
-  /** Test override for mutating request Origin resolution. */
-  requestOrigin?: string;
 };
+
+const JSON_CONTENT_TYPE = "application/json";
+
+function withJsonContentType(init: RequestInit): RequestInit {
+  const headers = new Headers(init.headers);
+  if (!headers.has("content-type")) {
+    headers.set("content-type", JSON_CONTENT_TYPE);
+  }
+  return { ...init, headers };
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -34,19 +41,9 @@ async function readJson<T>(response: Response): Promise<T> {
 
 export class MyDefaultsClient {
   private readonly fetchFn: FetchFn;
-  private readonly requestOrigin: string;
 
   constructor(options: MyDefaultsClientOptions = {}) {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
-    this.requestOrigin =
-      options.requestOrigin ??
-      (typeof globalThis.location !== "undefined"
-        ? globalThis.location.origin
-        : "http://127.0.0.1");
-  }
-
-  private mutatingInit(path: string, init: RequestInit): RequestInit {
-    return mutatingAppApiRequestInitForRelativePath(path, init, this.requestOrigin);
   }
 
   getPage(): Promise<MyDefaultsPageView> {
@@ -61,7 +58,7 @@ export class MyDefaultsClient {
     const path = myDefaultsShareLinkExpiryPath();
     return this.fetchFn(
       path,
-      this.mutatingInit(path, {
+      withJsonContentType({
         method: "PATCH",
         body: JSON.stringify({ expires_in: expiresIn }),
       }),
@@ -75,7 +72,7 @@ export class MyDefaultsClient {
     const path = myDefaultsTypePath(type);
     return this.fetchFn(
       path,
-      this.mutatingInit(path, {
+      withJsonContentType({
         method: "PUT",
         body: JSON.stringify({ params }),
       }),
@@ -86,7 +83,7 @@ export class MyDefaultsClient {
     const path = myDefaultsTypePath(type);
     return this.fetchFn(
       path,
-      this.mutatingInit(path, {
+      withJsonContentType({
         method: "DELETE",
         body: "{}",
       }),

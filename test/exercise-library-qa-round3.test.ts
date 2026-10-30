@@ -21,7 +21,6 @@ import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { authedAppApiRequest } from "./helpers/app-api-request.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -95,11 +94,11 @@ function undoPost(
 ) {
   const { sessionCookie, ...deps } = apiDeps(storage, practId);
   return handleRequest(
-    authedAppApiRequest(
+    new Request(
       `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
-      sessionCookie,
       {
         method: "POST",
+        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: undoBody }),
       },
     ),

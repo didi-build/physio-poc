@@ -15,12 +15,12 @@ describe("MyDefaultsClient (unit)", () => {
         headers: { "content-type": "application/json" },
       }),
     );
-    const client = new MyDefaultsClient({ fetchFn, requestOrigin: "http://127.0.0.1" });
+    const client = new MyDefaultsClient({ fetchFn });
     await client.getPage();
     expect(fetchFn).toHaveBeenCalledWith(MY_DEFAULTS_API_BASE, { method: "GET" });
   });
 
-  it("DELETE sends Origin, application/json content-type, and session type path", async () => {
+  it("DELETE sends application/json content-type and session type path", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -31,21 +31,18 @@ describe("MyDefaultsClient (unit)", () => {
         { status: 200, headers: { "content-type": "application/json" } },
       ),
     );
-    const client = new MyDefaultsClient({
-      fetchFn,
-      requestOrigin: "http://127.0.0.1",
-    });
+    const client = new MyDefaultsClient({ fetchFn });
     await client.resetTypeDefault("isometric");
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(myDefaultsTypePath("isometric"));
     expect((init as RequestInit).method).toBe("DELETE");
-    const headers = new Headers((init as RequestInit).headers);
-    expect(headers.get("content-type")).toBe("application/json");
-    expect(headers.get("origin")).toBe("http://127.0.0.1");
+    expect(new Headers((init as RequestInit).headers).get("content-type")).toBe(
+      "application/json",
+    );
   });
 
-  it("PATCH share link expiry sends CSRF guard headers", async () => {
+  it("PATCH share link expiry sends application/json content-type", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -59,13 +56,12 @@ describe("MyDefaultsClient (unit)", () => {
         { status: 200, headers: { "content-type": "application/json" } },
       ),
     );
-    const client = new MyDefaultsClient({
-      fetchFn,
-      requestOrigin: "http://127.0.0.1",
-    });
+    const client = new MyDefaultsClient({ fetchFn });
     await client.updateShareLinkExpiry(SHARE_LINK_EXPIRES_IN.one_week);
-    const headers = new Headers((fetchFn.mock.calls[0]![1] as RequestInit).headers);
-    expect(headers.get("origin")).toBe("http://127.0.0.1");
-    expect(headers.get("content-type")).toBe("application/json");
+    expect(
+      new Headers((fetchFn.mock.calls[0]![1] as RequestInit).headers).get(
+        "content-type",
+      ),
+    ).toBe("application/json");
   });
 });

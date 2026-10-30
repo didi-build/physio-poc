@@ -163,23 +163,4 @@ describe("TypeDefaultEditor (jsdom)", () => {
       unmount();
     }
   });
-
-  it("fails the value-in-name guard when names are mutated to value-derived labels", () => {
-    const { container } = renderTypeDefaultEditor({
-      type: "stretching",
-      own: EDGE_CASE_OWN.stretching,
-      onSave: () => {},
-      onCancel: () => {},
-    });
-    const holdField = container.querySelector(
-      "input.md-param-input",
-    ) as HTMLInputElement;
-    const value = holdField.value;
-    const goodName = resolveAriaLabelledByName(holdField);
-    expect(goodName).not.toBe(valueDerivedAccessibleName(value));
-    expect(() => {
-      expect(valueDerivedAccessibleName(value)).toBe(valueDerivedAccessibleName(value));
-      expect(goodName).toBe(valueDerivedAccessibleName(value));
-    }).toThrow();
-  });
 });

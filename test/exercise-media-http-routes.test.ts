@@ -20,7 +20,6 @@ import {
   restoreConsoleSpies,
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
-import { authedAppApiRequest } from "./helpers/app-api-request.js";
 
 function mediaHttpDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -43,7 +42,9 @@ function mediaRequest(
   deps: AppDependencies,
   init: RequestInit = {},
 ): Request {
-  return authedAppApiRequest(url, exerciseMediaSessionCookie(deps), init);
+  const headers = new Headers(init.headers);
+  headers.set("cookie", exerciseMediaSessionCookie(deps));
+  return new Request(url, { ...init, headers });
 }
 
 async function seedDraftVersion(

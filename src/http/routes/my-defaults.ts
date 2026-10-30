@@ -4,10 +4,6 @@ import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
 import {
-  LEGACY_PRACTITIONER_MY_DEFAULTS_PATH,
-  MY_DEFAULTS_API_BASE,
-} from "../../my-defaults-api-paths.js";
-import {
   MyDefaultsService,
   MyDefaultsServiceError,
 } from "../../services/my-defaults/index.js";
@@ -17,14 +13,6 @@ import { jsonUnauthorized } from "../responses.js";
 const JSON_HEADERS = { "content-type": "application/json" };
 
 const MY_DEFAULTS_ME_PATH = /^\/api\/me\/my-defaults(?:\/([^/]+)(?:\/([^/]+))?)?$/;
-
-export function isLegacyPractitionerMyDefaultsPath(pathname: string): boolean {
-  return LEGACY_PRACTITIONER_MY_DEFAULTS_PATH.test(pathname);
-}
-
-export function isMyDefaultsApiPath(pathname: string): boolean {
-  return pathname === MY_DEFAULTS_API_BASE || MY_DEFAULTS_ME_PATH.test(pathname);
-}
 
 function service(deps: AppDependencies): MyDefaultsService {
   return new MyDefaultsService(deps.sql);
@@ -104,7 +92,7 @@ function parsePrescriptionType(raw: string | undefined): PrescriptionType | null
     : null;
 }
 
-export type HandleMyDefaultsOptions = {
+type HandleMyDefaultsOptions = {
   sessionPractitioner?: PractitionerSession | null;
 };
 
@@ -114,13 +102,6 @@ export async function handleMyDefaultsRequest(
   options: HandleMyDefaultsOptions = {},
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (isLegacyPractitionerMyDefaultsPath(url.pathname)) {
-    return Response.json(
-      { error: "not_found", message: "Not found" },
-      { status: 404, headers: JSON_HEADERS },
-    );
-  }
-
   const match = MY_DEFAULTS_ME_PATH.exec(url.pathname);
   if (!match) {
     return null;

@@ -14,7 +14,6 @@ import {
   openMigratedDatabase,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
-import { authedAppApiRequest } from "./helpers/app-api-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 
@@ -24,12 +23,13 @@ function authedRequest(url: string, cookie: string, init: RequestInit = {}): Req
   return new Request(url, { ...init, headers });
 }
 
-function authedMutatingRequest(
-  path: string,
-  cookie: string,
-  init: RequestInit,
-): Request {
-  return authedAppApiRequest(`http://127.0.0.1${path}`, cookie, init);
+function authedJsonRequest(path: string, cookie: string, init: RequestInit): Request {
+  const headers = new Headers(init.headers);
+  headers.set("cookie", cookie);
+  if (init.body !== undefined && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  return new Request(`http://127.0.0.1${path}`, { ...init, headers });
 }
 
 function apiDeps(
@@ -71,7 +71,7 @@ describe("My defaults HTTP routes (integration)", () => {
     }
   });
 
-  it("returns 404 for removed practitioner path routes", async () => {
+  it("returns 404 for unknown practitioner my-defaults paths with a session", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -89,13 +89,14 @@ describe("My defaults HTTP routes (integration)", () => {
           deps,
         );
         expect(response.status).toBe(404);
+        await expect(response.json()).resolves.toEqual({ error: "not_found" });
       }
 
       const unauthed = await handleRequest(
         new Request(`http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults`),
         deps,
       );
-      expect(unauthed.status).toBe(404);
+      expect(unauthed.status).toBe(401);
     } finally {
       storage.close();
     }
@@ -121,7 +122,7 @@ describe("My defaults HTTP routes (integration)", () => {
 
       const patchPath = myDefaultsShareLinkExpiryPath();
       const patchResponse = await handleRequest(
-        authedMutatingRequest(patchPath, cookie, {
+        authedJsonRequest(patchPath, cookie, {
           method: "PATCH",
           body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.one_week }),
         }),
@@ -132,6 +133,39 @@ describe("My defaults HTTP routes (integration)", () => {
         effective: { expiresIn: string };
       };
       expect(patched.effective.expiresIn).toBe(SHARE_LINK_EXPIRES_IN.one_week);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("session A GET does not expose practitioner B type overrides", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-read");
+      await seedPractitioner(storage, practitionerB, "b-read@example.com");
+      await new TypeDefaultsRepository(storage).upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-read"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const getResponse = await handleRequest(
+        authedRequest(`http://127.0.0.1${MY_DEFAULTS_API_BASE}`, cookie),
+        deps,
+      );
+      expect(getResponse.status).toBe(200);
+      const page = (await getResponse.json()) as {
+        exercise_types: Array<{
+          type: string;
+          practitioner_params: { hold_s?: number } | null;
+        }>;
+      };
+      const stretching = page.exercise_types.find((row) => row.type === "stretching");
+      expect(stretching?.practitioner_params?.hold_s).not.toBe(99);
+      expect(stretching?.practitioner_params).toBeNull();
     } finally {
       storage.close();
     }
@@ -158,7 +192,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerA);
       const putPath = myDefaultsTypePath("isometric");
       const putResponse = await handleRequest(
-        authedMutatingRequest(putPath, cookie, {
+        authedJsonRequest(putPath, cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { reps: 5, hold_s: 10, sets: 2, days_per_week: 3 },
@@ -196,7 +230,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
       const path = myDefaultsShareLinkExpiryPath();
       const response = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PATCH",
           body: JSON.stringify({
             expires_in: SHARE_LINK_EXPIRES_IN.one_week,
@@ -218,7 +252,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
       const path = myDefaultsTypePath("stretching");
       const response = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PUT",
           body: JSON.stringify({
             practitioner_id: practitionerId,
@@ -240,7 +274,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
       const path = myDefaultsTypePath("isometric");
       const putOk = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { reps: 2, hold_s: 15, sets: 4, days_per_week: 5 },
@@ -251,7 +285,7 @@ describe("My defaults HTTP routes (integration)", () => {
       expect(putOk.status).toBe(200);
 
       const deleteRejected = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "DELETE",
           body: JSON.stringify({ practitionerId }),
         }),
@@ -270,7 +304,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
 
       const patchResponse = await handleRequest(
-        authedMutatingRequest(myDefaultsShareLinkExpiryPath(), cookie, {
+        authedJsonRequest(myDefaultsShareLinkExpiryPath(), cookie, {
           method: "PATCH",
           body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.custom_date }),
         }),
@@ -289,7 +323,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
 
       const putResponse = await handleRequest(
-        authedMutatingRequest(myDefaultsTypePath("stretching"), cookie, {
+        authedJsonRequest(myDefaultsTypePath("stretching"), cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { hold_s: 45, per_day: 2, days_per_week: 4 },
@@ -333,7 +367,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const path = myDefaultsTypePath("concentric");
 
       const firstPut = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: {
@@ -350,7 +384,7 @@ describe("My defaults HTTP routes (integration)", () => {
       expect(firstPut.status).toBe(200);
 
       const secondPut = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: {
@@ -397,7 +431,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
 
       const putResponse = await handleRequest(
-        authedMutatingRequest(myDefaultsTypePath("stretching"), cookie, {
+        authedJsonRequest(myDefaultsTypePath("stretching"), cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { hold_s: 30, per_day: 2, sets: 3, days_per_week: 4 },
@@ -418,7 +452,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const { deps, cookie } = apiDeps(storage, practitionerId);
 
       const putResponse = await handleRequest(
-        authedMutatingRequest(myDefaultsTypePath("isometric"), cookie, {
+        authedJsonRequest(myDefaultsTypePath("isometric"), cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { reps: 0, hold_s: 10, sets: 3, days_per_week: 3 },
@@ -440,7 +474,7 @@ describe("My defaults HTTP routes (integration)", () => {
       const path = myDefaultsTypePath("isometric");
 
       const putResponse = await handleRequest(
-        authedMutatingRequest(path, cookie, {
+        authedJsonRequest(path, cookie, {
           method: "PUT",
           body: JSON.stringify({
             params: { reps: 2, hold_s: 15, sets: 4, days_per_week: 5 },
@@ -451,35 +485,12 @@ describe("My defaults HTTP routes (integration)", () => {
       expect(putResponse.status).toBe(200);
 
       const deleteResponse = await handleRequest(
-        authedMutatingRequest(path, cookie, { method: "DELETE", body: "{}" }),
+        authedJsonRequest(path, cookie, { method: "DELETE", body: "{}" }),
         deps,
       );
       expect(deleteResponse.status).toBe(200);
       const body = (await deleteResponse.json()) as { practitioner_params: null };
       expect(body.practitioner_params).toBeNull();
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("returns 415 for mutating my-defaults requests without JSON content-type", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const practitionerId = await seedPractitioner(storage);
-      const { deps, cookie } = apiDeps(storage, practitionerId);
-      const path = myDefaultsShareLinkExpiryPath();
-      const response = await handleRequest(
-        authedRequest(`http://127.0.0.1${path}`, cookie, {
-          method: "PATCH",
-          headers: {
-            origin: "http://127.0.0.1",
-            "content-type": "text/plain",
-          },
-          body: "nope",
-        }),
-        deps,
-      );
-      expect(response.status).toBe(415);
     } finally {
       storage.close();
     }

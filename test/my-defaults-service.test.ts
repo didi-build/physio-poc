@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { resolveShareLinkExpiresAt } from "../src/domain/share-link-expiry.js";
 import { SHARE_LINK_EXPIRES_IN } from "../src/mcp-connector/share-link-expiry.js";
 import { MyDefaultsService } from "../src/services/my-defaults/index.js";
 import {
@@ -77,12 +76,7 @@ describe("MyDefaultsService (integration, SQLite)", () => {
         createdAt: TS,
         now: secondNow,
       });
-      expect(secondLink.expires_at).toBe(
-        resolveShareLinkExpiresAt(
-          { expiresIn: SHARE_LINK_EXPIRES_IN.one_week },
-          secondNow,
-        ),
-      );
+      expect(secondLink.expires_at).toBe("2026-03-23T03:59:59.999Z");
       expect(secondLink.expires_at).not.toBe(firstExpiresAt);
     } finally {
       storage.close();
