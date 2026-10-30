@@ -117,8 +117,9 @@ export async function handleFakeGoogleRequest(
     if (!redirectUri) {
       return new Response("missing redirect_uri", { status: 400 });
     }
-    const expectedRedirect = `${url.origin}/api/auth/callback/google`;
-    if (redirectUri !== expectedRedirect) {
+    const callbackOrigin = url.origin;
+    const allowedCallbackPrefix = `${callbackOrigin}/api/auth/callback/`;
+    if (!redirectUri?.startsWith(allowedCallbackPrefix)) {
       return new Response("invalid redirect_uri", { status: 400 });
     }
     const target = new URL(redirectUri);
