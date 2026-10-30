@@ -181,6 +181,40 @@ describe("Programs builder row actions (integration, jsdom)", () => {
     ).toBeInTheDocument();
   });
 
+  it("reorders rows with ordered_row_ids from move up (X12)", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    const reorderRows = vi.fn().mockImplementation(async (_id, ordered) => ({
+      program: builderView({
+        rows: ordered.map((id: string, position: number) =>
+          id === "row-a"
+            ? exerciseRow("row-a", "Alpha move", position)
+            : exerciseRow("row-b", "Beta move", position),
+        ),
+      }),
+    }));
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+        reorderRows,
+      }),
+    );
+    const betaCard = await screen.findByRole("article", { name: /Beta move/i });
+    await userEvent.click(
+      within(betaCard).getByRole("button", {
+        name: /Reorder Beta move, position 2/,
+      }),
+    );
+    await waitFor(() => {
+      expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
+    });
+    expect(
+      screen.getByRole("heading", { name: "Alpha move", level: 3 }),
+    ).toBeInTheDocument();
+  });
+
   it("duplicates a row and shows the duplicated toast", async () => {
     vi.stubGlobal("crypto", { randomUUID: () => "dup-row-id" });
     const rows = [exerciseRow("row-a", "Alpha move", 0)];

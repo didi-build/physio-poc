@@ -12,7 +12,6 @@ import {
   reorderRowAriaLabel,
 } from "../copy/programs.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
-import { ProgramRowVersionPicker } from "./ProgramRowVersionPicker.js";
 
 export type ProgramBuilderRowCardProps = {
   row: ProgramBuilderRow;
@@ -62,7 +61,6 @@ export function ProgramBuilderRowCard({
         }
       }}
     >
-      <ProgramRowVersionPicker />
       <h3 id={titleId} className="pg-row-title">
         {title}
       </h3>
