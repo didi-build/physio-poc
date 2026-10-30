@@ -11,7 +11,7 @@ CTO ruling on [DIDI-1092 comment faa8d286](https://linear.app/didi-build/issue/D
 
 ## Decision
 
-For every request whose path starts with `/api/`, `handleRequest` runs `rejectMutatingAppApiCsrf` once before dispatch when the method is not safe (anything other than GET, HEAD, or OPTIONS) and the path is not under the sole exemption prefix `CSRF_EXEMPT_APP_API_AUTH_PREFIX` (`/api/auth`, exact prefix match so `/api/authx` is not exempt). This runs whether or not a handler exists for the path.
+For every request whose path starts with `/api/`, after the practitioner session guard succeeds, `handleRequest` runs `rejectMutatingAppApiCsrf` once before handler dispatch when the method is not safe (anything other than GET, HEAD, or OPTIONS) and the path is not under the sole exemption prefix `CSRF_EXEMPT_APP_API_AUTH_PREFIX` (`/api/auth`, exact prefix match so `/api/authx` is not exempt). This runs whether or not a handler exists for the path.
 
 The guard:
 
