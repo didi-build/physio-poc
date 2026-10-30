@@ -9,6 +9,26 @@ import {
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
 
+const IMPORT_META_ENV_VIOLATION = "import.meta.env access";
+
+function countImportMetaEnvViolations(messages: string[]): number {
+  return messages.filter((m) => m === IMPORT_META_ENV_VIOLATION).length;
+}
+
+function expectExactlyOneImportMetaEnvViolation(
+  repoPath: string,
+  source: string,
+): void {
+  const messages = findPortableViolations(repoPath, source);
+  expect(countImportMetaEnvViolations(messages)).toBe(1);
+}
+
+/**
+ * import.meta fixtures follow the portable guard rule: only import.meta.url,
+ * import.meta["url"], (import.meta).url, and ((import.meta))["url"] are allowed,
+ * including chained property reads such as import.meta.url.length.
+ * Type-assertion-wrapped url reads and every other import.meta shape are violations.
+ */
 describe("portable runtime import guard (unit)", () => {
   it("scans a non-zero set of portable files under src/", () => {
     const files = listPortableSourceFiles(SRC_ROOT);
@@ -127,6 +147,244 @@ describe("portable runtime import guard (unit)", () => {
       "export { x } from '../../entry/worker.js';",
     );
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects bare directory specifiers into src/entry without trailing slash", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "export * from '../entry';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects bare directory specifiers into src/adapters/node", () => {
+    const messages = findPortableViolations(
+      "src/services/example.ts",
+      "export * from '../adapters/node';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("does not treat entrypoint.js as the entry platform directory", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "export * from '../entrypoint.js';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(false);
+  });
+
+  it("detects type-only import() specifiers for platform modules", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'type Ctx = import("@cloudflare/workers-types").ExecutionContext;',
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects type-only import() specifiers into the platform tree", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'type NodeEntry = import("../entry/node.js").CreateNodeServer;',
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects import.meta.env reads under portable src/", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/ui/App.tsx",
+      "const mode = import.meta.env.MODE;",
+    );
+  });
+
+  it("detects import.meta.env reads outside src/ui/", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const x = import.meta.env;",
+    );
+  });
+
+  it("detects import.meta bracket env reads under src/ui/", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/ui/App.tsx",
+      'const m = import.meta["env"].MODE;',
+    );
+  });
+
+  it("detects destructuring env from import.meta", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const { env } = import.meta;",
+    );
+  });
+
+  it("detects import.meta aliasing before env access", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const meta = import.meta; meta.env;",
+    );
+  });
+
+  it("detects import.meta env access with a template literal key", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const x = import.meta[`env`];",
+    );
+  });
+
+  it("detects angle-bracket type assertion on import.meta", () => {
+    expectExactlyOneImportMetaEnvViolation("src/http/example.ts", "<any>import.meta;");
+  });
+
+  it("detects as-any cast before import.meta env property access", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(import.meta as any).env;",
+    );
+  });
+
+  it("detects angle-bracket cast before import.meta env property access", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(<any>import.meta).env;",
+    );
+  });
+
+  it("detects as-any cast before import.meta env bracket access", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      '(import.meta as any)["env"];',
+    );
+  });
+
+  it("allows import.meta.url and import.meta bracket url reads", () => {
+    expect(
+      findPortableViolations("src/http/example.ts", "const u = import.meta.url;"),
+    ).toEqual([]);
+    expect(
+      findPortableViolations("src/http/example.ts", 'const u = import.meta["url"];'),
+    ).toEqual([]);
+    expect(
+      findPortableViolations("src/http/example.ts", "const u = (import.meta).url;"),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        'const u = ((import.meta))["url"];',
+      ),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        "const n = import.meta.url.length;",
+      ),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        "const n = (import.meta).url.length;",
+      ),
+    ).toEqual([]);
+  });
+
+  it("flags import.meta url access with a template literal key", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const u = import.meta[`url`];",
+    );
+  });
+
+  it("flags import.meta url access with an identifier key", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const k = 'url'; const u = import.meta[k];",
+    );
+  });
+
+  it("flags import.meta bracket access when the key variable is named url", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      'const url = "env"; import.meta[url];',
+    );
+  });
+
+  it("flags parenthesized import.meta bracket access when the key variable is named url", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      'const url = "env"; import.meta[(url)];',
+    );
+  });
+
+  it("flags type-assertion-wrapped import.meta url reads", () => {
+    for (const source of [
+      "(import.meta as any).url;",
+      "(import.meta satisfies Record<string, unknown>).url;",
+      "(import.meta!).url;",
+      "(<any>import.meta).url;",
+    ]) {
+      expectExactlyOneImportMetaEnvViolation("src/http/example.ts", source);
+    }
+  });
+
+  it("flags import.meta nested in array indexing and follow-on env access", () => {
+    expectExactlyOneImportMetaEnvViolation("src/http/example.ts", "[import.meta][0];");
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "[import.meta][0].env;",
+    );
+  });
+
+  it("flags import.meta inside object literals, calls, and iife env chains", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "({ m: import.meta }).m.env;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "foo(import.meta).x;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(() => import.meta)().env;",
+    );
+  });
+
+  it("flags import.meta used as call or assignment operands for env access", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "obj[String(import.meta)];",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(x = import.meta).env;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(0, import.meta).env;",
+    );
+  });
+
+  it("does not flag unrelated config.env property access as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'const config = { env: 1 }; const x = config.env; const y = config["env"];',
+    );
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
+  });
+
+  it("does not flag new.target.env as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "function F() { return new.target.env; }",
+    );
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
+  });
+
+  it("does not flag new.target bracket env as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'function F() { return new.target["env"]; }',
+    );
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
   });
 
   it("detects relative imports into src/adapters/workers", () => {
