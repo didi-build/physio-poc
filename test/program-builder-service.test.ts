@@ -1491,6 +1491,55 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
     }
   });
 
+  it("skips type-mismatched placeholders on soft-deleted programs and returns the skipped count", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-del-mismatch"),
+        "Move",
+      );
+      await service.createProgram(practitionerId, {
+        programId: id("prog-del-mismatch"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-del-mismatch"), {
+        rowId: id("row-del-mismatch"),
+        exerciseRequestId: id("req-del-mismatch"),
+        prescriptionType: "isometric",
+        note: "misfit deleted",
+      });
+      await service.deleteProgram(practitionerId, id("prog-del-mismatch"));
+      await markExerciseRequestApproved(
+        storage,
+        id("req-del-mismatch"),
+        FIXTURE_EXERCISE_ID,
+      );
+      const skipped = await linkApprovedPlaceholders(
+        storage,
+        id("req-del-mismatch"),
+        FIXTURE_VERSION_ID,
+      );
+      expect(skipped).toBe(1);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const row = await rowsRepo.findById(id("row-del-mismatch"));
+      expect(row?.exercise_request_id).toBe(id("req-del-mismatch"));
+      expect(row?.prescription_type).toBe("isometric");
+      expect(row?.note).toBe("misfit deleted");
+      await service.restoreProgram(practitionerId, id("prog-del-mismatch"));
+      const restored = await service.getProgram(
+        practitionerId,
+        id("prog-del-mismatch"),
+      );
+      expect(restored.rows[0]?.kind).toBe("placeholder");
+      expect(restored.rows[0]?.exercise_request_id).toBe(id("req-del-mismatch"));
+    } finally {
+      storage.close();
+    }
+  });
+
   it("keeps prescription_type on rows that link", async () => {
     const { storage, service } = await openService();
     try {
@@ -1597,6 +1646,106 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
       await storage.run("ROLLBACK");
       const after = await snapshotProgramDbState(storage, id("prog-partial"));
       expectDbStateUnchanged(before, after);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("links only placeholders for the approved request when another owner has a deleted program placeholder", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = await seedPractitioner(
+        storage,
+        id("pract-b-scope"),
+        "other-coach@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, practitionerA);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerA,
+        id("req-scope-a"),
+        "Move A",
+      );
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerB,
+        id("req-scope-b"),
+        "Move B",
+      );
+      await service.createProgram(practitionerA, {
+        programId: id("prog-scope-a"),
+      });
+      await service.createProgram(practitionerB, {
+        programId: id("prog-scope-b"),
+      });
+      await service.addPlaceholderRow(practitionerA, id("prog-scope-a"), {
+        rowId: id("row-scope-a"),
+        exerciseRequestId: id("req-scope-a"),
+        prescriptionType: "stretching",
+      });
+      await service.addPlaceholderRow(practitionerB, id("prog-scope-b"), {
+        rowId: id("row-scope-b"),
+        exerciseRequestId: id("req-scope-b"),
+        prescriptionType: "stretching",
+      });
+      await service.deleteProgram(practitionerA, id("prog-scope-a"));
+      await service.deleteProgram(practitionerB, id("prog-scope-b"));
+      await markExerciseRequestApproved(
+        storage,
+        id("req-scope-a"),
+        FIXTURE_EXERCISE_ID,
+      );
+      await linkApprovedPlaceholders(storage, id("req-scope-a"), FIXTURE_VERSION_ID);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowA = await rowsRepo.findById(id("row-scope-a"));
+      expect(rowA?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+      expect(rowA?.exercise_request_id).toBeNull();
+      const rowB = await rowsRepo.findById(id("row-scope-b"));
+      expect(rowB?.exercise_request_id).toBe(id("req-scope-b"));
+      expect(rowB?.exercise_id).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("pins the approved version id passed to linkApprovedPlaceholders when a newer version exists", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const olderVersionId = FIXTURE_VERSION_ID;
+      const newerVersionId = id("ver-newer-pin");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: newerVersionId,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+      await seedOpenExerciseRequest(storage, practitionerId, id("req-pin-ver"), "Move");
+      await service.createProgram(practitionerId, {
+        programId: id("prog-pin-ver"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-pin-ver"), {
+        rowId: id("row-pin-ver"),
+        exerciseRequestId: id("req-pin-ver"),
+        prescriptionType: "stretching",
+      });
+      await markExerciseRequestApproved(
+        storage,
+        id("req-pin-ver"),
+        FIXTURE_EXERCISE_ID,
+      );
+      await linkApprovedPlaceholders(storage, id("req-pin-ver"), olderVersionId);
+      const row = await new ProgramRowsRepository(storage).findById(id("row-pin-ver"));
+      expect(row?.exercise_version_id).toBe(olderVersionId);
+      expect(row?.exercise_version_id).not.toBe(newerVersionId);
     } finally {
       storage.close();
     }

@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
-import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
+import {
+  linkApprovedPlaceholders,
+  ProgramBuilderService,
+} from "../src/services/programs/program-builder-service.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { ProgramsRepository } from "../src/storage/repositories/programs.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedExercise,
   seedPractitioner,
@@ -529,6 +534,60 @@ describe("Exercise library usage_count from program rows (integration)", () => {
 
       await programBuilder.restoreProgram(practId, programId);
       await assertCounts(1, [exerciseId, fillerId]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("counts a linked placeholder row after restore when linking happened in a deleted program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const exerciseId = FIXTURE_EXERCISE_ID;
+      const versionId = FIXTURE_VERSION_ID;
+      await seedApprovedExercise(storage, practId, {
+        exerciseId,
+        versionId,
+        title: "Heel slide",
+      });
+      const requests = new ExerciseRequestsRepository(storage);
+      const requestId = id("req-usage-link-del");
+      await requests.insert({
+        id: requestId,
+        requestedName: "Pending move",
+        requestedBy: practId,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      const programBuilder = new ProgramBuilderService(storage, () => TS);
+      const programId = id("prog-usage-link-del");
+      await programBuilder.createProgram(practId, { programId });
+      await programBuilder.addPlaceholderRow(practId, programId, {
+        rowId: id("row-usage-link-del"),
+        exerciseRequestId: requestId,
+        prescriptionType: "stretching",
+      });
+      await programBuilder.deleteProgram(practId, programId);
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
+        0,
+      );
+
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [exerciseId, TS, requestId],
+      );
+      await linkApprovedPlaceholders(storage, requestId, versionId);
+      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
+        0,
+      );
+
+      await programBuilder.restoreProgram(practId, programId);
+      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
+        1,
+      );
     } finally {
       storage.close();
     }
