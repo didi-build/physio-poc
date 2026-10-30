@@ -6,6 +6,11 @@ export default defineConfig({
   test: {
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
     environment: "node",
+    server: {
+      deps: {
+        inline: ["@better-auth/cimd"],
+      },
+    },
     reporters: process.env.CI ? ["default", "junit"] : ["default"],
     outputFile: process.env.CI ? { junit: "test-results/junit.xml" } : undefined,
   },
