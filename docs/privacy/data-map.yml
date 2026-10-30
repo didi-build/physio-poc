@@ -287,4 +287,42 @@ d1_tables:
         processors: [Cloudflare]
         retention: until row deleted
 
+  exercise_media_sets:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise version deleted
+      who_can_see: all_practitioners when public; draft author and reviewers only via app
+      source: migrations/0002_exercise_media.sql
+      verified: true
+    columns:
+      id: {}
+      start_object_key:
+        notes: R2 object key; no patient information in key path
+      end_object_key:
+        notes: R2 object key; no patient information in key path
+      visibility:
+        notes: draft until exercise version approved; public when live
+      created_at: {}
+
+  media_regenerations:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: server-side only
+      source: migrations/0002_exercise_media.sql
+      verified: true
+    columns:
+      id: {}
+      practitioner_id: {}
+      exercise_id: {}
+      exercise_version_id: {}
+      scope: {}
+      note:
+        notes: optional practitioner note for AI; validateRequestNote on write
+      created_at: {}
+
 other_items: []
