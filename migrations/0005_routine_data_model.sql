@@ -33,10 +33,6 @@ CREATE TABLE IF NOT EXISTS routine_versions (
   UNIQUE (routine_id, version_number)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_routine_versions_one_draft_per_routine ON routine_versions (routine_id)
-WHERE
-  status = 'draft';
-
 CREATE TABLE IF NOT EXISTS routine_version_rows (
   id TEXT PRIMARY KEY,
   routine_version_id TEXT NOT NULL REFERENCES routine_versions (id) ON DELETE RESTRICT,

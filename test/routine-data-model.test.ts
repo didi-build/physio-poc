@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  FreeTextValidationError,
+  validateRoutineName,
+  validateRoutineWhoItsFor,
+} from "../src/domain/exercise-free-text.js";
 import { ProgramsRepository } from "../src/storage/repositories/programs.js";
 import {
   ConditionsRepository,
@@ -25,6 +30,7 @@ import { id } from "./helpers/opaque-test-ids.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const BODY_REGION_KNEE = "br-knee";
+const FAKE_DOB_SNIPPET = "DOB 1990-01-01";
 
 async function expectSqliteError(
   fn: () => Promise<unknown>,
@@ -77,6 +83,122 @@ describe("routine data model migration (integration, SQLite)", () => {
       expect(
         programsAlter.match(/ON DELETE RESTRICT/gi)?.length ?? 0,
       ).toBeGreaterThanOrEqual(2);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("routine version saves (repository, SQLite)", () => {
+  it("rejects copyFromVersionId from a different routine", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+
+      async function publishRoutine(
+        routineSeed: string,
+        versionDraftSeed: string,
+        rowSeed: string,
+        name: string,
+      ) {
+        await routines.createDraft({
+          id: id(routineSeed),
+          draftVersionId: id(versionDraftSeed),
+          createdBy: author,
+          createdAt: TS,
+          bodyRegionId: BODY_REGION_KNEE,
+        });
+        await rows.replaceDraftRow({
+          id: id(rowSeed),
+          routineId: id(routineSeed),
+          authorId: author,
+          position: 0,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          prescriptionType: "stretching",
+          params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          draftUpdatedAt: TS,
+        });
+        return versions.publishDraft({
+          routineId: id(routineSeed),
+          authorId: author,
+          publishedAt: TS,
+          name,
+        });
+      }
+
+      const v1A = await publishRoutine("routine-a", "rv-a-draft", "rvr-a", "Routine A");
+      const v1B = await publishRoutine("routine-b", "rv-b-draft", "rvr-b", "Routine B");
+
+      await expect(
+        versions.savePublishedVersion({
+          id: id("rv-a-v2-bad-copy"),
+          routineId: id("routine-a"),
+          createdBy: author,
+          createdAt: TS,
+          name: "Routine A v2",
+          copyFromVersionId: v1B.id,
+        }),
+      ).rejects.toThrow("copyFromVersionId belongs to a different routine");
+
+      const v2 = await versions.savePublishedVersion({
+        id: id("rv-a-v2-ok"),
+        routineId: id("routine-a"),
+        createdBy: author,
+        createdAt: TS,
+        name: "Routine A v2",
+        copyFromVersionId: v1A.id,
+      });
+      expect(v2.version_number).toBe(2);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("routine free text patient-detail guard (unit + repository)", () => {
+  it("rejects patient-name-like snippets in routine name and who it is for", () => {
+    expect(() => validateRoutineName(`Knee plan ${FAKE_DOB_SNIPPET}`)).toThrow(
+      FreeTextValidationError,
+    );
+    expect(() =>
+      validateRoutineWhoItsFor(`For adults, not ${FAKE_DOB_SNIPPET}`),
+    ).toThrow(FreeTextValidationError);
+  });
+
+  it("rejects patient details on draft metadata and publish via repository", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const routines = new RoutinesRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      await routines.createDraft({
+        id: id("routine-pii"),
+        draftVersionId: id("rv-pii-draft"),
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await expect(
+        routines.updateDraftMetadata({
+          routineId: id("routine-pii"),
+          authorId: author,
+          draftUpdatedAt: TS,
+          whoItsFor: `Reach patient@example.com only`,
+        }),
+      ).rejects.toThrow(FreeTextValidationError);
+      await expect(
+        versions.publishDraft({
+          routineId: id("routine-pii"),
+          authorId: author,
+          publishedAt: TS,
+          name: `Title patient@example.com`,
+        }),
+      ).rejects.toThrow(FreeTextValidationError);
     } finally {
       storage.close();
     }
@@ -398,7 +520,7 @@ describe("program routine origin (repository, SQLite)", () => {
 });
 
 describe("routine schema constraints (integration, SQLite)", () => {
-  it("rejects invalid JSON, duplicate draft, and bad origin enum", async () => {
+  it("rejects invalid JSON, a second draft on the same routine, and bad origin enum", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(storage);
@@ -443,7 +565,7 @@ describe("routine schema constraints (integration, SQLite)", () => {
             ) VALUES (?, ?, 0, 'draft', NULL, NULL, NULL, ?, ?)`,
             [id("rv-second-draft"), id("routine-raw"), author, TS],
           ),
-        /idx_routine_versions_one_draft_per_routine|UNIQUE constraint failed/i,
+        /routine_versions\.routine_id, routine_versions\.version_number|UNIQUE constraint failed/i,
       );
       await storage.run(
         `INSERT INTO programs (

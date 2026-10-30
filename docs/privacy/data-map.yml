@@ -434,13 +434,13 @@ d1_tables:
       who_can_see: all_practitioners
       source: migrations/0005_routine_data_model.sql
       verified: true
-      notes: Fixed v1 list seeded empty; practitioners cannot add conditions.
+      notes: Fixed v1 list seeded empty; practitioners cannot add conditions. Labels are team-seeded only, never practitioner-entered; validateConditionLabel on seed writes.
     columns:
       id:
         whose: operational
       label:
         whose: operational
-        notes: Clinical template label only; no patient details.
+        notes: patient_detail_risk; validateConditionLabel on team seed; clinical template label only
       sort_order:
         whose: operational
 

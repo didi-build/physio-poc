@@ -5,6 +5,7 @@ import {
 } from "../../domain/exercise-types.js";
 import {
   validateChangeSummary,
+  validateConditionLabel,
   validateOptionalRoutineName,
   validateRoutineName,
   validateRoutineWhoItsFor,
@@ -107,10 +108,7 @@ export class ConditionsRepository {
     sortOrder?: number;
   }): Promise<void> {
     const id = validateOpaqueEntityId(input.id, "Condition id");
-    const label = input.label.trim();
-    if (label.length < 1) {
-      throw new RoutineRepositoryError("Condition label must not be empty");
-    }
+    const label = validateConditionLabel(input.label);
     await this.sql.run(
       "INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, ?)",
       [id, label, input.sortOrder ?? 0],
@@ -381,6 +379,15 @@ export class RoutineVersionsRepository {
     const restoredFrom = input.restoredFromVersionId
       ? validateOpaqueEntityId(input.restoredFromVersionId, "Restored from version id")
       : null;
+    const copyFromVersion = await this.findById(input.copyFromVersionId);
+    if (!copyFromVersion) {
+      throw new RoutineRepositoryError("Source routine version not found");
+    }
+    if (copyFromVersion.routine_id !== input.routineId) {
+      throw new RoutineRepositoryError(
+        "copyFromVersionId belongs to a different routine",
+      );
+    }
     const sourceRows = await new RoutineVersionRowsRepository(this.sql).listForVersion(
       input.copyFromVersionId,
     );

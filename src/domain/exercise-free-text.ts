@@ -162,6 +162,17 @@ export function validateRoutineWhoItsFor(
   return validateExerciseTemplateText(text.trim(), "Who it is for");
 }
 
+/** Condition label: team-seeded fixed list entries only; no patient details. */
+export function validateConditionLabel(label: string): string {
+  const trimmed = label.trim();
+  if (trimmed.length < 1) {
+    throw new FreeTextValidationError("Condition label must not be empty");
+  }
+  assertMaxLength(trimmed, MAX_LENGTH_PROGRAM_TITLE, "Condition label");
+  assertNoPatientDetails(trimmed, "Condition label");
+  return trimmed;
+}
+
 /** Text override description (partial field edits allowed, but not empty whitespace). */
 export function validateTextOverrideValue(key: string, value: string): string {
   if (key === "title") {
