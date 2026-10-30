@@ -168,7 +168,6 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       if (wrap.contains(related)) {
         return;
       }
-      onCloseRef.current();
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -179,11 +178,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       onCloseRef.current();
     };
 
-    menu.addEventListener("keydown", onKeyDown);
+    wrap.addEventListener("keydown", onKeyDown);
     wrap.addEventListener("focusout", onFocusOut);
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => {
-      menu.removeEventListener("keydown", onKeyDown);
+      wrap.removeEventListener("keydown", onKeyDown);
       wrap.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("pointerdown", onPointerDown, true);
     };

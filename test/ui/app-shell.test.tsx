@@ -175,13 +175,10 @@ describe("app shell nav (integration)", () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
     const trigger = screen.getByRole("button", { name: "Account menu" });
-    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
-    const outsideTarget = within(topNav).getByRole("link", { name: "Exercises" });
 
     await user.click(trigger);
-    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
-    signOutItem.focus();
-    fireEvent.focusOut(signOutItem, { relatedTarget: outsideTarget });
+    screen.getByRole("menuitem", { name: "Sign out" }).focus();
+    await user.tab();
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -191,8 +188,6 @@ describe("app shell nav (integration)", () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
     const trigger = screen.getByRole("button", { name: "Account menu" });
-    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
-    const outsideTarget = within(topNav).getByRole("link", { name: "Exercises" });
 
     await user.click(trigger);
     const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
@@ -204,7 +199,7 @@ describe("app shell nav (integration)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
     trigger.focus();
-    fireEvent.focusOut(trigger, { relatedTarget: outsideTarget });
+    await user.tab({ shift: true });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
@@ -303,6 +298,7 @@ describe("app shell nav (integration)", () => {
       "utf8",
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
+    expect(source).toContain('wrap.addEventListener("keydown", onKeyDown)');
     expect(source).toContain(
       'document.addEventListener("pointerdown", onPointerDown, true)',
     );
