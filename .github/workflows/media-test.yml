@@ -3,6 +3,10 @@ name: Media test (five exercises, FLUX.2 klein on fal)
 on:
   workflow_dispatch:
 
+concurrency:
+  group: media-test-${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -10,6 +14,7 @@ jobs:
   media-test:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: media-generation
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -32,3 +37,4 @@ jobs:
           name: physio-five-exercise-media-test
           path: media-test-output/
           if-no-files-found: error
+          retention-days: 1

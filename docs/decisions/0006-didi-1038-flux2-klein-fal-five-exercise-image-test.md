@@ -24,7 +24,7 @@ Diadem accepted fal terms for the klein test ([DIDI-1028](https://linear.app/did
 
 ## Decision
 
-**Proposed:** Use **FLUX.2 klein 4B** on **fal.ai** for the five-exercise image test and as the default image provider choice until a later production ADR:
+**Proposed:** For the **five-exercise media test only** ([DIDI-1038](https://linear.app/didi-build/issue/DIDI-1038); CTO ruling on [DIDI-999](https://linear.app/didi-build/issue/DIDI-999), Oct 29, 2026, 4:07 PM ET), use **FLUX.2 klein 4B** on **fal.ai** via the gated workflow and `scripts/media-test/`. This ADR does **not** select a production default image provider for the app.
 
 | Step        | fal model ID                  | HTTP endpoint                                 |
 | ----------- | ----------------------------- | --------------------------------------------- |
@@ -34,10 +34,30 @@ Diadem accepted fal terms for the klein test ([DIDI-1028](https://linear.app/did
 - **License:** Apache-2.0 weights; self-hostable later on a **24GB GPU** (consumer-class) per Black Forest Labs and fal documentation.
 - **Prompts:** Same shared clinical illustration template and five exercises as ADR 0005 (start vs end pose clause only).
 - **Resolution:** About **1 MP** (1024x1024) per still for the test pass.
-- **Privacy:** Every fal request sends `X-Fal-Store-IO: 0`. API key only from the `FAL_KEY` environment secret on the gated workflow; never in the repo or logs.
+- **Privacy:** Every fal HTTP call (generation and fal.media download) sends `X-Fal-Store-IO: 0`. API key only from the `FAL_KEY` environment secret on the gated workflow; never in the repo or logs.
 - **Cap:** At most **20** fal generations per workflow run (10 for the five-exercise pass; headroom for retries is not used in the default script path).
 
 Implementation: `scripts/media-test/` and `.github/workflows/media-test.yml` ([DIDI-1038](https://linear.app/didi-build/issue/DIDI-1038)).
+
+## Terms risks (desk research; no recommendation)
+
+Whether Physio's exercise-education use is restricted is for Diadem in the provider-pick RfM, not decided here.
+
+**fal (chosen gateway for this test).** **terms risk: PHI collection clause in Acceptable Use Policy; needs Diadem's call.** [fal Acceptable Use Policy](https://fal.ai/legal/acceptable-use-policy), scope: Section 7, Security, item 1 (retrieved 2026-10-30), verbatim:
+
+> Collecting, processing, or disclosing personal or sensitive information such as (i) Personally identifiable information (PII). (ii) Protected health information (PHI).
+
+**Google Vertex (dropped for this test).** **terms risk: clinical-purpose restriction; needs Diadem's call.** Verbatim quote in [ADR 0005 section A](./0005-didi-999-exercise-media-style-and-model-test.md) (Service Specific Terms s. 20(e), retrieved 2026-10-29):
+
+> Customer will not, and will not allow End Users to, use the Generative AI Services for clinical purposes (for clarity, non-clinical research, scheduling, or other administrative tasks is not restricted), as a substitute for professional medical advice, or in any manner that is overseen by or requires clearance or approval from any applicable regulatory authority.
+
+**Runway Dev (dropped for this test).** Verbatim quotes in [ADR 0005 section B](./0005-didi-999-exercise-media-style-and-model-test.md) (retrieved 2026-10-29): Runway Usage Policy (Characters and Game Worlds scope):
+
+> Characters or games that are intended to provide medical, legal, or financial advice or mimic professional therapeutic or counseling interventions.
+
+Runway Terms of Use, Runway App Studio, Prohibited Apps, (v):
+
+> collect protected health information, payment card data, financial account numbers, or government identifiers
 
 ## Reasons (why ADR 0005 candidates were dropped)
 
@@ -53,8 +73,8 @@ Implementation: `scripts/media-test/` and `.github/workflows/media-test.yml` ([D
 
 ## Consequences
 
-- ADR 0005 remains the record for desk research and shared prompts; **provider and model IDs in 0005 are superseded** by this ADR for implementation and the manual test.
-- Application code must not hard-code other image or video providers until Diadem and Kojo sign off on the five-exercise artifact ([DIDI-1028](https://linear.app/didi-build/issue/DIDI-1028)).
+- ADR 0005 remains the record for desk research and shared prompts; **provider and model IDs in 0005 are superseded** by this ADR for the manual five-exercise test only.
+- Application code must not treat this ADR as a production provider default until Diadem and Kojo sign off on the five-exercise artifact ([DIDI-1028](https://linear.app/didi-build/issue/DIDI-1028)).
 - Production storage, UI, D1, and regenerate caps stay out of scope ([DIDI-1013](https://linear.app/didi-build/issue/DIDI-1013)).
 - CTO **head-pinned sign-off** on the workflow and script at merge head is required before QA merges ([DIDI-1038](https://linear.app/didi-build/issue/DIDI-1038) acceptance).
 

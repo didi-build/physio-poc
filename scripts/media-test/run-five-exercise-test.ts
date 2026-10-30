@@ -13,14 +13,12 @@ import {
   MAX_GENERATIONS_PER_RUN,
   megapixelsFromSize,
 } from "./constants.js";
+import { downloadFalImageBytes, type FetchLike } from "./download-fal-image.js";
 import { FIVE_TEST_EXERCISES } from "./exercises.js";
 import { buildExerciseImagePrompt, type ExerciseImagePhase } from "./prompts.js";
 import { redactAuthorizationHeader, redactFalKey } from "./redact.js";
 
-export type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
+export type { FetchLike };
 
 export interface MediaTestLogger {
   info(message: string): void;
@@ -55,7 +53,7 @@ export interface RunFiveExerciseMediaTestDeps {
   falKey: string;
   outputDir: string;
   logger?: MediaTestLogger;
-  /** Defaults to deps.fetch for downloading PNG bytes from fal CDN URLs. */
+  /** Defaults to guarded fal.media download via deps.fetch. */
   downloadBytes?: (url: string) => Promise<Uint8Array>;
 }
 
@@ -72,23 +70,24 @@ export class GenerationCapError extends Error {
   }
 }
 
-export function createGenerationCounter(cap = MAX_GENERATIONS_PER_RUN) {
+export function createGenerationCounter(cap: number = MAX_GENERATIONS_PER_RUN) {
   let count = 0;
   return {
     get count() {
       return count;
     },
+    /** Call immediately before a fal generation fetch; throws without incrementing past cap. */
     tick(): number {
-      count += 1;
-      if (count > cap) {
+      if (count >= cap) {
         throw new GenerationCapError(cap);
       }
+      count += 1;
       return count;
     },
   };
 }
 
-function buildFalHeaders(falKey: string): Record<string, string> {
+export function buildFalHeaders(falKey: string): Record<string, string> {
   return {
     Authorization: `Key ${falKey}`,
     "Content-Type": "application/json",
@@ -96,8 +95,12 @@ function buildFalHeaders(falKey: string): Record<string, string> {
   };
 }
 
-function safeLogMessage(message: string, falKey: string): string {
+export function safeLogMessage(message: string, falKey: string): string {
   return redactAuthorizationHeader(redactFalKey(message, falKey));
+}
+
+function safeFalError(message: string, falKey: string): Error {
+  return new Error(safeLogMessage(message, falKey));
 }
 
 async function parseFalResponse(
@@ -109,17 +112,17 @@ async function parseFalResponse(
   if (!response.ok) {
     const detail = safeLogMessage(bodyText.slice(0, 500), falKey);
     logger?.error(`fal HTTP ${response.status}: ${detail}`);
-    throw new Error(`fal request failed with status ${response.status}`);
+    throw safeFalError(`fal request failed with status ${response.status}`, falKey);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(bodyText) as unknown;
   } catch {
-    throw new Error("fal response was not JSON");
+    throw safeFalError("fal response was not JSON", falKey);
   }
   const data = parsed as FalImageResponse;
   if (!Array.isArray(data.images) || !data.images[0]?.url) {
-    throw new Error("fal response missing images[0].url");
+    throw safeFalError("fal response missing images[0].url", falKey);
   }
   return data;
 }
@@ -166,8 +169,7 @@ export async function runFiveExerciseMediaTest(
   const logger = deps.logger;
   const downloadBytes =
     deps.downloadBytes ??
-    (async (url: string) =>
-      new Uint8Array(await (await deps.fetch(url)).arrayBuffer()));
+    ((url: string) => downloadFalImageBytes(deps.fetch, url, deps.falKey));
 
   const generationCounter = createGenerationCounter();
   const generations: GenerationRecord[] = [];
@@ -205,6 +207,7 @@ export async function runFiveExerciseMediaTest(
 
     const endPrompt = buildExerciseImagePrompt(exercise.nameSlug, "end");
     const endFile = `${exercise.id}-end.png`;
+    const startImageUrl = startCall.data.images[0].url;
 
     const endCall = await callFalKleinEndpoint(deps, {
       url: FAL_EDIT_URL,
@@ -212,7 +215,8 @@ export async function runFiveExerciseMediaTest(
       generationCounter,
       body: {
         prompt: endPrompt,
-        image_urls: [startCall.data.images[0].url],
+        image_urls: [startImageUrl],
+        image_size: IMAGE_SIZE_1MP,
         output_format: "png",
         num_images: 1,
       },
@@ -259,5 +263,3 @@ export async function runFiveExerciseMediaTest(
 
   return manifest;
 }
-
-export { buildFalHeaders };
