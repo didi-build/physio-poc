@@ -16,6 +16,7 @@ import {
   MY_DEFAULTS_INTRO,
   MY_DEFAULTS_PAGE_TITLE,
   NEVER_EXPIRY_HINT,
+  NEW_LINKS_EXPIRE_AFTER_ONE_WEEK,
   NEW_LINKS_NEVER_EXPIRE,
   SHARE_LINK_EXPIRY_CHOICE_LABELS,
   SHARE_LINK_EXPIRY_HINT,
@@ -23,7 +24,6 @@ import {
   TYPE_DEFAULTS_FOOTNOTE,
   TYPE_LABELS,
   YOUR_DEFAULT_BADGE,
-  newLinksExpireAfterLabel,
   savedYourTypeDefaultToast,
 } from "../copy/my-defaults.js";
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
@@ -82,14 +82,14 @@ export function MyDefaultsPage() {
         setPage((current) =>
           current ? { ...current, share_link_expiry: shareLinkExpiry } : current,
         );
-        if (expiresIn === SHARE_LINK_EXPIRES_IN.never) {
-          showToast({ message: NEW_LINKS_NEVER_EXPIRE });
-        } else {
-          const label =
-            SHARE_LINK_EXPIRY_CHOICE_LABELS[
-              expiresIn as keyof typeof SHARE_LINK_EXPIRY_CHOICE_LABELS
-            ];
-          showToast({ message: newLinksExpireAfterLabel(label) });
+        const toastMessage =
+          expiresIn === SHARE_LINK_EXPIRES_IN.never
+            ? NEW_LINKS_NEVER_EXPIRE
+            : expiresIn === SHARE_LINK_EXPIRES_IN.one_week
+              ? NEW_LINKS_EXPIRE_AFTER_ONE_WEEK
+              : undefined;
+        if (toastMessage) {
+          showToast({ message: toastMessage });
         }
       })
       .catch(() => {

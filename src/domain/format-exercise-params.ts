@@ -15,15 +15,10 @@ function keysInDisplayOrder(params: ExerciseParams): ParamKey[] {
   return PARAM_DISPLAY_ORDER.filter((key) => params[key] !== undefined);
 }
 
+/** Range readout approved on mock 01 (stretching global default). */
 function perDayDisplay(value: NumericOrRange): string {
   if (typeof value === "number") {
-    if (value === 1) {
-      return "once a day";
-    }
-    if (value === 2) {
-      return "twice a day";
-    }
-    return `${value} times a day`;
+    return "";
   }
   if (value.min === value.max) {
     return perDayDisplay(value.min);
@@ -37,11 +32,11 @@ export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
     case "reps":
       return n === 1 ? "1 rep" : `${n} reps`;
     case "sets":
-      return n === 1 ? "1 set" : `${n} sets`;
+      return `${n} sets`;
     case "hold_s":
       return `${n}s hold`;
     case "ascent_s":
-      return `${n}s up`;
+      return "";
     case "descent_s":
       return `${n}s down`;
     case "rest_s":
@@ -59,6 +54,7 @@ export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
 export function formatExerciseParams(params: ExerciseParams): string {
   return keysInDisplayOrder(params)
     .map((key) => paramPhrase(key, params[key] as NumericOrRange))
+    .filter((phrase) => phrase.length > 0)
     .join(", ");
 }
 

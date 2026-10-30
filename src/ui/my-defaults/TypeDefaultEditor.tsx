@@ -168,14 +168,17 @@ export function TypeDefaultEditor({
                   updatePerDay(event.target.value);
                 }}
               >
-                {PER_DAY_SELECT_OPTIONS.map((option) => (
-                  <option
-                    key={perDayOptionValue(option)}
-                    value={perDayOptionValue(option)}
-                  >
-                    {formatExerciseParams({ per_day: option })}
-                  </option>
-                ))}
+                {PER_DAY_SELECT_OPTIONS.map((option) => {
+                  const readout = formatExerciseParams({ per_day: option });
+                  return (
+                    <option
+                      key={perDayOptionValue(option)}
+                      value={perDayOptionValue(option)}
+                    >
+                      {readout.length > 0 ? readout : perDayOptionValue(option)}
+                    </option>
+                  );
+                })}
               </select>
             </label>
           ) : (

@@ -21,8 +21,8 @@ import {
   MY_DEFAULTS_PAGE_TITLE,
   RESET_TO_GLOBAL,
   SHARE_LINK_EXPIRY_SECTION,
+  NEW_LINKS_EXPIRE_AFTER_ONE_WEEK,
   YOUR_DEFAULT_BADGE,
-  newLinksExpireAfterLabel,
 } from "../../src/ui/copy/my-defaults.js";
 
 afterEach(() => {
@@ -161,7 +161,7 @@ describe("My defaults page (integration, jsdom)", () => {
     await userEvent.click(screen.getByRole("button", { name: "1 week" }));
     expect(updateShareLinkExpiry).toHaveBeenCalledWith(SHARE_LINK_EXPIRES_IN.one_week);
     expect(
-      await screen.findByText(newLinksExpireAfterLabel("1 week")),
+      await screen.findByText(NEW_LINKS_EXPIRE_AFTER_ONE_WEEK),
     ).toBeInTheDocument();
   });
 
