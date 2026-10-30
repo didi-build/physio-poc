@@ -414,6 +414,14 @@ describe("portable runtime import guard (unit)", () => {
     expect(allowedMessages).toEqual([]);
   });
 
+  it("UI package allowlist imports are not treated as platform modules", () => {
+    for (const pkg of ["react", "react-dom", "react-router-dom"] as const) {
+      expect(
+        findPortableViolations("src/ui/App.tsx", `import x from '${pkg}';`),
+      ).toEqual([]);
+    }
+  });
+
   it("denies overlap when both injected predicates match (platform before allowlist)", () => {
     const checks = {
       isPlatformModule: () => true,

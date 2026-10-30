@@ -3,6 +3,7 @@
  */
 import "./setup.js";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -61,6 +62,44 @@ function renderApp(initialEntry: string, requestsReviewCount = 0) {
       <LocationProbe />
     </MemoryRouter>,
   );
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function safariActivateMenuItem(item: HTMLElement) {
+  let itemReceivedFocus = false;
+  const onItemFocus = () => {
+    itemReceivedFocus = true;
+  };
+  item.addEventListener("focus", onItemFocus);
+  try {
+    const focusedBefore = document.activeElement;
+    await act(async () => {
+      fireEvent.pointerDown(item);
+      fireEvent.mouseDown(item);
+      if (focusedBefore instanceof HTMLElement) {
+        focusedBefore.blur();
+        fireEvent.focusOut(focusedBefore, { relatedTarget: null });
+      }
+      expect(document.activeElement).toBe(document.body);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+    await act(async () => {
+      await delay(20);
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+      fireEvent.click(item);
+    });
+    expect(itemReceivedFocus).toBe(false);
+  } finally {
+    item.removeEventListener("focus", onItemFocus);
+  }
 }
 
 describe("app shell nav (integration)", () => {
@@ -216,7 +255,7 @@ describe("app shell nav (integration)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("activates menu items on pointer click when focusout has null relatedTarget (Safari path)", async () => {
+  it("activates My defaults and Sign out on Safari pointer path without menu item focus", async () => {
     const user = userEvent.setup();
     const signOutSpy = vi
       .spyOn(authClient, "postAuthSignOut")
@@ -225,25 +264,31 @@ describe("app shell nav (integration)", () => {
 
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
-    fireEvent.focusOut(defaultsItem, { relatedTarget: null });
     expect(screen.getByRole("menu")).toBeInTheDocument();
-
-    fireEvent.pointerDown(defaultsItem);
-    fireEvent.click(defaultsItem);
+    await safariActivateMenuItem(defaultsItem);
     expect(screen.getByTestId("location")).toHaveTextContent("/defaults");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
-    fireEvent.focusOut(signOutItem, { relatedTarget: null });
     expect(screen.getByRole("menu")).toBeInTheDocument();
-
-    fireEvent.pointerDown(signOutItem);
-    fireEvent.click(signOutItem);
+    await safariActivateMenuItem(signOutItem);
     await waitFor(() => {
       expect(signOutSpy).toHaveBeenCalled();
     });
+  });
+
+  it("closes the account menu on Escape when focus is on the trigger", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    trigger.focus();
+    await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("closes the account menu on Tab and Shift+Tab out of the wrap", async () => {
