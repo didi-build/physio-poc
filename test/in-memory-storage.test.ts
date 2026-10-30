@@ -101,6 +101,22 @@ describe("InMemorySqlStorage (unit)", () => {
     expect(rows.map((row) => row.id).sort()).toEqual(["a", "b"]);
   });
 
+  it("first() requires LIMIT 1 on supported SELECT queries", async () => {
+    const sql = new InMemorySqlStorage();
+    await sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["item-1", "alpha"]);
+    await expect(
+      sql.first("SELECT * FROM items WHERE id = ?", ["item-1"]),
+    ).rejects.toThrow(/Unsupported SQL/);
+  });
+
+  it("all() rejects LIMIT 1 on supported SELECT queries", async () => {
+    const sql = new InMemorySqlStorage();
+    await sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["item-1", "alpha"]);
+    await expect(
+      sql.all("SELECT * FROM items WHERE id = ? LIMIT 1", ["item-1"]),
+    ).rejects.toThrow(/Unsupported SQL/);
+  });
+
   it("rejects duplicate ids", async () => {
     const sql = new InMemorySqlStorage();
     await sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["dup", "one"]);

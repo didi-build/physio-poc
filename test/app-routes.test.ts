@@ -132,7 +132,10 @@ describe("shared Physio app route table", () => {
   });
 
   it("PhysioApp route tree renders every SPA route without filtering", () => {
-    const childRoutes = appRouteObjects[0]?.children ?? [];
+    const shellRoute = appRouteObjects.find(
+      (route) => Array.isArray(route.children) && route.children.length > 0,
+    );
+    const childRoutes = shellRoute?.children ?? [];
     const routeIds = childRoutes
       .filter((route) => route.id !== undefined)
       .map((route) => route.id as string);

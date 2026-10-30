@@ -646,4 +646,151 @@ d1_tables:
       created_at:
         whose: operational
 
+  user:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+      notes: image URL is not stored (CTO DIDI-1001 minimal auth storage); practitionerId is an internal opaque id, not personal data
+    columns:
+      id:
+        whose: practitioner
+        data: Better Auth user id linked to practitioner sign-in
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      name:
+        whose: practitioner
+        data: Display name from Google profile
+        purpose: account profile
+        processors: [Cloudflare]
+        retention: until account deletion
+      email:
+        whose: practitioner
+        data: Practitioner sign-in email
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      emailVerified:
+        whose: operational
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+      image:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
+      practitionerId:
+        whose: operational
+        data: Internal opaque practitioners.id bound at session creation for authorization
+        purpose: session-to-practitioner binding (not sign-in email)
+        processors: [Cloudflare]
+        retention: kept for the life of the account
+        notes: Same id type as practitioners.id elsewhere; not patient or practitioner contact data
+
+  session:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+      notes: ipAddress and userAgent are not stored (CTO DIDI-1001 minimal auth storage)
+    columns:
+      id:
+        whose: operational
+      expiresAt:
+        whose: operational
+      token:
+        whose: practitioner
+        data: Session token
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+      ipAddress:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
+      userAgent:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
+
+  account:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      accountId:
+        whose: operational
+      providerId:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      scope:
+        whose: operational
+        notes: openid email profile only; OAuth tokens are not stored
+      accessToken:
+        whose: operational
+        notes: column required by Better Auth; always null (encryptOAuthTokens enabled as defense in depth)
+      refreshToken:
+        whose: operational
+        notes: column required by Better Auth; always null
+      idToken:
+        whose: operational
+        notes: column required by Better Auth; always null
+      accessTokenExpiresAt:
+        whose: operational
+        notes: always null
+      refreshTokenExpiresAt:
+        whose: operational
+        notes: always null
+      password:
+        whose: operational
+        notes: always null; Google OAuth only
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
+  verification:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      identifier:
+        whose: operational
+      value:
+        whose: operational
+      expiresAt:
+        whose: operational
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
 other_items: []

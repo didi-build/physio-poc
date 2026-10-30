@@ -46,6 +46,8 @@ As tests grow, consider moving `npm run test` to a **pre-push** hook (or running
 
 Copy [`.env.example`](./.env.example) to `.env` for local use. Document each name in README or `docs/architecture/`; document names only in `.env.example`; never commit values.
 
+For Google sign-in with Better Auth on the Node dev server (`npm run dev`), copy [`.dev.vars.example`](./.dev.vars.example) to `.dev.vars` and set `BETTER_AUTH_SECRET` to a local value (the example uses a `replace-me` placeholder). `.dev.vars` is gitignored. The server loads `.dev.vars` then `.env` before reading configuration.
+
 ## Adding checks or tools
 
 - Extend `package.json` scripts and add them to `check`.
