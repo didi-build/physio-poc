@@ -20,7 +20,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 | State | What it shows |
 | -- | -- |
-| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "N library updates to review"). Recently deleted: section intro, then programs or "No deleted programs." Restore |
+| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "N library updates to review"). Recently deleted: "Restore a deleted program for 30 days. After that it's gone for good. Its old share link stays closed." When empty: "No deleted programs." |
 | Search | By name, code (with or without "PRG-") or routine name; the matching code is highlighted. No match: "No program matches ..." with "Clear search" |
 | New program | Sheet "New program": "From a routine" (pick a routine, then Create program from routine) or "From scratch" |
 | Builder | Code chip, required "Program name", origin banner when made from a routine ("From routine: {name}, version {N}" with "View routine"), status card, exercise rows (type, doses, notes, reorder, duplicate, remove, version), Add exercise sheet (My exercises first, then the full library), Delete program |
@@ -50,7 +50,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 - Programs list empty: "No programs yet"; "Start one from a routine or from scratch. You can find it here later by name or code." No count when the list is empty.
 - Recently deleted empty (after the section intro): "No deleted programs."
 - List count: the noun follows the total ("1 program", "5 programs", "1 of 1 program", "0 of 1 program", "1 of 5 programs", "0 of 5 programs"). Announce count changes politely.
-- Program card exercise count: "1 exercise · Sent {date}" / "{n} exercises · Sent {date}". Accessible: "{n} exercise(s), sent {date}" (the middle dot is hidden from screen readers). Zero-exercise draft card: "No exercises yet".
+- Program card exercise count: "1 exercise · Sent {date}" / "{n} exercises · Sent {date}". Accessible: "1 exercise, sent {date}" for one exercise; "{n} exercises, sent {date}" otherwise (the middle dot is hidden from screen readers). Zero-exercise draft card: "No exercises yet".
 - Auto-save failure: status "Not saved"; helper "Your latest changes aren't saved yet."; alert once "Not saved. Your latest changes aren't saved yet."; "Try again" (accessible name "Try saving again"). Failed saves retry automatically; publish stays disabled until saved.
 - Leave with unsaved edits: "Leave without saving?"; "Your latest changes aren't saved yet. If you leave now, you'll lose them."; "Keep editing" / "Leave".
 
@@ -397,6 +397,9 @@ Every user-facing string in the parts of the approved source that render this fe
 - Your latest changes aren't saved yet.
 - Not saved. Your latest changes aren't saved yet.
 - Try again
+- Try saving again
+- 1 exercise, sent {date}
+- {n} exercises, sent {date}
 - Leave without saving?
 - Your latest changes aren't saved yet. If you leave now, you'll lose them.
 - Keep editing
@@ -567,7 +570,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
-- **2026-10-30**: DIDI-1134. Diadem approved the copy for empty states, save failure and singular counts (1:39 PM ET) and the leave warning (1:41 PM ET). https://linear.app/didi-build/issue/DIDI-1134
+- **Oct 30, 2026**: DIDI-1134. Diadem approved the copy for empty states, save failure and singular counts (1:39 PM ET) and the leave warning (1:41 PM ET). https://linear.app/didi-build/issue/DIDI-1134
 - **Oct 23, 2026**: First concept: builder, share with PDF preview and delete. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Per-program expiry with Never; closing a link keeps the program; link page with Save as PDF. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: DIDI-827 to DIDI-829: same link shows the latest published version; delete with confirm, restorable 30 days; save and publish separate; library update prompt. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827, https://linear.app/didi-build/issue/DIDI-828, https://linear.app/didi-build/issue/DIDI-829
