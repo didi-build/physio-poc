@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { AuthPort } from "../src/auth/auth-port.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { handleRequest } from "../src/http/app.js";
+import {
+  handleRequest,
+  type AppDependencies,
+  type AppRouteHandler,
+} from "../src/http/app.js";
 import {
   CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isCsrfExemptAppApiAuthPath,
@@ -35,6 +40,7 @@ const PRACTITIONER_ID = testOpaqueEntityId("csrf-practitioner");
 const EXERCISE_ID = testOpaqueEntityId("csrf-exercise");
 const VERSION_ID = testOpaqueEntityId("csrf-version");
 const UNREGISTERED_PROBE_PATH = "/api/__probe_new_route";
+const CATCH_ALL_DISPATCH_PROBE = { error: "catch_all_ran" } as const;
 
 const NON_SAFE_METHODS_UNDER_TEST = [
   "POST",
@@ -86,14 +92,33 @@ function mutatingBody(path: string, method: string): string | undefined {
   return JSON.stringify({ action: "save" });
 }
 
-async function sessionDeps(): Promise<{
-  deps: {
-    sql: SqlStoragePort;
-    objects: InMemoryObjectStorage;
-    config: typeof MCP_TEST_CONFIG;
-    auth: FakeAuthPort;
-    mcp: ReturnType<typeof createPhysioMcpHttpHandler>;
+function catchAllExtraRouteHandlers(probe: { ran: boolean }): AppRouteHandler[] {
+  return [
+    async () => {
+      probe.ran = true;
+      return Response.json(CATCH_ALL_DISPATCH_PROBE, { status: 200 });
+    },
+  ];
+}
+
+function authPortReturningNullForPath(
+  base: FakeAuthPort,
+  pathnameToNull: string,
+): AuthPort {
+  return {
+    getPractitioner: (request) => base.getPractitioner(request),
+    signOut: (request) => base.signOut(request),
+    handleAuthRequest: async (request) => {
+      if (new URL(request.url).pathname === pathnameToNull) {
+        return null;
+      }
+      return base.handleAuthRequest(request);
+    },
   };
+}
+
+async function sessionDeps(): Promise<{
+  deps: AppDependencies & { auth: FakeAuthPort };
   cookie: string;
   sqlCalls: { count: number };
 }> {
@@ -333,24 +358,66 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
     }
   });
 
-  it("returns 404 for unknown mutating /api/auth/ paths without app dispatch or storage", async () => {
+  it("applies CSRF to case-mismatched /api/auth/ paths", async () => {
+    const { deps, cookie } = await sessionDeps();
+    for (const path of ["/api/AUTH/x", "/api/Auth/sign-out"]) {
+      const response = await handleRequest(
+        new Request(`${BASE}${path}`, {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: "https://evil.example.com",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      expect(response.status, path).toBe(403);
+    }
+  });
+
+  it("returns 404 for unknown mutating /api/auth/ paths without app dispatch", async () => {
+    const dispatchProbe = { ran: false };
     const { deps, cookie, sqlCalls } = await sessionDeps();
+    const baseAuth = deps.auth;
+    const wrappedDeps: AppDependencies = {
+      ...deps,
+      auth: authPortReturningNullForPath(baseAuth, "/api/auth/zzz"),
+    };
+    wrappedDeps.extraRouteHandlers = catchAllExtraRouteHandlers(dispatchProbe);
     const callsBefore = sqlCalls.count;
     const response = await handleRequest(
       new Request(`${BASE}/api/auth/zzz`, {
         method: "POST",
         headers: {
           cookie,
-          origin: "https://evil.example.com",
-          "content-type": "application/json",
+          ...sameOriginJsonHeaders(),
         },
         body: JSON.stringify({}),
       }),
-      deps,
+      wrappedDeps,
     );
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    expect(dispatchProbe.ran).toBe(false);
     expect(sqlCalls.count).toBe(callsBefore);
+  });
+
+  it("FakeAuthPort returns 404 for unknown /api/auth/ paths (not null)", async () => {
+    const auth = new FakeAuthPort({
+      practitioner: {
+        practitionerId: PRACTITIONER_ID,
+        email: "csrf.test@example.com",
+        displayName: "Tester",
+      },
+    });
+    const response = await auth.handleAuthRequest(
+      new Request(`${BASE}/api/auth/zzz`, { method: "POST" }),
+    );
+    expect(response).not.toBeNull();
+    expect(response!.status).toBe(404);
+    await expect(response!.json()).resolves.toEqual({ error: "not_found" });
   });
 
   it("does not apply CSRF to /api/auth/<sub> through handleRequest", async () => {
