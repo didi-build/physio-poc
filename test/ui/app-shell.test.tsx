@@ -4,11 +4,19 @@
 import "./setup.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
+import * as authClient from "../../src/ui/api/auth-client.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -17,6 +25,7 @@ import {
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
+  vi.restoreAllMocks();
 });
 
 function LocationProbe() {
@@ -199,7 +208,7 @@ describe("app shell nav (integration)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("closes the account menu when focusout has a null relatedTarget", async () => {
+  it("keeps the account menu open when focusout has a null relatedTarget", async () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
     const trigger = screen.getByRole("button", { name: "Account menu" });
@@ -209,8 +218,38 @@ describe("app shell nav (integration)", () => {
     signOutItem.focus();
     fireEvent.focusOut(signOutItem, { relatedTarget: null });
 
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("activates menu items on pointer click when focusout has null relatedTarget (Safari path)", async () => {
+    const user = userEvent.setup();
+    const signOutSpy = vi
+      .spyOn(authClient, "postAuthSignOut")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    renderApp("/exercises", 0);
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
+    fireEvent.focusOut(defaultsItem, { relatedTarget: null });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.pointerDown(defaultsItem);
+    fireEvent.click(defaultsItem);
+    expect(screen.getByTestId("location")).toHaveTextContent("/defaults");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    fireEvent.focusOut(signOutItem, { relatedTarget: null });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.pointerDown(signOutItem);
+    fireEvent.click(signOutItem);
+    await waitFor(() => {
+      expect(signOutSpy).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("pins account menu focus-out wiring in ShellNav (structural)", () => {
@@ -219,6 +258,8 @@ describe("app shell nav (integration)", () => {
       "utf8",
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
+    expect(source).toContain("related === null");
+    expect(source).toContain("menu.contains(related)");
     expect(source).toContain("wrap.contains(related)");
     expect(source).not.toContain("menu.contains(event.target as Node)");
   });
