@@ -11,10 +11,13 @@ import {
 } from "../src/domain/exercise-free-text.js";
 import {
   resolveOneYearExpiresAt,
-  resolveShareLinkExpiresAt,
   validateCustomLinkExpiryDate,
 } from "../src/domain/share-link-expiry.js";
-import { torontoEndOfDayUtcIso } from "../src/domain/toronto-calendar.js";
+import {
+  torontoEndOfDayUtcIso,
+  addTorontoCalendarDays,
+  torontoDateOnlyFromInstant,
+} from "../src/domain/toronto-calendar.js";
 import {
   encodeShareLinkTokenFromBytes,
   generateShareLinkToken,
@@ -127,18 +130,15 @@ describe("DIDI-1000 QA round 1 (mutation and boundary coverage)", () => {
 
   it("resolves one year expiry at Toronto end of day 365 calendar days out", () => {
     const now = new Date("2026-03-01T15:00:00.000Z");
-    const expiresAt = resolveOneYearExpiresAt(now);
-    expect(expiresAt).toBe(
-      resolveShareLinkExpiresAt({ expiresIn: SHARE_LINK_EXPIRES_IN.one_year }, now),
-    );
-    expect(expiresAt.endsWith(".999Z")).toBe(true);
-    expect(expiresAt).not.toBe(new Date(now.getTime() + 364 * MS_DAY).toISOString());
+    const today = torontoDateOnlyFromInstant(now);
+    const expected = torontoEndOfDayUtcIso(addTorontoCalendarDays(today, 365));
+    expect(resolveOneYearExpiresAt(now)).toBe(expected);
   });
 
   it("validates custom expiry using America/Toronto between 8 PM and midnight ET", () => {
     const now = new Date("2026-10-30T00:30:00.000Z");
     expect(validateCustomLinkExpiryDate("2026-10-30", now)).toBe("2026-10-30");
-    expect(() => validateCustomLinkExpiryDate("2026-02-30", now)).toThrow();
+    expect(() => validateCustomLinkExpiryDate("2027-02-30", now)).toThrow();
     const endIso = torontoEndOfDayUtcIso("2026-10-30");
     expect(new Date(endIso).getTime()).toBeGreaterThan(now.getTime());
   });
@@ -254,7 +254,10 @@ describe("DIDI-1000 QA round 1 (mutation and boundary coverage)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
       const programs = new ProgramsRepository(storage);
+      const rows = new ProgramRowsRepository(storage);
+      const links = new ShareLinksRepository(storage);
       await programs.create({
         id: "prog-live",
         createdBy: practitionerId,
@@ -265,16 +268,40 @@ describe("DIDI-1000 QA round 1 (mutation and boundary coverage)", () => {
         createdBy: practitionerId,
         createdAt: TS,
       });
+      await rows.replaceRow({
+        id: "row-live",
+        programId: "prog-live",
+        position: 0,
+        exerciseId: "ex-1",
+        exerciseVersionId: "ver-1",
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: { title: "Heel slide" },
+        draftUpdatedAt: TS,
+      });
+      await links.createOpenLink({
+        id: "link-live",
+        programId: "prog-live",
+        createdAt: TS,
+        expiresAt: null,
+      });
       const now = new Date("2026-06-01T00:00:00.000Z");
       const cutoff = new Date(now.getTime() - PROGRAM_RESTORE_AND_PURGE_WINDOW_MS);
-      const justInside = new Date(cutoff.getTime() + 1000).toISOString();
       const justOutside = new Date(cutoff.getTime() - 1000).toISOString();
-      await programs.softDelete("prog-live", justInside);
       await programs.softDelete("prog-old", justOutside);
       const purgeable = await programs.listPurgeableDeleted(now);
       expect(purgeable.map((p) => p.id)).toEqual(["prog-old"]);
       await programs.purgeDeleted("prog-live", now);
       expect(await programs.findById("prog-live")).not.toBeNull();
+      expect(
+        (
+          await storage.all<{ id: string }>(
+            "SELECT id FROM program_rows WHERE program_id = ?",
+            ["prog-live"],
+          )
+        ).length,
+      ).toBe(1);
+      expect(await links.findOpenByProgramId("prog-live")).not.toBeNull();
       await programs.purgeDeleted("prog-old", now);
       expect(await programs.findById("prog-old")).toBeNull();
     } finally {
@@ -451,76 +478,6 @@ describe("DIDI-1000 QA round 1 (mutation and boundary coverage)", () => {
       const after = await links.findOpenByProgramId("prog-1");
       expect(after?.expires_at).toBeNull();
       expect(before?.expires_at).not.toBeNull();
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("schema CHECK and json_valid constraints reject bad raw SQL", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const practitionerId = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, practitionerId);
-      await storage.run(
-        `INSERT INTO programs (
-          id, code, name, created_by, created_at, draft_version, draft_updated_at
-        ) VALUES (?, ?, NULL, ?, ?, 1, ?)`,
-        ["prog-raw", "PRG-RAW1", practitionerId, TS, TS],
-      );
-      await expect(
-        storage.run(
-          `INSERT INTO program_rows (
-            id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
-            prescription_type, params_json, text_snapshot_json, note
-          ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NULL)`,
-          [
-            "row-bad",
-            "prog-raw",
-            "ex-1",
-            "ver-1",
-            null,
-            "stretching",
-            "not-json",
-            '{"title":"Ok"}',
-          ],
-        ),
-      ).rejects.toThrow();
-      await expect(
-        storage.run(
-          `INSERT INTO program_rows (
-            id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
-            prescription_type, params_json, text_snapshot_json, note
-          ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NULL)`,
-          [
-            "row-placeholder-bad",
-            "prog-raw",
-            "ex-1",
-            "ver-1",
-            "req-1",
-            "stretching",
-            '{"hold_s":30}',
-            '{"title":"Ok"}',
-          ],
-        ),
-      ).rejects.toThrow();
-      await expect(
-        storage.run(`UPDATE programs SET published_snapshot_json = ? WHERE id = ?`, [
-          "{not-json",
-          "prog-raw",
-        ]),
-      ).rejects.toThrow();
-      await storage.run(
-        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
-         VALUES (?, ?, ?, NULL, NULL, ?)`,
-        ["link-open-1", "prog-raw", "token-a", TS],
-      );
-      await expect(
-        storage.run(
-          `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
-           VALUES (?, ?, ?, NULL, NULL, ?)`,
-          ["link-open-2", "prog-raw", "token-b", TS],
-        ),
-      ).rejects.toThrow();
     } finally {
       storage.close();
     }

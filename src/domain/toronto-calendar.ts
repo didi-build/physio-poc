@@ -1,13 +1,15 @@
 /** Share-link expiry uses America/Toronto (practitioner product default for this POC). */
 export const SHARE_LINK_EXPIRY_TIME_ZONE = "America/Toronto";
 
+const torontoDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SHARE_LINK_EXPIRY_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
 export function torontoDateOnlyFromInstant(instant: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: SHARE_LINK_EXPIRY_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(instant);
+  return torontoDateFormatter.format(instant);
 }
 
 function parseDateOnlyParts(dateOnly: string): { y: number; m: number; d: number } {
@@ -51,28 +53,25 @@ export function torontoStartOfDayUtcMs(dateOnly: string): number {
 
 export function torontoEndOfDayUtcIso(dateOnly: string): string {
   const start = assertTorontoDateOnlyRoundTrip(dateOnly);
-  const startMs = torontoStartOfDayUtcMs(start);
-  const nextDay = torontoDateOnlyFromInstant(new Date(startMs + 36 * 60 * 60 * 1000));
+  const nextDay = addTorontoCalendarDays(start, 1);
   const nextStartMs = torontoStartOfDayUtcMs(nextDay);
   return new Date(nextStartMs - 1).toISOString();
 }
 
 export function torontoTomorrowEarliestDateOnly(now: Date): string {
   const today = torontoDateOnlyFromInstant(now);
-  const todayStart = torontoStartOfDayUtcMs(today);
-  const tomorrowInstant = new Date(todayStart + 25 * 60 * 60 * 1000);
-  return torontoDateOnlyFromInstant(tomorrowInstant);
+  return addTorontoCalendarDays(today, 1);
 }
 
 export function compareDateOnly(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
+/** Adds calendar days to a Toronto date-only string in O(1). */
 export function addTorontoCalendarDays(dateOnly: string, days: number): string {
-  let current = assertTorontoDateOnlyRoundTrip(dateOnly);
-  for (let step = 0; step < days; step += 1) {
-    const startMs = torontoStartOfDayUtcMs(current);
-    current = torontoDateOnlyFromInstant(new Date(startMs + 25 * 60 * 60 * 1000));
-  }
-  return current;
+  const { y, m, d } = parseDateOnlyParts(assertTorontoDateOnlyRoundTrip(dateOnly));
+  const rolled = new Date(Date.UTC(y, m - 1, d + days));
+  const result = `${rolled.getUTCFullYear()}-${String(rolled.getUTCMonth() + 1).padStart(2, "0")}-${String(rolled.getUTCDate()).padStart(2, "0")}`;
+  assertTorontoDateOnlyRoundTrip(result);
+  return result;
 }

@@ -34,7 +34,12 @@ export function validateCustomLinkExpiryDate(
   dateOnly: string,
   now: Date = new Date(),
 ): string {
-  const trimmed = assertTorontoDateOnlyRoundTrip(dateOnly.trim());
+  let trimmed: string;
+  try {
+    trimmed = assertTorontoDateOnlyRoundTrip(dateOnly.trim());
+  } catch {
+    throw new ShareLinkExpiryValidationError("Invalid calendar date");
+  }
   const earliest = torontoTomorrowEarliestDateOnly(now);
   if (compareDateOnly(trimmed, earliest) < 0) {
     throw new ShareLinkExpiryValidationError(
