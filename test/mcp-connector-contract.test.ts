@@ -441,7 +441,9 @@ describe("Physio MCP connector contract", () => {
       "https://app.example.com",
       "Contact user@example.com",
     );
-    expect(flagged).toBe("https://app.example.com/exercises/search");
+    expect(flagged).toBe(
+      `https://app.example.com${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`,
+    );
   });
 });
 

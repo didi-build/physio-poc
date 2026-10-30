@@ -5,6 +5,8 @@ export {
   FROM_ROUTINE_ID_QUERY_PARAM,
   MAX_EXERCISE_SEARCH_QUERY_LENGTH,
   PHYSIO_APP_ROUTE_PATTERNS,
+  WEB_APP_EXERCISE_SEARCH_PATH,
+  WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
@@ -73,12 +75,6 @@ export {
   MAX_LENGTH_ROW_NOTES,
   MAX_LENGTH_SUMMARY,
 } from "./text-limits.js";
-
-/** @deprecated Use PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch */
-export const WEB_APP_EXERCISE_SEARCH_PATH = "/exercises/search";
-
-/** @deprecated Use EXERCISE_SEARCH_QUERY_PARAM */
-export const WEB_APP_EXERCISE_SEARCH_QUERY_PARAM = "q";
 
 export {
   ambiguousProgramMatchSchema,

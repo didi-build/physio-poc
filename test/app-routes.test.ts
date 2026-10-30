@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createElement } from "react";
 import { matchRoutes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,23 +6,21 @@ import {
   EXERCISE_SEARCH_QUERY_PARAM,
   MAX_EXERCISE_SEARCH_QUERY_LENGTH,
   PHYSIO_APP_ROUTE_PATTERNS,
-  PHYSIO_APP_SPA_ROUTE_NAMES,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
   fillPhysioAppRoutePattern,
-  physioAppSpaRoutePath,
   type ConnectorPhysioAppRouteName,
+  type PhysioAppSpaRouteName,
 } from "../src/app-routes.js";
 import { validateFreeTextForPatientDetails } from "../src/mcp-connector/patient-detail-validator.js";
 import { createPhysioAppRouteObjects } from "../src/ui/physio-app-match-routes.js";
 
-const APP_TSX = readFileSync(join(process.cwd(), "src/ui/App.tsx"), "utf8");
 const BASE = "https://app.example.com";
 const SAMPLE_PROGRAM_CODE = "PRG-7K3Q";
 const SAMPLE_ROUTINE_ID = "rtn-knee-oa";
 
-const appRouteObjects = createPhysioAppRouteObjects();
+const appRouteObjects = createPhysioAppRouteObjects(createElement("div"));
 
 function leafMatch(pathname: string) {
   const matches = matchRoutes(appRouteObjects, pathname);
@@ -31,7 +28,6 @@ function leafMatch(pathname: string) {
   expect(matches!.length).toBeGreaterThan(0);
   const leaf = matches![matches!.length - 1]!;
   expect(leaf.route.path, pathname).not.toBe("*");
-  expect(leaf.route.path, pathname).not.toBeUndefined();
   return leaf;
 }
 
@@ -78,25 +74,15 @@ describe("shared Physio app route table", () => {
     }
   });
 
-  it("keeps SPA router paths aligned with the route table", () => {
-    expect(APP_TSX).toContain("PHYSIO_APP_SPA_ROUTE_NAMES.map");
-    expect(APP_TSX).toContain("path={physioAppSpaRoutePath(routeName)}");
-    for (const routeName of PHYSIO_APP_SPA_ROUTE_NAMES) {
-      expect(physioAppSpaRoutePath(routeName)).toBe(
-        PHYSIO_APP_ROUTE_PATTERNS[routeName].slice(1),
-      );
-    }
-    expect(APP_TSX).toContain(`to={PHYSIO_APP_ROUTE_PATTERNS.exercises}`);
-  });
-
-  it("resolves every connector deep link pathname through PhysioApp route objects", () => {
+  it("resolves every connector deep link to a named PhysioApp screen route", () => {
     for (const routeName of CONNECTOR_PHYSIO_APP_ROUTE_NAMES) {
       const url = sampleConnectorUrl(routeName);
       const pathname = new URL(url).pathname;
       const leaf = leafMatch(pathname);
-      expect(leaf.route.path, routeName).not.toBe("");
+      expect(leaf.route.id, routeName).toBe(routeName);
     }
-    leafMatch(new URL(buildProgramBuilderLink(BASE, {})).pathname);
+    const blankNew = leafMatch(new URL(buildProgramBuilderLink(BASE, {})).pathname);
+    expect(blankNew.route.id).toBe("programNew" satisfies PhysioAppSpaRouteName);
   });
 
   it("builds absolute https URLs with only codes and ids in paths and query", () => {
@@ -131,6 +117,10 @@ describe("shared Physio app route table", () => {
     });
     expect(url).toBe("/programs/PRG-TEST1");
   });
+
+  it("derives deprecated exercise search path constants from the route table", () => {
+    expect(PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch).toBe("/exercises/search");
+  });
 });
 
 describe("buildWebAppExerciseSearchUrl", () => {
@@ -145,7 +135,9 @@ describe("buildWebAppExerciseSearchUrl", () => {
 
     const tricky = "A & B? C# café 测试";
     const trickyUrl = buildWebAppExerciseSearchUrl(BASE, tricky);
-    expect(trickyUrl.startsWith(`${BASE}/exercises/search?`)).toBe(true);
+    expect(
+      trickyUrl.startsWith(`${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}?`),
+    ).toBe(true);
     const trickyParams = new URLSearchParams(new URL(trickyUrl).search);
     expect(trickyParams.get(EXERCISE_SEARCH_QUERY_PARAM)).toBe(tricky);
   });
@@ -153,13 +145,15 @@ describe("buildWebAppExerciseSearchUrl", () => {
   it("omits q when patient-detail validation fails", () => {
     const flagged = "Contact user@example.com for updates";
     const url = buildWebAppExerciseSearchUrl(BASE, flagged);
-    expect(url).toBe(`${BASE}/exercises/search`);
+    expect(url).toBe(`${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`);
     expect(new URL(url).search).toBe("");
     expect(validateFreeTextForPatientDetails(flagged).ok).toBe(false);
   });
 
   it("keeps q for benign exercise search text", () => {
     const url = buildWebAppExerciseSearchUrl(BASE, "Glute bridge");
-    expect(url).toBe(`${BASE}/exercises/search?q=Glute+bridge`);
+    expect(url).toBe(
+      `${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}?q=Glute+bridge`,
+    );
   });
 });

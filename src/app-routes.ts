@@ -151,3 +151,9 @@ export function buildProgramBuilderLink(
   }
   return buildPhysioAppUrl(webAppBaseUrl, "programNew");
 }
+
+/** @deprecated Use PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch */
+export const WEB_APP_EXERCISE_SEARCH_PATH = PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch;
+
+/** @deprecated Use EXERCISE_SEARCH_QUERY_PARAM */
+export const WEB_APP_EXERCISE_SEARCH_QUERY_PARAM = EXERCISE_SEARCH_QUERY_PARAM;

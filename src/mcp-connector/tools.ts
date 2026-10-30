@@ -169,7 +169,7 @@ export const GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME =
   "get_program_share_link_or_pdf" as const;
 
 export const getProgramShareLinkOrPdfDescription =
-  "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned.";
+  "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Do not pass patient information.";
 
 export const getProgramShareLinkOrPdfInputSchema: JsonSchema = {
   type: "object",

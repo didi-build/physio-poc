@@ -6,6 +6,8 @@
 export {
   EXERCISE_SEARCH_QUERY_PARAM,
   FROM_ROUTINE_ID_QUERY_PARAM,
+  WEB_APP_EXERCISE_SEARCH_PATH,
+  WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
@@ -15,9 +17,3 @@ export {
   type FillPhysioAppRouteParams,
   type PhysioAppRouteName,
 } from "../app-routes.js";
-
-/** @deprecated Use PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch */
-export const WEB_APP_EXERCISE_SEARCH_PATH = "/exercises/search";
-
-/** @deprecated Use EXERCISE_SEARCH_QUERY_PARAM */
-export const WEB_APP_EXERCISE_SEARCH_QUERY_PARAM = "q";
