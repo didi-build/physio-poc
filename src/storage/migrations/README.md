@@ -15,6 +15,7 @@ Numbered files under `migrations/` (Node test runner and D1 via wrangler when wi
 | 0003 | `0003_exercise_media.sql`      | Exercise media sets and regeneration audit                                                          |
 | 0004 | `0004_better_auth.sql`         | Better Auth tables; `user.practitionerId` references `practitioners.id` (DIDI-1001 session binding) |
 | 0005 | `0005_routine_data_model.sql`  | Routines data model (DIDI-1017)                                                                     |
+| 0006 | `0006_mcp_oauth.sql`           | Better Auth MCP OAuth provider tables and Physio consent audit tables (DIDI-1043)                   |
 
 ## schema_migrations on D1
 

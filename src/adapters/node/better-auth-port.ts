@@ -1,4 +1,7 @@
-import { oauthProviderAuthServerMetadata, verifyOAuthQueryParams } from "@better-auth/oauth-provider";
+import {
+  oauthProviderAuthServerMetadata,
+  verifyOAuthQueryParams,
+} from "@better-auth/oauth-provider";
 import type { AuthPort, PractitionerSession } from "../../auth/auth-port.js";
 import {
   deleteAuthSessionByToken,

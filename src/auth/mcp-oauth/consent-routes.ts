@@ -56,7 +56,10 @@ export type HandlePhysioMcpConsentRoutesInput = {
 const PENDING_COOKIE = "physio_mcp_pending_consent_id";
 
 function plainStatus(status: number, extraHeaders?: HeadersInit): Response {
-  return new Response(null, withMcpOAuthConsentFrameHeaders({ status, headers: extraHeaders }));
+  return new Response(
+    null,
+    withMcpOAuthConsentFrameHeaders({ status, headers: extraHeaders }),
+  );
 }
 
 function parseOAuthQueryString(url: URL): string | null {
@@ -77,7 +80,9 @@ async function resolveAuthUserId(
   return row?.id ?? null;
 }
 
-async function handleConsentGet(input: HandlePhysioMcpConsentRoutesInput): Promise<Response> {
+async function handleConsentGet(
+  input: HandlePhysioMcpConsentRoutesInput,
+): Promise<Response> {
   const { request, authSecret, practitioner, sql, clock } = input;
   if (!practitioner) {
     return plainStatus(401);
@@ -147,8 +152,7 @@ function readCookie(request: Request, name: string): string | null {
 async function loadPendingForRequest(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<
-  | { ok: true; pendingId: string; csrfToken: string }
-  | { ok: false; response: Response }
+  { ok: true; pendingId: string; csrfToken: string } | { ok: false; response: Response }
 > {
   const { request, practitioner, sql, clock } = input;
   if (!practitioner) {
@@ -231,11 +235,7 @@ async function handleConsentAllow(
   }
   const userId = await resolveAuthUserId(input.sql, pending.practitioner_id);
   if (userId) {
-    await deleteOAuthConsentRecordsForUserClient(
-      input.sql,
-      userId,
-      pending.client_id,
-    );
+    await deleteOAuthConsentRecordsForUserClient(input.sql, userId, pending.client_id);
   }
   await insertPhysioMcpPractitionerConsent(input.sql, {
     id: generateOpaqueEntityId(),
@@ -245,10 +245,13 @@ async function handleConsentAllow(
     scopes_json: pending.scopes_json,
     created_at: new Date().toISOString(),
   });
-  return new Response(null, withMcpOAuthConsentFrameHeaders({
-    status: 302,
-    headers: { Location: payload.url },
-  }));
+  return new Response(
+    null,
+    withMcpOAuthConsentFrameHeaders({
+      status: 302,
+      headers: { Location: payload.url },
+    }),
+  );
 }
 
 async function handleConsentDeny(
@@ -280,10 +283,13 @@ async function handleConsentDeny(
   if (payload.redirect !== true || typeof payload.url !== "string") {
     return plainStatus(500);
   }
-  return new Response(null, withMcpOAuthConsentFrameHeaders({
-    status: 302,
-    headers: { Location: payload.url },
-  }));
+  return new Response(
+    null,
+    withMcpOAuthConsentFrameHeaders({
+      status: 302,
+      headers: { Location: payload.url },
+    }),
+  );
 }
 
 export async function handlePhysioMcpConsentRoutes(
@@ -313,7 +319,5 @@ export async function peekPendingConsentReachable(
     [practitionerId, clientId],
   );
   const nowMs = clock.nowMs();
-  return rows.some(
-    (row) => row.consumed_at_ms === null && nowMs < row.expires_at_ms,
-  );
+  return rows.some((row) => row.consumed_at_ms === null && nowMs < row.expires_at_ms);
 }

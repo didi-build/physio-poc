@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { APIError, betterAuth } from "better-auth";
+import { jwt } from "better-auth/plugins";
+import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import { genericOAuth } from "better-auth/plugins";
 import {
   ALLOWLIST_REFUSAL_ERROR,
@@ -24,6 +26,11 @@ import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { findPractitionerByEmail } from "../../storage/repositories/practitioner-auth.js";
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
+import { createPhysioMcpOAuthPlugins } from "./physio-mcp-oauth-plugins.js";
+
+export type CreateBetterAuthInstanceOptions = {
+  cimdMetadataFetch?: ClientMetadataResourceFetch;
+};
 
 export function createPhysioBetterAuthDatabaseHooks(
   sql: SqlStoragePort,
@@ -198,18 +205,30 @@ export function createBetterAuthInstance(
   database: Database.Database,
   config: PhysioAuthConfig,
   sql: SqlStoragePort,
+  options: CreateBetterAuthInstanceOptions = {},
 ): BetterAuthHandle {
   if (config.fakeGoogleProviderEnabled) {
     installFakeGoogleFetch(config.authBaseUrl);
   }
 
+  const baseOptions = buildPhysioBetterAuthOptions(sql, config);
+  let mcpResourceUrl: string | undefined;
+  const oauthPlugins = [];
+  if (options.cimdMetadataFetch) {
+    const plugins = createPhysioMcpOAuthPlugins(config, options.cimdMetadataFetch);
+    mcpResourceUrl = plugins.mcpResourceUrl;
+    oauthPlugins.push(jwt(), plugins.mcpPlugin, plugins.cimdPlugin);
+  }
+
   const auth = betterAuth({
-    ...buildPhysioBetterAuthOptions(sql, config),
+    ...baseOptions,
     database,
+    plugins: [...(baseOptions.plugins ?? []), ...oauthPlugins],
   });
 
   return {
     auth: auth as BetterAuthRuntime,
     sessionCookieName: "better-auth.session_token",
+    mcpResourceUrl,
   };
 }
