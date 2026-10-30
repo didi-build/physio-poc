@@ -27,6 +27,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import type { UiStaticPort } from "../src/http/ui-static-port.js";
 import type {
   SqlBindings,
   SqlRunResult,
@@ -47,6 +48,21 @@ const EXERCISE_ID = testOpaqueEntityId("csrf-exercise");
 const VERSION_ID = testOpaqueEntityId("csrf-version");
 const UNREGISTERED_PROBE_PATH = "/api/__probe_new_route";
 const CATCH_ALL_DISPATCH_PROBE = { error: "catch_all_ran" } as const;
+const APP_SHELL_ROUTING_TEST_MARKER = "csrf-mixed-case-app-shell-marker";
+
+function testUiStaticPortForAppShellRouting(): UiStaticPort {
+  return {
+    tryServeAsset: () => null,
+    renderAppShell: () =>
+      new Response(
+        `<!DOCTYPE html><html><body>${APP_SHELL_ROUTING_TEST_MARKER}</body></html>`,
+        {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      ),
+  };
+}
 
 const NON_SAFE_METHODS_UNDER_TEST = [
   "POST",
@@ -467,6 +483,23 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
     );
     expect(response.status).toBe(302);
     expect(response.headers.get("location") ?? "").toContain("/sign-in");
+  });
+
+  it("serves the app shell for mixed-case GET with session, not JSON api 404", async () => {
+    const { deps, cookie } = await sessionDeps();
+    deps.uiStatic = testUiStaticPortForAppShellRouting();
+    const response = await handleRequest(
+      new Request(`${BASE}/API/foo`, {
+        method: "GET",
+        headers: { cookie },
+      }),
+      deps,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type") ?? "").toContain("text/html");
+    const body = await response.text();
+    expect(body).toContain(APP_SHELL_ROUTING_TEST_MARKER);
+    expect(body).not.toContain('"not_found"');
   });
 
   it("accepts each fixture allowed Origin and rejects look-alikes with 403", async () => {

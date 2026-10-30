@@ -24,6 +24,7 @@ Production enforces only:
 | Bare `/api/auth` and `/api/auth?x` not exempt      | handleRequest POST cross-origin with session                                                                                                               |
 | Case-mismatched auth API paths not exempt          | POST `/API/AUTH/x` and `/Api/Auth/x` cross-origin with session; storage unchanged                                                                          |
 | Mixed-case GET without session not JSON 401        | GET `/API/foo` returns 302 to sign-in (case-sensitive `/api/` routing unchanged)                                                                           |
+| Mixed-case GET with session serves app shell       | GET `/API/foo` with session and test `uiStatic`; 200 `text/html` marker, not JSON `not_found`                                                              |
 | `/api/authx` and `/api/auth-like` not exempt       | handleRequest POST with cross-origin                                                                                                                       |
 | Auth fallthrough to app dispatch                   | POST `/api/auth/zzz` with auth null stub and catch-all `extraRouteHandlers`; probe not run                                                                 |
 | Removing handleRequest 404 for `/api/auth/`        | same test (catch-all would return `{ error: "catch_all_ran" }`)                                                                                            |
@@ -51,12 +52,14 @@ Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api
 
 ## Mutants killed by this suite (manual verification)
 
-| Mutant                                                        | Killing test                                                            |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Case-insensitive `isAuthAppApiPath` (lowercased prefix match) | POST `/API/AUTH/x` and `/Api/Auth/x` cross-origin with session          |
-| Exemption prefix without trailing slash                       | pin `AUTH_APP_API_PREFIX === "/api/auth/"`; bare `/api/auth` CSRF tests |
-| Case-insensitive `/api/` routing in `app.ts`                  | GET `/API/foo` without session returns 302 to sign-in                   |
-| Drop one origin from `allowedMutatingAppApiOrigins`           | fixture literal accept loop in Origin look-alike test                   |
-| Replace exact origin `Set.has` with `startsWith`              | Origin and Referer look-alike handleRequest tests                       |
+| Mutant                                                            | Killing test                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Case-insensitive `isAuthAppApiPath` (lowercased prefix match)     | POST `/API/AUTH/x` and `/Api/Auth/x` cross-origin with session            |
+| Exemption prefix without trailing slash                           | pin `AUTH_APP_API_PREFIX === "/api/auth/"`; bare `/api/auth` CSRF tests   |
+| Routing case-insensitive at `app.ts:140` alone                    | GET `/API/foo` with session serves app shell marker, not JSON `not_found` |
+| Both `app.ts` routing checks case-insensitive (lines 140 and 208) | GET `/API/foo` without session returns 302 to sign-in                     |
+| Session 401 check case-insensitive alone (`app.ts:208`)           | Equivalent; mixed-case paths never reach it with current control flow     |
+| Drop one origin from `allowedMutatingAppApiOrigins`               | fixture literal accept loop in Origin look-alike test                     |
+| Replace exact origin `Set.has` with `startsWith`                  | Origin and Referer look-alike handleRequest tests                         |
 
 Removing the guard call in `app.ts` fails cross-origin and unregistered-path handleRequest cases (404 or 200 instead of 403). Treating bare `/api/auth` as exempt fails bare-path CSRF tests. Auth fallthrough, dropping the `/api/auth/` 404 in `app.ts`, or `FakeAuthPort` returning null for unknown paths fails the catch-all probe test or the FakeAuthPort unit test.
