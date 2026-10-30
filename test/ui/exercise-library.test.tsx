@@ -23,7 +23,7 @@ import {
   noExactMatchHeading,
   nothingInMyMatches,
 } from "../../src/ui/copy/exercise-library.js";
-import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "../../src/ui/copy/exercise-library-states.js";
+import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
 import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
 import { DEFAULT_FILTERS } from "../../src/ui/exercise-library/library-filters.js";
