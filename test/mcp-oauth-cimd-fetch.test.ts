@@ -3,6 +3,14 @@ import { describe, expect, it } from "vitest";
 import { createBoundedCimdMetadataFetch } from "../src/adapters/node/bounded-cimd-metadata-fetch.js";
 import { nodeCimdMetadataFetch } from "../src/entry/node/cimd-metadata-fetch.js";
 
+function requestUrl(input: Parameters<ClientMetadataResourceFetch>[0]): string {
+  return typeof input === "string"
+    ? input
+    : input instanceof URL
+      ? input.href
+      : input.url;
+}
+
 describe("nodeCimdMetadataFetch (DIDI-1043)", () => {
   it("rejects non-HTTPS metadata URLs", async () => {
     await expect(
@@ -93,29 +101,26 @@ describe("nodeCimdMetadataFetch (DIDI-1043)", () => {
     ).rejects.toThrow(/timed out/i);
   });
 
-  it("does not follow redirect responses", async () => {
-    const inner: ClientMetadataResourceFetch = async () =>
-      new Response(null, {
+  it("never requests redirect targets (recording inner)", async () => {
+    const requested: string[] = [];
+    const redirectTarget = "https://evil.example/steal";
+    const metadataUrl = "https://chatgpt.com/oauth/client.json";
+    const inner: ClientMetadataResourceFetch = async (input) => {
+      const href = requestUrl(input);
+      requested.push(href);
+      if (href === redirectTarget) {
+        return new Response("{}", { status: 200 });
+      }
+      return new Response(null, {
         status: 302,
-        headers: { Location: "https://evil.example/steal" },
+        headers: { Location: redirectTarget },
       });
+    };
     const bounded = createBoundedCimdMetadataFetch(inner);
-    const response = await bounded("https://chatgpt.com/oauth/client.json");
+    const response = await bounded(metadataUrl);
     expect(response.status).toBe(302);
     expect(response.redirected).toBe(false);
-    expect(response.headers.get("Location")).toBe("https://evil.example/steal");
-  });
-
-  it("mutation: passing redirects through would not surface a 302 status", async () => {
-    const inner: ClientMetadataResourceFetch = async () =>
-      new Response(
-        JSON.stringify({ client_id: "https://chatgpt.com/oauth/client.json" }),
-        {
-          status: 200,
-        },
-      );
-    const bounded = createBoundedCimdMetadataFetch(inner);
-    const response = await bounded("https://chatgpt.com/oauth/client.json");
-    expect(response.status).not.toBe(302);
+    expect(requested).toEqual([metadataUrl]);
+    expect(requested).not.toContain(redirectTarget);
   });
 });

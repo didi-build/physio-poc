@@ -1,4 +1,5 @@
 const MAX_CLIENT_NAME_LENGTH = 64;
+const MAX_CLIENT_NAME_CODE_UNITS = 256;
 
 const BIDI_ISOLATE_CODE_POINTS = new Set([0x061c, 0x2066, 0x2067, 0x2068, 0x2069]);
 
@@ -45,6 +46,24 @@ function truncateToMaxGraphemes(value: string, maxGraphemes: number): string {
   return graphemes.slice(0, maxGraphemes).join("");
 }
 
+function truncateToMaxCodeUnits(value: string, maxCodeUnits: number): string {
+  if (value.length <= maxCodeUnits) {
+    return value;
+  }
+  let end = maxCodeUnits;
+  const lead = value.charCodeAt(end - 1);
+  const trail = value.charCodeAt(end);
+  if (lead >= 0xd800 && lead <= 0xdbff && trail >= 0xdc00 && trail <= 0xdfff) {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function applyClientNameLengthCaps(value: string): string {
+  const cappedByGrapheme = truncateToMaxGraphemes(value, MAX_CLIENT_NAME_LENGTH);
+  return truncateToMaxCodeUnits(cappedByGrapheme, MAX_CLIENT_NAME_CODE_UNITS);
+}
+
 /** Server-side client display name sanitization (DIDI-1043). */
 export function sanitizeOAuthClientDisplayName(
   rawName: string | null | undefined,
@@ -53,9 +72,9 @@ export function sanitizeOAuthClientDisplayName(
   const normalized = stripUnsafeClientNameChars((rawName ?? "").normalize("NFC"));
   const trimmed = normalized.trim();
   if (trimmed.length === 0) {
-    return truncateToMaxGraphemes(fallbackHost, MAX_CLIENT_NAME_LENGTH);
+    return applyClientNameLengthCaps(fallbackHost);
   }
-  return truncateToMaxGraphemes(trimmed, MAX_CLIENT_NAME_LENGTH);
+  return applyClientNameLengthCaps(trimmed);
 }
 
 export function hostFromUrl(urlString: string): string {
@@ -64,9 +83,4 @@ export function hostFromUrl(urlString: string): string {
   } catch {
     return "";
   }
-}
-
-export function countGraphemes(value: string): number {
-  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-  return [...segmenter.segment(value)].length;
 }

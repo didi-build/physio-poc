@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AppDependencies } from "../src/http/app.js";
 import { handleRequest } from "../src/http/app.js";
+import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
 import { MCP_OAUTH_CONSENT_FRAME_HEADERS } from "../src/auth/mcp-oauth/consent-frame-headers.js";
-import { PHYSIO_MCP_PENDING_CONSENT_TTL_MS } from "../src/auth/mcp-oauth/pending-consent.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import {
   MCP_OAUTH_TEST_BASE,
@@ -184,29 +184,52 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
 
     it("forwards only allowlisted root /.well-known paths", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
-      const allowed: Array<{ path: string; status: number }> = [
-        { path: "/.well-known/oauth-authorization-server", status: 200 },
-        { path: "/.well-known/oauth-protected-resource", status: 200 },
-        { path: "/.well-known/oauth-protected-resource/mcp", status: 200 },
-      ];
-      for (const entry of allowed) {
-        const response = await handleRequest(
-          new Request(`${MCP_OAUTH_TEST_BASE}${entry.path}`),
-          deps,
-        );
-        expect(response.status).toBe(entry.status);
+      const port = deps.auth;
+      if (!(port instanceof BetterAuthPort)) {
+        throw new Error("expected BetterAuthPort");
       }
-      for (const path of [
+      const auth = port.getBetterAuthRuntime();
+      const handlerSpy = vi.spyOn(auth, "handler");
+
+      const disallowed = [
         "/.well-known/openid-configuration",
         "/.well-known/jwks.json",
         "/.well-known/foo",
-      ]) {
+        "/.well-known/oauth-protected-resource/other",
+      ];
+      for (const path of disallowed) {
+        handlerSpy.mockClear();
         const response = await handleRequest(
           new Request(`${MCP_OAUTH_TEST_BASE}${path}`),
           deps,
         );
         expect(response.status).toBe(404);
+        expect(handlerSpy).not.toHaveBeenCalled();
       }
+
+      const handlerAllowed = [
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+      ];
+      for (const path of handlerAllowed) {
+        handlerSpy.mockClear();
+        const response = await handleRequest(
+          new Request(`${MCP_OAUTH_TEST_BASE}${path}`),
+          deps,
+        );
+        expect(response.status).toBe(200);
+        expect(handlerSpy).toHaveBeenCalledTimes(1);
+      }
+
+      handlerSpy.mockClear();
+      const authServer = await handleRequest(
+        new Request(`${MCP_OAUTH_TEST_BASE}/.well-known/oauth-authorization-server`),
+        deps,
+      );
+      expect(authServer.status).toBe(200);
+      expect(handlerSpy).not.toHaveBeenCalled();
+
+      handlerSpy.mockRestore();
     });
   });
 
@@ -611,6 +634,8 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
   });
 
   describe("pending consent expiry", () => {
+    const pendingConsentTtlMs = 10 * 60 * 1000;
+
     it("accepts allow at nine minutes fifty-nine seconds and rejects at ten minutes", async () => {
       let nowMs = 1_700_000_000_000;
       const clock = { nowMs: () => nowMs };
@@ -630,7 +655,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS - 1000;
+      nowMs += pendingConsentTtlMs - 1000;
       const redirect = await allowConsent(deps, jar);
       expect(redirect.searchParams.get("code")).toBeTruthy();
 
@@ -647,7 +672,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS;
+      nowMs += pendingConsentTtlMs;
       const expiredAllow = await requestWithJar(
         `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
         deps,
@@ -677,7 +702,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+      nowMs += pendingConsentTtlMs + 1;
       const response = await requestWithJar(
         `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
         deps,

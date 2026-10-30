@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import {
-  countGraphemes,
-  sanitizeOAuthClientDisplayName,
-} from "../src/auth/mcp-oauth/sanitize-client-name.js";
+import { sanitizeOAuthClientDisplayName } from "../src/auth/mcp-oauth/sanitize-client-name.js";
+
+const MAX_CLIENT_NAME_CODE_UNITS = 256;
+
+function countGraphemesInTest(value: string): number {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  return [...segmenter.segment(value)].length;
+}
 
 describe("sanitizeOAuthClientDisplayName (DIDI-1043)", () => {
   it("applies NFC normalization", () => {
@@ -34,8 +38,18 @@ describe("sanitizeOAuthClientDisplayName (DIDI-1043)", () => {
     const emoji = "😀";
     const long = emoji.repeat(80);
     const sanitized = sanitizeOAuthClientDisplayName(long, "example.com");
-    expect(countGraphemes(sanitized)).toBe(64);
+    expect(countGraphemesInTest(sanitized)).toBe(64);
     expect(sanitized).toBe(emoji.repeat(64));
+  });
+
+  it("caps stacked combining marks by code unit limit", () => {
+    const perGrapheme = `a${"\u0301".repeat(200)}`;
+    const stacked = perGrapheme.repeat(64);
+    expect(stacked.length).toBeGreaterThan(MAX_CLIENT_NAME_CODE_UNITS);
+    const sanitized = sanitizeOAuthClientDisplayName(stacked, "example.com");
+    expect(countGraphemesInTest(sanitized)).toBeLessThanOrEqual(64);
+    expect(sanitized.length).toBeLessThanOrEqual(MAX_CLIENT_NAME_CODE_UNITS);
+    expect(sanitized.length).toBeGreaterThan(0);
   });
 
   it("falls back to host when empty after sanitization", () => {
