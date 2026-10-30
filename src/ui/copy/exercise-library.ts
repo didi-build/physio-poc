@@ -114,6 +114,13 @@ export const MY_COPY = "My copy";
 export const MY_COPY_DETAILS_BLURB =
   "Private changes only you see. To fix it for everyone, use Edit for everyone.";
 export const NO_EDITS_YET = "No edits yet.";
+/** Verbatim from design/reference/web-app/generated/WebAppClickableConcept.tsx:2171 (pinned prefix). */
+export const PINNED_PREFIX = "Pinned. ";
+
+/** Verbatim from design/reference/web-app/generated/WebAppClickableConcept.tsx:2171. */
+export function editsOnTopOfLibraryLine(editCount: number): string {
+  return `${editCount} of your edits sit on top of the library.`;
+}
 export const SAVE_TO_EDIT =
   "Save it to edit the text and set your own defaults for this exercise.";
 export const ADD_TO_MY = "Add to my exercises";

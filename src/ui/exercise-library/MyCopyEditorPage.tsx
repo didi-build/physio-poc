@@ -13,6 +13,7 @@ import {
   KEEP_MINE,
   LIBRARY_CHANGED,
   LIBRARY_NOW,
+  BACK_LIBRARY,
   MY_COPY,
   MY_COPY_EDITOR_INTRO,
   MY_COPY_LIBRARY_HINT,
@@ -72,11 +73,31 @@ export function MyCopyEditorPage() {
     load();
   }, [exerciseId, client]);
 
-  if (loading) {
-    return <ExerciseLibraryBusyState />;
-  }
-  if (loadFailed || !details) {
-    return <ExerciseLibraryDetailErrorSlot />;
+  const showEditorContent = !loading && !loadFailed && details !== null;
+  const pageTitle = details
+    ? (details.resolved_text.find((field) => field.key === "title")?.resolved ??
+      details.library.title ??
+      MY_COPY)
+    : MY_COPY;
+
+  if (!showEditorContent) {
+    return (
+      <section
+        className="ex-page"
+        aria-labelledby="ex-mycopy-heading"
+        aria-busy={loading ? true : undefined}
+      >
+        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
+          {BACK_LIBRARY}
+        </Link>
+        <p className="ex-detail-kicker">{MY_COPY}</p>
+        <h1 id="ex-mycopy-heading" className="ex-page-title">
+          {pageTitle}
+        </h1>
+        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+      </section>
+    );
   }
 
   const titleField = details.resolved_text.find((field) => field.key === "title");

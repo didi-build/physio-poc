@@ -17,13 +17,27 @@ import {
 } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
 import {
+  BACK_LIBRARY,
+  EXERCISE_DETAILS,
   KEEP_MINE,
+  LIB_HEADING,
+  MY_COPY,
+  NO_EDITS_YET,
   NO_SAVED_WITH_FILTERS,
+  NOT_IN_LIBRARY_YET,
+  SUBMIT_REQUEST,
   USE_LIBRARY_VERSION,
+  editsOnTopOfLibraryLine,
   noExactMatchHeading,
   nothingInMyMatches,
 } from "../../src/ui/copy/exercise-library.js";
+import { MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX } from "../../src/ui/copy/exercise-media.js";
+import { NAV_TAB_EXERCISES } from "../../src/ui/copy/nav.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
+import {
+  LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  assertLoadingErrorRegionsOnlyAllowlisted,
+} from "./exercise-library-loading-error-copy-guard.js";
 import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
 import { DEFAULT_FILTERS } from "../../src/ui/exercise-library/library-filters.js";
@@ -37,6 +51,23 @@ afterEach(() => {
 
 function mockClient(methods: Partial<ExerciseLibraryClient>): ExerciseLibraryClient {
   return methods as ExerciseLibraryClient;
+}
+
+function renderPhysio(initialEntry: string, client: ExerciseLibraryClient) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <PhysioApp exerciseLibraryClient={client} />
+    </MemoryRouter>,
+  );
+}
+
+function expectLibraryErrorChrome(pageHeading: string) {
+  expect(screen.getByRole("link", { name: BACK_LIBRARY })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: pageHeading })).toBeInTheDocument();
+  expect(screen.getAllByRole("navigation", { name: "Main" }).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByRole("link", { name: NAV_TAB_EXERCISES }).length,
+  ).toBeGreaterThan(0);
 }
 
 function renderMyCopy(client: ExerciseLibraryClient) {
@@ -534,11 +565,66 @@ describe("Exercise library UI", () => {
       </MemoryRouter>,
     );
 
-    const busy = await screen.findByTestId("exercise-library-busy");
-    expect(busy).toHaveAttribute("aria-busy", "true");
+    const main = await screen.findByTestId("exercise-library-main");
+    expect(main).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("exercise-library-busy-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
+    assertLoadingErrorRegionsOnlyAllowlisted(
+      main,
+      LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+    );
+  });
+
+  it("does not show My exercises empty state copy when load fails", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockRejectedValue(new Error("network")),
+      searchApproved: vi.fn(),
+    });
+
+    renderPhysio(fillPhysioAppRoutePattern("exercises"), client);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-list-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(NO_SAVED_WITH_FILTERS)).not.toBeInTheDocument();
+    expectLibraryErrorChrome(LIB_HEADING);
+  });
+
+  it("does not show All exercises no-match or request form when load fails", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: {
+          new_from_requests: [],
+          pinned: [],
+          recently_used_and_saved: [],
+        },
+      }),
+      searchApproved: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(`${fillPhysioAppRoutePattern("exerciseSearch")}?q=Missing`, client);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-list-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(NOT_IN_LIBRARY_YET)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: SUBMIT_REQUEST }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: noExactMatchHeading("Missing") }),
+    ).not.toBeInTheDocument();
+    expectLibraryErrorChrome(LIB_HEADING);
   });
 
   it("renders the list error slot without unsourced copy when load fails", async () => {
@@ -561,6 +647,89 @@ describe("Exercise library UI", () => {
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
+    assertLoadingErrorRegionsOnlyAllowlisted(
+      document.body,
+      LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+    );
+  });
+
+  it("keeps Library back link, heading and app nav on details load error", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expectLibraryErrorChrome(EXERCISE_DETAILS);
+  });
+
+  it("keeps Library back link, heading and app nav on My copy load error", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expectLibraryErrorChrome(MY_COPY);
+  });
+
+  it("shows edits-on-top copy instead of No edits yet when overrides exist", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        in_my_exercises: true,
+        resolved_text: [
+          {
+            key: "title",
+            resolved: "My title",
+            library_value: "Library title",
+            library_updated: false,
+          },
+        ],
+        library: { ...baseDetails.library, title: "Library title" },
+      }),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByText(editsOnTopOfLibraryLine(1))).toBeInTheDocument();
+    });
+    expect(screen.queryByText(NO_EDITS_YET)).not.toBeInTheDocument();
+  });
+
+  it("omits the strength loop caption suffix on stretch exercises", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        category: "Stretching",
+      }),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByText("Video, 6s loop")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX),
+    ).not.toBeInTheDocument();
   });
 
   it("remove from My exercises on details supports Undo", async () => {

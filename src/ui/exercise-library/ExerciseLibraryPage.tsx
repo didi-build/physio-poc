@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fillPhysioAppRoutePattern,
   physioAppExerciseSearchPath,
@@ -13,6 +13,7 @@ import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
   BROWSE_ALL,
+  BACK_LIBRARY,
   IN_LIBRARY,
   LIB_HEADING,
   LIB_MY_DESCRIPTION,
@@ -225,8 +226,15 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
     }
   };
 
+  const showListContent = !loading && !loadFailed;
+
   return (
     <section className="ex-page" aria-labelledby="ex-lib-heading">
+      {loadFailed ? (
+        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
+          {BACK_LIBRARY}
+        </Link>
+      ) : null}
       <h1 id="ex-lib-heading" className="ex-page-title">
         {LIB_HEADING}
       </h1>
@@ -273,185 +281,192 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
       <FiltersSortPanel filters={filters} onChange={setFilters} />
 
       {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
-      {loading ? <ExerciseLibraryBusyState /> : null}
 
-      {!loading && tab === "mine" ? (
-        myListState === "nothing_in_my_exercises_matches" && mySearchQuery ? (
-          <div className="ex-empty">
-            <h2>{nothingInMyMatches(mySearchQuery)}</h2>
-            <p>{TRY_ALL_OR_REQUEST}</p>
-            <button
-              type="button"
-              className="ex-primary-btn"
-              onClick={() => {
-                switchTab("all");
-              }}
-            >
-              {SEARCH_ALL_EXERCISES}
-            </button>
-          </div>
-        ) : myCount === 0 ? (
-          <div className="ex-empty">
-            <h2>
-              {myListState === "no_saved_exercises_with_filters"
-                ? NO_SAVED_WITH_FILTERS
-                : NO_SAVED_WITH_FILTERS}
-            </h2>
-            <p>{TRY_ALL_OR_REQUEST}</p>
-            <button
-              type="button"
-              className="ex-primary-btn"
-              onClick={() => {
-                switchTab("all");
-              }}
-            >
-              {SEARCH_ALL_EXERCISES}
-            </button>
-          </div>
-        ) : (
-          <div className="ex-sections">
-            {mySections.new_from_requests.length > 0 ? (
-              <div>
-                <h2 className="ex-section-title">{SECTION_NEW_FROM_REQUESTS}</h2>
-                <ul className="ex-card-grid">
-                  {mySections.new_from_requests.map((item) => (
-                    <ExerciseListCard
-                      key={item.exercise_id}
-                      mode="mine"
-                      item={myItemToCard(item)}
-                      onTogglePin={() => {
-                        void client
-                          .setPinned(item.exercise_id, !item.favourite)
-                          .then(() => reload());
-                      }}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {mySections.pinned.length > 0 ? (
-              <div>
-                <h2 className="ex-section-title">{SECTION_PINNED}</h2>
-                <ul className="ex-card-grid">
-                  {mySections.pinned.map((item) => (
-                    <ExerciseListCard
-                      key={item.exercise_id}
-                      mode="mine"
-                      item={myItemToCard(item)}
-                      onTogglePin={() => {
-                        void client
-                          .setPinned(item.exercise_id, !item.favourite)
-                          .then(() => reload());
-                      }}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {mySections.recently_used_and_saved.length > 0 ? (
-              <div>
-                <h2 className="ex-section-title">{SECTION_RECENT}</h2>
-                <ul className="ex-card-grid">
-                  {mySections.recently_used_and_saved.map((item) => (
-                    <ExerciseListCard
-                      key={item.exercise_id}
-                      mode="mine"
-                      item={myItemToCard(item)}
-                      onTogglePin={() => {
-                        void client
-                          .setPinned(item.exercise_id, !item.favourite)
-                          .then(() => reload());
-                      }}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="ex-secondary-btn"
-              onClick={() => {
-                switchTab("all");
-              }}
-            >
-              {BROWSE_ALL}
-            </button>
-          </div>
-        )
-      ) : null}
+      <div
+        className="ex-library-main"
+        data-testid="exercise-library-main"
+        aria-busy={loading ? true : undefined}
+      >
+        {loading ? <ExerciseLibraryBusyState /> : null}
 
-      {!loading && tab === "all" ? (
-        <>
-          {showNoExactMatch ? (
-            <div className="ex-no-exact">
-              <h2>{noExactMatchHeading(trimmedQuery)}</h2>
-              <p>{allExercises.length > 0 ? SIMILAR_INTRO : NOT_IN_LIBRARY_YET}</p>
+        {showListContent && tab === "mine" ? (
+          myListState === "nothing_in_my_exercises_matches" && mySearchQuery ? (
+            <div className="ex-empty">
+              <h2>{nothingInMyMatches(mySearchQuery)}</h2>
+              <p>{TRY_ALL_OR_REQUEST}</p>
+              <button
+                type="button"
+                className="ex-primary-btn"
+                onClick={() => {
+                  switchTab("all");
+                }}
+              >
+                {SEARCH_ALL_EXERCISES}
+              </button>
             </div>
-          ) : null}
-          {!showNoExactMatch && allExercises.length > 0 ? (
-            <ul className="ex-card-grid ex-card-grid--spaced">
-              {allExercises.map((item) => (
-                <ExerciseListCard
-                  key={item.exercise_id}
-                  mode="all"
-                  item={approvedToCard(item, myIds)}
-                  onSave={() => {
-                    void handleSave(item.exercise_id);
-                  }}
-                />
-              ))}
-            </ul>
-          ) : null}
-          {showNoExactMatch && allExercises.length > 0 ? (
-            <section aria-labelledby="ex-similar-heading">
-              <h2 id="ex-similar-heading" className="ex-section-title">
-                {SIMILAR_SECTION}
+          ) : myCount === 0 ? (
+            <div className="ex-empty">
+              <h2>
+                {myListState === "no_saved_exercises_with_filters"
+                  ? NO_SAVED_WITH_FILTERS
+                  : NO_SAVED_WITH_FILTERS}
               </h2>
-              <ul className="ex-similar-list">
+              <p>{TRY_ALL_OR_REQUEST}</p>
+              <button
+                type="button"
+                className="ex-primary-btn"
+                onClick={() => {
+                  switchTab("all");
+                }}
+              >
+                {SEARCH_ALL_EXERCISES}
+              </button>
+            </div>
+          ) : (
+            <div className="ex-sections">
+              {mySections.new_from_requests.length > 0 ? (
+                <div>
+                  <h2 className="ex-section-title">{SECTION_NEW_FROM_REQUESTS}</h2>
+                  <ul className="ex-card-grid">
+                    {mySections.new_from_requests.map((item) => (
+                      <ExerciseListCard
+                        key={item.exercise_id}
+                        mode="mine"
+                        item={myItemToCard(item)}
+                        onTogglePin={() => {
+                          void client
+                            .setPinned(item.exercise_id, !item.favourite)
+                            .then(() => reload());
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {mySections.pinned.length > 0 ? (
+                <div>
+                  <h2 className="ex-section-title">{SECTION_PINNED}</h2>
+                  <ul className="ex-card-grid">
+                    {mySections.pinned.map((item) => (
+                      <ExerciseListCard
+                        key={item.exercise_id}
+                        mode="mine"
+                        item={myItemToCard(item)}
+                        onTogglePin={() => {
+                          void client
+                            .setPinned(item.exercise_id, !item.favourite)
+                            .then(() => reload());
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {mySections.recently_used_and_saved.length > 0 ? (
+                <div>
+                  <h2 className="ex-section-title">{SECTION_RECENT}</h2>
+                  <ul className="ex-card-grid">
+                    {mySections.recently_used_and_saved.map((item) => (
+                      <ExerciseListCard
+                        key={item.exercise_id}
+                        mode="mine"
+                        item={myItemToCard(item)}
+                        onTogglePin={() => {
+                          void client
+                            .setPinned(item.exercise_id, !item.favourite)
+                            .then(() => reload());
+                        }}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="ex-secondary-btn"
+                onClick={() => {
+                  switchTab("all");
+                }}
+              >
+                {BROWSE_ALL}
+              </button>
+            </div>
+          )
+        ) : null}
+
+        {showListContent && tab === "all" ? (
+          <>
+            {showNoExactMatch ? (
+              <div className="ex-no-exact">
+                <h2>{noExactMatchHeading(trimmedQuery)}</h2>
+                <p>{allExercises.length > 0 ? SIMILAR_INTRO : NOT_IN_LIBRARY_YET}</p>
+              </div>
+            ) : null}
+            {!showNoExactMatch && allExercises.length > 0 ? (
+              <ul className="ex-card-grid ex-card-grid--spaced">
                 {allExercises.map((item) => (
-                  <li key={item.exercise_id} className="ex-similar-row">
-                    <div className="ex-similar-body">
-                      <span className="ex-similar-name">{item.exercise_name}</span>
-                      <span className="ex-tag ex-tag--library">{IN_LIBRARY}</span>
-                      {item.matched_alias ? (
-                        <span className="ex-card-alias">
-                          {MATCHED_ALIAS_PREFIX} {item.matched_alias}
-                        </span>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="ex-secondary-btn"
-                      onClick={() => {
-                        void handleSave(item.exercise_id).then(() => {
-                          showToast({
-                            message: usingExerciseToast(item.exercise_name),
-                          });
-                          navigate(
-                            fillPhysioAppRoutePattern("exerciseDetail", {
-                              exerciseId: item.exercise_id,
-                            }),
-                          );
-                        });
-                      }}
-                    >
-                      {USE_THIS}
-                    </button>
-                  </li>
+                  <ExerciseListCard
+                    key={item.exercise_id}
+                    mode="all"
+                    item={approvedToCard(item, myIds)}
+                    onSave={() => {
+                      void handleSave(item.exercise_id);
+                    }}
+                  />
                 ))}
               </ul>
-            </section>
-          ) : null}
-          {showNoExactMatch ? (
-            <div className="ex-request-shell">
-              <RequestFormPlaceholder
-                exerciseName={trimmedQuery}
-                showNoneHeading={allExercises.length > 0}
-              />
-            </div>
-          ) : null}
-        </>
-      ) : null}
+            ) : null}
+            {showNoExactMatch && allExercises.length > 0 ? (
+              <section aria-labelledby="ex-similar-heading">
+                <h2 id="ex-similar-heading" className="ex-section-title">
+                  {SIMILAR_SECTION}
+                </h2>
+                <ul className="ex-similar-list">
+                  {allExercises.map((item) => (
+                    <li key={item.exercise_id} className="ex-similar-row">
+                      <div className="ex-similar-body">
+                        <span className="ex-similar-name">{item.exercise_name}</span>
+                        <span className="ex-tag ex-tag--library">{IN_LIBRARY}</span>
+                        {item.matched_alias ? (
+                          <span className="ex-card-alias">
+                            {MATCHED_ALIAS_PREFIX} {item.matched_alias}
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="ex-secondary-btn"
+                        onClick={() => {
+                          void handleSave(item.exercise_id).then(() => {
+                            showToast({
+                              message: usingExerciseToast(item.exercise_name),
+                            });
+                            navigate(
+                              fillPhysioAppRoutePattern("exerciseDetail", {
+                                exerciseId: item.exercise_id,
+                              }),
+                            );
+                          });
+                        }}
+                      >
+                        {USE_THIS}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+            {showNoExactMatch ? (
+              <div className="ex-request-shell">
+                <RequestFormPlaceholder
+                  exerciseName={trimmedQuery}
+                  showNoneHeading={allExercises.length > 0}
+                />
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
 
       <span className="sr-only">{TOAST_UNDO}</span>
     </section>

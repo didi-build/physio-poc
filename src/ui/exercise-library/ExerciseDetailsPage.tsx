@@ -28,7 +28,6 @@ import {
   LIVE_SUFFIX,
   MY_COPY,
   MY_COPY_DETAILS_BLURB,
-  NO_EDITS_YET,
   PRECAUTIONS,
   PRECAUTIONS_FOOTER,
   PROGRAM_HINT,
@@ -58,6 +57,7 @@ import {
   ExerciseLibraryBusyState,
   ExerciseLibraryDetailErrorSlot,
 } from "./ExerciseLibraryStates.js";
+import { myCopyStatusLine } from "./my-copy-status.js";
 import { parseSteps } from "./library-filters.js";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -97,16 +97,33 @@ export function ExerciseDetailsPage() {
     load();
   }, [exerciseId, client]);
 
-  if (loading) {
-    return <ExerciseLibraryBusyState />;
-  }
-  if (loadFailed || !details) {
-    return <ExerciseLibraryDetailErrorSlot />;
+  const showDetailContent = !loading && !loadFailed && details !== null;
+  const pageTitle = details
+    ? (details.resolved_text.find((field) => field.key === "title")?.resolved ??
+      details.library.title)
+    : EXERCISE_DETAILS;
+
+  if (!showDetailContent) {
+    return (
+      <section
+        className="ex-page ex-details"
+        aria-labelledby="ex-detail-heading"
+        aria-busy={loading ? true : undefined}
+      >
+        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
+          {BACK_LIBRARY}
+        </Link>
+        <p className="ex-detail-kicker">{EXERCISE_DETAILS}</p>
+        <h1 id="ex-detail-heading" className="ex-page-title">
+          {pageTitle}
+        </h1>
+        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+      </section>
+    );
   }
 
-  const title =
-    details.resolved_text.find((field) => field.key === "title")?.resolved ??
-    details.library.title;
+  const title = pageTitle;
   const description =
     details.resolved_text.find((field) => field.key === "description")?.resolved ??
     details.library.description;
@@ -278,10 +295,7 @@ export function ExerciseDetailsPage() {
         <p className="ex-muted">{MY_COPY_DETAILS_BLURB}</p>
         {details.in_my_exercises ? (
           <>
-            <p>
-              {details.favourite ? "Pinned. " : ""}
-              {NO_EDITS_YET}
-            </p>
+            <p>{myCopyStatusLine(details)}</p>
             <p className="ex-muted">{PROGRAM_HINT}</p>
             <button
               type="button"

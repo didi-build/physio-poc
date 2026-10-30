@@ -12,8 +12,8 @@ export function ExerciseLibraryErrorSlot({
   message,
   testId,
 }: ExerciseLibraryErrorSlotProps) {
-  if (!message) {
-    return <div data-testid={testId} className="ex-error-slot" hidden />;
+  if (typeof message !== "string" || message.length === 0) {
+    return <div data-testid={testId} className="ex-error-slot" />;
   }
   return (
     <p className="ex-error" role="alert" data-testid={testId}>
@@ -42,7 +42,11 @@ export function ExerciseLibraryListErrorSlot() {
 
 export function ExerciseLibraryBusyState() {
   return (
-    <div className="ex-busy" aria-busy="true" data-testid="exercise-library-busy">
+    <div
+      className="ex-busy"
+      data-testid="exercise-library-busy-skeleton"
+      aria-hidden="true"
+    >
       <div className="ex-busy-skeleton ex-busy-skeleton--title" />
       <div className="ex-busy-skeleton ex-busy-skeleton--line" />
       <div className="ex-busy-skeleton ex-busy-skeleton--line ex-busy-skeleton--short" />
