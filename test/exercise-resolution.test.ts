@@ -63,14 +63,22 @@ describe("resolveTextField (unit)", () => {
   it("returns override text when present", () => {
     expect(
       resolveTextField(
-        { title: "My title", cue_stretching: "My cue" },
+        {
+          title: { value: "My title", base: "Library title" },
+          cue_stretching: { value: "My cue", base: "Library stretch cue" },
+        },
         version,
         "title",
         "stretching",
       ),
     ).toBe("My title");
     expect(
-      resolveTextField({ cue_stretching: "My cue" }, version, "cue", "stretching"),
+      resolveTextField(
+        { cue_stretching: { value: "My cue", base: "Library stretch cue" } },
+        version,
+        "cue",
+        "stretching",
+      ),
     ).toBe("My cue");
   });
 });
