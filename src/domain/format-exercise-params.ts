@@ -1,8 +1,5 @@
 import type { ParamKey, ExerciseParams, NumericOrRange } from "./exercise-params.js";
-import {
-  type MyDefaultsPendingCopySlots,
-  myDefaultsPendingCopySlots,
-} from "../ui/copy/my-defaults-pending-copy.js";
+import { myDefaultsPendingCopySlots } from "../ui/copy/my-defaults-pending-copy.js";
 
 const PARAM_DISPLAY_ORDER: ParamKey[] = [
   "reps",
@@ -19,10 +16,8 @@ function keysInDisplayOrder(params: ExerciseParams): ParamKey[] {
   return PARAM_DISPLAY_ORDER.filter((key) => params[key] !== undefined);
 }
 
-function perDayDisplay(
-  value: NumericOrRange,
-  copy: MyDefaultsPendingCopySlots,
-): string {
+function perDayDisplay(value: NumericOrRange): string {
+  const copy = myDefaultsPendingCopySlots;
   if (typeof value === "number") {
     if (value === 1) {
       return copy.readoutOnceADay ?? "";
@@ -33,16 +28,13 @@ function perDayDisplay(
     return copy.readoutPerDayTimes?.(value) ?? "";
   }
   if (value.min === value.max) {
-    return perDayDisplay(value.min, copy);
+    return perDayDisplay(value.min);
   }
   return copy.readoutPerDayRange?.(value.min, value.max) ?? "";
 }
 
-export function paramPhrase(
-  key: ParamKey,
-  value: NumericOrRange,
-  copy: MyDefaultsPendingCopySlots = myDefaultsPendingCopySlots,
-): string {
+export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
+  const copy = myDefaultsPendingCopySlots;
   const n = typeof value === "number" ? value : null;
   switch (key) {
     case "reps":
@@ -61,7 +53,7 @@ export function paramPhrase(
     case "rest_s":
       return `${n}s rest between sets`;
     case "per_day":
-      return perDayDisplay(value, copy);
+      return perDayDisplay(value);
     case "days_per_week":
       return n === 7 ? "every day" : `${n}x a week`;
     default:
@@ -70,12 +62,9 @@ export function paramPhrase(
 }
 
 /** Human-readable prescription params (approved readout slots only). */
-export function formatExerciseParams(
-  params: ExerciseParams,
-  copy: MyDefaultsPendingCopySlots = myDefaultsPendingCopySlots,
-): string {
+export function formatExerciseParams(params: ExerciseParams): string {
   return keysInDisplayOrder(params)
-    .map((key) => paramPhrase(key, params[key] as NumericOrRange, copy))
+    .map((key) => paramPhrase(key, params[key] as NumericOrRange))
     .filter((phrase) => phrase.length > 0)
     .join(", ");
 }

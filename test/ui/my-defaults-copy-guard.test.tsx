@@ -164,6 +164,8 @@ describe("My defaults pending copy slots (integration, jsdom)", () => {
 
   it("does not render readout phrases when readout slots are undefined", () => {
     const readout = formatExerciseParams(GUARD_FIXTURE_PARAMS);
+    expect(readout).toBe("10 reps, 2s hold, 3x a week");
+    expect(readout).not.toMatch(/undefined/);
     expect(readout).not.toContain(FIXTURE_PER_DAY_ONCE);
     expect(readout).not.toContain(FIXTURE_ONE_SET);
     expect(readout).not.toContain(FIXTURE_SECONDS_UP);
@@ -175,19 +177,9 @@ describe("My defaults pending copy slots (integration, jsdom)", () => {
       onCancel: () => {},
     });
     const readsAs = container.querySelector(".md-reads-as");
-    expect(readsAs?.textContent ?? "").not.toContain(FIXTURE_PER_DAY_RANGE);
-  });
-
-  it("renders readout phrases when readout slots are set in the test fixture", () => {
-    const copy = {
-      ...myDefaultsPendingCopySlots,
-      readoutOnceADay: FIXTURE_PER_DAY_ONCE,
-      readoutPerDayRange: () => FIXTURE_PER_DAY_RANGE,
-      readoutOneSet: FIXTURE_ONE_SET,
-      readoutSecondsUp: () => FIXTURE_SECONDS_UP,
-    };
-    const readout = formatExerciseParams({ per_day: { min: 1, max: 3 } }, copy);
-    expect(readout).toContain(FIXTURE_PER_DAY_RANGE);
-    expect(formatExerciseParams({ per_day: 1 }, copy)).toContain(FIXTURE_PER_DAY_ONCE);
+    const readsAsText = readsAs?.textContent ?? "";
+    expect(readsAsText).toContain("10 reps, 2s hold, 3x a week");
+    expect(readsAsText).not.toMatch(/undefined/);
+    expect(readsAsText).not.toContain(FIXTURE_PER_DAY_RANGE);
   });
 });

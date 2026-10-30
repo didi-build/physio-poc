@@ -1,59 +1,51 @@
 import { describe, expect, it } from "vitest";
+import type { ExerciseParams } from "../src/domain/exercise-params.js";
 import { formatExerciseParams } from "../src/domain/format-exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../src/domain/global-type-defaults-seed.js";
-import {
-  type MyDefaultsPendingCopySlots,
-  myDefaultsPendingCopySlots,
-} from "../src/ui/copy/my-defaults-pending-copy.js";
 
-const FIXTURE_PER_DAY_RANGE = "fixture-per-day-range-slot";
-const FIXTURE_N_SETS = "fixture-n-sets-slot";
+const PENDING_SLOT_FIXTURE_PARAMS: ExerciseParams = {
+  reps: 10,
+  hold_s: 2,
+  sets: 1,
+  per_day: 2,
+  ascent_s: 3,
+  days_per_week: 3,
+};
 
-function copyWithFixture(
-  overrides: Partial<MyDefaultsPendingCopySlots>,
-): MyDefaultsPendingCopySlots {
-  return { ...myDefaultsPendingCopySlots, ...overrides };
+function expectExactReadoutWithPendingSlotsUnset(
+  params: ExerciseParams,
+  expected: string,
+): void {
+  const readout = formatExerciseParams(params);
+  expect(readout).toBe(expected);
+  expect(readout).not.toMatch(/undefined/);
 }
 
 describe("formatExerciseParams (unit)", () => {
-  it("renders per-day range readout when the slot is set", () => {
-    const copy = copyWithFixture({
-      readoutPerDayRange: () => FIXTURE_PER_DAY_RANGE,
-    });
-    expect(formatExerciseParams(GLOBAL_TYPE_DEFAULTS_SEED.stretching, copy)).toContain(
-      FIXTURE_PER_DAY_RANGE,
+  it("omits pending-slot segments with exact readout (sets 1 and ascent_s present)", () => {
+    expectExactReadoutWithPendingSlotsUnset(
+      PENDING_SLOT_FIXTURE_PARAMS,
+      "10 reps, 2s hold, 3x a week",
     );
   });
 
   it("omits per-day range readout when the slot is undefined", () => {
-    expect(formatExerciseParams(GLOBAL_TYPE_DEFAULTS_SEED.stretching)).toBe(
+    expectExactReadoutWithPendingSlotsUnset(
+      GLOBAL_TYPE_DEFAULTS_SEED.stretching,
       "30s hold, every day",
     );
   });
 
-  it("renders sets readout when the n-sets slot is set", () => {
-    const copy = copyWithFixture({
-      readoutNSets: () => FIXTURE_N_SETS,
-    });
-    expect(formatExerciseParams(GLOBAL_TYPE_DEFAULTS_SEED.concentric, copy)).toContain(
-      FIXTURE_N_SETS,
-    );
-  });
-
-  it("omits sets readout when the n-sets slot is undefined", () => {
-    expect(formatExerciseParams(GLOBAL_TYPE_DEFAULTS_SEED.concentric)).toBe(
+  it("omits plural sets readout when the n-sets slot is undefined", () => {
+    expectExactReadoutWithPendingSlotsUnset(
+      GLOBAL_TYPE_DEFAULTS_SEED.concentric,
       "10 reps, 2s hold, 3x a week",
     );
   });
 
   it("omits scalar per_day readouts when slots are undefined", () => {
-    expect(formatExerciseParams({ per_day: 1 })).toBe("");
-    expect(formatExerciseParams({ per_day: 2 })).toBe("");
-    expect(formatExerciseParams({ per_day: 3 })).toBe("");
-  });
-
-  it("renders scalar per_day when once-a-day slot is set", () => {
-    const copy = copyWithFixture({ readoutOnceADay: "fixture-once-a-day" });
-    expect(formatExerciseParams({ per_day: 1 }, copy)).toBe("fixture-once-a-day");
+    expectExactReadoutWithPendingSlotsUnset({ per_day: 1 }, "");
+    expectExactReadoutWithPendingSlotsUnset({ per_day: 2 }, "");
+    expectExactReadoutWithPendingSlotsUnset({ per_day: 3 }, "");
   });
 });
