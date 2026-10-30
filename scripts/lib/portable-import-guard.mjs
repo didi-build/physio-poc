@@ -161,7 +161,10 @@ function landsInPlatformTree(resolvedRepoPath) {
   if (normalized.startsWith("src/")) {
     withinSrc = normalized.slice("src/".length);
   }
-  return PLATFORM_PREFIXES.some((prefix) => withinSrc.startsWith(prefix));
+  return PLATFORM_PREFIXES.some((prefix) => {
+    const directory = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return withinSrc === directory || withinSrc.startsWith(prefix);
+  });
 }
 
 /**
@@ -239,7 +242,28 @@ export function findPortableViolations(repoRelativePath, source) {
     violations.push(`${kind} non-relative import: ${text}`);
   }
 
+  /**
+   * @param {import("typescript").ImportTypeNode} node
+   * @returns {import("typescript").StringLiteral | null}
+   */
+  function stringLiteralFromImportType(node) {
+    const arg = node.argument;
+    if (ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal)) {
+      return arg.literal;
+    }
+    if (ts.isStringLiteral(arg)) {
+      return arg;
+    }
+    return null;
+  }
+
   function visit(node) {
+    if (ts.isImportTypeNode(node)) {
+      const literal = stringLiteralFromImportType(node);
+      if (literal) {
+        checkModuleSpecifier(literal, "import type");
+      }
+    }
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       checkModuleSpecifier(node.moduleSpecifier, "import");
     }
@@ -287,6 +311,29 @@ export function findPortableViolations(repoRelativePath, source) {
       node.argumentExpression.text === "process"
     ) {
       violations.push("process string element access");
+    }
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "env") {
+      const receiver = unwrapExpression(node.expression);
+      if (
+        ts.isMetaProperty(receiver) &&
+        receiver.keywordToken === ts.SyntaxKind.ImportKeyword
+      ) {
+        violations.push("import.meta.env access");
+      }
+    }
+    if (
+      ts.isElementAccessExpression(node) &&
+      node.argumentExpression &&
+      ts.isStringLiteral(node.argumentExpression) &&
+      node.argumentExpression.text === "env"
+    ) {
+      const receiver = unwrapExpression(node.expression);
+      if (
+        ts.isMetaProperty(receiver) &&
+        receiver.keywordToken === ts.SyntaxKind.ImportKeyword
+      ) {
+        violations.push("import.meta.env access");
+      }
     }
     if (ts.isElementAccessExpression(node)) {
       const receiver = unwrapExpression(node.expression);

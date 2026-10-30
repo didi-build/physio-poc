@@ -129,6 +129,54 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
+  it("detects bare directory specifiers into src/entry without trailing slash", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "export * from '../entry';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects bare directory specifiers into src/adapters/node", () => {
+    const messages = findPortableViolations(
+      "src/services/example.ts",
+      "export * from '../adapters/node';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects type-only import() specifiers for platform modules", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'type Ctx = import("@cloudflare/workers-types").ExecutionContext;',
+    );
+    expect(messages.some((m) => m.includes("non-relative"))).toBe(true);
+  });
+
+  it("detects type-only import() specifiers into the platform tree", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'type NodeEntry = import("../entry/node.js").CreateNodeServer;',
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
+  });
+
+  it("detects import.meta.env reads under portable src/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      "const mode = import.meta.env.MODE;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects import.meta.env reads outside src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const x = import.meta.env;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
   it("detects relative imports into src/adapters/workers", () => {
     const messages = findPortableViolations(
       "src/services/example.ts",
