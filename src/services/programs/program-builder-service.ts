@@ -4,6 +4,7 @@ import {
   validateOpaqueEntityId,
 } from "../../domain/opaque-entity-id.js";
 import {
+  PRESCRIPTION_TYPES,
   prescriptionTypesForCategory,
   type PrescriptionType,
 } from "../../domain/exercise-types.js";
@@ -35,6 +36,7 @@ import {
   type ProgramRow,
 } from "../../storage/repositories/programs.js";
 import { TypeDefaultsRepository } from "../../storage/repositories/type-defaults.js";
+import { resolveExerciseParams } from "../../domain/resolve-exercise-params.js";
 import {
   buildProgramRowTextSnapshot,
   parsePractitionerTextOverrides,
@@ -131,17 +133,18 @@ export class ProgramBuilderService {
    * does not begin, commit, or roll back a transaction.
    *
    * The exercise request approval flow (for example DIDI-1004 `approveRequest`) must
-   * call this inside the same database transaction as marking the request approved.
+   * Replaces matching placeholder rows; returns how many placeholders were skipped because
+   * prescriptionType does not fit the approved exercise category (those rows stay placeholders).
    */
   async linkApprovedPlaceholders(
     exerciseRequestId: string,
     approvedVersionId: string,
-  ): Promise<void> {
+  ): Promise<number> {
     const requestId = this.parseOpaqueId(exerciseRequestId, "Exercise request id");
     const versionId = this.parseOpaqueId(approvedVersionId, "Exercise version id");
     const rows = await this.rows.listForExerciseRequestId(requestId);
     if (rows.length === 0) {
-      return;
+      return 0;
     }
     const version = await this.libraryRead.getApprovedVersionById(versionId);
     if (!version) {
@@ -155,12 +158,16 @@ export class ProgramBuilderService {
       );
     }
     const draftUpdatedAt = this.now();
+    let skippedCount = 0;
     for (const row of rows) {
       const program = await this.programs.findById(row.program_id);
       if (!program || program.deleted_at) {
         continue;
       }
-      this.assertPrescriptionAllowed(version, row.prescription_type);
+      if (!this.prescriptionTypeAllowed(version, row.prescription_type)) {
+        skippedCount += 1;
+        continue;
+      }
       const resolved = await this.resolveRowDefaults(
         program.created_by,
         version,
@@ -185,6 +192,7 @@ export class ProgramBuilderService {
         draftUpdatedAt,
       });
     }
+    return skippedCount;
   }
 
   async listPrograms(
@@ -346,13 +354,9 @@ export class ProgramBuilderService {
     const request = await this.exerciseRequests.findById(requestId);
     this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
     this.assertExerciseRequestOpenForPlaceholder(request);
-    if (!input.prescriptionType) {
-      throw new ProgramBuilderServiceError(
-        "prescriptionType is required for placeholder rows",
-        "invalid_input",
-      );
-    }
-    const prescriptionType = input.prescriptionType;
+    const prescriptionType = this.parsePlaceholderPrescriptionType(
+      input.prescriptionType,
+    );
     let params: ExerciseParams;
     if (input.params) {
       try {
@@ -361,7 +365,7 @@ export class ProgramBuilderService {
         this.mapParamError(err);
       }
     } else {
-      params = (await this.typeDefaults.listGlobalDefaults())[prescriptionType];
+      params = await this.resolvePlaceholderParams(practitionerId, prescriptionType);
     }
     const textSnapshot = { title: request.requested_name.trim() };
     const existingRows = await this.rows.listForProgram(validatedProgramId);
@@ -407,13 +411,16 @@ export class ProgramBuilderService {
     }
     const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     if (row.exercise_request_id) {
+      const prescriptionType = input.prescriptionType
+        ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
+        : row.prescription_type;
       try {
         await this.rows.replaceRow({
           id: row.id,
           programId: validatedProgramId,
           position: row.position,
           exerciseRequestId: row.exercise_request_id,
-          prescriptionType: input.prescriptionType ?? row.prescription_type,
+          prescriptionType,
           params,
           textSnapshot,
           note: input.note !== undefined ? input.note : row.note,
@@ -432,7 +439,9 @@ export class ProgramBuilderService {
     if (!version) {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
-    const prescriptionType = input.prescriptionType ?? row.prescription_type;
+    const prescriptionType = input.prescriptionType
+      ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
+      : row.prescription_type;
     this.assertPrescriptionAllowed(version, prescriptionType);
     try {
       await this.rows.replaceRow({
@@ -649,14 +658,13 @@ export class ProgramBuilderService {
   async restoreProgram(
     practitionerId: string,
     programId: string,
-    at: Date = new Date(this.now()),
   ): Promise<ProgramMutationResult> {
     const validatedProgramId = this.parseOpaqueId(programId, "Program id");
     await this.requireOwnedProgram(practitionerId, validatedProgramId, {
       allowDeleted: true,
     });
     try {
-      await this.programs.restore(validatedProgramId, at);
+      await this.programs.restore(validatedProgramId, new Date(this.now()));
     } catch (err) {
       if (
         err instanceof ProgramRepositoryError &&
@@ -816,14 +824,54 @@ export class ProgramBuilderService {
     return { params: resolved.params, source: resolved.source, overrides };
   }
 
+  private async resolvePlaceholderParams(
+    practitionerId: string,
+    prescriptionType: PrescriptionType,
+  ): Promise<ExerciseParams> {
+    const globalDefaults = await this.typeDefaults.listGlobalDefaults();
+    const practitionerDefaults = await this.typeDefaults.getPractitionerDefaults(
+      practitionerId,
+      prescriptionType,
+    );
+    return resolveExerciseParams({
+      prescriptionType,
+      paramOverrides: {},
+      practitionerTypeDefaults: practitionerDefaults,
+      globalTypeDefaults: globalDefaults[prescriptionType],
+    }).params;
+  }
+
+  private parsePlaceholderPrescriptionType(
+    value: PrescriptionType | undefined,
+  ): PrescriptionType {
+    if (value === undefined) {
+      throw new ProgramBuilderServiceError(
+        "prescriptionType is required for placeholder rows",
+        "invalid_input",
+      );
+    }
+    return this.parsePrescriptionTypeLiteral(value);
+  }
+
+  private parsePrescriptionTypeLiteral(value: string): PrescriptionType {
+    if (!PRESCRIPTION_TYPES.includes(value as PrescriptionType)) {
+      throw new ProgramBuilderServiceError(
+        `prescriptionType must be one of: ${PRESCRIPTION_TYPES.join(", ")}`,
+        "invalid_input",
+      );
+    }
+    return value as PrescriptionType;
+  }
+
   private resolvePrescriptionType(
     version: LatestApprovedVersionRow,
     requested?: PrescriptionType,
   ): PrescriptionType {
     const allowed = prescriptionTypesForCategory(version.category);
     if (requested) {
-      this.assertPrescriptionAllowed(version, requested);
-      return requested;
+      const prescriptionType = this.parsePrescriptionTypeLiteral(requested);
+      this.assertPrescriptionAllowed(version, prescriptionType);
+      return prescriptionType;
     }
     if (allowed.length !== 1) {
       throw new ProgramBuilderServiceError(
@@ -834,11 +882,18 @@ export class ProgramBuilderService {
     return allowed[0]!;
   }
 
+  private prescriptionTypeAllowed(
+    version: LatestApprovedVersionRow,
+    prescriptionType: PrescriptionType,
+  ): boolean {
+    return prescriptionTypesForCategory(version.category).includes(prescriptionType);
+  }
+
   private assertPrescriptionAllowed(
     version: LatestApprovedVersionRow,
     prescriptionType: PrescriptionType,
   ): void {
-    if (!prescriptionTypesForCategory(version.category).includes(prescriptionType)) {
+    if (!this.prescriptionTypeAllowed(version, prescriptionType)) {
       throw new ProgramBuilderServiceError(
         "prescriptionType is not allowed for this exercise category",
         "invalid_input",
@@ -919,16 +974,30 @@ export class ProgramBuilderService {
         throw new ProgramBuilderServiceError(err.message, "invalid_input");
       }
     }
-    if (
-      err instanceof Error &&
-      err.message.includes("libraryUpdateDismissedVersionNumber")
-    ) {
-      throw new ProgramBuilderServiceError(err.message, "invalid_input");
+    if (err instanceof Error) {
+      if (err.message.includes("UNIQUE constraint failed: program_rows.id")) {
+        throw new ProgramBuilderServiceError(
+          "Program row id is already in use",
+          "invalid_input",
+        );
+      }
+      if (err.message.includes("libraryUpdateDismissedVersionNumber")) {
+        throw new ProgramBuilderServiceError(err.message, "invalid_input");
+      }
+      if (
+        err.message.includes("CHECK constraint failed: program_rows.prescription_type")
+      ) {
+        throw new ProgramBuilderServiceError(
+          `prescriptionType must be one of: ${PRESCRIPTION_TYPES.join(", ")}`,
+          "invalid_input",
+        );
+      }
     }
     this.mapProgramRepoError(err);
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {
+    this.parseOpaqueId(practitionerId, "Practitioner id");
     const row = await this.practitioners.findById(practitionerId);
     if (!row) {
       throw new ProgramBuilderServiceError(
@@ -1048,8 +1117,8 @@ export async function linkApprovedPlaceholders(
   exerciseRequestId: string,
   approvedVersionId: string,
   now: () => string = () => new Date().toISOString(),
-): Promise<void> {
-  await new ProgramBuilderService(sql, now).linkApprovedPlaceholders(
+): Promise<number> {
+  return new ProgramBuilderService(sql, now).linkApprovedPlaceholders(
     exerciseRequestId,
     approvedVersionId,
   );
