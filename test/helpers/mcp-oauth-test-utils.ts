@@ -112,19 +112,30 @@ export class CookieJar {
   get(name: string): string | undefined {
     return this.values.get(name);
   }
+
+  set(name: string, value: string): void {
+    this.values.set(name, value);
+  }
 }
+
+export type RequestWithJarOptions = {
+  /** Do not inject Origin on POST (consent Origin guard tests). */
+  omitOrigin?: boolean;
+};
 
 export async function requestWithJar(
   url: string,
   deps: AppDependencies,
   jar: CookieJar,
   init: RequestInit = {},
+  options: RequestWithJarOptions = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   const cookie = jar.header();
   if (cookie) {
     headers.set("cookie", cookie);
     if (
+      !options.omitOrigin &&
       (init.method === "POST" || init.method === "PUT" || init.method === "PATCH") &&
       !headers.has("origin")
     ) {

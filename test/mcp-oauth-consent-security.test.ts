@@ -11,7 +11,10 @@ import {
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { resolveBetterAuthSecretForRuntime } from "../src/http/config.js";
 import type { AppDependencies } from "../src/http/app.js";
-import { PHYSIO_MCP_CONSENT_CSRF_HEADER } from "../src/auth/mcp-oauth/consent-crypto.js";
+import {
+  PHYSIO_MCP_CONSENT_CSRF_COOKIE,
+  PHYSIO_MCP_CONSENT_CSRF_HEADER,
+} from "../src/auth/mcp-oauth/consent-crypto.js";
 import {
   CHATGPT_CIMD_CLIENT_ID,
   CHATGPT_REDIRECT_URI,
@@ -49,6 +52,33 @@ async function countPendingConsent(deps: AppDependencies): Promise<number> {
     "SELECT count(*) as c FROM physio_mcp_pending_consent",
   );
   return Number(row?.c ?? 0);
+}
+
+async function countUnconsumedPending(deps: AppDependencies): Promise<number> {
+  const row = await deps.sql.first(
+    "SELECT count(*) as c FROM physio_mcp_pending_consent WHERE consumed_at_ms IS NULL",
+  );
+  return Number(row?.c ?? 0);
+}
+
+async function setupConsentPending(
+  deps: Awaited<ReturnType<typeof createMcpOAuthTestDeps>>,
+  jar: CookieJar,
+): Promise<string> {
+  await completeGoogleSignIn(deps, jar);
+  await followAuthorizeToConsent(
+    deps,
+    jar,
+    buildAuthorizeUrl({
+      clientId: CHATGPT_CIMD_CLIENT_ID,
+      redirectUri: CHATGPT_REDIRECT_URI,
+      verifier: randomPkceVerifier(),
+      resource: mcpResourceUrl(),
+    }),
+  );
+  const pendingId = jar.get("physio_mcp_pending_consent_id");
+  expect(pendingId).toBeTruthy();
+  return pendingId!;
 }
 
 function oauthQueryFromAuthorizeRedirect(location: string): string {
@@ -108,7 +138,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(payload).not.toMatch(/"code"\s*:/);
     });
 
-    it("mutation: unblocked Better Auth consent POST succeeds without Physio pending", async () => {
+    it("control: unblocked Better Auth consent POST succeeds without Physio pending", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -204,7 +234,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(await countPractitionerConsentAudit(deps)).toBe(0);
     });
 
-    it("mutation: skipping practitioner ownership would accept cross-practitioner allow", async () => {
+    it("control: cross-practitioner allow stays blocked when ownership check is present", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
         allowedEmails: `${FAKE_GOOGLE_ALLOWED_EMAIL},${FAKE_GOOGLE_ALLOWED_B_EMAIL}`,
       });
@@ -261,6 +291,38 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
   });
 
   describe("CSRF and Origin on allow/deny", () => {
+    it("refuses allow when CSRF header matches cookie but pending csrf_token_hash does not", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      const pendingId = await setupConsentPending(deps, jar);
+      const mismatchedToken = "cccccccccccccccccccccccccccccccc";
+      jar.set(PHYSIO_MCP_CONSENT_CSRF_COOKIE, mismatchedToken);
+      const auditBefore = await countPractitionerConsentAudit(deps);
+      const unconsumedBefore = await countUnconsumedPending(deps);
+      const response = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        deps,
+        jar,
+        {
+          method: "POST",
+          headers: {
+            [PHYSIO_MCP_CONSENT_CSRF_HEADER]: mismatchedToken,
+            origin: new URL(MCP_OAUTH_TEST_BASE).origin,
+          },
+        },
+      );
+      expect(response.status).toBe(403);
+      expectConsentFrameHeaders(response);
+      await expectPlainFailClosedAsync(response);
+      expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+      expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
+      const row = await deps.sql.first<{ consumed_at_ms: number | null }>(
+        "SELECT consumed_at_ms FROM physio_mcp_pending_consent WHERE id = ?",
+        [pendingId],
+      );
+      expect(row?.consumed_at_ms).toBeNull();
+    });
+
     it("refuses allow when CSRF header does not match cookie", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
@@ -290,6 +352,58 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(response.status).toBe(403);
       expectConsentFrameHeaders(response);
       await expectPlainFailClosedAsync(response);
+    });
+
+    it("refuses allow when Origin header is missing", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await setupConsentPending(deps, jar);
+      const csrf = jar.get(PHYSIO_MCP_CONSENT_CSRF_COOKIE);
+      const auditBefore = await countPractitionerConsentAudit(deps);
+      const unconsumedBefore = await countUnconsumedPending(deps);
+      const response = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        deps,
+        jar,
+        {
+          method: "POST",
+          headers: {
+            [PHYSIO_MCP_CONSENT_CSRF_HEADER]: csrf ?? "",
+          },
+        },
+        { omitOrigin: true },
+      );
+      expect(response.status).toBe(403);
+      expectConsentFrameHeaders(response);
+      await expectPlainFailClosedAsync(response);
+      expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+      expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
+    });
+
+    it("refuses deny when Origin header is missing", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await setupConsentPending(deps, jar);
+      const csrf = jar.get(PHYSIO_MCP_CONSENT_CSRF_COOKIE);
+      const auditBefore = await countPractitionerConsentAudit(deps);
+      const unconsumedBefore = await countUnconsumedPending(deps);
+      const response = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+        deps,
+        jar,
+        {
+          method: "POST",
+          headers: {
+            [PHYSIO_MCP_CONSENT_CSRF_HEADER]: csrf ?? "",
+          },
+        },
+        { omitOrigin: true },
+      );
+      expect(response.status).toBe(403);
+      expectConsentFrameHeaders(response);
+      await expectPlainFailClosedAsync(response);
+      expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+      expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
     });
 
     it("refuses allow on cross-origin POST", async () => {
@@ -324,7 +438,33 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       await expectPlainFailClosedAsync(response);
     });
 
-    it("mutation: CSRF header check removal would accept wrong header with valid cookie", async () => {
+    it("refuses deny on cross-origin POST", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await setupConsentPending(deps, jar);
+      const csrf = jar.get(PHYSIO_MCP_CONSENT_CSRF_COOKIE);
+      const auditBefore = await countPractitionerConsentAudit(deps);
+      const unconsumedBefore = await countUnconsumedPending(deps);
+      const response = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+        deps,
+        jar,
+        {
+          method: "POST",
+          headers: {
+            [PHYSIO_MCP_CONSENT_CSRF_HEADER]: csrf ?? "",
+            origin: "https://evil.example",
+          },
+        },
+      );
+      expect(response.status).toBe(403);
+      expectConsentFrameHeaders(response);
+      await expectPlainFailClosedAsync(response);
+      expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+      expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
+    });
+
+    it("control: wrong CSRF header stays blocked when header comparison is present", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -356,7 +496,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       }
     });
 
-    it("mutation: Origin check removal would accept cross-origin POST", async () => {
+    it("control: cross-origin allow stays blocked when Origin check is present", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -421,7 +561,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(await countPendingConsent(deps)).toBe(pendingBefore);
     });
 
-    it("mutation: skipping oauth query verification would insert pending for tampered GET", async () => {
+    it("control: tampered consent GET inserts pending when oauth query verify is always true", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -469,7 +609,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
   });
 
   describe("JWT expiry and audience (signTestMcpAccessToken)", () => {
-    it("mutation: unsigned payload tampering would not reject expired tokens", async () => {
+    it("control: unsigned JWT payload tampering does not bypass expiry verification", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -550,7 +690,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(row!.name!).toBe("EvilName");
     });
 
-    it("mutation: disabled sanitization hook would persist control and bidi characters", async () => {
+    it("control: disabled CIMD name sanitization hook stores raw control characters", async () => {
       const sanitizeSpy = vi
         .spyOn(sanitizeClientName, "sanitizeOAuthClientDisplayName")
         .mockImplementation((name) => (typeof name === "string" ? name : "host"));
