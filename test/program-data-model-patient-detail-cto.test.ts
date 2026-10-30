@@ -9,17 +9,20 @@ import {
   ProgramsRepository,
 } from "../src/storage/repositories/programs.js";
 import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 const FLAGGED = "coach@example.com";
 
 const rowInput = {
-  exerciseId: "ex-1",
-  exerciseVersionId: "ver-1",
+  exerciseId: FIXTURE_EXERCISE_ID,
+  exerciseVersionId: FIXTURE_VERSION_ID,
   prescriptionType: "stretching" as const,
   params: { hold_s: 30 },
   textSnapshot: { title: "Heel slide" },
@@ -34,13 +37,13 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       await expect(
         programs.create({
-          id: "prog-name-create",
+          id: id("prog-name-create"),
           createdBy: practitionerId,
           createdAt: TS,
           name: FLAGGED,
         }),
       ).rejects.toThrow(FreeTextValidationError);
-      expect(await programs.findById("prog-name-create")).toBeNull();
+      expect(await programs.findById(id("prog-name-create"))).toBeNull();
     } finally {
       storage.close();
     }
@@ -52,15 +55,15 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const practitionerId = await seedPractitioner(storage);
       const programs = new ProgramsRepository(storage);
       await programs.create({
-        id: "prog-name-update",
+        id: id("prog-name-update"),
         createdBy: practitionerId,
         createdAt: TS,
         name: "Shoulder mobility",
       });
       await expect(
-        programs.updateDraftName("prog-name-update", FLAGGED),
+        programs.updateDraftName(id("prog-name-update"), FLAGGED),
       ).rejects.toThrow(FreeTextValidationError);
-      expect((await programs.findById("prog-name-update"))?.name).toBe(
+      expect((await programs.findById(id("prog-name-update")))?.name).toBe(
         "Shoulder mobility",
       );
     } finally {
@@ -76,14 +79,14 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-qa-note",
+        id: id("prog-qa-note"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await expect(
         rows.replaceRow({
-          id: "row-qa-note",
-          programId: "prog-qa-note",
+          id: id("row-qa-note"),
+          programId: id("prog-qa-note"),
           position: 0,
           ...rowInput,
           note: FLAGGED,
@@ -92,7 +95,7 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       expect(
         await storage.first<{ id: string }>(
           "SELECT id FROM program_rows WHERE program_id = ? LIMIT 1",
-          ["prog-qa-note"],
+          [id("prog-qa-note")],
         ),
       ).toBeNull();
     } finally {
@@ -108,47 +111,47 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-qa-published",
+        id: id("prog-qa-published"),
         createdBy: practitionerId,
         createdAt: TS,
         name: "Published name",
       });
       await rows.replaceRow({
-        id: "row-1",
-        programId: "prog-qa-published",
+        id: id("row-1"),
+        programId: id("prog-qa-published"),
         position: 0,
         ...rowInput,
       });
-      await programs.publish("prog-qa-published", TS);
+      await programs.publish(id("prog-qa-published"), TS);
       await rows.replaceRow({
-        id: "row-1",
-        programId: "prog-qa-published",
+        id: id("row-1"),
+        programId: id("prog-qa-published"),
         position: 0,
         ...rowInput,
         textSnapshot: { title: "Updated heel slide" },
         draftUpdatedAt: TS,
       });
-      await programs.updateDraftName("prog-qa-published", "Renamed draft only");
+      await programs.updateDraftName(id("prog-qa-published"), "Renamed draft only");
       const frozen = await storage.first<{
         published_name: string | null;
         name: string | null;
       }>("SELECT published_name, name FROM programs WHERE id = ? LIMIT 1", [
-        "prog-qa-published",
+        id("prog-qa-published"),
       ]);
       expect(frozen?.published_name).toBe("Published name");
       expect(frozen?.name).toBe("Renamed draft only");
       await storage.run(`UPDATE programs SET name = ? WHERE id = ?`, [
         FLAGGED,
-        "prog-qa-published",
+        id("prog-qa-published"),
       ]);
-      await expect(programs.publish("prog-qa-published", TS)).rejects.toThrow(
+      await expect(programs.publish(id("prog-qa-published"), TS)).rejects.toThrow(
         FreeTextValidationError,
       );
       expect(
         (
           await storage.first<{ published_name: string | null }>(
             "SELECT published_name FROM programs WHERE id = ? LIMIT 1",
-            ["prog-qa-published"],
+            [id("prog-qa-published")],
           )
         )?.published_name,
       ).toBe("Published name");
@@ -165,14 +168,14 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-qa-cue",
+        id: id("prog-qa-cue"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await expect(
         rows.replaceRow({
-          id: "row-qa-cue",
-          programId: "prog-qa-cue",
+          id: id("row-qa-cue"),
+          programId: id("prog-qa-cue"),
           position: 0,
           ...rowInput,
           textSnapshot: { title: "Heel slide", cue: FLAGGED },
@@ -181,7 +184,7 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       expect(
         await storage.first<{ id: string }>(
           "SELECT id FROM program_rows WHERE program_id = ? LIMIT 1",
-          ["prog-qa-cue"],
+          [id("prog-qa-cue")],
         ),
       ).toBeNull();
     } finally {
@@ -197,7 +200,7 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-snapshot",
+        id: id("prog-snapshot"),
         createdBy: practitionerId,
         createdAt: TS,
         name: "  Snapshot plan  ",
@@ -209,15 +212,15 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
         extraPatientField: FLAGGED,
       } as ProgramRowTextSnapshot & { extraPatientField: string };
       await rows.replaceRow({
-        id: "row-snap",
-        programId: "prog-snapshot",
+        id: id("row-snap"),
+        programId: id("prog-snapshot"),
         position: 0,
         ...rowInput,
         textSnapshot: rawSnapshot,
       });
       const rowJson = await storage.first<{ text_snapshot_json: string }>(
         "SELECT text_snapshot_json FROM program_rows WHERE id = ? LIMIT 1",
-        ["row-snap"],
+        [id("row-snap")],
       );
       expect(Object.keys(JSON.parse(rowJson?.text_snapshot_json ?? "{}"))).toEqual([
         "title",
@@ -229,9 +232,9 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
           title: "Heel slide",
           description: FLAGGED,
         }),
-        "row-snap",
+        id("row-snap"),
       ]);
-      await expect(programs.publish("prog-snapshot", TS)).rejects.toThrow(
+      await expect(programs.publish(id("prog-snapshot"), TS)).rejects.toThrow(
         FreeTextValidationError,
       );
       await storage.run(`UPDATE program_rows SET text_snapshot_json = ? WHERE id = ?`, [
@@ -240,10 +243,10 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
           description: "Hold steady",
           cue: "Slow",
         }),
-        "row-snap",
+        id("row-snap"),
       ]);
-      await programs.publish("prog-snapshot", TS);
-      const program = await programs.findById("prog-snapshot");
+      await programs.publish(id("prog-snapshot"), TS);
+      const program = await programs.findById(id("prog-snapshot"));
       const published = parsePublishedProgramSnapshotJson(
         program?.published_snapshot_json ?? "",
       );

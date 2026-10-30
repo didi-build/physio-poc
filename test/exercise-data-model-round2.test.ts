@@ -37,6 +37,7 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -312,7 +313,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const requests = new ExerciseRequestsRepository(storage);
       await expect(
         requests.insert({
-          id: "req-bad",
+          id: id("req-bad"),
           requestedName: "bad patient@example.com",
           requestedBy: practId,
           status: "open",

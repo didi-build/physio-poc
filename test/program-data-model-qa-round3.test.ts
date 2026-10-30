@@ -28,11 +28,14 @@ import {
   ShareLinksRepository,
 } from "../src/storage/repositories/programs.js";
 import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 function expectSqliteMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -105,28 +108,30 @@ describe("DIDI-1000 QA round 3", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-1",
+        id: id("prog-1"),
         createdBy: practitionerId,
         createdAt: TS,
         name: "Published name",
       });
       await rows.replaceRow({
-        id: "row-1",
-        programId: "prog-1",
+        id: id("row-1"),
+        programId: id("prog-1"),
         position: 0,
-        exerciseId: "ex-1",
-        exerciseVersionId: "ver-1",
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
         prescriptionType: "stretching",
         params: { hold_s: 30 },
         textSnapshot: { title: "Heel slide" },
         draftUpdatedAt: TS,
       });
-      await programs.publish("prog-1", TS);
-      await programs.updateDraftName("prog-1", "Draft only name");
+      await programs.publish(id("prog-1"), TS);
+      await programs.updateDraftName(id("prog-1"), "Draft only name");
       const row = await storage.first<{
         published_name: string | null;
         name: string | null;
-      }>("SELECT published_name, name FROM programs WHERE id = ? LIMIT 1", ["prog-1"]);
+      }>("SELECT published_name, name FROM programs WHERE id = ? LIMIT 1", [
+        id("prog-1"),
+      ]);
       expect(row?.published_name).toBe("Published name");
       expect(row?.name).toBe("Draft only name");
     } finally {
@@ -140,32 +145,32 @@ describe("DIDI-1000 QA round 3", () => {
       const practitionerId = await seedPractitioner(storage);
       const programs = new ProgramsRepository(storage);
       await programs.create({
-        id: "prog-live",
+        id: id("prog-live"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await programs.create({
-        id: "prog-edge",
+        id: id("prog-edge"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await programs.create({
-        id: "prog-purgeable",
+        id: id("prog-purgeable"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       const now = new Date("2026-06-01T00:00:00.000Z");
       const cutoffMs = now.getTime() - PROGRAM_RESTORE_AND_PURGE_WINDOW_MS;
-      await programs.softDelete("prog-edge", new Date(cutoffMs).toISOString());
+      await programs.softDelete(id("prog-edge"), new Date(cutoffMs).toISOString());
       const purgeable = await programs.listPurgeableDeleted(now);
-      expect(purgeable.map((p) => p.id)).not.toContain("prog-edge");
-      expect(purgeable.map((p) => p.id)).not.toContain("prog-live");
+      expect(purgeable.map((p) => p.id)).not.toContain(id("prog-edge"));
+      expect(purgeable.map((p) => p.id)).not.toContain(id("prog-live"));
       await programs.softDelete(
-        "prog-purgeable",
+        id("prog-purgeable"),
         new Date(cutoffMs - 1000).toISOString(),
       );
       expect((await programs.listPurgeableDeleted(now)).map((p) => p.id)).toContain(
-        "prog-purgeable",
+        id("prog-purgeable"),
       );
     } finally {
       storage.close();
@@ -181,39 +186,39 @@ describe("DIDI-1000 QA round 3", () => {
       const rows = new ProgramRowsRepository(storage);
       const links = new ShareLinksRepository(storage);
       await programs.create({
-        id: "prog-live",
+        id: id("prog-live"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await rows.replaceRow({
-        id: "row-live",
-        programId: "prog-live",
+        id: id("row-live"),
+        programId: id("prog-live"),
         position: 0,
-        exerciseId: "ex-1",
-        exerciseVersionId: "ver-1",
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
         prescriptionType: "stretching",
         params: { hold_s: 30 },
         textSnapshot: { title: "Heel slide" },
         draftUpdatedAt: TS,
       });
       await links.createOpenLink({
-        id: "link-live",
-        programId: "prog-live",
+        id: id("link-live"),
+        programId: id("prog-live"),
         createdAt: TS,
         expiresAt: null,
       });
       const now = new Date("2026-06-01T00:00:00.000Z");
-      await programs.purgeDeleted("prog-live", now);
-      expect(await programs.findById("prog-live")).not.toBeNull();
+      await programs.purgeDeleted(id("prog-live"), now);
+      expect(await programs.findById(id("prog-live"))).not.toBeNull();
       expect(
         (
           await storage.all<{ id: string }>(
             "SELECT id FROM program_rows WHERE program_id = ?",
-            ["prog-live"],
+            [id("prog-live")],
           )
         ).length,
       ).toBe(1);
-      expect(await links.findOpenByProgramId("prog-live")).not.toBeNull();
+      expect(await links.findOpenByProgramId(id("prog-live"))).not.toBeNull();
     } finally {
       storage.close();
     }
@@ -229,13 +234,13 @@ describe("DIDI-1000 QA round 3", () => {
       const practitionerId = await seedPractitioner(storage);
       const programs = new ProgramsRepository(storage);
       await programs.create({
-        id: "prog-1",
+        id: id("prog-1"),
         createdBy: practitionerId,
         createdAt: TS,
         name: "Ok name",
       });
       await expect(
-        programs.updateDraftName("prog-1", "coach@example.com"),
+        programs.updateDraftName(id("prog-1"), "coach@example.com"),
       ).rejects.toThrow(FreeTextValidationError);
     } finally {
       storage.close();
@@ -250,17 +255,17 @@ describe("DIDI-1000 QA round 3", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-1",
+        id: id("prog-1"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await expect(
         rows.replaceRow({
-          id: "row-1",
-          programId: "prog-1",
+          id: id("row-1"),
+          programId: id("prog-1"),
           position: 0,
-          exerciseId: "ex-1",
-          exerciseVersionId: "ver-1",
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
           prescriptionType: "stretching",
           params: { hold_s: 30 },
           textSnapshot: {
@@ -272,11 +277,11 @@ describe("DIDI-1000 QA round 3", () => {
       ).rejects.toThrow(FreeTextValidationError);
       await expect(
         rows.replaceRow({
-          id: "row-2",
-          programId: "prog-1",
+          id: id("row-2"),
+          programId: id("prog-1"),
           position: 1,
-          exerciseId: "ex-1",
-          exerciseVersionId: "ver-1",
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
           prescriptionType: "stretching",
           params: { hold_s: 30 },
           textSnapshot: { title: "Heel slide", cue: "coach@example.com" },
@@ -286,11 +291,11 @@ describe("DIDI-1000 QA round 3", () => {
       ).rejects.toThrow(FreeTextValidationError);
       await expect(
         rows.replaceRow({
-          id: "row-3",
-          programId: "prog-1",
+          id: id("row-3"),
+          programId: id("prog-1"),
           position: 2,
-          exerciseId: "ex-1",
-          exerciseVersionId: "ver-1",
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
           prescriptionType: "stretching",
           params: { hold_s: 30 },
           textSnapshot: { title: "Heel slide" },
@@ -299,11 +304,11 @@ describe("DIDI-1000 QA round 3", () => {
         }),
       ).rejects.toThrow(FreeTextValidationError);
       await rows.replaceRow({
-        id: "row-4",
-        programId: "prog-1",
+        id: id("row-4"),
+        programId: id("prog-1"),
         position: 3,
-        exerciseId: "ex-1",
-        exerciseVersionId: "ver-1",
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
         prescriptionType: "stretching",
         params: { hold_s: 30 },
         textSnapshot: {
@@ -315,7 +320,7 @@ describe("DIDI-1000 QA round 3", () => {
       });
       const stored = await storage.first<{ text_snapshot_json: string }>(
         "SELECT text_snapshot_json FROM program_rows WHERE id = ? LIMIT 1",
-        ["row-4"],
+        [id("row-4")],
       );
       const parsed = JSON.parse(stored?.text_snapshot_json ?? "{}") as Record<
         string,
@@ -337,23 +342,23 @@ describe("DIDI-1000 QA round 3", () => {
         `INSERT INTO exercise_requests (
           id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
         ) VALUES (?, ?, NULL, ?, 'open', NULL, ?, ?)`,
-        ["req-1", "Pending move", practitionerId, TS, TS],
+        [id("req-1"), "Pending move", practitionerId, TS, TS],
       );
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-1",
+        id: id("prog-1"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       await expect(
         rows.replaceRow({
-          id: "row-bad",
-          programId: "prog-1",
+          id: id("row-bad"),
+          programId: id("prog-1"),
           position: 0,
-          exerciseId: "ex-1",
-          exerciseVersionId: "ver-1",
-          exerciseRequestId: "req-1",
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          exerciseRequestId: id("req-1"),
           prescriptionType: "stretching",
           params: { hold_s: 30 },
           textSnapshot: { title: "Pending" },
@@ -372,14 +377,14 @@ describe("DIDI-1000 QA round 3", () => {
       const programs = new ProgramsRepository(storage);
       const links = new ShareLinksRepository(storage);
       await programs.create({
-        id: "prog-1",
+        id: id("prog-1"),
         createdBy: practitionerId,
         createdAt: TS,
       });
       const openAt = new Date("2026-04-01T12:00:00.000Z");
       await links.createOpenLinkForProgram({
-        id: "link-open",
-        programId: "prog-1",
+        id: id("link-open"),
+        programId: id("prog-1"),
         practitionerId,
         createdAt: TS,
         now: openAt,
@@ -387,15 +392,15 @@ describe("DIDI-1000 QA round 3", () => {
       await storage.run(
         `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        ["link-closed", "prog-1", "closed-token-value", null, TS, TS],
+        [id("link-closed"), id("prog-1"), "closed-token-value", null, TS, TS],
       );
       const closedBefore = await storage.first<{ expires_at: string | null }>(
         "SELECT expires_at FROM share_links WHERE id = ? LIMIT 1",
-        ["link-closed"],
+        [id("link-closed")],
       );
       const later = new Date("2027-01-01T12:00:00.000Z");
       await programs.setLinkExpiry(
-        "prog-1",
+        id("prog-1"),
         {
           expiresIn: SHARE_LINK_EXPIRES_IN.custom_date,
           customExpiresOn: "2027-06-15",
@@ -404,10 +409,10 @@ describe("DIDI-1000 QA round 3", () => {
       );
       const closedAfter = await storage.first<{ expires_at: string | null }>(
         "SELECT expires_at FROM share_links WHERE id = ? LIMIT 1",
-        ["link-closed"],
+        [id("link-closed")],
       );
       expect(closedAfter?.expires_at).toBe(closedBefore?.expires_at);
-      const open = await links.findOpenByProgramId("prog-1");
+      const open = await links.findOpenByProgramId(id("prog-1"));
       expect(open?.expires_at).toBe(
         resolveShareLinkExpiresAt(
           {
@@ -431,13 +436,13 @@ describe("DIDI-1000 QA round 3", () => {
         `INSERT INTO exercise_requests (
           id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
         ) VALUES (?, ?, NULL, ?, 'open', NULL, ?, ?)`,
-        ["req-1", "Pending move", practitionerId, TS, TS],
+        [id("req-1"), "Pending move", practitionerId, TS, TS],
       );
       await storage.run(
         `INSERT INTO programs (
           id, code, name, created_by, created_at, draft_version, draft_updated_at
         ) VALUES (?, ?, NULL, ?, ?, 1, ?)`,
-        ["prog-raw", "PRG-RAW1", practitionerId, TS, TS],
+        [id("prog-raw"), "PRG-RAW1", practitionerId, TS, TS],
       );
       await expectSqliteError(
         () =>
@@ -447,10 +452,10 @@ describe("DIDI-1000 QA round 3", () => {
               prescription_type, params_json, text_snapshot_json, note
             ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NULL)`,
             [
-              "row-bad-params",
-              "prog-raw",
-              "ex-1",
-              "ver-1",
+              id("row-bad-params"),
+              id("prog-raw"),
+              FIXTURE_EXERCISE_ID,
+              FIXTURE_VERSION_ID,
               null,
               "stretching",
               "not-json",
@@ -467,11 +472,11 @@ describe("DIDI-1000 QA round 3", () => {
               prescription_type, params_json, text_snapshot_json, note
             ) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?, NULL)`,
             [
-              "row-bad-placeholder",
-              "prog-raw",
-              "ex-1",
-              "ver-1",
-              "req-1",
+              id("row-bad-placeholder"),
+              id("prog-raw"),
+              FIXTURE_EXERCISE_ID,
+              FIXTURE_VERSION_ID,
+              id("req-1"),
               "stretching",
               '{"hold_s":30}',
               '{"title":"Ok"}',
@@ -489,42 +494,42 @@ describe("DIDI-1000 QA round 3", () => {
             publishedAt: TS,
             rows: [],
           }),
-          "prog-raw",
+          id("prog-raw"),
         ],
       );
       await expectSqliteError(
         () =>
           storage.run(`UPDATE programs SET published_snapshot_json = ? WHERE id = ?`, [
             "{not-json",
-            "prog-raw",
+            id("prog-raw"),
           ]),
         /JSON|constraint/i,
       );
       await storage.run(
         `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
          VALUES (?, ?, ?, NULL, NULL, ?)`,
-        ["link-open-1", "prog-raw", "token-a", TS],
+        [id("link-open-1"), id("prog-raw"), "token-a", TS],
       );
       await expectSqliteError(
         () =>
           storage.run(
             `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
              VALUES (?, ?, ?, NULL, NULL, ?)`,
-            ["link-open-2", "prog-raw", "token-b", TS],
+            [id("link-open-2"), id("prog-raw"), "token-b", TS],
           ),
         /idx_share_links_one_open_per_program|UNIQUE constraint failed/i,
       );
       await storage.run(
         `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
          VALUES (?, ?, ?, NULL, ?, ?)`,
-        ["link-token-a", "prog-raw", "dup-token", TS, TS],
+        [id("link-token-a"), id("prog-raw"), "dup-token", TS, TS],
       );
       await expectSqliteError(
         () =>
           storage.run(
             `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
              VALUES (?, ?, ?, NULL, ?, ?)`,
-            ["link-token-b", "prog-raw", "dup-token", TS, TS],
+            [id("link-token-b"), id("prog-raw"), "dup-token", TS, TS],
           ),
         /idx_share_links_token|UNIQUE constraint failed/i,
       );

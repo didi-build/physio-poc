@@ -5,25 +5,31 @@ export class OpaqueEntityIdValidationError extends Error {
   }
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Accepted format: RFC 4122 UUID version 4 (same shape as `crypto.randomUUID()`). */
+export const OPAQUE_ENTITY_ID_FORMAT =
+  "UUID v4: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx (hex, case insensitive)";
 
-/** Lowercase alphanumeric segments separated by hyphens (matches seeded test ids such as prog-1). */
-const OPAQUE_ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+const UUID_V4_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isValidOpaqueEntityId(id: string): boolean {
   const trimmed = id.trim();
   if (trimmed.length === 0) {
     return false;
   }
-  return UUID_PATTERN.test(trimmed) || OPAQUE_ID_PATTERN.test(trimmed);
+  return UUID_V4_PATTERN.test(trimmed);
 }
 
 export function validateOpaqueEntityId(id: string, fieldLabel: string): string {
   const trimmed = id.trim();
   if (!isValidOpaqueEntityId(trimmed)) {
     throw new OpaqueEntityIdValidationError(
-      `${fieldLabel} must match the opaque id format`,
+      `${fieldLabel} must be a UUID v4 opaque id`,
     );
   }
-  return trimmed;
+  return trimmed.toLowerCase();
+}
+
+export function generateOpaqueEntityId(): string {
+  return crypto.randomUUID();
 }

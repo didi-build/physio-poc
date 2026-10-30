@@ -23,6 +23,10 @@ export const MIGRATION_SQL = MIGRATION_0001_SQL;
 
 export const TS = "2026-01-01T00:00:00.000Z";
 
+export const FIXTURE_PRACTITIONER_ID = "11111111-1111-4111-8111-111111111111";
+export const FIXTURE_EXERCISE_ID = "22222222-2222-4222-8222-222222222222";
+export const FIXTURE_VERSION_ID = "33333333-3333-4333-8333-333333333333";
+
 export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   const storage = BetterSqliteStorage.openInMemory();
   await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
@@ -32,33 +36,33 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
 
 export async function seedPractitioner(
   storage: SqlStoragePort,
-  id = "pract-1",
+  practitionerId = FIXTURE_PRACTITIONER_ID,
 ): Promise<string> {
   await storage.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    [id, "coach@example.com", TS],
+    [practitionerId, "coach@example.com", TS],
   );
-  return id;
+  return practitionerId;
 }
 
 export async function seedExercise(
   storage: SqlStoragePort,
   practitionerId: string,
-  id = "ex-1",
+  exerciseId = FIXTURE_EXERCISE_ID,
 ): Promise<string> {
   await storage.run(
     "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
-    [id, "stretch", practitionerId, TS],
+    [exerciseId, "stretch", practitionerId, TS],
   );
-  return id;
+  return exerciseId;
 }
 
 export function versionInsertBindings(
   overrides: Record<string, unknown> = {},
 ): (string | number | null)[] {
   const base = {
-    id: "ver-1",
-    exercise_id: "ex-1",
+    id: FIXTURE_VERSION_ID,
+    exercise_id: FIXTURE_EXERCISE_ID,
     version_number: 1,
     status: "draft",
     approved_by: null,
@@ -121,5 +125,5 @@ export async function seedApprovedExerciseVersion(
 ): Promise<{ exerciseId: string; versionId: string }> {
   const exerciseId = await seedExercise(storage, practitionerId);
   await storage.run(VERSION_INSERT_SQL, versionInsertBindings());
-  return { exerciseId, versionId: "ver-1" };
+  return { exerciseId, versionId: FIXTURE_VERSION_ID };
 }
