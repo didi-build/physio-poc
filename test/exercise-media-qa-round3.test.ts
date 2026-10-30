@@ -88,37 +88,44 @@ function mediaHttpDeps(
   };
 }
 
+function createEndOnlyRegenFetchMock(startProviderUrl: string) {
+  let textToImageCalls = 0;
+  let editCalls = 0;
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_MODEL_ID}`)) {
+      textToImageCalls += 1;
+      throw new Error("text-to-image must not run on end-only regeneration");
+    }
+    if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID}`)) {
+      editCalls += 1;
+      const body = JSON.parse(String(init?.body)) as { image_urls?: string[] };
+      expect(body.image_urls).toEqual([startProviderUrl]);
+      return new Response(JSON.stringify({ images: [{ url: END_EDIT_OUTPUT_URL }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+      status: 200,
+      headers: { "content-type": "image/png" },
+    });
+  });
+  return {
+    fetchImpl,
+    textToImageCalls: () => textToImageCalls,
+    editCalls: () => editCalls,
+  };
+}
+
 describe("Exercise media QA round 3 (integration, mocked fal)", () => {
   it("end-only regeneration calls klein edit once with the stored start URL and never text-to-image", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId, startProviderUrl, objects } =
         await seedDraftVersionWithGeneratedMedia(storage);
-      let textToImageCalls = 0;
-      let editCalls = 0;
-      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input.toString();
-        if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_MODEL_ID}`)) {
-          textToImageCalls += 1;
-          throw new Error("text-to-image must not run on end-only regeneration");
-        }
-        if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID}`)) {
-          editCalls += 1;
-          const body = JSON.parse(String(init?.body)) as { image_urls?: string[] };
-          expect(body.image_urls).toEqual([startProviderUrl]);
-          return new Response(
-            JSON.stringify({ images: [{ url: END_EDIT_OUTPUT_URL }] }),
-            {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-        return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
-          status: 200,
-          headers: { "content-type": "image/png" },
-        });
-      });
+      const { fetchImpl, textToImageCalls, editCalls } =
+        createEndOnlyRegenFetchMock(startProviderUrl);
       const fal = new FalFluxKleinImageGeneration({ apiKey: FAL_API_KEY, fetchImpl });
       const service = new ExerciseMediaService(storage, fal, objects);
       await service.regenerateMedia({
@@ -127,8 +134,47 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
         scope: "end",
         note: REGEN_NOTE,
       });
-      expect(textToImageCalls).toBe(0);
-      expect(editCalls).toBe(1);
+      expect(textToImageCalls()).toBe(0);
+      expect(editCalls()).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("end-only regeneration via HTTP exerciseMediaImages route uses one edit call and no text-to-image", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId, startProviderUrl, objectStorage } =
+        await seedDraftVersionWithGeneratedMedia(storage);
+      const { fetchImpl, textToImageCalls, editCalls } =
+        createEndOnlyRegenFetchMock(startProviderUrl);
+      const fal = new FalFluxKleinImageGeneration({ apiKey: FAL_API_KEY, fetchImpl });
+      const response = await handleRequest(
+        new Request(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ scope: "end", note: REGEN_NOTE }),
+          },
+        ),
+        {
+          ...mediaHttpDeps(storage, objectStorage),
+          exerciseMediaImages: fal,
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(textToImageCalls()).toBe(0);
+      expect(editCalls()).toBe(1);
+      const requestUrls = fetchImpl.mock.calls.map((call) => String(call[0]));
+      expect(
+        requestUrls.filter((url) => url.endsWith(`/${FAL_FLUX_KLEIN_4B_MODEL_ID}`)),
+      ).toEqual([]);
+      expect(
+        requestUrls.filter((url) =>
+          url.endsWith(`/${FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID}`),
+        ),
+      ).toHaveLength(1);
     } finally {
       storage.close();
     }

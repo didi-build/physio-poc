@@ -5,6 +5,18 @@ export function inspectValue(value: unknown): string {
   return inspect(value, { depth: null });
 }
 
+/** util.inspect of a string, without the wrapping quote characters. */
+export function inspectStrippedString(value: string): string {
+  const rendered = inspect(value);
+  if (
+    (rendered.startsWith("'") && rendered.endsWith("'")) ||
+    (rendered.startsWith('"') && rendered.endsWith('"'))
+  ) {
+    return rendered.slice(1, -1);
+  }
+  return rendered;
+}
+
 export function rawFormOfArg(arg: unknown): string {
   if (typeof arg === "string") {
     return arg;
@@ -26,19 +38,29 @@ export type ConsoleLeakExpectations = {
   apiKey?: string;
 };
 
+function forbiddenLeakSubstrings(expectations: ConsoleLeakExpectations): string[] {
+  const forbidden: string[] = [];
+  if (expectations.apiKey) {
+    forbidden.push(expectations.apiKey);
+  }
+  if (expectations.jsonBody) {
+    forbidden.push(expectations.jsonBody);
+    forbidden.push(inspectStrippedString(expectations.jsonBody));
+  }
+  if (expectations.note) {
+    forbidden.push(expectations.note);
+    forbidden.push(jsonEscapedNoteFragment(expectations.note));
+    forbidden.push(inspectStrippedString(expectations.note));
+  }
+  return forbidden;
+}
+
 export function assertLeakFreeText(
   text: string,
   expectations: ConsoleLeakExpectations,
 ): void {
-  if (expectations.apiKey) {
-    expect(text).not.toContain(expectations.apiKey);
-  }
-  if (expectations.jsonBody) {
-    expect(text).not.toContain(expectations.jsonBody);
-  }
-  if (expectations.note) {
-    expect(text).not.toContain(expectations.note);
-    expect(text).not.toContain(jsonEscapedNoteFragment(expectations.note));
+  for (const fragment of forbiddenLeakSubstrings(expectations)) {
+    expect(text).not.toContain(fragment);
   }
 }
 
@@ -50,11 +72,50 @@ export function assertArgLeakFree(
   assertLeakFreeText(inspectValue(arg), expectations);
 }
 
+function collectLeakProbeValues(root: unknown): unknown[] {
+  const seen = new Set<unknown>();
+  const values: unknown[] = [];
+
+  function add(value: unknown): void {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (typeof value === "object" || typeof value === "function") {
+      if (seen.has(value)) {
+        return;
+      }
+      seen.add(value);
+    }
+    values.push(value);
+
+    if (value instanceof Error) {
+      if (value.cause !== undefined) {
+        add(value.cause);
+      }
+      for (const key of Object.getOwnPropertyNames(value)) {
+        add((value as unknown as Record<string, unknown>)[key]);
+      }
+      return;
+    }
+
+    if (typeof value === "object") {
+      for (const key of Object.getOwnPropertyNames(value)) {
+        add((value as unknown as Record<string, unknown>)[key]);
+      }
+    }
+  }
+
+  add(root);
+  return values;
+}
+
 export function expectThrownErrorLeakFree(
   err: unknown,
   expectations: ConsoleLeakExpectations,
 ): void {
-  assertArgLeakFree(err, expectations);
+  for (const probe of collectLeakProbeValues(err)) {
+    assertArgLeakFree(probe, expectations);
+  }
 }
 
 export function expectConsoleCallsLeakFree(
