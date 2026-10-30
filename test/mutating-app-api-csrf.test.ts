@@ -7,11 +7,13 @@ import {
   type AppRouteHandler,
 } from "../src/http/app.js";
 import {
+  allowedMutatingAppApiOrigins,
   CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isCsrfExemptAppApiAuthPath,
   rejectMutatingAppApiCsrf,
   requiresAppApiCsrfGuard,
 } from "../src/http/mutating-app-api-csrf.js";
+import type { PhysioServerConfig } from "../src/http/config.js";
 import {
   MUTATING_APP_API_ROUTE_SAMPLES,
   mutatingAppApiRouteSampleKey,
@@ -75,6 +77,41 @@ function sameOriginJsonHeaders(origin = new URL(BASE).origin): HeadersInit {
     "content-type": "application/json",
   };
 }
+
+async function practitionerExerciseRowSnapshot(sql: SqlStoragePort): Promise<number> {
+  const row = await sql.first<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ?",
+    [PRACTITIONER_ID, EXERCISE_ID],
+  );
+  return row?.count ?? 0;
+}
+
+function configuredAllowedOrigins(
+  config: PhysioServerConfig,
+  requestUrl: string,
+): string[] {
+  const request = new Request(requestUrl, { method: "POST" });
+  return [...allowedMutatingAppApiOrigins(request, config)];
+}
+
+function lookalikeOriginWithAttackerSuffix(allowedOrigin: string): string {
+  const url = new URL(allowedOrigin);
+  const host = `${url.hostname}.attacker.example`;
+  return `${url.protocol}//${host}${url.port ? `:${url.port}` : ""}`;
+}
+
+function lookalikeOriginWithDifferentPort(allowedOrigin: string): string {
+  const url = new URL(allowedOrigin);
+  const port = url.port === "9999" ? "9998" : "9999";
+  return `${url.protocol}//${url.hostname}:${port}`;
+}
+
+function lookalikeRefererForAllowedOrigin(allowedOrigin: string): string {
+  return `${lookalikeOriginWithAttackerSuffix(allowedOrigin)}/programs`;
+}
+
+const MUTATING_POST_PATH = (): string =>
+  `/api/practitioners/${PRACTITIONER_ID}/my-exercises/${EXERCISE_ID}`;
 
 function mutatingBody(path: string, method: string): string | undefined {
   if (method === "DELETE") {
@@ -231,6 +268,33 @@ describe("mutating app API CSRF guard", () => {
     expect(response.status).toBe(415);
   });
 
+  it("returns 415 for form content types through handleRequest and changes nothing", async () => {
+    const { deps, cookie } = await sessionDeps();
+    const path = MUTATING_POST_PATH();
+    for (const contentType of [
+      "application/x-www-form-urlencoded",
+      "multipart/form-data; boundary=test",
+    ]) {
+      const before = await practitionerExerciseRowSnapshot(deps.sql);
+      const response = await handleRequest(
+        new Request(`${BASE}${path}`, {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: new URL(BASE).origin,
+            "content-type": contentType,
+          },
+          body: contentType.startsWith("multipart")
+            ? '--test\r\nContent-Disposition: form-data; name="x"\r\n\r\n1\r\n--test--'
+            : "action=save",
+        }),
+        deps,
+      );
+      expect(response.status, contentType).toBe(415);
+      expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
+    }
+  });
+
   it("allows same-origin JSON mutating requests", async () => {
     const { deps, cookie } = await sessionDeps();
     const path = `/api/practitioners/${PRACTITIONER_ID}/my-exercises/${EXERCISE_ID}`;
@@ -375,6 +439,56 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
       );
       expect(response.status, path).toBe(403);
     }
+  });
+
+  it("rejects Origin look-alikes of each allowed origin with 403 and changes nothing", async () => {
+    const { deps, cookie } = await sessionDeps();
+    const path = MUTATING_POST_PATH();
+    const allowed = configuredAllowedOrigins(MCP_TEST_CONFIG, `${BASE}${path}`);
+    for (const allowedOrigin of allowed) {
+      for (const lookalike of [
+        lookalikeOriginWithAttackerSuffix(allowedOrigin),
+        lookalikeOriginWithDifferentPort(allowedOrigin),
+      ]) {
+        const before = await practitionerExerciseRowSnapshot(deps.sql);
+        const response = await handleRequest(
+          new Request(`${BASE}${path}`, {
+            method: "POST",
+            headers: {
+              cookie,
+              origin: lookalike,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ action: "save" }),
+          }),
+          deps,
+        );
+        expect(response.status, lookalike).toBe(403);
+        expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
+      }
+    }
+  });
+
+  it("rejects Referer look-alike without Origin with 403 and changes nothing", async () => {
+    const { deps, cookie } = await sessionDeps();
+    const path = MUTATING_POST_PATH();
+    const allowed = configuredAllowedOrigins(MCP_TEST_CONFIG, `${BASE}${path}`);
+    const referer = lookalikeRefererForAllowedOrigin(allowed[0]!);
+    const before = await practitionerExerciseRowSnapshot(deps.sql);
+    const response = await handleRequest(
+      new Request(`${BASE}${path}`, {
+        method: "POST",
+        headers: {
+          cookie,
+          referer,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "save" }),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(403);
+    expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
   });
 
   it("returns 404 for unknown mutating /api/auth/ paths without app dispatch", async () => {

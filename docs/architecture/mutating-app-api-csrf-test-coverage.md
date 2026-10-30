@@ -29,10 +29,14 @@ Production enforces only:
 | GET, HEAD, OPTIONS not CSRF rejected               | `requiresAppApiCsrfGuard` false; handleRequest status not 403 or 415                       |
 | Sole exemption prefix pinned                       | `CSRF_EXEMPT_APP_API_AUTH_PREFIX === "/api/auth/"`                                         |
 | JSON content type and origin rules                 | unit and integration cases                                                                 |
+| Origin allow `startsWith` on parsed origin         | handleRequest Origin look-alikes (suffix and different port) per allowed origin            |
+| Origin allow `startsWith` on raw Origin header     | same Origin look-alike tests                                                               |
+| Referer look-alike without Origin                  | handleRequest Referer with allowed-host `.attacker.example` suffix; storage unchanged      |
+| Form content types 415 through handleRequest       | POST with urlencoded and multipart; practitioner_exercises row count unchanged             |
 | Known routes extra coverage                        | test-only `MUTATING_APP_API_ROUTE_SAMPLES`                                                 |
 | `/api/auth/` not in guarded-api route samples      | `test/route-table.test.ts`                                                                 |
 
-Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api/auth`, case-insensitive prefix matching, or falling through from `/api/auth/` to app dispatch should fail the tests above.
+Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api/auth`, case-insensitive prefix matching, falling through from `/api/auth/` to app dispatch, or using `startsWith` instead of exact origin matching should fail the tests above.
 
 ## Honest mutation survivors
 
@@ -42,4 +46,4 @@ Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api
 | Separate 403 returns for missing vs disallowed origin | Same status and JSON body if merged.                                               |
 | `extraRouteHandlers` outside `/api/`                  | Guard runs only in the `/api/` branch; see ADR 0007 consequences.                  |
 
-Removing the guard call in `app.ts` fails cross-origin and unregistered-path handleRequest cases (404 or 200 instead of 403). Treating bare `/api/auth` as exempt fails bare-path CSRF tests. Case-insensitive `isAuthAppApiPath` fails `/api/AUTH/x` and `/api/Auth/sign-out` tests. Auth fallthrough, dropping the `/api/auth/` 404 in `app.ts`, or `FakeAuthPort` returning null for unknown paths fails the catch-all probe test or the FakeAuthPort unit test.
+Removing the guard call in `app.ts` fails cross-origin and unregistered-path handleRequest cases (404 or 200 instead of 403). Treating bare `/api/auth` as exempt fails bare-path CSRF tests. Case-insensitive `isAuthAppApiPath` fails `/api/AUTH/x` and `/api/Auth/sign-out` tests. Auth fallthrough, dropping the `/api/auth/` 404 in `app.ts`, or `FakeAuthPort` returning null for unknown paths fails the catch-all probe test or the FakeAuthPort unit test. Replacing exact `Set.has` origin checks with `startsWith` fails Origin and Referer look-alike handleRequest tests.
