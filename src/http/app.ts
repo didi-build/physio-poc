@@ -15,6 +15,8 @@ import {
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
+import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
@@ -146,7 +148,19 @@ export async function handleRequest(
           return csrfRejection;
         }
       }
+      if (pathname.startsWith("/api/me/")) {
+        const queryRejected = rejectQueryPractitionerId(url);
+        if (queryRejected) {
+          return queryRejected;
+        }
+      }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (programBuilderResponse) {
+        return programBuilderResponse;
+      }
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
         sessionPractitioner,
       });

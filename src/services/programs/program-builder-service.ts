@@ -138,6 +138,12 @@ export class ProgramBuilderService {
         name: input.name ?? null,
       });
     } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message.includes("UNIQUE constraint failed: programs.id")
+      ) {
+        throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+      }
       this.mapFreeTextError(err);
     }
     return { program: await this.buildProgramView(practitionerId, programId) };
