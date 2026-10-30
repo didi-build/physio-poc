@@ -9,7 +9,7 @@ import {
   programRowsReorderPath,
   programsDeletedListPath,
   PROGRAMS_API_BASE,
-} from "../../src/programs-api-paths.js";
+} from "./program-builder-http-paths.js";
 import { testOpaqueEntityId } from "./opaque-test-ids.js";
 
 export type ProgramBuilderHttpRouteCase = {
@@ -49,4 +49,81 @@ export function programBuilderMutatingHttpRouteCases(
   return programBuilderHttpRouteCases(programId, rowId).filter((routeCase) =>
     ["POST", "PUT", "PATCH", "DELETE"].includes(routeCase.method),
   );
+}
+
+/** Routes scoped to a program id (404 parity for missing vs foreign program). */
+export function programBuilderProgram404ParityRouteCases(
+  programId: string = EXAMPLE_PROGRAM_ID,
+  rowId: string = EXAMPLE_ROW_ID,
+): readonly ProgramBuilderHttpRouteCase[] {
+  return programBuilderHttpRouteCases(programId, rowId).filter((routeCase) => {
+    if (routeCase.path === PROGRAMS_API_BASE) {
+      return false;
+    }
+    if (routeCase.path === programsDeletedListPath()) {
+      return false;
+    }
+    return routeCase.path.includes(encodeURIComponent(programId));
+  });
+}
+
+export type ProgramBuilderHttpProbeContext = {
+  readonly createProgramId: string;
+  readonly rowId: string;
+  readonly exerciseId: string;
+  readonly orderedRowIds: readonly string[];
+  readonly duplicateNewRowId: string;
+};
+
+export function programBuilderMutatingJsonBodyRouteCases(
+  programId: string = EXAMPLE_PROGRAM_ID,
+  rowId: string = EXAMPLE_ROW_ID,
+): readonly ProgramBuilderHttpRouteCase[] {
+  return programBuilderHttpRouteCases(programId, rowId).filter((routeCase) => {
+    if (routeCase.method === "DELETE") {
+      return false;
+    }
+    if (routeCase.path === programsDeletedListPath()) {
+      return false;
+    }
+    if (routeCase.path.endsWith("/restore")) {
+      return false;
+    }
+    if (routeCase.path.includes("/library-update/")) {
+      return false;
+    }
+    return ["POST", "PATCH"].includes(routeCase.method);
+  });
+}
+
+export function programBuilderHttpJsonBody(
+  routeCase: ProgramBuilderHttpRouteCase,
+  ctx: ProgramBuilderHttpProbeContext,
+): string {
+  if (routeCase.path === PROGRAMS_API_BASE && routeCase.method === "POST") {
+    return JSON.stringify({ program_id: ctx.createProgramId });
+  }
+  if (routeCase.method === "PATCH" && routeCase.path.endsWith("/reorder")) {
+    return JSON.stringify({ ordered_row_ids: [...ctx.orderedRowIds] });
+  }
+  if (
+    routeCase.method === "PATCH" &&
+    routeCase.path.includes("/rows/") &&
+    !routeCase.path.endsWith("/reorder")
+  ) {
+    return JSON.stringify({ note: "probe" });
+  }
+  if (routeCase.method === "PATCH") {
+    return JSON.stringify({ name: "probe" });
+  }
+  if (routeCase.path.endsWith("/duplicate")) {
+    return JSON.stringify({ new_row_id: ctx.duplicateNewRowId });
+  }
+  if (routeCase.path.endsWith("/rows") && routeCase.method === "POST") {
+    return JSON.stringify({
+      row_id: ctx.rowId,
+      exercise_id: ctx.exerciseId,
+    });
+  }
+  return JSON.stringify({});
 }

@@ -83,6 +83,28 @@ function parseStringField(body: Record<string, unknown>, key: string): string | 
   return value;
 }
 
+function safeDecodePathSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+}
+
+function programNotFoundResponse(): Response {
+  return Response.json(
+    { error: "program_not_found", message: "Program not found" },
+    { status: 404, headers: JSON_HEADERS },
+  );
+}
+
+function programRowNotFoundResponse(): Response {
+  return Response.json(
+    { error: "program_row_not_found", message: "Program row not found" },
+    { status: 404, headers: JSON_HEADERS },
+  );
+}
+
 export type HandleProgramBuilderOptions = {
   sessionPractitioner?: PractitionerSession | null;
 };
@@ -179,7 +201,11 @@ export async function handleProgramBuilderRequest(
     );
   }
 
-  const programId = decodeURIComponent(segments[0]!);
+  const programIdRaw = safeDecodePathSegment(segments[0]!);
+  if (programIdRaw === null) {
+    return programNotFoundResponse();
+  }
+  const programId = programIdRaw;
 
   if (segments.length === 1 && request.method === "GET") {
     try {
@@ -249,7 +275,7 @@ export async function handleProgramBuilderRequest(
       if (body instanceof Response) {
         return body;
       }
-      const rejected = rejectBodyPractitionerId(body, { deep: true });
+      const rejected = rejectBodyPractitionerId(body);
       if (rejected) {
         return rejected;
       }
@@ -356,7 +382,7 @@ export async function handleProgramBuilderRequest(
       if (body instanceof Response) {
         return body;
       }
-      const rejected = rejectBodyPractitionerId(body, { deep: true });
+      const rejected = rejectBodyPractitionerId(body);
       if (rejected) {
         return rejected;
       }
@@ -383,14 +409,18 @@ export async function handleProgramBuilderRequest(
     }
 
     if (segments.length === 3 && segments[2] !== "reorder") {
-      const rowId = decodeURIComponent(segments[2]!);
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const rowId = rowIdRaw;
 
       if (request.method === "PATCH") {
         const body = await readJsonObjectBody(request);
         if (body instanceof Response) {
           return body;
         }
-        const rejected = rejectBodyPractitionerId(body, { deep: true });
+        const rejected = rejectBodyPractitionerId(body);
         if (rejected) {
           return rejected;
         }
@@ -461,13 +491,17 @@ export async function handleProgramBuilderRequest(
     }
 
     if (segments.length === 4 && segments[2] && segments[3] === "duplicate") {
-      const rowId = decodeURIComponent(segments[2]!);
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const rowId = rowIdRaw;
       if (request.method === "POST") {
         const body = await readJsonObjectBody(request);
         if (body instanceof Response) {
           return body;
         }
-        const rejected = rejectBodyPractitionerId(body, { deep: true });
+        const rejected = rejectBodyPractitionerId(body);
         if (rejected) {
           return rejected;
         }
@@ -491,7 +525,11 @@ export async function handleProgramBuilderRequest(
     }
 
     if (segments.length === 5 && segments[2] && segments[3] === "library-update") {
-      const rowId = decodeURIComponent(segments[2]!);
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const rowId = rowIdRaw;
       if (segments[4] === "apply" && request.method === "POST") {
         try {
           const result = await service(deps).applyLibraryUpdateToRow(

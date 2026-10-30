@@ -8,7 +8,8 @@ import {
   programRowPath,
   programRowsPath,
   PROGRAMS_API_BASE,
-} from "../src/programs-api-paths.js";
+  programRowDuplicatePath,
+} from "./helpers/program-builder-http-paths.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import { ProgramRowsRepository } from "../src/storage/repositories/programs.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -20,7 +21,14 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
-import { programBuilderHttpRouteCases } from "./helpers/program-builder-http-route-cases.js";
+import {
+  programBuilderHttpJsonBody,
+  programBuilderHttpRouteCases,
+  programBuilderMutatingJsonBodyRouteCases,
+  programBuilderProgram404ParityRouteCases,
+  type ProgramBuilderHttpProbeContext,
+  type ProgramBuilderHttpRouteCase,
+} from "./helpers/program-builder-http-route-cases.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
@@ -78,6 +86,83 @@ async function programRowCount(
   return row?.c ?? 0;
 }
 
+async function programCount(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+): Promise<number> {
+  const row = await storage.first<{ c: number }>(
+    "SELECT COUNT(*) AS c FROM programs WHERE created_by = ? AND deleted_at IS NULL",
+    [practitionerId],
+  );
+  return row?.c ?? 0;
+}
+
+type PractitionerIdPlacement = "top" | "nested" | "array";
+
+function injectPractitionerIdField(
+  base: Record<string, unknown>,
+  placement: PractitionerIdPlacement,
+  key: "practitionerId" | "practitioner_id",
+  value: string,
+): Record<string, unknown> {
+  if (placement === "top") {
+    return { ...base, [key]: value };
+  }
+  if (placement === "nested") {
+    return { ...base, meta: { [key]: value } };
+  }
+  return { ...base, items: [{ [key]: value }] };
+}
+
+function routeCaseLabel(routeCase: ProgramBuilderHttpRouteCase): string {
+  return `${routeCase.method} ${routeCase.path}`;
+}
+
+async function sendAuthedRoute(
+  deps: ReturnType<typeof apiDeps>["deps"],
+  cookie: string,
+  routeCase: ProgramBuilderHttpRouteCase,
+  body?: string,
+): Promise<Response> {
+  const url = `${BASE}${routeCase.path}`;
+  if (["POST", "PATCH", "DELETE"].includes(routeCase.method)) {
+    const headers: Record<string, string> = { cookie };
+    if (body !== undefined) {
+      headers["content-type"] = "application/json";
+    }
+    return handleRequest(
+      new Request(
+        url,
+        mutatingAppApiRequestInit(url, {
+          method: routeCase.method,
+          headers,
+          body,
+        }),
+      ),
+      deps,
+    );
+  }
+  return handleRequest(authedRequest(url, cookie, { method: routeCase.method }), deps);
+}
+
+const INVALID_INPUT_BODY = {
+  error: "invalid_input",
+  message: "invalid_input",
+} as const;
+
+const PROGRAM_NOT_FOUND_BODY = {
+  error: "program_not_found",
+  message: "Program not found",
+} as const;
+
+const PROGRAM_ROW_NOT_FOUND_BODY = {
+  error: "program_row_not_found",
+  message: "Program row not found",
+} as const;
+
+const MALFORMED_PERCENT_PROGRAM_SEGMENT = "%E0%A4%A";
+const MALFORMED_PERCENT_ROW_SEGMENT = "%E0%A4%A";
+
 describe("Program builder HTTP routes (integration)", () => {
   it("returns 401 without a session for every route in the program builder route table", async () => {
     const storage = await openMigratedDatabase();
@@ -96,82 +181,216 @@ describe("Program builder HTTP routes (integration)", () => {
     }
   });
 
-  it("returns identical 404 program_not_found for a missing program and another practitioner's program", async () => {
+  it("returns identical 404 program_not_found for a missing program and another practitioner's program on every program-scoped route", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerA = await seedPractitioner(storage);
       const practitionerB = testOpaqueEntityId("prog-http-b");
       await seedPractitioner(storage, practitionerB, "b@example.com");
+      const ownedProgramId = id("prog-owned-a");
+      const missingProgramId = id("prog-missing");
+      const rowId = id("prog-http-row");
       const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerA, { programId: id("prog-owned-a") });
-
-      const { deps, cookie } = apiDeps(storage, practitionerB);
-      const missing = await handleRequest(
-        authedRequest(`${BASE}${programPath(id("prog-missing"))}`, cookie),
-        deps,
-      );
-      const foreign = await handleRequest(
-        authedRequest(`${BASE}${programPath(id("prog-owned-a"))}`, cookie),
-        deps,
-      );
-      expect(missing.status).toBe(404);
-      expect(foreign.status).toBe(404);
-      const missingBody = await missing.json();
-      const foreignBody = await foreign.json();
-      expect(foreignBody).toEqual(missingBody);
-      expect(missingBody).toEqual({
-        error: "program_not_found",
-        message: "Program not found",
+      await service.createProgram(practitionerA, { programId: ownedProgramId });
+      await seedApprovedForBuilder(storage, practitionerA);
+      await service.addExerciseRow(practitionerA, ownedProgramId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
       });
+
+      const beforeProgramsB = await programCount(storage, practitionerB);
+      const beforeRowsOwned = await programRowCount(storage, ownedProgramId);
+      const { deps, cookie } = apiDeps(storage, practitionerB);
+
+      const probeCtx: ProgramBuilderHttpProbeContext = {
+        createProgramId: id("prog-never"),
+        rowId: id("row-never"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        orderedRowIds: [rowId],
+        duplicateNewRowId: id("row-dup-never"),
+      };
+
+      for (const routeCase of programBuilderProgram404ParityRouteCases(
+        ownedProgramId,
+        rowId,
+      )) {
+        const missingPath = routeCase.path.replace(
+          encodeURIComponent(ownedProgramId),
+          encodeURIComponent(missingProgramId),
+        );
+        const missingCase: ProgramBuilderHttpRouteCase = {
+          method: routeCase.method,
+          path: missingPath,
+        };
+        const body = programBuilderHttpJsonBody(routeCase, probeCtx);
+        const missingResponse = await sendAuthedRoute(deps, cookie, missingCase, body);
+        const foreignResponse = await sendAuthedRoute(deps, cookie, routeCase, body);
+        expect(missingResponse.status, routeCaseLabel(routeCase)).toBe(404);
+        expect(foreignResponse.status, routeCaseLabel(routeCase)).toBe(404);
+        const missingJson = await missingResponse.json();
+        const foreignJson = await foreignResponse.json();
+        expect(foreignJson).toEqual(missingJson);
+        expect(missingJson).toEqual(PROGRAM_NOT_FOUND_BODY);
+      }
+
+      expect(await programCount(storage, practitionerB)).toBe(beforeProgramsB);
+      expect(await programRowCount(storage, ownedProgramId)).toBe(beforeRowsOwned);
     } finally {
       storage.close();
     }
   });
 
-  it("rejects practitionerId at the top level and nested in row bodies with 400 invalid_input", async () => {
+  it("returns 404 program_row_not_found for a missing row id without changing storage", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedForBuilder(storage, practitionerId);
+      const programId = id("prog-missing-row");
+      const existingRowId = id("row-exists");
+      const missingRowId = id("row-missing");
       const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerId, { programId: id("prog-body-guard") });
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId: existingRowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      const beforeRows = await programRowCount(storage, programId);
       const { deps, cookie } = apiDeps(storage, practitionerId);
 
-      const topLevel = await handleRequest(
-        authedRequest(`${BASE}${PROGRAMS_API_BASE}`, cookie, {
+      const rowRoutes: ProgramBuilderHttpRouteCase[] = [
+        { method: "PATCH", path: programRowPath(programId, missingRowId) },
+        { method: "DELETE", path: programRowPath(programId, missingRowId) },
+        {
           method: "POST",
-          headers: { "content-type": "application/json", origin: BASE },
-          body: JSON.stringify({
-            program_id: id("prog-evil"),
-            practitionerId: testOpaqueEntityId("evil"),
-          }),
-        }),
-        deps,
-      );
-      expect(topLevel.status).toBe(400);
-      await expect(topLevel.json()).resolves.toEqual({
-        error: "invalid_input",
-        message: "invalid_input",
-      });
+          path: programRowDuplicatePath(programId, missingRowId),
+        },
+      ];
 
-      const nested = await handleRequest(
-        authedRequest(`${BASE}${programRowsPath(id("prog-body-guard"))}`, cookie, {
-          method: "POST",
-          headers: { "content-type": "application/json", origin: BASE },
-          body: JSON.stringify({
-            row_id: id("row-nested"),
-            exercise_id: FIXTURE_EXERCISE_ID,
-            params: { practitioner_id: practitionerId, hold_s: 5 },
-          }),
-        }),
-        deps,
-      );
-      expect(nested.status).toBe(400);
-      await expect(nested.json()).resolves.toEqual({
-        error: "invalid_input",
-        message: "invalid_input",
+      for (const routeCase of rowRoutes) {
+        const body =
+          routeCase.method === "POST"
+            ? JSON.stringify({ new_row_id: id("row-dup-probe") })
+            : routeCase.method === "PATCH"
+              ? JSON.stringify({ note: "n" })
+              : undefined;
+        const response = await sendAuthedRoute(deps, cookie, routeCase, body);
+        expect(response.status, routeCaseLabel(routeCase)).toBe(404);
+        await expect(response.json()).resolves.toEqual(PROGRAM_ROW_NOT_FOUND_BODY);
+      }
+
+      expect(await programRowCount(storage, programId)).toBe(beforeRows);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns program_not_found for malformed percent-encoded program and row path segments", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const badProgramPath = `${PROGRAMS_API_BASE}/${MALFORMED_PERCENT_PROGRAM_SEGMENT}`;
+      const programId = id("prog-uri");
+      const badRowPath = `${programRowsPath(programId)}/${MALFORMED_PERCENT_ROW_SEGMENT}`;
+
+      for (const { method, path } of [
+        { method: "GET", path: badProgramPath },
+        { method: "PATCH", path: badProgramPath },
+        { method: "PATCH", path: badRowPath },
+      ]) {
+        const url = `${BASE}${path}`;
+        const init: RequestInit = { method };
+        if (method === "PATCH") {
+          const body =
+            path === badRowPath
+              ? JSON.stringify({ note: "n" })
+              : JSON.stringify({ name: "n" });
+          const response = await handleRequest(
+            new Request(
+              url,
+              mutatingAppApiRequestInit(url, {
+                ...init,
+                headers: { cookie, origin: BASE },
+                body,
+              }),
+            ),
+            deps,
+          );
+          expect(response.status, `${method} ${path}`).toBe(404);
+          await expect(response.json()).resolves.toEqual(
+            path === badRowPath ? PROGRAM_ROW_NOT_FOUND_BODY : PROGRAM_NOT_FOUND_BODY,
+          );
+          continue;
+        }
+        const response = await handleRequest(authedRequest(url, cookie, init), deps);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        await expect(response.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId and practitioner_id at top level, nested, and in arrays on every mutating JSON body route", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const programId = id("prog-body-guard");
+      const rowId = id("row-body-guard");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
       });
-      expect(await programRowCount(storage, id("prog-body-guard"))).toBe(0);
+      const evilId = testOpaqueEntityId("evil-practitioner");
+      const beforePrograms = await programCount(storage, practitionerId);
+      const beforeRows = await programRowCount(storage, programId);
+      const beforeName = (await service.getProgram(practitionerId, programId)).name;
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const probeCtx: ProgramBuilderHttpProbeContext = {
+        createProgramId: id("prog-evil"),
+        rowId: id("row-evil"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        orderedRowIds: [rowId],
+        duplicateNewRowId: id("row-dup-evil"),
+      };
+
+      const placements: PractitionerIdPlacement[] = ["top", "nested", "array"];
+      const keys: ("practitionerId" | "practitioner_id")[] = [
+        "practitionerId",
+        "practitioner_id",
+      ];
+
+      for (const routeCase of programBuilderMutatingJsonBodyRouteCases(
+        programId,
+        rowId,
+      )) {
+        const baseBody = JSON.parse(
+          programBuilderHttpJsonBody(routeCase, probeCtx),
+        ) as Record<string, unknown>;
+        for (const placement of placements) {
+          for (const key of keys) {
+            const body = JSON.stringify(
+              injectPractitionerIdField(baseBody, placement, key, evilId),
+            );
+            const response = await sendAuthedRoute(deps, cookie, routeCase, body);
+            expect(
+              response.status,
+              `${routeCaseLabel(routeCase)} ${placement} ${key}`,
+            ).toBe(400);
+            await expect(response.json()).resolves.toEqual(INVALID_INPUT_BODY);
+          }
+        }
+      }
+
+      expect(await programCount(storage, practitionerId)).toBe(beforePrograms);
+      expect(await programRowCount(storage, programId)).toBe(beforeRows);
+      expect((await service.getProgram(practitionerId, programId)).name).toBe(
+        beforeName,
+      );
     } finally {
       storage.close();
     }

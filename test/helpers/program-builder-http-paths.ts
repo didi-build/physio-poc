@@ -1,4 +1,4 @@
-export const PROGRAMS_API_BASE = "/api/me/programs";
+const PROGRAMS_API_BASE = "/api/me/programs";
 
 export function programsCollectionPath(searchQuery?: string): string {
   if (!searchQuery) {
@@ -49,3 +49,5 @@ export function programRowLibraryUpdateKeepPath(
 ): string {
   return `${programRowPath(programId, rowId)}/library-update/keep`;
 }
+
+export { PROGRAMS_API_BASE };
