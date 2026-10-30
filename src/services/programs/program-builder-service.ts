@@ -63,8 +63,7 @@ export class ProgramBuilderServiceError extends Error {
       | "exercise_not_found"
       | "exercise_request_not_found"
       | "invalid_input"
-      | "restore_window_expired"
-      | "forbidden",
+      | "restore_window_expired",
   ) {
     super(message);
     this.name = "ProgramBuilderServiceError";
@@ -1054,11 +1053,8 @@ export class ProgramBuilderService {
   ): Promise<ProgramRecord> {
     await this.requirePractitioner(practitionerId);
     const program = await this.programs.findById(programId);
-    if (!program) {
+    if (!program || program.created_by !== practitionerId) {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
-    }
-    if (program.created_by !== practitionerId) {
-      throw new ProgramBuilderServiceError("Program not found", "forbidden");
     }
     if (program.deleted_at && !options?.allowDeleted) {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
