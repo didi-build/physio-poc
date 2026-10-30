@@ -79,7 +79,7 @@ Three candidates cover **first-party cloud**, **Runway-native Dev API**, and **f
 
 Google lists Veo 3.1 video-only generation at **$0.20 / 1 count** on the Agent Platform pricing page **without defining "count"** ([Agent Platform pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing), retrieved 2026-10-29). The public [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing) URL redirects into that Agent Platform pricing view; this ADR does not treat either page as stating a per-output-second video generation rate. Use **~$1.28** as the planning figure from the earlier per-second reading; use **~$0.28** ($0.078 + $0.20) as the lower bound if one count equals one whole video. **Confirm on the first billed run.**
 
-**Image price note:** The same pricing page footnote states: "A 1024x1024 image consumes 1290 tokens ($0.039 per 1K output image)." The table lists Gemini 2.5 Flash Image image output at **$30.00 / 1M tokens** (1290 tokens implies about **$0.039** per image at that rate). QA round 1 cited a **~$0.019** per-image figure from a lower per-token reading; this ADR uses **$0.039** as the conservative planning figure from the footnote ([Agent Platform pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing), retrieved 2026-10-29).
+**Image price note:** The same pricing page footnote states: "A 1024x1024 image consumes 1290 tokens ($0.039 per 1K output image)." The table lists Gemini 2.5 Flash Image image output at **$30.00 / 1M tokens** (1290 tokens implies about **$0.039** per image at that rate). QA round 2 cited a **~$0.019** per-image figure from a misreading of the Flex/Batch table (**$15.00 / 1M tokens**); this ADR uses **$0.039** at the standard rate from the footnote ([Agent Platform pricing](https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing), retrieved 2026-10-29).
 
 **Latency:** Gemini image routes are described as higher latency than legacy Imagen-class routes in the overview comparison ([image overview](https://cloud.google.com/vertex-ai/generative-ai/docs/image/overview), accessed 2026-10-29). Veo uses long-running operations ([generate videos from text](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/video/generate-videos-from-text), accessed 2026-10-29). End-to-end wall-clock time: **unverified.**
 
@@ -121,7 +121,7 @@ Runway [Terms of Use](https://runway.com/terms-of-use), scope: **Runway App Stud
 
 > collect protected health information, payment card data, financial account numbers, or government identifiers
 
-Runway [Enterprise Terms of Use](https://runway.com/en/enterprise-terms) (retrieved 2026-10-29): **no medical or clinical use clause found** in the Enterprise Services Terms text reviewed for this desk research.
+Runway [Enterprise Services Terms](https://runway.com/enterprise-terms) (retrieved 2026-10-29): **no medical or clinical use clause found** in the Enterprise Services Terms text reviewed for this desk research.
 
 **Training / retention:** Enterprise no-training and zero retention ([Enterprise](https://dev.runway.com/enterprise), accessed 2026-10-29). Map account type before the generation pass.
 
