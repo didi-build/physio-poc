@@ -246,14 +246,21 @@ export class ProgramsRepository {
     searchQuery?: string;
     deletedOnly?: boolean;
     includeActive?: boolean;
+    originFilter?: "from_routine" | "from_scratch";
   }): Promise<ProgramRecord[]> {
     const bindings: (string | number)[] = [input.practitionerId];
-    const where: string[] = ["created_by = ?"];
+    const where: string[] = ["p.created_by = ?"];
 
     if (input.deletedOnly) {
-      where.push("deleted_at IS NOT NULL");
+      where.push("p.deleted_at IS NOT NULL");
     } else if (input.includeActive !== false) {
-      where.push("deleted_at IS NULL");
+      where.push("p.deleted_at IS NULL");
+    }
+
+    if (input.originFilter === "from_routine") {
+      where.push("p.source_routine_id IS NOT NULL");
+    } else if (input.originFilter === "from_scratch") {
+      where.push("p.source_routine_id IS NULL");
     }
 
     const trimmed = input.searchQuery?.trim();
@@ -262,22 +269,53 @@ export class ProgramsRepository {
       const nameLike = likeContainsPattern(trimmed);
       if (codeKeys.length > 0) {
         where.push(
-          `(name LIKE ? ESCAPE '\\' COLLATE NOCASE OR code IN (${codeKeys.map(() => "?").join(", ")}))`,
+          `(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR p.code IN (${codeKeys.map(() => "?").join(", ")}) OR rv.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
         );
-        bindings.push(nameLike, ...codeKeys);
+        bindings.push(nameLike, ...codeKeys, nameLike);
       } else {
-        where.push("name LIKE ? ESCAPE '\\' COLLATE NOCASE");
-        bindings.push(nameLike);
+        where.push(
+          `(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR rv.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
+        );
+        bindings.push(nameLike, nameLike);
       }
     }
 
+    const programSelectAliased = PROGRAM_SELECT.split(",")
+      .map((column) => `p.${column.trim()}`)
+      .join(", ");
+
     return this.sql.all<ProgramRecord>(
-      `SELECT ${PROGRAM_SELECT}
-       FROM programs
+      `SELECT ${programSelectAliased}
+       FROM programs p
+       LEFT JOIN routine_versions rv ON p.source_routine_version_id = rv.id
        WHERE ${where.join(" AND ")}
-       ORDER BY draft_updated_at DESC`,
+       ORDER BY p.draft_updated_at DESC`,
       bindings,
     );
+  }
+
+  async markRoutineOriginTweakedIfUsedAsIs(programId: string): Promise<void> {
+    await this.sql.run(
+      `UPDATE programs
+       SET source_routine_origin = 'tweaked'
+       WHERE id = ? AND source_routine_origin = 'used_as_is' AND deleted_at IS NULL`,
+      [programId],
+    );
+  }
+
+  async listSentCodesForSourceRoutine(input: {
+    practitionerId: string;
+    routineId: string;
+  }): Promise<string[]> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const rows = await this.sql.all<{ code: string }>(
+      `SELECT code FROM programs
+       WHERE created_by = ? AND source_routine_id = ?
+         AND published_at IS NOT NULL AND deleted_at IS NULL
+       ORDER BY published_at DESC`,
+      [input.practitionerId, routineId],
+    );
+    return rows.map((row) => row.code);
   }
 
   async updateDraftName(programId: string, name: string | null): Promise<void> {
