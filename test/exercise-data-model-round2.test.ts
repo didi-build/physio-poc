@@ -16,7 +16,10 @@ import {
   ParamValidationError,
   validateExerciseParams,
 } from "../src/domain/exercise-params.js";
-import { validateTextOverrides } from "../src/domain/exercise-text-overrides.js";
+import {
+  validateTextOverrides,
+  type TextOverrides,
+} from "../src/domain/exercise-text-overrides.js";
 import {
   MAX_LENGTH_EXERCISE_ALIAS,
   MAX_LENGTH_EXERCISE_CHANGE_SUMMARY,
@@ -235,7 +238,12 @@ describe("free-text validation survivors (unit)", () => {
     ).toThrow(FreeTextValidationError);
 
     expect(() =>
-      validateTextOverrides({ description: "patient@example.com in note" }),
+      validateTextOverrides({
+        description: {
+          value: "patient@example.com in note",
+          base: "library description",
+        },
+      }),
     ).toThrow();
 
     expect(() => validateRequestedExerciseName("bad patient@example.com name")).toThrow(
@@ -259,7 +267,9 @@ describe("repository write validation (integration, SQLite)", () => {
           practitionerId: practId,
           exerciseId: exId,
           savedAt: TS,
-          textOverrides: { title: 42 } as unknown as { title: string },
+          textOverrides: {
+            title: 42,
+          } as unknown as TextOverrides,
         }),
       ).rejects.toThrow();
       await expect(

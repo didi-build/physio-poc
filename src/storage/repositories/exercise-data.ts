@@ -15,6 +15,7 @@ import {
 } from "../../domain/exercise-free-text.js";
 import {
   parseTextOverridesJson,
+  serializeTextOverrides,
   validateTextOverrides,
   type TextOverrides,
 } from "../../domain/exercise-text-overrides.js";
@@ -61,7 +62,7 @@ export class PractitionerExercisesRepository {
   }): Promise<void> {
     const textOverrides = validateTextOverrides(input.textOverrides ?? {});
     const paramOverrides = validateParamOverridesByType(input.paramOverrides ?? {});
-    const textJson = JSON.stringify(textOverrides);
+    const textJson = serializeTextOverrides(textOverrides);
     const paramJson = JSON.stringify(paramOverrides);
 
     await this.sql.run(
