@@ -210,6 +210,7 @@ async function seedOpenExerciseRequest(
   practitionerId: string,
   requestId: string,
   requestedName: string,
+  exerciseId?: string | null,
 ): Promise<void> {
   const requests = new ExerciseRequestsRepository(storage);
   await requests.insert({
@@ -217,6 +218,7 @@ async function seedOpenExerciseRequest(
     requestedName,
     requestedBy: practitionerId,
     status: "open",
+    exerciseId: exerciseId ?? null,
     createdAt: TS,
     updatedAt: TS,
   });
@@ -242,6 +244,7 @@ describe("Program builder HTTP routes (integration)", () => {
         practitionerId,
         requestId,
         "Pending squat",
+        FIXTURE_EXERCISE_ID,
       );
       const service = new ProgramBuilderService(storage);
       await service.createProgram(practitionerId, { programId });
