@@ -14,6 +14,10 @@ On D1, wrangler applies migrations and tracks them in **`d1_migrations`**. The `
 
 `InMemorySqlStorage` ignores `BEGIN`, `COMMIT`, and `ROLLBACK`. It has **no atomicity**: a failed `applyMigration` call does not roll back earlier statements in the same migration.
 
+## Migration 0005 (routines data model)
+
+Migration `0005_routine_data_model.sql` is registered in `apply.ts` for Node test fixtures only. If a checkout already applied 0005, do not edit and re-run that file locally; record a new migration id in the tracker and add a follow-up SQL file instead. A raw second run of 0005 against an already migrated database fails on its `ALTER TABLE programs` statements.
+
 ## Nested transactions
 
 `BetterSqliteStorage` tracks transaction depth for the exact statements `BEGIN`, `COMMIT`, and `ROLLBACK` only (after trim and whitespace collapse). It does not treat `BEGIN TRANSACTION`, `BEGIN IMMEDIATE`, `END`, or a trailing semicolon as transaction control. A second `BEGIN` while depth is already 1 throws `NestedSqlTransactionError`. `COMMIT` or `ROLLBACK` with depth 0 throws the same error.
