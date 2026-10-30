@@ -68,6 +68,19 @@ describe("MCP stub import graph guard", () => {
     );
   });
 
+  it("flags non-literal dynamic import in scanned module (fail closed)", () => {
+    const entry =
+      "test/fixtures/mcp-stub-import-guard/mutations/dynamic-import-variable/entry.ts";
+    const { violations } = scanMcpStubImportGraph({
+      repoRoot: REPO_ROOT,
+      entryPaths: [entry],
+    });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations.some((v) => v.module === "<non-literal-dynamic-import>")).toBe(
+      true,
+    );
+  });
+
   it("flags app-routes importing a repository (QA mutation)", () => {
     const entry =
       "test/fixtures/mcp-stub-import-guard/mutations/app-routes-repository/app-routes.ts";
@@ -93,24 +106,41 @@ describe("MCP stub import graph guard", () => {
   });
 
   it("MCP handler factories accept PhysioServerConfig only", () => {
-    type AssertExactPhysioConfigParams<P extends readonly unknown[]> =
-      P extends readonly [infer First, ...infer Rest]
-        ? Rest extends readonly []
-          ? First extends PhysioServerConfig
-            ? PhysioServerConfig extends First
-              ? true
-              : false
-            : false
-          : false
+    type Equals<A, B> =
+      (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+        ? true
         : false;
 
-    const assertHttp: AssertExactPhysioConfigParams<
-      Parameters<typeof createPhysioMcpHttpHandler>
-    > = true;
-    const assertServer: AssertExactPhysioConfigParams<
-      Parameters<typeof createPhysioMcpServer>
-    > = true;
+    type HttpParamsEquals = Equals<
+      Parameters<typeof createPhysioMcpHttpHandler>,
+      [PhysioServerConfig]
+    >;
+    type ServerParamsEquals = Equals<
+      Parameters<typeof createPhysioMcpServer>,
+      [PhysioServerConfig]
+    >;
+
+    const assertHttp: HttpParamsEquals = true;
+    const assertServer: ServerParamsEquals = true;
     expect(assertHttp).toBe(true);
     expect(assertServer).toBe(true);
+
+    type WidenedConfigParam = Equals<
+      [PhysioServerConfig & { repo?: unknown }],
+      [PhysioServerConfig]
+    >;
+    type SecondParamFactory = (
+      config: PhysioServerConfig,
+      repo?: { findById(id: string): Promise<unknown> },
+    ) => void;
+    type SecondParamEquals = Equals<
+      Parameters<SecondParamFactory>,
+      [PhysioServerConfig]
+    >;
+
+    const widenedParamMutationFails: WidenedConfigParam = false;
+    const secondParamMutationFails: SecondParamEquals = false;
+    expect(widenedParamMutationFails).toBe(false);
+    expect(secondParamMutationFails).toBe(false);
   });
 });

@@ -100,9 +100,9 @@ function modulePathCandidates(basePath) {
 /**
  * @param {import("typescript").Node} node
  * @param {string[]} specifiers
- * @param {{ count: number }} interpolatedDynamicImports
+ * @param {{ interpolated: number, nonLiteral: number }} dynamicImportPolicy
  */
-function collectModuleSpecifierFromNode(node, specifiers, interpolatedDynamicImports) {
+function collectModuleSpecifierFromNode(node, specifiers, dynamicImportPolicy) {
   if (!node) {
     return;
   }
@@ -115,18 +115,39 @@ function collectModuleSpecifierFromNode(node, specifiers, interpolatedDynamicImp
     return;
   }
   if (ts.isTemplateExpression(node)) {
-    interpolatedDynamicImports.count += 1;
+    dynamicImportPolicy.interpolated += 1;
   }
+}
+
+/**
+ * @param {import("typescript").Node | undefined} arg
+ * @param {string[]} specifiers
+ * @param {{ interpolated: number, nonLiteral: number }} dynamicImportPolicy
+ */
+function collectDynamicImportArgument(arg, specifiers, dynamicImportPolicy) {
+  if (!arg) {
+    dynamicImportPolicy.nonLiteral += 1;
+    return;
+  }
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
+    collectModuleSpecifierFromNode(arg, specifiers, dynamicImportPolicy);
+    return;
+  }
+  if (ts.isTemplateExpression(arg)) {
+    dynamicImportPolicy.interpolated += 1;
+    return;
+  }
+  dynamicImportPolicy.nonLiteral += 1;
 }
 
 /**
  * @param {string} repoRelativePath
  * @param {string} source
- * @returns {{ specifiers: string[], interpolatedDynamicImportCount: number }}
+ * @returns {{ specifiers: string[], interpolatedDynamicImportCount: number, nonLiteralDynamicImportCount: number }}
  */
 export function extractImportSpecifiersFromSource(repoRelativePath, source) {
   const specifiers = [];
-  const interpolatedDynamicImports = { count: 0 };
+  const dynamicImportPolicy = { interpolated: 0, nonLiteral: 0 };
   const sourceFile = ts.createSourceFile(
     repoRelativePath,
     source,
@@ -140,14 +161,14 @@ export function extractImportSpecifiersFromSource(repoRelativePath, source) {
       collectModuleSpecifierFromNode(
         node.moduleSpecifier,
         specifiers,
-        interpolatedDynamicImports,
+        dynamicImportPolicy,
       );
     }
     if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
       collectModuleSpecifierFromNode(
         node.moduleSpecifier,
         specifiers,
-        interpolatedDynamicImports,
+        dynamicImportPolicy,
       );
     }
     if (
@@ -155,7 +176,7 @@ export function extractImportSpecifiersFromSource(repoRelativePath, source) {
       node.expression.kind === ts.SyntaxKind.ImportKeyword
     ) {
       const [arg] = node.arguments;
-      collectModuleSpecifierFromNode(arg, specifiers, interpolatedDynamicImports);
+      collectDynamicImportArgument(arg, specifiers, dynamicImportPolicy);
     }
     ts.forEachChild(node, visit);
   }
@@ -163,7 +184,8 @@ export function extractImportSpecifiersFromSource(repoRelativePath, source) {
   visit(sourceFile);
   return {
     specifiers,
-    interpolatedDynamicImportCount: interpolatedDynamicImports.count,
+    interpolatedDynamicImportCount: dynamicImportPolicy.interpolated,
+    nonLiteralDynamicImportCount: dynamicImportPolicy.nonLiteral,
   };
 }
 
@@ -232,13 +254,20 @@ export function scanMcpStubImportGraph(options) {
       continue;
     }
 
-    const { specifiers, interpolatedDynamicImportCount } =
+    const { specifiers, interpolatedDynamicImportCount, nonLiteralDynamicImportCount } =
       extractImportSpecifiersFromSource(modulePath, source);
     for (let i = 0; i < interpolatedDynamicImportCount; i += 1) {
       violations.push({
         module: "<interpolated-dynamic-import>",
         importedFrom: modulePath,
         specifier: "import(`...${...}`)",
+      });
+    }
+    for (let i = 0; i < nonLiteralDynamicImportCount; i += 1) {
+      violations.push({
+        module: "<non-literal-dynamic-import>",
+        importedFrom: modulePath,
+        specifier: "import(non-literal)",
       });
     }
 
