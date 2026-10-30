@@ -9,6 +9,7 @@ import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
+import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
@@ -111,6 +112,12 @@ export async function handleRequest(
       });
       if (exerciseResponse) {
         return exerciseResponse;
+      }
+      const myDefaultsResponse = await handleMyDefaultsRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (myDefaultsResponse) {
+        return myDefaultsResponse;
       }
       if (deps.extraRouteHandlers) {
         for (const handler of deps.extraRouteHandlers) {
