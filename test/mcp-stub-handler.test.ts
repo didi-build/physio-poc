@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,15 +17,9 @@ import {
   invokePhysioMcpStubTool,
 } from "../src/services/mcp/stub-tool-handler.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { assertProductionMcpStubImportGraph } from "../scripts/lib/mcp-stub-import-guard.mjs";
 
-const STUB_SERVER_FILES = [
-  "src/services/mcp/stub-tool-handler.ts",
-  "src/adapters/workers/mcp/create-physio-mcp-server.ts",
-  "src/adapters/workers/mcp/handle-mcp-http-request.ts",
-] as const;
-
-const STORAGE_IMPORT_PATTERN =
-  /(?:from\s+["'][^"']*(?:\/storage|repository)[^"']*["'])|(?:import\s+["'][^"']*(?:\/storage|repository)[^"']*["'])|(?:SqlStorage|ObjectStorage|InMemorySqlStorage|InMemoryObjectStorage)/;
+const REPO_ROOT = process.cwd();
 
 describe("MCP stub handler (placeholder-only until DIDI-1043)", () => {
   it("pins the four model-facing placeholder summaries for builder and share tools", () => {
@@ -75,20 +69,9 @@ describe("MCP stub handler (placeholder-only until DIDI-1043)", () => {
     expect(both.summary).toBe(STUB_GET_PROGRAM_SHARE_DRAFT_AND_PUBLISHED_SUMMARY);
   });
 
-  it("does not import storage ports, repositories, or database adapters", () => {
-    for (const relativePath of STUB_SERVER_FILES) {
-      const source = readFileSync(join(process.cwd(), relativePath), "utf8");
-      for (const line of source.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("//")) {
-          continue;
-        }
-        expect(
-          STORAGE_IMPORT_PATTERN.test(line),
-          `forbidden storage import in ${relativePath}: ${line}`,
-        ).toBe(false);
-      }
-    }
+  it("does not transitively import storage or non-mcp services from the MCP entry graph", () => {
+    const { violations } = assertProductionMcpStubImportGraph(REPO_ROOT);
+    expect(violations).toEqual([]);
   });
 
   it("returns the same fixed output regardless of app storage wiring", async () => {

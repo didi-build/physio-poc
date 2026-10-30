@@ -134,7 +134,7 @@ export const searchRoutinesOutputSchema: JsonSchema = {
 export const GET_PROGRAM_BUILDER_LINK_TOOL_NAME = "get_program_builder_link" as const;
 
 export const getProgramBuilderLinkDescription =
-  "Read-only deep link to the program builder in the web app. Pass program_code to open that program, from_routine_id to start a new program from that routine, or omit both for a new blank program. No rows are passed in the link. Publishing and share links use get_program_share_link_or_pdf. Do not pass patient information.";
+  "Read-only deep link to the program builder in the web app. Pass program_code to open that program, or from_routine_id (UUID v4 opaque id) to start a new program from that routine, or omit both for a new blank program. When both program_code and from_routine_id are given, program_code wins and from_routine_id is ignored. No rows are passed in the link. Publishing and share links use get_program_share_link_or_pdf. Do not pass patient information.";
 
 export const getProgramBuilderLinkInputSchema: JsonSchema = {
   type: "object",

@@ -146,7 +146,7 @@ describe("buildWebAppExerciseSearchUrl", () => {
     return search.startsWith(prefix) ? search.slice(prefix.length) : "";
   }
 
-  it("URL-encodes the value and keeps encoded q at most 199 characters", () => {
+  it("URL-encodes the value and keeps encoded q length at most 199", () => {
     const tricky = "A & B? C# café 测试";
     const trickyUrl = buildWebAppExerciseSearchUrl(BASE, tricky);
     expect(
@@ -181,6 +181,31 @@ describe("buildWebAppExerciseSearchUrl", () => {
     expect(validateFreeTextForPatientDetails(benignWithEmail).ok).toBe(false);
     const mixedUrl = buildWebAppExerciseSearchUrl(BASE, benignWithEmail);
     expect(mixedUrl).toBe(`${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`);
+  });
+
+  it("never splits a surrogate pair or emoji when capping encoded q", () => {
+    const emojiTail = "😀";
+    const raw = `${"a".repeat(90)}${emojiTail}`;
+    expect([...raw].at(-1)).toBe(emojiTail);
+    const capped = capRawExerciseSearchQueryForUrl(raw);
+    if (capped.length > 0) {
+      expect([...capped].at(-1)).not.toBe("\uD83D");
+      expect([...capped].at(-1)).not.toBe("\uDE00");
+    }
+    expect(encodedExerciseSearchQueryLength(capped)).toBeLessThanOrEqual(199);
+  });
+
+  it("preserves ASCII space characters in encoded q length measurement", () => {
+    const withSpaces = "Glute bridge and  calf  stretch";
+    expect(withSpaces).toContain("  ");
+    const url = buildWebAppExerciseSearchUrl(BASE, withSpaces);
+    const decoded = new URLSearchParams(new URL(url).search).get(
+      EXERCISE_SEARCH_QUERY_PARAM,
+    );
+    expect(decoded).toBe(withSpaces);
+    expect(encodedExerciseSearchQueryLength(withSpaces)).toBe(
+      encodedQParamFromUrl(url).length,
+    );
   });
 
   it("never splits a percent escape when capping encoded q", () => {

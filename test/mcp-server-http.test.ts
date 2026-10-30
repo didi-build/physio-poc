@@ -198,7 +198,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("caps search_link encoded q at 199 for 200 and 201 character queries", async () => {
+  it("caps search_link encoded q at 199 when pre-encoding length is 199, 200, or 201", async () => {
     const accentPrefix = "é".repeat(33);
     const query199 = `${accentPrefix}a`;
     const query200 = `${accentPrefix}aa`;
