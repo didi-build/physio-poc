@@ -94,8 +94,14 @@ async function handleFakeTokenRequest(request: Request): Promise<Response> {
   });
 }
 
+export function fakeGoogleExpectedRedirectUri(authBaseUrl: string): string {
+  const base = authBaseUrl.replace(/\/$/, "");
+  return `${base}/api/auth/callback/google`;
+}
+
 export async function handleFakeGoogleRequest(
   request: Request,
+  authBaseUrl: string,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith("/__fake-google/")) {
@@ -117,7 +123,7 @@ export async function handleFakeGoogleRequest(
     if (!redirectUri) {
       return new Response("missing redirect_uri", { status: 400 });
     }
-    const expectedRedirect = `${url.origin}/api/auth/callback/google`;
+    const expectedRedirect = fakeGoogleExpectedRedirectUri(authBaseUrl);
     if (redirectUri !== expectedRedirect) {
       return new Response("invalid redirect_uri", { status: 400 });
     }
@@ -155,7 +161,10 @@ export function installFakeGoogleFetch(authBaseUrl: string): void {
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(href);
     if (url.origin === origin && url.pathname.startsWith("/__fake-google/")) {
-      const response = await handleFakeGoogleRequest(new Request(url, init));
+      const response = await handleFakeGoogleRequest(
+        new Request(url, init),
+        authBaseUrl,
+      );
       if (response) {
         return response;
       }
