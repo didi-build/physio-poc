@@ -3,7 +3,6 @@ import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
 import {
-  programLinkApprovedPlaceholdersPath,
   programPath,
   programRestorePath,
   programRowPath,
@@ -21,7 +20,6 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
-import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { programBuilderHttpRouteCases } from "./helpers/program-builder-http-route-cases.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
@@ -66,34 +64,6 @@ async function seedApprovedForBuilder(
   await storage.run(
     `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
     [practitionerId, TS, FIXTURE_VERSION_ID],
-  );
-}
-
-async function openExerciseRequest(
-  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
-  practitionerId: string,
-  requestId: string,
-  name: string,
-): Promise<void> {
-  const requests = new ExerciseRequestsRepository(storage);
-  await requests.insert({
-    id: requestId,
-    requestedName: name,
-    requestedBy: practitionerId,
-    status: "open",
-    createdAt: TS,
-    updatedAt: TS,
-  });
-}
-
-async function markRequestApproved(
-  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
-  requestId: string,
-  exerciseId: string,
-): Promise<void> {
-  await storage.run(
-    `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
-    [exerciseId, TS, requestId],
   );
 }
 
@@ -266,48 +236,6 @@ describe("Program builder HTTP routes (integration)", () => {
         .name;
       expect(afterName).toBe(beforeName);
       expect(await programRowCount(storage, id("prog-csrf"))).toBe(beforeRows);
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("returns skipped_count on type mismatch when linking approved placeholders", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const practitionerId = await seedPractitioner(storage);
-      await seedApprovedForBuilder(storage, practitionerId);
-      await openExerciseRequest(storage, practitionerId, id("req-http-skip"), "Move");
-      const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerId, { programId: id("prog-http-skip") });
-      await service.addPlaceholderRow(practitionerId, id("prog-http-skip"), {
-        rowId: id("row-http-fit"),
-        exerciseRequestId: id("req-http-skip"),
-        prescriptionType: "stretching",
-      });
-      await service.addPlaceholderRow(practitionerId, id("prog-http-skip"), {
-        rowId: id("row-http-skip"),
-        exerciseRequestId: id("req-http-skip"),
-        prescriptionType: "isometric",
-      });
-      await markRequestApproved(storage, id("req-http-skip"), FIXTURE_EXERCISE_ID);
-      const { deps, cookie } = apiDeps(storage, practitionerId);
-      const response = await handleRequest(
-        authedRequest(`${BASE}${programLinkApprovedPlaceholdersPath()}`, cookie, {
-          method: "POST",
-          headers: { "content-type": "application/json", origin: BASE },
-          body: JSON.stringify({
-            exercise_request_id: id("req-http-skip"),
-            approved_version_id: FIXTURE_VERSION_ID,
-          }),
-        }),
-        deps,
-      );
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ skipped_count: 1 });
-      const skippedRow = await new ProgramRowsRepository(storage).findById(
-        id("row-http-skip"),
-      );
-      expect(skippedRow?.exercise_request_id).toBe(id("req-http-skip"));
     } finally {
       storage.close();
     }

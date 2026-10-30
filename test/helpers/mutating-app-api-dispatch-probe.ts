@@ -29,12 +29,6 @@ function probeRequestBody(path: string, method: string): string | undefined {
   if (method === "DELETE") {
     return undefined;
   }
-  if (path.includes("/api/me/programs/link-approved-placeholders")) {
-    return JSON.stringify({
-      exercise_request_id: "11111111-1111-4111-8111-111111111111",
-      approved_version_id: "11111111-1111-4111-8111-111111111112",
-    });
-  }
   if (path.startsWith("/api/me/programs")) {
     if (path.endsWith("/restore")) {
       return undefined;

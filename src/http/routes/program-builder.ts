@@ -3,7 +3,6 @@ import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
-import { ExerciseRequestsRepository } from "../../storage/repositories/exercise-data.js";
 import {
   ProgramBuilderService,
   ProgramBuilderServiceError,
@@ -167,45 +166,6 @@ export async function handleProgramBuilderRequest(
     try {
       const items = await service(deps).listRecentlyDeletedPrograms(practitionerId);
       return Response.json({ items }, { headers: JSON_HEADERS });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  }
-
-  if (remainder === "link-approved-placeholders" && request.method === "POST") {
-    const body = await readJsonObjectBody(request);
-    if (body instanceof Response) {
-      return body;
-    }
-    const rejected = rejectBodyPractitionerId(body);
-    if (rejected) {
-      return rejected;
-    }
-    const exerciseRequestId = parseStringField(body, "exercise_request_id");
-    const approvedVersionId = parseStringField(body, "approved_version_id");
-    if (!exerciseRequestId || !approvedVersionId) {
-      return Response.json(
-        {
-          error: "invalid_input",
-          message: "exercise_request_id and approved_version_id are required",
-        },
-        { status: 400, headers: JSON_HEADERS },
-      );
-    }
-    const requests = new ExerciseRequestsRepository(deps.sql);
-    const exerciseRequest = await requests.findById(exerciseRequestId);
-    if (!exerciseRequest || exerciseRequest.requested_by !== practitionerId) {
-      return Response.json(
-        { error: "exercise_request_not_found", message: "Exercise request not found" },
-        { status: 404, headers: JSON_HEADERS },
-      );
-    }
-    try {
-      const skippedCount = await service(deps).linkApprovedPlaceholders(
-        exerciseRequestId,
-        approvedVersionId,
-      );
-      return Response.json({ skipped_count: skippedCount }, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
     }

@@ -49,7 +49,3 @@ export function programRowLibraryUpdateKeepPath(
 ): string {
   return `${programRowPath(programId, rowId)}/library-update/keep`;
 }
-
-export function programLinkApprovedPlaceholdersPath(): string {
-  return `${PROGRAMS_API_BASE}/link-approved-placeholders`;
-}

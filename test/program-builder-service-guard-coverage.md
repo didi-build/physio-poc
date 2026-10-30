@@ -95,4 +95,4 @@ Each row names a Vitest in `test/program-builder-service-mutation-guards.test.ts
 | program-types:54        | `typeof ... !== "number"` on dismissed version (M10) | Equivalent survivor: `Number.isInteger` already rejects non-numbers; string `"2"` fails without relying on `typeof` alone                                                                                        |
 | programs.ts:569         | `listForExerciseRequestId` row order (M21)           | Equivalent survivor: link loop follows repo query order (`ORDER BY program_id ASC, position ASC`); no test asserts link processing order in isolation                                                            |
 
-HTTP program-builder routes: `test/program-builder-http.test.ts` (session table, 404 parity, body practitioner id, CSRF, skipped_count, invalid dose, delete and restore).
+HTTP program-builder routes: `test/program-builder-http.test.ts` (session table, 404 parity, body practitioner id, CSRF, invalid dose, delete and restore). Type mismatch skipped count: `test/program-builder-service.test.ts` (`skips incompatible prescription types and returns the skipped count`).

@@ -1,5 +1,4 @@
 import {
-  programLinkApprovedPlaceholdersPath,
   programPath,
   programRestorePath,
   programRowDuplicatePath,
@@ -29,7 +28,6 @@ export function programBuilderHttpRouteCases(
     { method: "GET", path: PROGRAMS_API_BASE },
     { method: "POST", path: PROGRAMS_API_BASE },
     { method: "GET", path: programsDeletedListPath() },
-    { method: "POST", path: programLinkApprovedPlaceholdersPath() },
     { method: "GET", path: programPath(programId) },
     { method: "PATCH", path: programPath(programId) },
     { method: "DELETE", path: programPath(programId) },
