@@ -13,6 +13,10 @@ import {
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
+import {
+  buildTextOverrideEntry,
+  validateTextOverrides,
+} from "../src/domain/exercise-text-overrides.js";
 
 const BASE = "https://physio.test.example";
 const PRACT_A = "pract-a";
@@ -214,5 +218,125 @@ describe("Exercise library practitioner session binding (integration)", () => {
         )
       ).status,
     ).toBe(200);
+  });
+
+  it("returns undo_mismatch when path is A but undo snapshot names B without writing", async () => {
+    const storage = await openMigratedDatabase();
+    const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+    const practB = await seedPractitioner(storage, PRACT_B, "b@example.com");
+    await seedApprovedForPractitioner(storage, practB, EX_B);
+    await new PractitionerExercisesRepository(storage).upsert({
+      practitionerId: practB,
+      exerciseId: EX_B,
+      favourite: false,
+      savedAt: TS,
+      lastUsedAt: null,
+    });
+
+    const auth = new FakeAuthPort({
+      practitioner: {
+        practitionerId: practA,
+        email: "a@example.com",
+        displayName: "A",
+      },
+    });
+    const cookie = auth.createSessionCookieHeader();
+    const deps = {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      auth,
+      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+    };
+
+    const before = await storage.first<{ text_overrides_json: string }>(
+      "SELECT text_overrides_json FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+      [practB, EX_B],
+    );
+
+    const response = await handleRequest(
+      new Request(`${BASE}/api/practitioners/${PRACT_A}/my-exercises/${EX_B}`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "undo",
+          undo: {
+            practitioner_id: PRACT_B,
+            exercise_id: EX_B,
+            snapshot: {
+              had_row: false,
+              favourite: false,
+              saved_at: null,
+              last_used_at: null,
+              text_overrides_json: "{}",
+              param_overrides_json: "{}",
+            },
+          },
+        }),
+      }),
+      deps,
+    );
+    expect([400, 403]).toContain(response.status);
+    const body = (await response.json()) as { error: string };
+    expect(["undo_mismatch", "forbidden"]).toContain(body.error);
+
+    const after = await storage.first<{
+      text_overrides_json: string;
+      favourite: number;
+    }>(
+      "SELECT text_overrides_json, favourite FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+      [practB, EX_B],
+    );
+    expect(after?.text_overrides_json).toBe(before?.text_overrides_json);
+    expect(after?.favourite).toBe(0);
+  });
+
+  it("leaves B text_overrides_json unchanged when A PATCH targets B", async () => {
+    const storage = await openMigratedDatabase();
+    const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+    const practB = await seedPractitioner(storage, PRACT_B, "b@example.com");
+    await seedApprovedForPractitioner(storage, practB, EX_B);
+    const baselineOverrides = validateTextOverrides({
+      title: buildTextOverrideEntry("title", "Edited title", "Library title"),
+    });
+    await storage.run(
+      `INSERT INTO practitioner_exercises (
+        practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+        text_overrides_json, param_overrides_json
+      ) VALUES (?, ?, 0, ?, NULL, ?, '{}')`,
+      [practB, EX_B, TS, JSON.stringify(baselineOverrides)],
+    );
+
+    const auth = new FakeAuthPort({
+      practitioner: {
+        practitionerId: practA,
+        email: "a@example.com",
+        displayName: "A",
+      },
+    });
+    const cookie = auth.createSessionCookieHeader();
+    const deps = {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      auth,
+      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+    };
+
+    const response = await handleRequest(
+      new Request(`${BASE}/api/practitioners/${PRACT_B}/my-exercises/${EX_B}`, {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ text_overrides: { title: "Attacker title" } }),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(403);
+
+    const row = await storage.first<{ text_overrides_json: string }>(
+      "SELECT text_overrides_json FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+      [practB, EX_B],
+    );
+    expect(row?.text_overrides_json).toBe(JSON.stringify(baselineOverrides));
   });
 });

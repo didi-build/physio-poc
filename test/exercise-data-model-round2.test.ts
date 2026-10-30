@@ -40,6 +40,7 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -79,6 +80,10 @@ describe("migration and apply runner (CTO round 2)", () => {
         "exercise_requests",
         "type_defaults",
         "practitioner_exercises",
+        "programs",
+        "program_rows",
+        "share_links",
+        "share_link_defaults",
       ];
       for (const name of tables) {
         const sql = await tableSql(storage, name);
@@ -318,7 +323,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const requests = new ExerciseRequestsRepository(storage);
       await expect(
         requests.insert({
-          id: "req-bad",
+          id: id("req-bad"),
           requestedName: "bad patient@example.com",
           requestedBy: practId,
           status: "open",
