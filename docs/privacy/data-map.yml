@@ -275,11 +275,11 @@ d1_tables:
         retention: until row deleted
       text_overrides_json:
         whose: practitioner
-        data: Validated partial text overrides JSON
+        data: Partial text overrides JSON keyed by title, description, or cue fields; each set field is an object with string value (practitioner edit) and string base (library text when the override was saved)
         purpose: My copy edits
         processors: [Cloudflare]
         retention: until row deleted
-        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+        notes: patient_detail_risk; length caps and patient-detail validation apply to value on write; base is stored as a string snapshot only
       param_overrides_json:
         whose: practitioner
         data: Validated param overrides JSON by type

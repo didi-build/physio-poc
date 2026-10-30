@@ -71,12 +71,19 @@ function validVersionInsert(
 describe("QA round 3: description override length boundary (unit)", () => {
   it("accepts a description override of exactly 4000 characters and rejects 4001", () => {
     const exact = "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT);
-    expect(validateTextOverrides({ description: exact })).toEqual({
-      description: exact,
+    expect(
+      validateTextOverrides({
+        description: { value: exact, base: exact },
+      }),
+    ).toEqual({
+      description: { value: exact, base: exact },
     });
     expect(() =>
       validateTextOverrides({
-        description: "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1),
+        description: {
+          value: "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1),
+          base: "library",
+        },
       }),
     ).toThrow(TextOverrideValidationError);
   });

@@ -37,10 +37,11 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
 export async function seedPractitioner(
   storage: SqlStoragePort,
   practitionerId = FIXTURE_PRACTITIONER_ID,
+  email = "coach@example.com",
 ): Promise<string> {
   await storage.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    [practitionerId, "coach@example.com", TS],
+    [practitionerId, email, TS],
   );
   return practitionerId;
 }
