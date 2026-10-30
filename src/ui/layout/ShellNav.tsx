@@ -148,7 +148,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
     };
 
     const onFocusOut = (event: FocusEvent) => {
-      if (!menu.contains(event.target as Node)) {
+      if (!wrap.contains(event.target as Node)) {
         return;
       }
       const related = event.relatedTarget as Node | null;

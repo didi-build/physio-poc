@@ -177,6 +177,42 @@ describe("app shell nav (integration)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("stays open when focus moves from the first item to the trigger, then closes when focus leaves the wrap", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    const outsideTarget = within(topNav).getByRole("link", { name: "Exercises" });
+
+    await user.click(trigger);
+    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
+    expect(document.activeElement).toBe(defaultsItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.focusOut(defaultsItem, { relatedTarget: trigger });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    trigger.focus();
+    fireEvent.focusOut(trigger, { relatedTarget: outsideTarget });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the account menu when focusout has a null relatedTarget", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    signOutItem.focus();
+    fireEvent.focusOut(signOutItem, { relatedTarget: null });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("pins account menu focus-out wiring in ShellNav (structural)", () => {
     const source = readFileSync(
       join(import.meta.dirname, "../../src/ui/layout/ShellNav.tsx"),
@@ -184,6 +220,8 @@ describe("app shell nav (integration)", () => {
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
     expect(source).toContain("wrap.contains(related)");
+    expect(source).toContain("wrap.contains(event.target as Node)");
+    expect(source).not.toContain("menu.contains(event.target as Node)");
   });
 
   it("keeps the account menu open when arrow keys move focus between items", async () => {

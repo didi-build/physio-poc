@@ -216,6 +216,8 @@ describe("ConfirmSheet", () => {
   });
 
   it("labels the scrim from the a11y copy module", () => {
+    expect(ARIA_CLOSE_SCRIM).toBe("Close");
+
     const source = readFileSync(CONFIRM_SHEET_PATH, "utf8");
     expect(source).toContain("ARIA_CLOSE_SCRIM");
     expect(source).toMatch(/aria-label=\{ARIA_CLOSE_SCRIM\}/);
@@ -230,7 +232,7 @@ describe("ConfirmSheet", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: ARIA_CLOSE_SCRIM })).toHaveClass(
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass(
       "shell-sheet-scrim",
     );
   });

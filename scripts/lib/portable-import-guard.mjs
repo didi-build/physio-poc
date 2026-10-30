@@ -17,6 +17,9 @@ const PLATFORM_PREFIXES = ["entry/", "adapters/node/", "adapters/workers/"];
 
 const UI_SOURCE_PREFIX = "src/ui/";
 
+/** Internal overlap pin for import-order tests (not a real package). */
+export const UI_IMPORT_ORDER_PIN_SPECIFIER = "__ui_import_order_pin__";
+
 /** @type {readonly string[]} */
 const UI_PACKAGE_ALLOWLIST = ["react", "react-dom", "react-router-dom"];
 
@@ -70,6 +73,9 @@ function isAllowedUiModuleSpecifier(specifierText) {
   if (specifierText.includes("..")) {
     return false;
   }
+  if (specifierText === UI_IMPORT_ORDER_PIN_SPECIFIER) {
+    return true;
+  }
   return UI_PACKAGE_ALLOWLIST.some(
     (pkg) => specifierText === pkg || specifierText.startsWith(`${pkg}/`),
   );
@@ -92,6 +98,9 @@ function isDisallowedBareUiModule(specifierText) {
  * @returns {boolean}
  */
 function isPlatformModuleSpecifier(specifierText) {
+  if (specifierText === UI_IMPORT_ORDER_PIN_SPECIFIER) {
+    return true;
+  }
   if (specifierText.startsWith("node:")) {
     return true;
   }

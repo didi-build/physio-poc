@@ -5,6 +5,7 @@ import {
   findPortableViolations,
   listPortableSourceFiles,
   scanPortableTree,
+  UI_IMPORT_ORDER_PIN_SPECIFIER,
 } from "../scripts/lib/portable-import-guard.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -13,6 +14,31 @@ const PORTABLE_IMPORT_GUARD_PATH = join(
   REPO_ROOT,
   "scripts/lib/portable-import-guard.mjs",
 );
+
+function checkModuleSpecifierFunctionBody(source: string): string {
+  const fnNeedle = "function checkModuleSpecifier";
+  const fnStart = source.indexOf(fnNeedle);
+  if (fnStart < 0) {
+    throw new Error("checkModuleSpecifier not found");
+  }
+  const braceStart = source.indexOf("{", fnStart);
+  if (braceStart < 0) {
+    throw new Error("checkModuleSpecifier body start not found");
+  }
+  let depth = 0;
+  for (let index = braceStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(braceStart, index + 1);
+      }
+    }
+  }
+  throw new Error("checkModuleSpecifier body not found");
+}
 
 describe("portable runtime import guard (unit)", () => {
   it("scans a non-zero set of portable files under src/", () => {
@@ -160,16 +186,25 @@ describe("portable runtime import guard (unit)", () => {
 
   it("pins denylist-before-allowlist order in checkModuleSpecifier (structural)", () => {
     const source = readFileSync(PORTABLE_IMPORT_GUARD_PATH, "utf8");
-    const fnStart = source.indexOf("function checkModuleSpecifier");
-    expect(fnStart).toBeGreaterThan(-1);
-    const uiBranch = source.indexOf("if (isUiSourceFile(repoRelativePath))", fnStart);
+    const fnBody = checkModuleSpecifierFunctionBody(source);
+    const uiBranch = fnBody.indexOf("if (isUiSourceFile(repoRelativePath))");
     expect(uiBranch).toBeGreaterThan(-1);
-    const uiSection = source.slice(uiBranch);
+    const uiSection = fnBody.slice(uiBranch);
     const platformCheck = uiSection.indexOf("isPlatformModuleSpecifier(text)");
     const allowlistCheck = uiSection.indexOf("isAllowedUiModuleSpecifier(text)");
     expect(platformCheck).toBeGreaterThan(-1);
     expect(allowlistCheck).toBeGreaterThan(-1);
     expect(platformCheck).toBeLessThan(allowlistCheck);
+  });
+
+  it("denies the import-order pin specifier as platform before allowlist skip", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      `import x from '${UI_IMPORT_ORDER_PIN_SPECIFIER}';`,
+    );
+    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
+    expect(messages.some((m) => m.includes("disallowed ui import"))).toBe(false);
+    expect(messages).toHaveLength(1);
   });
 
   it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {
