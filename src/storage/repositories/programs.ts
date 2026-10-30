@@ -29,6 +29,7 @@ import {
   type ShareLinkExpiryChoice,
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
+import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 
 export class ProgramRepositoryError extends Error {
   constructor(message: string) {
@@ -123,6 +124,7 @@ export class ProgramsRepository {
     name?: string | null;
     code?: string;
   }): Promise<ProgramRecord> {
+    const id = validateOpaqueEntityId(input.id, "Program id");
     const name = validateOptionalProgramName(input.name ?? null);
     let code = input.code
       ? programCodeDomain.normalizeProgramCode(input.code)
@@ -137,9 +139,9 @@ export class ProgramsRepository {
             id, code, name, created_by, created_at,
             draft_version, draft_updated_at
           ) VALUES (?, ?, ?, ?, ?, 1, ?)`,
-          [input.id, code, name, input.createdBy, input.createdAt, input.createdAt],
+          [id, code, name, input.createdBy, input.createdAt, input.createdAt],
         );
-        const created = await this.findById(input.id);
+        const created = await this.findById(id);
         if (!created) {
           throw new ProgramRepositoryError("Program insert failed");
         }
@@ -353,6 +355,7 @@ export class ProgramRowsRepository {
     note?: string | null;
     draftUpdatedAt: string;
   }): Promise<void> {
+    const rowId = validateOpaqueEntityId(input.id, "Program row id");
     const program = await new ProgramsRepository(this.sql).findById(input.programId);
     if (!program || program.deleted_at) {
       throw new ProgramRepositoryError("Program not found");
@@ -362,6 +365,9 @@ export class ProgramRowsRepository {
     const textJson = JSON.stringify(textSnapshot);
     const note = validateProgramRowNote(input.note ?? null);
     const hasPlaceholder = Boolean(input.exerciseRequestId);
+    const exerciseRequestId = input.exerciseRequestId
+      ? validateOpaqueEntityId(input.exerciseRequestId, "Exercise request id")
+      : null;
     if (hasPlaceholder) {
       if (input.exerciseId || input.exerciseVersionId) {
         throw new ProgramRepositoryError(
@@ -388,12 +394,12 @@ export class ProgramRowsRepository {
         text_snapshot_json = excluded.text_snapshot_json,
         note = excluded.note`,
       [
-        input.id,
+        rowId,
         input.programId,
         input.position,
         input.exerciseId ?? null,
         input.exerciseVersionId ?? null,
-        input.exerciseRequestId ?? null,
+        exerciseRequestId,
         input.prescriptionType,
         paramsJson,
         textJson,
@@ -449,6 +455,7 @@ export class ShareLinksRepository {
     expiresAt: string | null;
     token?: string;
   }): Promise<ShareLinkRecord> {
+    const linkId = validateOpaqueEntityId(input.id, "Share link id");
     const token = input.token ?? generateShareLinkToken();
     try {
       const result = await this.sql.run(
@@ -457,7 +464,7 @@ export class ShareLinksRepository {
          FROM programs
          WHERE id = ? AND deleted_at IS NULL`,
         [
-          input.id,
+          linkId,
           input.programId,
           token,
           input.expiresAt,

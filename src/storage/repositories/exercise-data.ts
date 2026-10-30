@@ -13,6 +13,7 @@ import {
   validateRequestNote,
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
+import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import {
   parseTextOverridesJson,
   validateTextOverrides,
@@ -308,6 +309,7 @@ export class ExerciseRequestsRepository {
     createdAt: string;
     updatedAt: string;
   }): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
     const requestedName = validateRequestedExerciseName(input.requestedName);
     const note = validateRequestNote(input.note);
     await this.sql.run(
@@ -315,7 +317,7 @@ export class ExerciseRequestsRepository {
         id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        input.id,
+        id,
         requestedName,
         note,
         input.requestedBy,
