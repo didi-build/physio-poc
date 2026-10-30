@@ -44,7 +44,8 @@ export class ExerciseMediaServiceError extends Error {
       | "media_set_not_found"
       | "daily_limit_reached"
       | "invalid_scope"
-      | "invalid_input",
+      | "invalid_input"
+      | "start_reference_unavailable",
   ) {
     super(message);
     this.name = "ExerciseMediaServiceError";
@@ -213,6 +214,12 @@ export class ExerciseMediaService {
         input.scope === "both"
           ? (startProviderUrl ?? undefined)
           : (existing?.start_provider_url ?? undefined);
+      if (!startReferenceImageUrl) {
+        throw new ExerciseMediaServiceError(
+          "Start reference image is not available for end regeneration",
+          "start_reference_unavailable",
+        );
+      }
       const generated = await this.images.generateEndImage(
         buildEndImagePrompt(promptContext),
         {
@@ -231,14 +238,6 @@ export class ExerciseMediaService {
       startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
       endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
       startProviderUrl = pair.start.providerSourceUrl ?? startProviderUrl;
-    }
-    if (!startImage || !endImage) {
-      const pair = await this.images.generateStartAndEndImages({
-        startPrompt: buildStartImagePrompt(promptContext),
-        endPrompt: buildEndImagePrompt(promptContext),
-      });
-      startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
-      endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
     }
 
     const nowIso = this.clock().toISOString();

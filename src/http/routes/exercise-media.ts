@@ -1,5 +1,6 @@
 import type { AppDependencies } from "../app.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
+import { FalImageGenerationError } from "../../storage/ports/image-generation.js";
 import {
   ExerciseMediaService,
   ExerciseMediaServiceError,
@@ -47,7 +48,7 @@ export function exerciseMediaHttpRouteCases(
 function mediaService(deps: AppDependencies): ExerciseMediaService {
   return new ExerciseMediaService(
     deps.sql,
-    new FakeImageGeneration(),
+    deps.exerciseMediaImages ?? new FakeImageGeneration(),
     new PrefixMediaStorage(deps.objects),
   );
 }
@@ -58,11 +59,23 @@ function serviceErrorResponse(error: ExerciseMediaServiceError): Response {
       ? 404
       : error.code === "daily_limit_reached"
         ? 429
-        : 400;
+        : error.code === "start_reference_unavailable"
+          ? 409
+          : 400;
   return Response.json(
     { error: error.code, message: error.message },
     { status, headers: JSON_HEADERS },
   );
+}
+
+function routeErrorResponse(error: unknown): Response | null {
+  if (error instanceof ExerciseMediaServiceError) {
+    return serviceErrorResponse(error);
+  }
+  if (error instanceof FalImageGenerationError) {
+    return Response.json({ error: error.code }, { status: 502, headers: JSON_HEADERS });
+  }
+  return null;
 }
 
 async function readJsonBody(request: Request): Promise<unknown> {
@@ -88,8 +101,9 @@ export async function handleExerciseMediaRequest(
       const quota = await mediaService(deps).getRegenerationQuota(quotaMatch[1] ?? "");
       return Response.json(quota, { headers: JSON_HEADERS });
     } catch (error) {
-      if (error instanceof ExerciseMediaServiceError) {
-        return serviceErrorResponse(error);
+      const response = routeErrorResponse(error);
+      if (response) {
+        return response;
       }
       throw error;
     }
@@ -117,8 +131,9 @@ export async function handleExerciseMediaRequest(
       }
       return Response.json(view, { headers: JSON_HEADERS });
     } catch (error) {
-      if (error instanceof ExerciseMediaServiceError) {
-        return serviceErrorResponse(error);
+      const response = routeErrorResponse(error);
+      if (response) {
+        return response;
       }
       throw error;
     }
@@ -159,8 +174,9 @@ export async function handleExerciseMediaRequest(
       });
       return Response.json({ media }, { status: 201, headers: JSON_HEADERS });
     } catch (error) {
-      if (error instanceof ExerciseMediaServiceError) {
-        return serviceErrorResponse(error);
+      const response = routeErrorResponse(error);
+      if (response) {
+        return response;
       }
       throw error;
     }
@@ -200,8 +216,9 @@ export async function handleExerciseMediaRequest(
     });
     return Response.json(result, { headers: JSON_HEADERS });
   } catch (error) {
-    if (error instanceof ExerciseMediaServiceError) {
-      return serviceErrorResponse(error);
+    const response = routeErrorResponse(error);
+    if (response) {
+      return response;
     }
     throw error;
   }

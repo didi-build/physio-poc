@@ -212,26 +212,60 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
     );
   });
 
-  it("does not include the API key or a multi-sentence practitioner note in thrown errors", async () => {
-    const guidance = "Keep the knee soft. Arms crossed on chest";
-    const fetchImpl = vi.fn(async () => {
-      return new Response(`invalid key ${apiKey} guidance ${guidance}`, {
-        status: 401,
+  it("does not include fal response bodies, API keys, or regeneration notes in thrown errors", async () => {
+    const cases = [
+      { label: "double quote", note: 'Adjust "knee out"' },
+      { label: "newline", note: "line one\nline two" },
+    ] as const;
+
+    for (const { note } of cases) {
+      const jsonBody = JSON.stringify({ detail: note, echo: note });
+      const fetchImpl = vi.fn(async () => {
+        return new Response(jsonBody, { status: 401 });
       });
-    });
+      const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+      const prompt = buildStartImagePrompt({
+        title: "Bridge",
+        regenerationNote: note,
+      });
+      const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+      try {
+        await expect(
+          generator.generateStartImage(prompt, { regenerationNote: note }),
+        ).rejects.toMatchObject({
+          code: "fal_api_request_failed",
+          message: "fal_api_request_failed",
+          statusCode: 401,
+        });
+        for (const spy of [logSpy, infoSpy]) {
+          for (const call of spy.mock.calls) {
+            const logged = JSON.stringify(call);
+            expect(logged).not.toContain(apiKey);
+            expect(logged).not.toContain(note);
+            expect(logged).not.toContain(jsonBody);
+          }
+        }
+      } finally {
+        logSpy.mockRestore();
+        infoSpy.mockRestore();
+      }
+    }
+  });
+
+  it("does not include regeneration notes when fal returns JSON-escaped echo bodies", async () => {
+    const note = 'cue "deep"';
+    const jsonBody = '{"error":"cue \\"deep\\""}';
+    const fetchImpl = vi.fn(async () => new Response(jsonBody, { status: 403 }));
     const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
-    const prompt = buildStartImagePrompt({
-      title: "Bridge",
-      regenerationNote: guidance,
-    });
     await expect(
-      generator.generateStartImage(prompt, { regenerationNote: guidance }),
+      generator.generateStartImage("prompt", { regenerationNote: note }),
     ).rejects.toSatisfy((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      expect(message).not.toContain(apiKey);
-      expect(message).not.toContain("Keep the knee soft");
-      expect(message).not.toContain("Arms crossed on chest");
-      expect(message).toContain("[REDACTED]");
+      expect(message).toBe("fal_api_request_failed");
+      expect(message).not.toContain("deep");
+      expect(message).not.toContain('\\"');
+      expect(message).not.toContain(jsonBody);
       return true;
     });
   });

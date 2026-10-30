@@ -1,3 +1,4 @@
+import type { ImageGenerationPort } from "../storage/ports/image-generation.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
@@ -21,6 +22,8 @@ export type AppDependencies = {
   enableUnauthenticatedApi?: boolean;
   /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
   extraRouteHandlers?: AppRouteHandler[];
+  /** Optional image port for exercise media routes (tests only). */
+  exerciseMediaImages?: ImageGenerationPort;
 };
 
 export const MCP_PATH = "/mcp";

@@ -8,9 +8,13 @@ import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 
 describe("Node exercise media route registration (unit)", () => {
-  it("registers media handlers only for development and test NODE_ENV", () => {
+  it("registers media handlers only for exact development and test NODE_ENV", () => {
     expect(nodeExerciseMediaRouteHandlers("development")).toHaveLength(1);
     expect(nodeExerciseMediaRouteHandlers("test")).toHaveLength(1);
+    expect(nodeExerciseMediaRouteHandlers(undefined)).toEqual([]);
+    expect(nodeExerciseMediaRouteHandlers("staging")).toEqual([]);
+    expect(nodeExerciseMediaRouteHandlers("Development")).toEqual([]);
+    expect(nodeExerciseMediaRouteHandlers("TEST")).toEqual([]);
     expect(nodeExerciseMediaRouteHandlers("production")).toEqual([]);
   });
 

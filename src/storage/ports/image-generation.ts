@@ -16,6 +16,23 @@ export type ImageGenerationCallOptions = {
   startReferenceImageUrl?: string;
 };
 
+export type FalImageGenerationErrorCode =
+  | "fal_api_request_failed"
+  | "fal_image_download_failed"
+  | "fal_start_reference_required";
+
+export class FalImageGenerationError extends Error {
+  readonly code: FalImageGenerationErrorCode;
+  readonly statusCode: number;
+
+  constructor(code: FalImageGenerationErrorCode, statusCode: number) {
+    super(code);
+    this.name = "FalImageGenerationError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
 /**
  * Provider-neutral exercise still generation (start and end poses).
  * Production wiring uses FLUX.2 klein 4B on fal (DIDI-999); tests use a fake adapter.

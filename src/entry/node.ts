@@ -18,10 +18,9 @@ export type NodeServerOptions = {
 };
 
 /** Exercise media HTTP routes: Node dev and test entries only (never the Worker entry). */
-export function nodeExerciseMediaRouteHandlers(
-  nodeEnv: string | undefined = process.env.NODE_ENV,
-): AppRouteHandler[] {
-  if (nodeEnv === "development" || nodeEnv === "test") {
+export function nodeExerciseMediaRouteHandlers(nodeEnv?: string): AppRouteHandler[] {
+  const resolved = arguments.length >= 1 ? nodeEnv : process.env.NODE_ENV;
+  if (resolved === "development" || resolved === "test") {
     return [handleExerciseMediaRequest];
   }
   return [];

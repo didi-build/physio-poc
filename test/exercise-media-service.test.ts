@@ -312,6 +312,41 @@ describe("ExerciseMediaService (integration)", () => {
     }
   });
 
+  it("returns start_reference_unavailable for end-only regeneration without start_provider_url", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const mediaSetId = id("ms-missing-start-url");
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          mediaSetId,
+          `media-sets/${mediaSetId}/start.png`,
+          `media-sets/${mediaSetId}/end.png`,
+          null,
+          "draft",
+          TS,
+        ],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        mediaSetId,
+        versionId,
+      ]);
+      const { service } = await createService(storage);
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "end",
+        }),
+      ).rejects.toMatchObject({ code: "start_reference_unavailable" });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects notes longer than 200 characters", async () => {
     const storage = await openMigratedDatabase();
     try {

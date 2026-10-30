@@ -3,6 +3,12 @@ import type {
   ImageGenerationCallOptions,
   ImageGenerationPort,
 } from "../../storage/ports/image-generation.js";
+import { FalImageGenerationError } from "../../storage/ports/image-generation.js";
+
+export {
+  FalImageGenerationError,
+  type FalImageGenerationErrorCode,
+} from "../../storage/ports/image-generation.js";
 
 export const FAL_FLUX_KLEIN_4B_MODEL_ID = "fal-ai/flux-2/klein/4b";
 export const FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID = "fal-ai/flux-2/klein/4b/edit";
@@ -57,23 +63,6 @@ export function assertAllowedFalImageDownloadUrl(urlString: string): URL {
   return url;
 }
 
-function redactSecret(text: string, secret: string): string {
-  if (!secret) {
-    return text;
-  }
-  return text.split(secret).join("[REDACTED]");
-}
-
-function redactValues(text: string, values: string[]): string {
-  let out = text;
-  for (const value of values) {
-    if (value) {
-      out = redactSecret(out, value);
-    }
-  }
-  return out;
-}
-
 function concatChunks(chunks: Uint8Array[], totalLength: number): Uint8Array {
   const out = new Uint8Array(totalLength);
   let offset = 0;
@@ -102,13 +91,8 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     start: { bytes: Uint8Array; contentType: string; providerSourceUrl?: string };
     end: { bytes: Uint8Array; contentType: string };
   }> {
-    const redactInErrors = redactList(input.regenerationNote);
-    const start = await this.generateFromTextToImage(input.startPrompt, redactInErrors);
-    const end = await this.generateFromEdit(
-      input.endPrompt,
-      [start.providerSourceUrl],
-      redactInErrors,
-    );
+    const start = await this.generateFromTextToImage(input.startPrompt);
+    const end = await this.generateFromEdit(input.endPrompt, [start.providerSourceUrl]);
     return { start, end };
   }
 
@@ -120,10 +104,8 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     contentType: string;
     providerSourceUrl?: string;
   }> {
-    return this.generateFromTextToImage(
-      startPrompt,
-      redactList(options?.regenerationNote),
-    );
+    void options;
+    return this.generateFromTextToImage(startPrompt);
   }
 
   async generateEndImage(
@@ -132,14 +114,10 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
   ): Promise<{ bytes: Uint8Array; contentType: string }> {
     const startReferenceImageUrl = options?.startReferenceImageUrl;
     if (!startReferenceImageUrl) {
-      throw new Error("fal end image generation requires startReferenceImageUrl");
+      throw new FalImageGenerationError("fal_start_reference_required", 400);
     }
     assertAllowedFalImageDownloadUrl(startReferenceImageUrl);
-    return this.generateFromEdit(
-      endPrompt,
-      [startReferenceImageUrl],
-      redactList(options?.regenerationNote),
-    );
+    return this.generateFromEdit(endPrompt, [startReferenceImageUrl]);
   }
 
   private falApiRequestHeaders(contentType?: string): Record<string, string> {
@@ -159,8 +137,11 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     };
   }
 
-  private sanitizeErrorDetail(detail: string, extraRedact: string[] = []): string {
-    return redactValues(redactSecret(detail, this.config.apiKey), extraRedact);
+  private falRequestFailed(status: number, kind: "api" | "download"): never {
+    throw new FalImageGenerationError(
+      kind === "download" ? "fal_image_download_failed" : "fal_api_request_failed",
+      status,
+    );
   }
 
   private async readBodyWithSizeCap(response: Response): Promise<Uint8Array> {
@@ -200,7 +181,6 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
 
   private async downloadFalImage(
     urlString: string,
-    redactInErrors: string[],
   ): Promise<{ bytes: Uint8Array; contentType: string }> {
     const initialUrl = assertAllowedFalImageDownloadUrl(urlString);
     let response = await this.fetchImpl(initialUrl.toString(), {
@@ -225,8 +205,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     }
 
     if (!response.ok) {
-      const detail = this.sanitizeErrorDetail(await response.text(), redactInErrors);
-      throw new Error(`fal image download failed (${response.status}): ${detail}`);
+      this.falRequestFailed(response.status, "download");
     }
 
     const contentType = response.headers.get("content-type") ?? "image/png";
@@ -234,10 +213,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     return { bytes, contentType };
   }
 
-  private async generateFromTextToImage(
-    prompt: string,
-    redactInErrors: string[] = [],
-  ): Promise<{
+  private async generateFromTextToImage(prompt: string): Promise<{
     bytes: Uint8Array;
     contentType: string;
     providerSourceUrl: string;
@@ -253,8 +229,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
       }),
     });
     if (!response.ok) {
-      const detail = this.sanitizeErrorDetail(await response.text(), redactInErrors);
-      throw new Error(`fal image generation failed (${response.status}): ${detail}`);
+      this.falRequestFailed(response.status, "api");
     }
     const payload = (await response.json()) as FalImageResponse;
     const imageUrl = payload.images?.[0]?.url;
@@ -262,14 +237,13 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
       throw new Error("fal image generation returned no image URL");
     }
     assertAllowedFalImageDownloadUrl(imageUrl);
-    const downloaded = await this.downloadFalImage(imageUrl, redactInErrors);
+    const downloaded = await this.downloadFalImage(imageUrl);
     return { ...downloaded, providerSourceUrl: imageUrl };
   }
 
   private async generateFromEdit(
     prompt: string,
     imageUrls: string[],
-    redactInErrors: string[] = [],
   ): Promise<{ bytes: Uint8Array; contentType: string }> {
     for (const imageUrl of imageUrls) {
       assertAllowedFalImageDownloadUrl(imageUrl);
@@ -286,18 +260,13 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
       }),
     });
     if (!response.ok) {
-      const detail = this.sanitizeErrorDetail(await response.text(), redactInErrors);
-      throw new Error(`fal image edit failed (${response.status}): ${detail}`);
+      this.falRequestFailed(response.status, "api");
     }
     const payload = (await response.json()) as FalImageResponse;
     const imageUrl = payload.images?.[0]?.url;
     if (!imageUrl) {
       throw new Error("fal image edit returned no image URL");
     }
-    return this.downloadFalImage(imageUrl, redactInErrors);
+    return this.downloadFalImage(imageUrl);
   }
-}
-
-function redactList(regenerationNote: string | null | undefined): string[] {
-  return regenerationNote ? [regenerationNote] : [];
 }
