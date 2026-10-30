@@ -17,6 +17,7 @@ import {
 import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
 import {
   collectForbiddenLegacySchemaFields,
+  collectOutputPatternPropertiesViolations,
   collectPatternPropertiesViolations,
   collectPatientLikeDescriptionViolations,
   collectSchemaDescriptionViolations,
@@ -105,7 +106,7 @@ describe("collectPatternPropertiesViolations", () => {
       },
     };
     expect(collectPatternPropertiesViolations(nestedOutputFixture)).toEqual([
-      "patternProperties",
+      "properties.rows",
     ]);
 
     const clean: JsonSchema = {
@@ -116,6 +117,39 @@ describe("collectPatternPropertiesViolations", () => {
       },
     };
     expect(collectPatternPropertiesViolations(clean)).toEqual([]);
+  });
+});
+
+describe("collectOutputPatternPropertiesViolations", () => {
+  const qaFixturePatternPropertiesTool = {
+    name: "qa_fixture_output_pattern_properties",
+    outputSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        rows: {
+          type: "object",
+          patternProperties: {
+            "^[a-z]+$": { type: "string" },
+          },
+        },
+      },
+    } satisfies JsonSchema,
+  };
+
+  it("reports a planted fixture tool by name and schema path alongside real tools", () => {
+    expect(
+      collectOutputPatternPropertiesViolations([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toEqual([
+      {
+        tool: qaFixturePatternPropertiesTool.name,
+        path: "properties.rows",
+      },
+    ]);
   });
 });
 

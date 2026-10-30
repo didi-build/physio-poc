@@ -55,6 +55,82 @@ export function visitSchemaNodes(
   }
 }
 
+function formatSchemaWalkPath(segments: readonly string[]): string {
+  return segments.length === 0 ? "root" : segments.join(".");
+}
+
+export function visitSchemaNodesWithPath(
+  schema: unknown,
+  path: readonly string[],
+  visit: (node: JsonSchema, path: readonly string[]) => void,
+): void {
+  if (!schema || typeof schema !== "object") return;
+  const node = schema as JsonSchema;
+  visit(node, path);
+
+  for (const key of SCHEMA_WALK_KEYS) {
+    const branch = node[key];
+    if (Array.isArray(branch)) {
+      for (let index = 0; index < branch.length; index += 1) {
+        visitSchemaNodesWithPath(branch[index], [...path, key, String(index)], visit);
+      }
+    } else if (branch && typeof branch === "object") {
+      if (key === "properties" || key === "dependentSchemas") {
+        for (const [propName, sub] of Object.entries(
+          branch as Record<string, unknown>,
+        )) {
+          visitSchemaNodesWithPath(sub, [...path, key, propName], visit);
+        }
+      } else {
+        visitSchemaNodesWithPath(branch, [...path, key], visit);
+      }
+    }
+  }
+
+  const additional = node.additionalProperties;
+  if (additional && typeof additional === "object") {
+    visitSchemaNodesWithPath(additional, [...path, "additionalProperties"], visit);
+  }
+}
+
+export type McpToolOutputSchemaSource = {
+  readonly name: string;
+  readonly outputSchema: JsonSchema;
+};
+
+export type OutputPatternPropertiesViolation = {
+  readonly tool: string;
+  readonly path: string;
+};
+
+export function collectOutputPatternPropertiesViolations(
+  tools: readonly McpToolOutputSchemaSource[],
+): OutputPatternPropertiesViolation[] {
+  const violations: OutputPatternPropertiesViolation[] = [];
+  for (const tool of tools) {
+    visitSchemaNodesWithPath(tool.outputSchema, [], (node, path) => {
+      if (node.patternProperties) {
+        violations.push({
+          tool: tool.name,
+          path: formatSchemaWalkPath(path),
+        });
+      }
+    });
+  }
+  return violations;
+}
+
+export function assertNoOutputPatternProperties(
+  tools: readonly McpToolOutputSchemaSource[],
+): void {
+  const violations = collectOutputPatternPropertiesViolations(tools);
+  if (violations.length > 0) {
+    throw new Error(
+      `output patternProperties violations: ${JSON.stringify(violations)}`,
+    );
+  }
+}
+
 export function collectInputUrlLikeViolations(schema: JsonSchema): string[] {
   const violations: string[] = [];
 
@@ -211,9 +287,9 @@ export function collectSchemaPropertyNames(schema: JsonSchema): Set<string> {
 
 export function collectPatternPropertiesViolations(schema: JsonSchema): string[] {
   const hits: string[] = [];
-  visitSchemaNodes(schema, (node) => {
+  visitSchemaNodesWithPath(schema, [], (node, path) => {
     if (node.patternProperties) {
-      hits.push("patternProperties");
+      hits.push(formatSchemaWalkPath(path));
     }
   });
   return hits;
