@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createNodeAppDependencies } from "../adapters/node/create-node-app-dependencies.js";
+import { nodeCimdMetadataFetch } from "./node/cimd-metadata-fetch.js";
 import { loadLocalDevEnv } from "../adapters/node/load-local-dev-env.js";
 import {
   handleRequest,
@@ -76,16 +77,19 @@ export async function writeWebResponse(
 
 export async function createDefaultNodeDependencies(): Promise<AppDependencies> {
   loadLocalDevEnv();
-  const deps = await createNodeAppDependencies({
-    WEB_APP_BASE_URL: process.env.WEB_APP_BASE_URL,
-    AUTH_BASE_URL: process.env.AUTH_BASE_URL,
-    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-    PHYSIO_ALLOWED_GOOGLE_EMAILS: process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS,
-    PHYSIO_USE_FAKE_GOOGLE_PROVIDER: process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER,
-    NODE_ENV: process.env.NODE_ENV,
-  });
+  const deps = await createNodeAppDependencies(
+    {
+      WEB_APP_BASE_URL: process.env.WEB_APP_BASE_URL,
+      AUTH_BASE_URL: process.env.AUTH_BASE_URL,
+      BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+      GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS,
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER,
+      NODE_ENV: process.env.NODE_ENV,
+    },
+    { cimdMetadataFetch: nodeCimdMetadataFetch },
+  );
   return {
     ...deps,
     extraRouteHandlers: nodeExerciseMediaRouteHandlers(process.env.NODE_ENV),

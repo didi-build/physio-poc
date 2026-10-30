@@ -14,6 +14,11 @@ import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
+export type McpBearerAuthHandler = (
+  request: Request,
+  mcpHandler: McpHttpHandler,
+) => Promise<Response>;
+
 export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
 
 /** Returns a Response when the handler owns the request; null to try the next handler. */
@@ -28,6 +33,8 @@ export type AppDependencies = {
   config: PhysioServerConfig;
   auth: AuthPort;
   mcp: McpHttpHandler;
+  /** When set, /mcp requires a valid OAuth bearer token (DIDI-1043). */
+  mcpBearerAuth?: McpBearerAuthHandler;
   uiStatic?: UiStaticPort;
   /** Dev/test entries only; never true on the Worker entry. */
   enableFakeGoogleRoutes?: boolean;
@@ -99,6 +106,9 @@ export async function handleRequest(
   }
 
   if (pathname === MCP_PATH || pathname === `${MCP_PATH}/`) {
+    if (deps.mcpBearerAuth) {
+      return deps.mcpBearerAuth(request, deps.mcp);
+    }
     const practitioner = await deps.auth.getPractitioner(request);
     if (!practitioner) {
       return jsonUnauthorized();
