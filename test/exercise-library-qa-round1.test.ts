@@ -16,6 +16,7 @@ import {
   VERSION_INSERT_SQL,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-data.js";
 import { ExerciseBodyRegionsRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
@@ -35,8 +36,8 @@ async function seedApproved(
     bodyRegionId?: string;
   } = {},
 ) {
-  const exerciseId = options.exerciseId ?? "ex-1";
-  const versionId = options.versionId ?? `ver-${exerciseId}`;
+  const exerciseId = options.exerciseId ?? id("ex-1");
+  const versionId = options.versionId ?? id(`ver-${exerciseId}`);
   await seedExercise(storage, practId, exerciseId);
   await storage.run(VERSION_INSERT_SQL, [
     ...versionInsertBindings({
@@ -52,7 +53,7 @@ async function seedApproved(
   if (options.alias) {
     const aliases = new ExerciseAliasesRepository(storage);
     await aliases.insert({
-      id: `alias-${exerciseId}`,
+      id: id(`alias-${exerciseId}`),
       exerciseId,
       alias: options.alias,
       createdAt: TS,
@@ -153,13 +154,15 @@ describe("Exercise library QA round 1 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       const pract2 = await seedPractitioner(storage, "pract-2", "coach2@example.com");
+      const exAaa = id("ex-aaa");
+      const exZzz = id("ex-zzz");
       await seedApproved(storage, practId, {
-        exerciseId: "ex-aaa",
+        exerciseId: exAaa,
         title: "AAA move",
         approvedAt: "2026-01-01T00:00:00.000Z",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-zzz",
+        exerciseId: exZzz,
         title: "ZZZ move",
         approvedAt: "2026-02-01T00:00:00.000Z",
       });
@@ -167,19 +170,19 @@ describe("Exercise library QA round 1 (integration)", () => {
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-aaa",
+        exerciseId: exAaa,
         savedAt: TS,
         lastUsedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: pract2,
-        exerciseId: "ex-aaa",
+        exerciseId: exAaa,
         savedAt: TS,
         lastUsedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-zzz",
+        exerciseId: exZzz,
         savedAt: TS,
         lastUsedAt: TS,
       });
@@ -189,16 +192,13 @@ describe("Exercise library QA round 1 (integration)", () => {
         practitionerId: practId,
         sort: "most_used",
       });
-      expect(mostUsed.exercises.map((row) => row.exercise_id)).toEqual([
-        "ex-aaa",
-        "ex-zzz",
-      ]);
+      expect(mostUsed.exercises.map((row) => row.exercise_id)).toEqual([exAaa, exZzz]);
 
       const newest = await service.searchApprovedExercises({
         practitionerId: practId,
         sort: "newest",
       });
-      expect(newest.exercises[0]?.exercise_id).toBe("ex-zzz");
+      expect(newest.exercises[0]?.exercise_id).toBe(exZzz);
 
       const alpha = await service.searchApprovedExercises({
         practitionerId: practId,
@@ -274,7 +274,7 @@ describe("Exercise library QA round 1 (integration)", () => {
         title: "Heel slide",
       });
       const typeDefaults = new TypeDefaultsRepository(storage);
-      await typeDefaults.upsertPractitionerDefaults("td-1", practId, "stretching", {
+      await typeDefaults.upsertPractitionerDefaults(id("td-1"), practId, "stretching", {
         reps: 5,
       });
 
@@ -435,24 +435,26 @@ describe("Exercise library QA round 1 (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
+      const exA = id("ex-a");
+      const exB = id("ex-b");
       await seedApproved(storage, practId, {
-        exerciseId: "ex-a",
+        exerciseId: exA,
         title: "Alpha stretch",
         alias: "ZZTOP",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-b",
+        exerciseId: exB,
         title: "Beta stretch",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-a",
+        exerciseId: exA,
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-b",
+        exerciseId: exB,
         savedAt: TS,
       });
 

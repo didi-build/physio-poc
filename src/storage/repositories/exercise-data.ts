@@ -35,9 +35,10 @@ export class PractitionersRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(row: PractitionerRow): Promise<void> {
+    const id = validateOpaqueEntityId(row.id, "Practitioner id");
     await this.sql.run(
       "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-      [row.id, row.email, row.created_at],
+      [id, row.email, row.created_at],
     );
   }
 
@@ -137,9 +138,11 @@ export class ExercisesRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(row: ExerciseRow): Promise<void> {
+    const id = validateOpaqueEntityId(row.id, "Exercise id");
+    const createdBy = validateOpaqueEntityId(row.created_by, "Practitioner id");
     await this.sql.run(
       "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
-      [row.id, row.category, row.created_by, row.created_at],
+      [id, row.category, createdBy, row.created_at],
     );
   }
 }
@@ -188,6 +191,16 @@ export class ExerciseVersionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(input: ExerciseVersionInsert): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Exercise version id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const approvedBy =
+      input.approvedBy === null
+        ? null
+        : validateOpaqueEntityId(input.approvedBy, "Practitioner id");
+    const mediaSetId =
+      input.mediaSetId === null || input.mediaSetId === undefined
+        ? null
+        : validateOpaqueEntityId(input.mediaSetId, "Media set id");
     const title = validateExerciseTitle(input.title);
     const description = validateExerciseTemplateText(
       input.description ?? "",
@@ -242,11 +255,11 @@ export class ExerciseVersionsRepository {
         media_set_id, change_summary, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        input.id,
-        input.exerciseId,
+        id,
+        exerciseId,
         input.versionNumber,
         input.status,
-        input.approvedBy,
+        approvedBy,
         input.approvedAt,
         title,
         description,
@@ -261,7 +274,7 @@ export class ExerciseVersionsRepository {
         cueIsometric,
         cueConcentric,
         cueEccentric,
-        input.mediaSetId ?? null,
+        mediaSetId,
         changeSummary,
         input.createdAt,
       ],
@@ -278,10 +291,12 @@ export class ExerciseAliasesRepository {
     alias: string;
     createdAt: string;
   }): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Exercise alias id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
     const alias = validateExerciseAlias(input.alias);
     await this.sql.run(
       "INSERT INTO exercise_aliases (id, exercise_id, alias, created_at) VALUES (?, ?, ?, ?)",
-      [input.id, input.exerciseId, alias, input.createdAt],
+      [id, exerciseId, alias, input.createdAt],
     );
   }
 }

@@ -19,6 +19,7 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 /** Made-up date string; must not match a real person. */
 const FAKE_DOB_SNIPPET = "DOB 1990-01-01";
@@ -56,7 +57,7 @@ function validVersionInsert(
   overrides: { title?: string; steps?: string } = {},
 ) {
   return {
-    id: "ver-qa3",
+    id: id("ver-qa3"),
     exerciseId,
     versionNumber: 1,
     status: "draft" as const,
@@ -122,8 +123,9 @@ describe("QA round 3: exercise versions repository (integration, SQLite)", () =>
       const practId = await seedPractitioner(storage);
       const exId = await seedExercise(storage, practId);
       const versions = new ExerciseVersionsRepository(storage);
+      const versionId = id("ver-happy-path");
       await versions.insert({
-        id: "ver-happy-path",
+        id: versionId,
         exerciseId: exId,
         versionNumber: 1,
         status: "draft",
@@ -135,7 +137,7 @@ describe("QA round 3: exercise versions repository (integration, SQLite)", () =>
       });
       const row = await storage.first<{ title: string; steps: string }>(
         "SELECT title, steps FROM exercise_versions WHERE id = ? LIMIT 1",
-        ["ver-happy-path"],
+        [versionId],
       );
       expect(row).toEqual({
         title: "Heel slide",

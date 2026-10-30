@@ -14,6 +14,7 @@ import {
   VERSION_INSERT_SQL,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -30,8 +31,8 @@ async function seedApproved(
     alias?: string;
   } = {},
 ) {
-  const exerciseId = options.exerciseId ?? "ex-1";
-  const versionId = options.versionId ?? `ver-${exerciseId}`;
+  const exerciseId = options.exerciseId ?? id("ex-1");
+  const versionId = options.versionId ?? id(`ver-${exerciseId}`);
   await seedExercise(storage, practId, exerciseId);
   if (options.category && options.category !== "stretch") {
     await storage.run("UPDATE exercises SET category = ? WHERE id = ?", [
@@ -53,7 +54,7 @@ async function seedApproved(
   if (options.alias) {
     const aliases = new ExerciseAliasesRepository(storage);
     await aliases.insert({
-      id: `alias-${exerciseId}-${options.alias}`,
+      id: id(`alias-${exerciseId}-${options.alias}`),
       exerciseId,
       alias: options.alias,
       createdAt: TS,
@@ -102,7 +103,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-slr",
+        id: id("alias-slr"),
         exerciseId,
         alias: "SLR",
         createdAt: TS,
@@ -129,13 +130,13 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-slr-raise",
+        id: id("alias-slr-raise"),
         exerciseId,
         alias: "SLR raise",
         createdAt: TS,
       });
       await aliases.insert({
-        id: "alias-slr",
+        id: id("alias-slr"),
         exerciseId,
         alias: "SLR",
         createdAt: TS,

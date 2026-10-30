@@ -8,6 +8,7 @@ import {
   validateExerciseParams,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
+import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 
 export type TypeDefaultsRow = {
   scope: "global" | "practitioner";
@@ -53,12 +54,13 @@ export class TypeDefaultsRepository {
     type: PrescriptionType,
     params: ExerciseParams,
   ): Promise<void> {
+    const opaqueId = validateOpaqueEntityId(id, "Type default id");
     const validated = validateExerciseParams(params);
     await this.sql.run(
       `INSERT INTO type_defaults (id, scope, practitioner_id, type, params_json)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(practitioner_id, type) WHERE scope = 'practitioner' DO UPDATE SET params_json = excluded.params_json`,
-      [id, "practitioner", practitionerId, type, JSON.stringify(validated)],
+      [opaqueId, "practitioner", practitionerId, type, JSON.stringify(validated)],
     );
   }
 
