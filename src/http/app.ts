@@ -34,14 +34,6 @@ export type AppDependencies = {
   guardedAppWithoutSession?: GuardedAppWithoutSession;
   /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
   extraRouteHandlers?: AppRouteHandler[];
-  /**
-   * Test-only OAuth authorize handler (dev/test). Runs before auth when
-   * `enableFakeGoogleRoutes` is true.
-   */
-  testOAuthAuthorizeHandler?: (
-    request: Request,
-    authBaseUrl: string,
-  ) => Promise<Response | null>;
   /** Optional image port for exercise media routes (tests only). */
   exerciseMediaImages?: ImageGenerationPort;
 };
@@ -93,15 +85,6 @@ export async function handleRequest(
     );
     if (fakeGoogle) {
       return fakeGoogle;
-    }
-    if (deps.testOAuthAuthorizeHandler) {
-      const testOAuth = await deps.testOAuthAuthorizeHandler(
-        request,
-        deps.config.auth.authBaseUrl,
-      );
-      if (testOAuth) {
-        return testOAuth;
-      }
     }
   }
 
