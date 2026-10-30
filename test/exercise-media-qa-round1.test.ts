@@ -12,21 +12,14 @@ import {
   DAILY_MEDIA_REGENERATION_CAP,
   ExerciseMediaService,
 } from "../src/services/exercise-media/exercise-media-service.js";
-import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import {
-  applyMigration,
-  MIGRATION_0001_ID,
-  MIGRATION_0003_ID,
-} from "../src/storage/migrations/apply.js";
-import {
-  MIGRATION_0003_SQL,
-  MIGRATION_SQL,
   openMigratedDatabase,
   seedExercise,
   seedPractitioner,
   TS,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 describe("exercise media QA round 1 (integration and unit)", () => {
   it("pins the daily cap constant at 5", () => {
@@ -40,9 +33,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
   });
 
   it("rejects invalid visibility, scope, and had_note CHECK values in migration 0003", async () => {
-    const storage = BetterSqliteStorage.openInMemory();
-    await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_SQL);
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
+    const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
@@ -59,7 +50,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           `INSERT INTO media_regenerations (
             id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          ["r1", practitionerId, exerciseId, null, "all", 0, TS],
+          [id("r1"), practitionerId, exerciseId, null, "all", 0, TS],
         ),
       ).rejects.toThrow();
       await expect(
@@ -67,7 +58,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           `INSERT INTO media_regenerations (
             id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          ["r2", practitionerId, exerciseId, null, "start", 2, TS],
+          [id("r2"), practitionerId, exerciseId, null, "start", 2, TS],
         ),
       ).rejects.toThrow();
     } finally {
@@ -82,6 +73,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
+      const approvedVersionId = id("ver-approved");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -91,7 +83,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           media_set_id, change_summary, created_at
         ) VALUES (${Array(22).fill("?").join(", ")})`,
         versionInsertBindings({
-          id: "ver-approved",
+          id: approvedVersionId,
           exercise_id: exerciseId,
           version_number: 1,
           status: "approved",
@@ -106,15 +98,15 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         new FakeImageGeneration(),
         media,
         () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
-        () => `id-${tick}`,
+        () => id(`media-id-${tick}`),
       );
       await service.generateInitialMediaForVersion({
-        exerciseVersionId: "ver-approved",
+        exerciseVersionId: approvedVersionId,
       });
       putSpy.mockClear();
       await service.regenerateMedia({
         practitionerId,
-        exerciseVersionId: "ver-approved",
+        exerciseVersionId: approvedVersionId,
         scope: "start",
       });
       for (const call of putSpy.mock.calls) {
@@ -134,6 +126,8 @@ describe("exercise media QA round 1 (integration and unit)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
+      const draftVersionId = id("ver-draft-public-media");
+      const mediaSetId = id("ms-public-draft");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -143,7 +137,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           media_set_id, change_summary, created_at
         ) VALUES (${Array(22).fill("?").join(", ")})`,
         versionInsertBindings({
-          id: "ver-draft-public-media",
+          id: draftVersionId,
           exercise_id: exerciseId,
           status: "draft",
           title: "Heel slide",
@@ -154,28 +148,26 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           id, start_object_key, end_object_key, start_provider_url, visibility, created_at
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         [
-          "ms-public-draft",
-          "media-sets/ms-public-draft/start.png",
-          "media-sets/ms-public-draft/end.png",
+          mediaSetId,
+          `media-sets/${mediaSetId}/start.png`,
+          `media-sets/${mediaSetId}/end.png`,
           null,
           "public",
           TS,
         ],
       );
       await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
-        "ms-public-draft",
-        "ver-draft-public-media",
+        mediaSetId,
+        draftVersionId,
       ]);
       const service = new ExerciseMediaService(
         storage,
         new FakeImageGeneration(),
         new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
+      expect(await service.getMediaForServing(draftVersionId, "public")).toBeNull();
       expect(
-        await service.getMediaForServing("ver-draft-public-media", "public"),
-      ).toBeNull();
-      expect(
-        await service.getMediaForServing("ver-draft-public-media", "internal"),
+        await service.getMediaForServing(draftVersionId, "internal"),
       ).not.toBeNull();
     } finally {
       storage.close();
@@ -187,6 +179,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
+      const quotaVersionId = id("ver-quota");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -196,7 +189,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           media_set_id, change_summary, created_at
         ) VALUES (${Array(22).fill("?").join(", ")})`,
         versionInsertBindings({
-          id: "ver-quota",
+          id: quotaVersionId,
           exercise_id: exerciseId,
           status: "draft",
           title: "Bridge",
@@ -207,10 +200,10 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
-          "old-regen",
+          id("old-regen"),
           practitionerId,
           exerciseId,
-          "ver-quota",
+          quotaVersionId,
           "start",
           0,
           "2026-10-29T23:59:59.000Z",

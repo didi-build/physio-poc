@@ -5,12 +5,17 @@ import { BetterSqliteStorage } from "../../src/adapters/node/better-sqlite-sql-s
 import {
   applyMigration,
   MIGRATION_0001_ID,
+  MIGRATION_0002_ID,
   MIGRATION_0003_ID,
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
-export const MIGRATION_SQL = readFileSync(
+export const MIGRATION_0001_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0001_exercise_data_model.sql"),
+  "utf8",
+);
+export const MIGRATION_0002_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0002_program_data_model.sql"),
   "utf8",
 );
 export const MIGRATION_0003_SQL = readFileSync(
@@ -18,45 +23,53 @@ export const MIGRATION_0003_SQL = readFileSync(
   "utf8",
 );
 
+/** @deprecated use MIGRATION_0001_SQL */
+export const MIGRATION_SQL = MIGRATION_0001_SQL;
+
 export const TS = "2026-01-01T00:00:00.000Z";
+
+export const FIXTURE_PRACTITIONER_ID = "11111111-1111-4111-8111-111111111111";
+export const FIXTURE_EXERCISE_ID = "22222222-2222-4222-8222-222222222222";
+export const FIXTURE_VERSION_ID = "33333333-3333-4333-8333-333333333333";
 
 export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   const storage = BetterSqliteStorage.openInMemory();
-  await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_SQL);
+  await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
+  await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   return storage;
 }
 
 export async function seedPractitioner(
   storage: SqlStoragePort,
-  id = "pract-1",
+  practitionerId = FIXTURE_PRACTITIONER_ID,
   email = "coach@example.com",
 ): Promise<string> {
   await storage.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    [id, email, TS],
+    [practitionerId, email, TS],
   );
-  return id;
+  return practitionerId;
 }
 
 export async function seedExercise(
   storage: SqlStoragePort,
   practitionerId: string,
-  id = "ex-1",
+  exerciseId = FIXTURE_EXERCISE_ID,
 ): Promise<string> {
   await storage.run(
     "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
-    [id, "stretch", practitionerId, TS],
+    [exerciseId, "stretch", practitionerId, TS],
   );
-  return id;
+  return exerciseId;
 }
 
 export function versionInsertBindings(
   overrides: Record<string, unknown> = {},
 ): (string | number | null)[] {
   const base = {
-    id: "ver-1",
-    exercise_id: "ex-1",
+    id: FIXTURE_VERSION_ID,
+    exercise_id: FIXTURE_EXERCISE_ID,
     version_number: 1,
     status: "draft",
     approved_by: null,
@@ -112,3 +125,12 @@ export const VERSION_INSERT_SQL = `INSERT INTO exercise_versions (
   cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
   media_set_id, change_summary, created_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+export async function seedApprovedExerciseVersion(
+  storage: SqlStoragePort,
+  practitionerId: string,
+): Promise<{ exerciseId: string; versionId: string }> {
+  const exerciseId = await seedExercise(storage, practitionerId);
+  await storage.run(VERSION_INSERT_SQL, versionInsertBindings());
+  return { exerciseId, versionId: FIXTURE_VERSION_ID };
+}

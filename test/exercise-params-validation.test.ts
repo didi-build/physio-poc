@@ -22,6 +22,7 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 
 describe("exercise params validation (unit)", () => {
   it("accepts known keys and rejects unknown keys", () => {
@@ -302,7 +303,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const repo = new ExerciseRequestsRepository(storage);
       await expect(
         repo.insert({
-          id: "req-bad-note",
+          id: id("req-bad-note"),
           requestedName: "Heel slide",
           note: "a".repeat(301),
           requestedBy: practId,

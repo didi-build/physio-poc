@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
 import {
@@ -9,21 +7,16 @@ import {
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
-import { applyMigration, MIGRATION_0003_ID } from "../src/storage/migrations/apply.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
 import {
+  FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedExercise,
   seedPractitioner,
   TS,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
-
-const REPO_ROOT = join(import.meta.dirname, "..");
-const MIGRATION_0003_SQL = readFileSync(
-  join(REPO_ROOT, "migrations/0003_exercise_media.sql"),
-  "utf8",
-);
+import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 describe("exercise media prompts (unit)", () => {
   it("uses the shared clinical illustration template without patient-specific fields", () => {
@@ -71,14 +64,14 @@ describe("ExerciseMediaService (integration)", () => {
         media_set_id, change_summary, created_at
       ) VALUES (${Array(22).fill("?").join(", ")})`,
       versionInsertBindings({
-        id: "ver-draft",
+        id: FIXTURE_VERSION_ID,
         exercise_id: exerciseId,
         status: "draft",
         title: "Heel slide",
         starting_position: "Supine",
       }),
     );
-    return { practitionerId, exerciseId, versionId: "ver-draft" };
+    return { practitionerId, exerciseId, versionId: FIXTURE_VERSION_ID };
   }
 
   async function createService(
@@ -92,7 +85,7 @@ describe("ExerciseMediaService (integration)", () => {
       images,
       media,
       () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
-      () => `id-${tick}`,
+      () => testOpaqueEntityId(`media-id-${tick}`),
     );
     return { service, media };
   }
@@ -114,7 +107,6 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("stores draft media as non-public until promotion", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const { versionId } = await seedDraftVersion(storage);
       const { service, media } = await createService(storage);
@@ -133,7 +125,6 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("enforces five regenerations per practitioner per UTC day", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const { service } = await createService(storage);
@@ -161,10 +152,10 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("creates a new approved version when regenerating media on an approved exercise", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
+      const approvedVersionId = id("ver-approved-1");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -174,7 +165,7 @@ describe("ExerciseMediaService (integration)", () => {
           media_set_id, change_summary, created_at
         ) VALUES (${Array(22).fill("?").join(", ")})`,
         versionInsertBindings({
-          id: "ver-approved-1",
+          id: approvedVersionId,
           exercise_id: exerciseId,
           version_number: 1,
           status: "approved",
@@ -185,11 +176,11 @@ describe("ExerciseMediaService (integration)", () => {
       );
       const { service } = await createService(storage);
       await service.generateInitialMediaForVersion({
-        exerciseVersionId: "ver-approved-1",
+        exerciseVersionId: approvedVersionId,
       });
       const result = await service.regenerateMedia({
         practitionerId,
-        exerciseVersionId: "ver-approved-1",
+        exerciseVersionId: approvedVersionId,
         scope: "both",
         note: "deeper range",
       });
@@ -219,7 +210,6 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("does not persist regeneration note text; records had_note only", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     const secretNote = "UNPERSISTED_REGEN_NOTE_xyzzy";
     const objects = new InMemoryObjectStorage();
     const objectPutSpy = vi.spyOn(objects, "put");
@@ -237,7 +227,7 @@ describe("ExerciseMediaService (integration)", () => {
         new FakeImageGeneration(),
         media,
         () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
-        () => `id-${tick}`,
+        () => testOpaqueEntityId(`media-id-${tick}`),
       );
       await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
       await service.regenerateMedia({
@@ -291,7 +281,6 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("rejects patient details in the note before calling image generation", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     const generateStartImage = vi.fn();
     const images: ImageGenerationPort = {
       generateStartAndEndImages: vi.fn(),
