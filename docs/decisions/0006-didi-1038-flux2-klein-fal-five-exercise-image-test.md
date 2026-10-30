@@ -9,7 +9,12 @@
 
 Product direction on [DIDI-594](https://linear.app/didi-build/issue/DIDI-594), quoted verbatim:
 
-- 5:51 PM ET, Oct 29, 2026: no AI video in V0 or V1. Each exercise gets AI start and end images, with a browser CSS transition between them.
+Diadem, Oct 29, 2026, 5:51 PM ET, CTO chat, recorded on DIDI-594:
+
+> "Yes, okay, just like I thought, right now for V1 or V0 the AI video is simply the start image and the end image that kind of have a transition between the two. So I don't think we need to worry about generating AI videos itself. We need to worry about generating AI images, and then we can find a library or something to stitch those images together with some nice professional kind of transition with them. Yeah. Like, even if it's, if we are thinking it needs to be in the browser, then we don't even need to save the image. We just will need to have the start and the end. And then like U C S S transitions."
+
+V0 and V1 ship start and end AI images with in-browser CSS transitions, not generated AI video.
+
 - 6:42 PM ET: "only flux.2 klein"
 - 6:44 PM ET ([DIDI-1028](https://linear.app/didi-build/issue/DIDI-1028)): "Run the klein test on fal, terms accepted"
 
