@@ -1,8 +1,6 @@
 /**
  * @vitest-environment jsdom
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import "./setup.js";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
@@ -15,10 +13,6 @@ afterEach(() => {
 });
 
 const CONFIRM_TITLE = "Restore version 2?";
-const CONFIRM_SHEET_PATH = join(
-  import.meta.dirname,
-  "../../src/ui/components/ConfirmSheet.tsx",
-);
 
 describe("ConfirmSheet", () => {
   it("renders nothing when open is false", () => {
@@ -217,10 +211,6 @@ describe("ConfirmSheet", () => {
 
   it("labels the scrim from the a11y copy module", () => {
     expect(ARIA_CLOSE_SCRIM).toBe("Close");
-
-    const source = readFileSync(CONFIRM_SHEET_PATH, "utf8");
-    expect(source).toContain("ARIA_CLOSE_SCRIM");
-    expect(source).toMatch(/aria-label=\{ARIA_CLOSE_SCRIM\}/);
 
     render(
       <ConfirmSheet

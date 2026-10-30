@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,34 +9,6 @@ import {
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
-const PORTABLE_IMPORT_GUARD_PATH = join(
-  REPO_ROOT,
-  "scripts/lib/portable-import-guard.mjs",
-);
-
-function extractFunctionBody(source: string, fnNeedle: string): string {
-  const fnStart = source.indexOf(fnNeedle);
-  if (fnStart < 0) {
-    throw new Error(`${fnNeedle} not found`);
-  }
-  const braceStart = source.indexOf("{", fnStart);
-  if (braceStart < 0) {
-    throw new Error(`${fnNeedle} body start not found`);
-  }
-  let depth = 0;
-  for (let index = braceStart; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return source.slice(braceStart, index + 1);
-      }
-    }
-  }
-  throw new Error(`${fnNeedle} body not found`);
-}
 
 const UI_IMPORT_ORDER_OVERLAP_SPECIFIER = "test-only-overlap-specifier";
 
@@ -441,19 +412,6 @@ describe("portable runtime import guard (unit)", () => {
       "import { useState } from 'react';",
     );
     expect(allowedMessages).toEqual([]);
-  });
-
-  it("pins denylist-before-allowlist order in uiNonRelativeImportViolationMessage (structural)", () => {
-    const source = readFileSync(PORTABLE_IMPORT_GUARD_PATH, "utf8");
-    const fnBody = extractFunctionBody(
-      source,
-      "export function uiNonRelativeImportViolationMessage",
-    );
-    const platformCheck = fnBody.indexOf("checks.isPlatformModule(specifierText)");
-    const allowlistCheck = fnBody.indexOf("checks.isAllowedUiModule(specifierText)");
-    expect(platformCheck).toBeGreaterThan(-1);
-    expect(allowlistCheck).toBeGreaterThan(-1);
-    expect(platformCheck).toBeLessThan(allowlistCheck);
   });
 
   it("denies overlap when both injected predicates match (platform before allowlist)", () => {
