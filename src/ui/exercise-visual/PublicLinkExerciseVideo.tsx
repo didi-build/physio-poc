@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { ExerciseMotion } from "../components/ExerciseMotion.js";
 import {
+  exerciseMotionEndAlt,
+  exerciseMotionStartAlt,
+} from "../exercise-motion/timing.js";
+import {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
 } from "./placeholders.js";
@@ -36,7 +40,7 @@ export function PublicLinkExerciseVideo(sources: PublicLinkExerciseVideoProps = 
           <figure>
             <img
               src={startSrc}
-              alt={`${alt}, start`}
+              alt={exerciseMotionStartAlt(alt)}
               className="exercise-motion-static-img"
               data-testid="public-link-static-start"
             />
@@ -47,7 +51,7 @@ export function PublicLinkExerciseVideo(sources: PublicLinkExerciseVideoProps = 
           <figure>
             <img
               src={endSrc}
-              alt={`${alt}, end`}
+              alt={exerciseMotionEndAlt(alt)}
               className="exercise-motion-static-img"
               data-testid="public-link-static-end"
             />

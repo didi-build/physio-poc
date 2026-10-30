@@ -1,10 +1,9 @@
 import { ExerciseMotion } from "../components/ExerciseMotion.js";
+import { exerciseMotionAiVideoLoopCaption } from "../exercise-motion/timing.js";
 import {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
 } from "./placeholders.js";
-
-const AI_VIDEO_LOOP_CAPTION = "AI video, 6s loop";
 
 export type ExerciseVideoFigureProps = Partial<ExerciseVisualSources> & {
   className?: string;
@@ -24,7 +23,7 @@ export function LibraryDetailExerciseVideo({
     <figure className="exercise-motion-video-figure">
       <ExerciseMotion startSrc={start} endSrc={end} alt={label} className={className} />
       <figcaption className="exercise-motion-video-caption">
-        {AI_VIDEO_LOOP_CAPTION}
+        {exerciseMotionAiVideoLoopCaption()}
       </figcaption>
     </figure>
   );

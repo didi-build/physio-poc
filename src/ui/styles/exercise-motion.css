@@ -54,7 +54,8 @@
 .exercise-motion-stage {
   position: absolute;
   inset: 0;
-  animation: exercise-motion-drift 6s ease-in-out infinite;
+  animation: exercise-motion-drift var(--exercise-motion-loop-duration, 6s) ease-in-out
+    infinite;
 }
 
 .exercise-motion-start-img,
@@ -67,7 +68,8 @@
 }
 
 .exercise-motion-end-img {
-  animation: exercise-motion-xfade-end 6s ease-in-out infinite;
+  animation: exercise-motion-xfade-end var(--exercise-motion-loop-duration, 6s)
+    ease-in-out infinite;
 }
 
 .exercise-motion-progress-track {
@@ -82,7 +84,8 @@
   height: 100%;
   transform-origin: left;
   background: rgb(15 118 110 / 0.8);
-  animation: exercise-motion-progress 6s linear infinite;
+  animation: exercise-motion-progress var(--exercise-motion-loop-duration, 6s) linear
+    infinite;
 }
 
 .exercise-motion-pause-btn {

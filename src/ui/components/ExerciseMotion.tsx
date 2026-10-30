@@ -2,10 +2,16 @@ import {
   useCallback,
   useId,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
 import "../styles/exercise-motion.css";
+import {
+  EXERCISE_MOTION_LOOP_DURATION_CSS,
+  exerciseMotionEndAlt,
+  exerciseMotionStartAlt,
+} from "../exercise-motion/timing.js";
 import { ARIA_PAUSE_EXERCISE_VIDEO, ARIA_PLAY_EXERCISE_VIDEO } from "../copy/a11y.js";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion.js";
 
@@ -86,9 +92,14 @@ export function ExerciseMotion({
     .filter(Boolean)
     .join(" ");
 
+  const loopDurationStyle = {
+    "--exercise-motion-loop-duration": EXERCISE_MOTION_LOOP_DURATION_CSS,
+  } as CSSProperties;
+
   return (
     <div
       className={rootClassName}
+      style={loopDurationStyle}
       onClick={onRootClick}
       onKeyDown={onRootKeyDown}
       role="group"
@@ -99,13 +110,13 @@ export function ExerciseMotion({
         <div className="exercise-motion-stage">
           <img
             src={startSrc}
-            alt={`${alt}, start position`}
+            alt={exerciseMotionStartAlt(alt)}
             className="exercise-motion-start-img"
             data-testid="exercise-motion-start"
           />
           <img
             src={endSrc}
-            alt={`${alt}, end position`}
+            alt={exerciseMotionEndAlt(alt)}
             className="exercise-motion-end-img"
             data-testid="exercise-motion-end"
           />
@@ -131,7 +142,7 @@ export function ExerciseMotion({
         <figure className="exercise-motion-static-figure">
           <img
             src={startSrc}
-            alt={`${alt}, start position`}
+            alt={exerciseMotionStartAlt(alt)}
             className="exercise-motion-static-img"
             data-testid="exercise-motion-static-start"
           />
@@ -142,7 +153,7 @@ export function ExerciseMotion({
         <figure className="exercise-motion-static-figure">
           <img
             src={endSrc}
-            alt={`${alt}, end position`}
+            alt={exerciseMotionEndAlt(alt)}
             className="exercise-motion-static-img"
             data-testid="exercise-motion-static-end"
           />
