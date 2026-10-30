@@ -5,7 +5,11 @@ import type { FakeGoogleFixture } from "../../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../../src/auth/fake-google-http.js";
 import { generateOpaqueEntityId } from "../../src/domain/opaque-entity-id.js";
 import { handleRequest, type AppDependencies } from "../../src/http/app.js";
-import { mcpOAuthResourceUrl } from "../../src/auth/mcp-oauth/paths.js";
+import {
+  mcpOAuthResourceUrl,
+  PHYSIO_MCP_OAUTH_CONSENT_ALLOW_PATH,
+  PHYSIO_MCP_OAUTH_CONSENT_DENY_PATH,
+} from "../../src/auth/mcp-oauth/paths.js";
 import { PHYSIO_MCP_OAUTH_SCOPES } from "../../src/adapters/node/physio-mcp-oauth-plugins.js";
 import { createNodeAppDependencies } from "../../src/adapters/node/create-node-app-dependencies.js";
 import { BetterAuthPort } from "../../src/adapters/node/better-auth-port.js";
@@ -342,16 +346,102 @@ export async function allowConsent(
 }
 
 export async function denyConsent(deps: AppDependencies, jar: CookieJar): Promise<URL> {
-  const response = await requestWithJar(
-    `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
-    deps,
-    jar,
-    { method: "POST" },
-  );
+  const response = await postConsentDeny(deps, jar);
   expect(response.status).toBe(302);
   const location = response.headers.get("location");
   expect(location).toBeTruthy();
   return new URL(location!);
+}
+
+export type ConsentPostOptions = {
+  origin?: string;
+  /** Do not inject the default Origin (use with explicit origin or omitOrigin tests). */
+  omitOrigin?: boolean;
+};
+
+function consentPostHeaders(jar: CookieJar, options: ConsentPostOptions = {}): Headers {
+  const headers = new Headers();
+  const csrf = jar.get(PHYSIO_MCP_CONSENT_CSRF_COOKIE);
+  if (csrf) {
+    headers.set(PHYSIO_MCP_CONSENT_CSRF_HEADER, csrf);
+  }
+  if (options.origin !== undefined) {
+    headers.set("origin", options.origin);
+  }
+  return headers;
+}
+
+export async function postConsentAllow(
+  deps: AppDependencies,
+  jar: CookieJar,
+  options: ConsentPostOptions = {},
+): Promise<Response> {
+  return requestWithJar(
+    `${MCP_OAUTH_TEST_BASE}${PHYSIO_MCP_OAUTH_CONSENT_ALLOW_PATH}`,
+    deps,
+    jar,
+    {
+      method: "POST",
+      headers: consentPostHeaders(jar, options),
+    },
+    { omitOrigin: options.omitOrigin ?? options.origin !== undefined },
+  );
+}
+
+export async function postConsentDeny(
+  deps: AppDependencies,
+  jar: CookieJar,
+  options: ConsentPostOptions = {},
+): Promise<Response> {
+  return requestWithJar(
+    `${MCP_OAUTH_TEST_BASE}${PHYSIO_MCP_OAUTH_CONSENT_DENY_PATH}`,
+    deps,
+    jar,
+    {
+      method: "POST",
+      headers: consentPostHeaders(jar, options),
+    },
+    { omitOrigin: options.omitOrigin ?? options.origin !== undefined },
+  );
+}
+
+export function mcpOAuthExpectedConsentOrigin(base = MCP_OAUTH_TEST_BASE): string {
+  return new URL(base).origin;
+}
+
+export function mcpOAuthExactOriginAttackOrigins(base = MCP_OAUTH_TEST_BASE): string[] {
+  const expected = mcpOAuthExpectedConsentOrigin(base);
+  const parsed = new URL(base);
+  const hostname = parsed.hostname;
+  return [
+    `https://${hostname}.evil.example`,
+    `https://${hostname}:444`,
+    `http://${hostname}`,
+    `${expected}/evil-path`,
+  ];
+}
+
+export function authorizationCodeFromConsentRedirect(
+  response: Response,
+): string | null {
+  if (response.status !== 302) {
+    return null;
+  }
+  const location = response.headers.get("location");
+  if (!location) {
+    return null;
+  }
+  return new URL(location, MCP_OAUTH_TEST_BASE).searchParams.get("code");
+}
+
+export async function countStoredAuthorizationCodes(
+  deps: AppDependencies,
+): Promise<number> {
+  const row = await deps.sql.first<{ c: number }>(
+    "SELECT count(*) as c FROM verification WHERE value LIKE ?",
+    ['%"type":"authorization_code"%'],
+  );
+  return Number(row?.c ?? 0);
 }
 
 export async function exchangeAuthorizationCode(params: {

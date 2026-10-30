@@ -12,10 +12,12 @@ import {
   CHATGPT_REDIRECT_URI,
   CookieJar,
   allowConsent,
+  authorizationCodeFromConsentRedirect,
   buildAuthorizeUrl,
   callMcpInitialize,
   completeGoogleSignIn,
   completeOAuthLoginFromAuthorizeRedirect,
+  countStoredAuthorizationCodes,
   createChatGptCimdDocument,
   createMcpOAuthTestDeps,
   defaultCimdDocuments,
@@ -27,6 +29,7 @@ import {
   followAuthorizeToConsent,
   mcpRequestHeaders,
   mcpResourceUrl,
+  postConsentAllow,
   randomPkceVerifier,
   refreshAccessToken,
   requestWithJar,
@@ -732,6 +735,64 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       expect(reuse.status).toBe(403);
       expectConsentFrameHeaders(reuse);
       await expectPlainFailClosedAsync(reuse);
+    });
+
+    it("allows exactly one of three parallel consent allow POSTs (consumed-row mutant)", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await completeGoogleSignIn(deps, jar);
+      await followAuthorizeToConsent(
+        deps,
+        jar,
+        buildAuthorizeUrl({
+          clientId: CHATGPT_CIMD_CLIENT_ID,
+          redirectUri: CHATGPT_REDIRECT_URI,
+          verifier: randomPkceVerifier(),
+          resource: mcpResourceUrl(),
+        }),
+      );
+      const codesBefore = await countStoredAuthorizationCodes(deps);
+      const [first, second, third] = await Promise.all([
+        postConsentAllow(deps, jar),
+        postConsentAllow(deps, jar),
+        postConsentAllow(deps, jar),
+      ]);
+      const responses = [first, second, third];
+      const redirects = responses.filter((response) => response.status === 302);
+      const forbidden = responses.filter((response) => response.status === 403);
+      expect(redirects).toHaveLength(1);
+      expect(forbidden).toHaveLength(2);
+      for (const response of forbidden) {
+        expectConsentFrameHeaders(response);
+        await expectPlainFailClosedAsync(response);
+        expect(authorizationCodeFromConsentRedirect(response)).toBeNull();
+      }
+      const winningCode = authorizationCodeFromConsentRedirect(redirects[0]!);
+      expect(winningCode).toBeTruthy();
+      expect(await countStoredAuthorizationCodes(deps)).toBe(codesBefore + 1);
+    });
+
+    it("refuses allow after deny on the same pending consent (deny consume mutant)", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await completeGoogleSignIn(deps, jar);
+      await followAuthorizeToConsent(
+        deps,
+        jar,
+        buildAuthorizeUrl({
+          clientId: CHATGPT_CIMD_CLIENT_ID,
+          redirectUri: CHATGPT_REDIRECT_URI,
+          verifier: randomPkceVerifier(),
+          resource: mcpResourceUrl(),
+        }),
+      );
+      await denyConsent(deps, jar);
+      const allow = await postConsentAllow(deps, jar);
+      expect(allow.status).toBe(403);
+      expectConsentFrameHeaders(allow);
+      await expectPlainFailClosedAsync(allow);
+      expect(authorizationCodeFromConsentRedirect(allow)).toBeNull();
+      expect(await countStoredAuthorizationCodes(deps)).toBe(0);
     });
   });
 });

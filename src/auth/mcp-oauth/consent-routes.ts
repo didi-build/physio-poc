@@ -335,17 +335,3 @@ export async function handlePhysioMcpConsentRoutes(
   }
   return null;
 }
-
-export async function peekPendingConsentReachable(
-  sql: SqlStoragePort,
-  practitionerId: string,
-  clientId: string,
-  clock: PhysioMcpConsentClock = systemPhysioMcpConsentClock,
-): Promise<boolean> {
-  const rows = await sql.all<{ expires_at_ms: number; consumed_at_ms: number | null }>(
-    "SELECT expires_at_ms, consumed_at_ms FROM physio_mcp_pending_consent WHERE practitioner_id = ? AND client_id = ?",
-    [practitionerId, clientId],
-  );
-  const nowMs = clock.nowMs();
-  return rows.some((row) => row.consumed_at_ms === null && nowMs < row.expires_at_ms);
-}
