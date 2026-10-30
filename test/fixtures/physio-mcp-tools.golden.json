@@ -269,6 +269,8 @@
         },
         "from_routine_id": {
           "type": "string",
+          "pattern": "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64,
           "description": "When creating a new program, open the builder seeded from this routine id."
         }
       }
@@ -321,7 +323,9 @@
         },
         "from_routine_id": {
           "type": "string",
-          "description": "Routine id when the link starts a program from a routine."
+          "pattern": "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 64,
+          "description": "Opaque routine id assigned by the system (for example rtn-knee-oa)."
         }
       }
     },

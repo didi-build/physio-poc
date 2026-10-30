@@ -94,6 +94,13 @@ export function validatePhysioMcpToolInput(
     assertGetProgramLookup(record);
   }
 
+  if (typeof record.from_routine_id === "string") {
+    record.from_routine_id = record.from_routine_id.trim();
+  }
+  if (typeof record.program_code === "string") {
+    record.program_code = record.program_code.trim();
+  }
+
   const validate = validators[name];
   if (!validate(record)) {
     throw new PhysioMcpToolInputError(formatStandaloneErrors(validate));

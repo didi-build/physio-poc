@@ -5,9 +5,9 @@ import {
   SEARCH_ROUTINES_TOOL_NAME,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
+  buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   inferGetProgramDisplayState,
-  normalizeWebAppBaseUrl,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
 import type { PhysioServerConfig } from "../../http/config.js";
@@ -21,6 +21,22 @@ export const STUB_SEARCH_NO_MATCH_QUERY = "zzzz-stub-no-approved-match";
 
 /** Fixed program code that returns draft-only share state in the stub. */
 export const STUB_DRAFT_ONLY_PROGRAM_CODE = "PRG-STUBDRAFT";
+
+/** Fixed program code that returns published-only share state in the stub. */
+export const STUB_PUBLISHED_ONLY_PROGRAM_CODE = "PRG-STUBPUB";
+
+/** Pinned model-facing summaries (ruling b): placeholder data only until DIDI-1043. */
+export const STUB_GET_PROGRAM_BUILDER_LINK_SUMMARY =
+  "Example response: Placeholder builder link; no stored program data.";
+
+export const STUB_GET_PROGRAM_SHARE_DRAFT_ONLY_SUMMARY =
+  "Example response: Placeholder draft-only program; no stored data.";
+
+export const STUB_GET_PROGRAM_SHARE_PUBLISHED_ONLY_SUMMARY =
+  "Example response: Placeholder published program; no stored data.";
+
+export const STUB_GET_PROGRAM_SHARE_DRAFT_AND_PUBLISHED_SUMMARY =
+  "Example response: Placeholder published program with a newer draft; no stored data.";
 
 const EXAMPLE_LABEL = "Example response";
 
@@ -141,7 +157,7 @@ function stubGetProgramBuilderLink(
       : undefined;
 
   const output: Record<string, unknown> = {
-    summary: exampleSummary("Open the program builder in the web app (not stored)."),
+    summary: STUB_GET_PROGRAM_BUILDER_LINK_SUMMARY,
     share_link: "",
     builder_link: builderLink,
     manage_url: programCode
@@ -150,8 +166,7 @@ function stubGetProgramBuilderLink(
   };
   if (programCode) {
     output.program_code = programCode;
-  }
-  if (routineId) {
+  } else if (routineId) {
     output.from_routine_id = routineId;
   }
   return output;
@@ -167,12 +182,17 @@ function stubGetProgramShareLinkOrPdf(
       : "PRG-STUB01";
 
   const draftOnly = programCode === STUB_DRAFT_ONLY_PROGRAM_CODE;
+  const publishedOnly = programCode === STUB_PUBLISHED_ONLY_PROGRAM_CODE;
   const draft = draftOnly
     ? { version: 1, updated_at: "2026-10-29T12:00:00Z" }
-    : { version: 1, updated_at: "2026-10-29T12:00:00Z" };
+    : publishedOnly
+      ? null
+      : { version: 1, updated_at: "2026-10-29T12:00:00Z" };
   const published = draftOnly
     ? null
-    : { version: 2, updated_at: "2026-10-28T12:00:00Z" };
+    : publishedOnly
+      ? { version: 2, updated_at: "2026-10-28T12:00:00Z" }
+      : { version: 2, updated_at: "2026-10-28T12:00:00Z" };
   const state = inferGetProgramDisplayState(draft, published);
 
   const manageLink = appUrl(config, "programShare", {
@@ -184,11 +204,11 @@ function stubGetProgramShareLinkOrPdf(
   const manageUrl = appUrl(config, "programBuilder", {
     routeParams: { programCode },
   });
-  const shareUrl = `${normalizeWebAppBaseUrl(config.webAppBaseUrl)}/l/stub-share`;
+  const shareUrl = buildStubPublicShareLink(config.webAppBaseUrl);
 
   if (state === "draft_only") {
     return {
-      summary: exampleSummary("Draft only; open the publish page in the web app."),
+      summary: STUB_GET_PROGRAM_SHARE_DRAFT_ONLY_SUMMARY,
       share_link: "",
       pdf_url: "",
       manage_url: manageUrl,
@@ -202,7 +222,7 @@ function stubGetProgramShareLinkOrPdf(
 
   if (state === "published_only") {
     return {
-      summary: exampleSummary("Published program on file (stub, not stored)."),
+      summary: STUB_GET_PROGRAM_SHARE_PUBLISHED_ONLY_SUMMARY,
       share_link: shareUrl,
       pdf_url: `${shareUrl}.pdf`,
       manage_url: manageUrl,
@@ -216,9 +236,7 @@ function stubGetProgramShareLinkOrPdf(
   }
 
   return {
-    summary: exampleSummary(
-      "Published link live; newer draft not published (stub, not stored).",
-    ),
+    summary: STUB_GET_PROGRAM_SHARE_DRAFT_AND_PUBLISHED_SUMMARY,
     share_link: shareUrl,
     pdf_url: `${shareUrl}.pdf`,
     manage_url: manageUrl,

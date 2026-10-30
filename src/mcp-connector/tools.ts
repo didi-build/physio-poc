@@ -16,6 +16,7 @@ import {
   programCodeProperty,
   programTitleProperty,
   publishLinkOutputProperty,
+  routineIdProperty,
   routineSummarySchema,
   searchLinkOutputProperty,
   shareLinkOutputProperty,
@@ -141,7 +142,7 @@ export const getProgramBuilderLinkInputSchema: JsonSchema = {
   properties: {
     program_code: programCodeProperty,
     from_routine_id: {
-      type: "string",
+      ...routineIdProperty,
       description:
         "When creating a new program, open the builder seeded from this routine id.",
     },
@@ -158,10 +159,7 @@ export const getProgramBuilderLinkOutputSchema: JsonSchema = {
     builder_link: builderLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
     program_code: programCodeProperty,
-    from_routine_id: {
-      type: "string",
-      description: "Routine id when the link starts a program from a routine.",
-    },
+    from_routine_id: routineIdProperty,
   },
 };
 

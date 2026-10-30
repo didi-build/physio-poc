@@ -13,7 +13,6 @@ import {
   buildWebAppExerciseSearchUrl,
   getProgramShareLinkOrPdfInputSchema,
   inferGetProgramDisplayState,
-  MAX_EXERCISE_SEARCH_QUERY_LENGTH,
   PATIENT_DETAIL_REJECTION_MESSAGE,
   PHYSIO_MCP_TOOLS,
   publishedLinkFieldsPresent,
@@ -430,12 +429,11 @@ describe("Physio MCP connector contract", () => {
     const params = new URLSearchParams(url.split("?")[1] ?? "");
     expect(params.get("q")).toBe(tricky);
 
-    const capped = buildWebAppExerciseSearchUrl(
-      "https://app.example.com",
-      "x".repeat(250),
-    );
-    const cappedParams = new URLSearchParams(new URL(capped).search);
-    expect(cappedParams.get("q")?.length).toBe(MAX_EXERCISE_SEARCH_QUERY_LENGTH);
+    const raw201 = "a".repeat(201);
+    const capped = buildWebAppExerciseSearchUrl("https://app.example.com", raw201);
+    const search = new URL(capped).search.slice(1);
+    const encodedQ = search.startsWith("q=") ? search.slice(2) : "";
+    expect(encodedQ.length).toBe(199);
 
     const flagged = buildWebAppExerciseSearchUrl(
       "https://app.example.com",

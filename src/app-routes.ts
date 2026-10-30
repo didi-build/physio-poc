@@ -17,6 +17,8 @@ export const PHYSIO_APP_ROUTE_PATTERNS = {
   programBuilder: "/programs/:programCode",
   programPublish: "/programs/:programCode/publish",
   programShare: "/programs/:programCode/share",
+  /** Stub MCP share link path segment (not an in-app SPA screen). */
+  stubPublicShareLink: "/l/stub-share",
 } as const;
 
 export type PhysioAppRouteName = keyof typeof PHYSIO_APP_ROUTE_PATTERNS;
@@ -36,6 +38,9 @@ export type ConnectorPhysioAppRouteName =
   (typeof CONNECTOR_PHYSIO_APP_ROUTE_NAMES)[number];
 
 export const EXERCISE_SEARCH_QUERY_PARAM = "q";
+/** URL-encoded `q` must stay strictly under 200 characters (max 199 encoded). */
+export const MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH = 199;
+/** @deprecated Prefer measuring encoded length via MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH. */
 export const MAX_EXERCISE_SEARCH_QUERY_LENGTH = 200;
 export const FROM_ROUTINE_ID_QUERY_PARAM = "from_routine_id";
 
@@ -109,13 +114,44 @@ export function buildPhysioAppUrl(
   return `${url}?${params.toString()}`;
 }
 
+function encodedExerciseSearchQueryParamValue(raw: string): string {
+  const serialized = new URLSearchParams({
+    [EXERCISE_SEARCH_QUERY_PARAM]: raw,
+  }).toString();
+  const prefix = `${EXERCISE_SEARCH_QUERY_PARAM}=`;
+  return serialized.startsWith(prefix) ? serialized.slice(prefix.length) : "";
+}
+
+export function encodedExerciseSearchQueryLength(raw: string): number {
+  return encodedExerciseSearchQueryParamValue(raw).length;
+}
+
+/** Truncate raw search text so URL-encoded `q` is at most 199 characters. */
+export function capRawExerciseSearchQueryForUrl(raw: string): string {
+  let text = raw;
+  while (
+    text.length > 0 &&
+    encodedExerciseSearchQueryLength(text) > MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH
+  ) {
+    text = text.slice(0, -1);
+  }
+  return text;
+}
+
+export function buildStubPublicShareLink(webAppBaseUrl: string): string {
+  return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${PHYSIO_APP_ROUTE_PATTERNS.stubPublicShareLink}`;
+}
+
 export function buildWebAppExerciseSearchUrl(
   webAppBaseUrl: string,
   exerciseName: string,
 ): string {
-  const capped = exerciseName.slice(0, MAX_EXERCISE_SEARCH_QUERY_LENGTH);
-  const validation = validateFreeTextForPatientDetails(capped);
+  const validation = validateFreeTextForPatientDetails(exerciseName);
   if (!validation.ok) {
+    return buildPhysioAppUrl(webAppBaseUrl, "exerciseSearch");
+  }
+  const capped = capRawExerciseSearchQueryForUrl(exerciseName);
+  if (capped.length === 0) {
     return buildPhysioAppUrl(webAppBaseUrl, "exerciseSearch");
   }
   return buildPhysioAppUrl(webAppBaseUrl, "exerciseSearch", {

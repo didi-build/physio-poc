@@ -76,6 +76,14 @@ describe("generated MCP validators vs runtime Ajv", () => {
       },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "Knee mobility starter, neck and shoulder" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "x".repeat(65) },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         data: { program_code: "PRG-STUB01", from_routine_id: "rtn-knee-oa" },
       },
       {

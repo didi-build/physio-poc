@@ -6,6 +6,7 @@
 import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
 import {
   FREE_TEXT_NO_PATIENT_DETAILS,
+  MAX_LENGTH_OPAQUE_ROUTINE_ID,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
@@ -212,6 +213,15 @@ export const programCodeProperty: JsonSchema = {
   type: "string",
   pattern: "^PRG-[A-Z0-9]+$",
   description: "Stable program code assigned by the system (for example PRG-7K3Q).",
+};
+
+export const OPAQUE_ROUTINE_ID_PATTERN = "^rtn-[a-z0-9]+(?:-[a-z0-9]+)*$";
+
+export const routineIdProperty: JsonSchema = {
+  type: "string",
+  pattern: OPAQUE_ROUTINE_ID_PATTERN,
+  maxLength: MAX_LENGTH_OPAQUE_ROUTINE_ID,
+  description: "Opaque routine id assigned by the system (for example rtn-knee-oa).",
 };
 
 const programRowSharedProperties: Record<string, JsonSchema> = {

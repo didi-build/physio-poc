@@ -4,11 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   CONNECTOR_PHYSIO_APP_ROUTE_NAMES,
   EXERCISE_SEARCH_QUERY_PARAM,
-  MAX_EXERCISE_SEARCH_QUERY_LENGTH,
   PHYSIO_APP_ROUTE_PATTERNS,
+  PHYSIO_APP_SPA_ROUTE_NAMES,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
+  buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
+  capRawExerciseSearchQueryForUrl,
+  encodedExerciseSearchQueryLength,
   fillPhysioAppRoutePattern,
   type ConnectorPhysioAppRouteName,
   type PhysioAppSpaRouteName,
@@ -121,18 +124,29 @@ describe("shared Physio app route table", () => {
   it("derives deprecated exercise search path constants from the route table", () => {
     expect(PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch).toBe("/exercises/search");
   });
+
+  it("builds stub public share links from the route table", () => {
+    expect(PHYSIO_APP_ROUTE_PATTERNS.stubPublicShareLink).toBe("/l/stub-share");
+    expect(buildStubPublicShareLink(BASE)).toBe(`${BASE}/l/stub-share`);
+  });
+
+  it("PhysioApp route tree renders every SPA route without filtering", () => {
+    const childRoutes = appRouteObjects[0]?.children ?? [];
+    const routeIds = childRoutes
+      .filter((route) => route.id !== undefined)
+      .map((route) => route.id as string);
+    expect(routeIds.sort()).toEqual([...PHYSIO_APP_SPA_ROUTE_NAMES].sort());
+  });
 });
 
 describe("buildWebAppExerciseSearchUrl", () => {
-  it("caps q at 200 characters and URL-encodes the value", () => {
-    const long = "a".repeat(250);
-    const url = buildWebAppExerciseSearchUrl(BASE, long);
-    const params = new URLSearchParams(new URL(url).search);
-    expect(params.get(EXERCISE_SEARCH_QUERY_PARAM)?.length).toBe(
-      MAX_EXERCISE_SEARCH_QUERY_LENGTH,
-    );
-    expect(url).toContain(`${EXERCISE_SEARCH_QUERY_PARAM}=`);
+  function encodedQParamFromUrl(url: string): string {
+    const search = new URL(url).search.slice(1);
+    const prefix = `${EXERCISE_SEARCH_QUERY_PARAM}=`;
+    return search.startsWith(prefix) ? search.slice(prefix.length) : "";
+  }
 
+  it("URL-encodes the value and keeps encoded q at most 199 characters", () => {
     const tricky = "A & B? C# café 测试";
     const trickyUrl = buildWebAppExerciseSearchUrl(BASE, tricky);
     expect(
@@ -140,14 +154,46 @@ describe("buildWebAppExerciseSearchUrl", () => {
     ).toBe(true);
     const trickyParams = new URLSearchParams(new URL(trickyUrl).search);
     expect(trickyParams.get(EXERCISE_SEARCH_QUERY_PARAM)).toBe(tricky);
+    expect(encodedQParamFromUrl(trickyUrl).length).toBeLessThanOrEqual(199);
+
+    const raw201 = "a".repeat(201);
+    expect(encodedExerciseSearchQueryLength(raw201)).toBe(201);
+    const cappedUrl = buildWebAppExerciseSearchUrl(BASE, raw201);
+    expect(encodedQParamFromUrl(cappedUrl).length).toBe(199);
+
+    const raw250 = "a".repeat(250);
+    expect(encodedExerciseSearchQueryLength(raw250)).toBe(250);
+    const longUrl = buildWebAppExerciseSearchUrl(BASE, raw250);
+    expect(encodedQParamFromUrl(longUrl).length).toBe(199);
+    expect(new URLSearchParams(new URL(longUrl).search).get("q")?.length).toBe(199);
   });
 
-  it("omits q when patient-detail validation fails", () => {
+  it("applies encoded-length cap after patient-detail check, not raw length first", () => {
     const flagged = "Contact user@example.com for updates";
     const url = buildWebAppExerciseSearchUrl(BASE, flagged);
     expect(url).toBe(`${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`);
     expect(new URL(url).search).toBe("");
     expect(validateFreeTextForPatientDetails(flagged).ok).toBe(false);
+
+    const benignPrefix = "a".repeat(199);
+    const benignWithEmail = `${benignPrefix} user@example.com`;
+    expect(encodedExerciseSearchQueryLength(benignPrefix)).toBe(199);
+    expect(validateFreeTextForPatientDetails(benignWithEmail).ok).toBe(false);
+    const mixedUrl = buildWebAppExerciseSearchUrl(BASE, benignWithEmail);
+    expect(mixedUrl).toBe(`${BASE}${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`);
+  });
+
+  it("never splits a percent escape when capping encoded q", () => {
+    const repeated = "é".repeat(120);
+    expect(encodedExerciseSearchQueryLength(repeated)).toBeGreaterThan(199);
+    const capped = capRawExerciseSearchQueryForUrl(repeated);
+    const encoded = encodedExerciseSearchQueryLength(capped);
+    expect(encoded).toBeLessThanOrEqual(199);
+    const roundTrip = new URLSearchParams({ q: capped }).toString().slice(2);
+    expect(roundTrip).toBe(
+      encodedQParamFromUrl(buildWebAppExerciseSearchUrl(BASE, repeated)),
+    );
+    expect(roundTrip).not.toMatch(/%[0-9A-Fa-f]?$/);
   });
 
   it("keeps q for benign exercise search text", () => {

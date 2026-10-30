@@ -12,11 +12,13 @@ import {
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
+  buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   getPhysioMcpTool,
 } from "../src/mcp-connector/index.js";
 import {
   STUB_DRAFT_ONLY_PROGRAM_CODE,
+  STUB_PUBLISHED_ONLY_PROGRAM_CODE,
   STUB_SEARCH_NO_MATCH_QUERY,
 } from "../src/services/mcp/stub-tool-handler.js";
 import {
@@ -128,17 +130,114 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("returns builder_link from get_program_builder_link", async () => {
+  it("returns builder_link and manage_url for code, routine, and blank inputs", async () => {
+    const base = MCP_TEST_CONFIG.webAppBaseUrl;
     await withMcpClient(async (client) => {
-      const result = await client.callTool({
+      const byCode = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         arguments: { program_code: "PRG-STUB01" },
       });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as { builder_link?: string };
-      expect(body.builder_link).toBe(
-        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/PRG-STUB01`,
+      expect(byCode.isError).not.toBe(true);
+      const codeBody = byCode.structuredContent as Record<string, unknown>;
+      expect(codeBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
+      expect(codeBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
+      expect(codeBody.program_code).toBe("PRG-STUB01");
+      expect(codeBody.from_routine_id).toBeUndefined();
+
+      const byRoutine = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { from_routine_id: "rtn-knee-oa" },
+      });
+      const routineBody = byRoutine.structuredContent as Record<string, unknown>;
+      expect(routineBody.builder_link).toBe(
+        `${base}/programs/new?from_routine_id=rtn-knee-oa`,
       );
+      expect(routineBody.manage_url).toBe(`${base}/programs/new`);
+      expect(routineBody.from_routine_id).toBe("rtn-knee-oa");
+
+      const blank = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: {},
+      });
+      const blankBody = blank.structuredContent as Record<string, unknown>;
+      expect(blankBody.builder_link).toBe(`${base}/programs/new`);
+      expect(blankBody.manage_url).toBe(`${base}/programs/new`);
+
+      const both = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: {
+          program_code: "PRG-STUB01",
+          from_routine_id: "rtn-knee-oa",
+        },
+      });
+      const bothBody = both.structuredContent as Record<string, unknown>;
+      expect(bothBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
+      expect(bothBody.program_code).toBe("PRG-STUB01");
+      expect(bothBody.from_routine_id).toBeUndefined();
+
+      const trimmed = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { from_routine_id: "  rtn-knee-oa  " },
+      });
+      const trimmedBody = trimmed.structuredContent as Record<string, unknown>;
+      expect(trimmedBody.builder_link).toBe(
+        `${base}/programs/new?from_routine_id=rtn-knee-oa`,
+      );
+      expect(trimmedBody.from_routine_id).toBe("rtn-knee-oa");
+    });
+  });
+
+  it("returns share_link, pdf_url, publish_link, and manage_link for each stub share state", async () => {
+    const base = MCP_TEST_CONFIG.webAppBaseUrl;
+    const shareUrl = buildStubPublicShareLink(base);
+    const pdfUrl = `${shareUrl}.pdf`;
+
+    await withMcpClient(async (client) => {
+      const draftOnly = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: { program_code: STUB_DRAFT_ONLY_PROGRAM_CODE },
+      });
+      const draftBody = draftOnly.structuredContent as Record<string, unknown>;
+      expect(draftBody.share_link).toBe("");
+      expect(draftBody.pdf_url).toBe("");
+      expect(draftBody.publish_link).toBe(
+        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/publish`,
+      );
+      expect(draftBody.manage_link).toBe(
+        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/share`,
+      );
+      expect(draftBody.manage_url).toBe(
+        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}`,
+      );
+
+      const publishedOnly = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: { program_code: STUB_PUBLISHED_ONLY_PROGRAM_CODE },
+      });
+      const pubBody = publishedOnly.structuredContent as Record<string, unknown>;
+      expect(pubBody.share_link).toBe(shareUrl);
+      expect(pubBody.pdf_url).toBe(pdfUrl);
+      expect(pubBody.publish_link).toBe("");
+      expect(pubBody.manage_link).toBe(
+        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}/share`,
+      );
+      expect(pubBody.manage_url).toBe(
+        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}`,
+      );
+      expect(pubBody.draft).toBeNull();
+
+      const draftAndPublished = await client.callTool({
+        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+        arguments: { program_code: "PRG-STUB01" },
+      });
+      const bothBody = draftAndPublished.structuredContent as Record<string, unknown>;
+      expect(bothBody.share_link).toBe(shareUrl);
+      expect(bothBody.pdf_url).toBe(pdfUrl);
+      expect(bothBody.publish_link).toBe(`${base}/programs/PRG-STUB01/publish`);
+      expect(bothBody.manage_link).toBe(`${base}/programs/PRG-STUB01/share`);
+      expect(bothBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
+      expect(bothBody.draft).not.toBeNull();
+      expect(bothBody.published).not.toBeNull();
     });
   });
 
@@ -231,6 +330,17 @@ describe("Physio MCP HTTP validation", () => {
     });
   });
 
+  it("rejects free-text from_routine_id that is not an opaque routine id", async () => {
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { from_routine_id: "Knee mobility starter, neck and shoulder" },
+      });
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toMatch(/must match pattern/i);
+    });
+  });
+
   it("rejects patient-detail patterns in every free-text field", async () => {
     const cases: Array<{ tool: string; args: Record<string, unknown> }> = [
       {
@@ -248,10 +358,6 @@ describe("Physio MCP HTTP validation", () => {
       {
         tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
         args: { program_title: patientDetailSample },
-      },
-      {
-        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        args: { from_routine_id: patientDetailSample },
       },
     ];
 
