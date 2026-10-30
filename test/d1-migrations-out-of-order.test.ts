@@ -29,6 +29,7 @@ const EXPECTED_MIGRATION_FILES = [
   "0003_exercise_media.sql",
   "0004_better_auth.sql",
   PHASE1_MIGRATION_FILES[2],
+  "0006_mcp_oauth.sql",
 ] as const;
 
 function materializePhase1MigrationsDir(targetDir: string): void {
