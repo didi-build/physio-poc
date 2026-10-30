@@ -13,5 +13,9 @@ export type {
   ProgramLibraryUpdatePrompt,
   ProgramListItem,
   ProgramMutationResult,
+  ProgramOriginFilter,
+  ProgramRoutineOriginView,
   ProgramSearchResult,
+  RoutineProgramSource,
+  RoutineSentProgramStats,
 } from "./types.js";
