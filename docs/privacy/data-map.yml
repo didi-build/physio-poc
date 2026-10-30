@@ -475,7 +475,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0004_better_auth.sql
       verified: true
-      notes: image URL is not stored (CTO DIDI-1001 minimal auth storage)
+      notes: image URL is not stored (CTO DIDI-1001 minimal auth storage); practitionerId is an internal opaque id, not personal data
     columns:
       id:
         whose: practitioner
@@ -505,12 +505,12 @@ d1_tables:
         whose: operational
         notes: column required by Better Auth; always null (not stored)
       practitionerId:
-        whose: practitioner
-        data: Bound practitioners.id at session creation
-        purpose: authentication
+        whose: operational
+        data: Internal opaque practitioners.id bound at session creation for authorization
+        purpose: session-to-practitioner binding (not sign-in email)
         processors: [Cloudflare]
-        retention: until account deletion
-        source: migrations/0005_auth_practitioner_binding.sql
+        retention: until account deletion or binding cleared
+        notes: Same id type as practitioners.id elsewhere; not patient or practitioner contact data
 
   session:
     defaults:

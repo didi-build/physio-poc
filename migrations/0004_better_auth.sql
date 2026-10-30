@@ -5,7 +5,8 @@ create table if not exists "user" (
   "emailVerified" integer not null,
   "image" text,
   "createdAt" date not null,
-  "updatedAt" date not null
+  "updatedAt" date not null,
+  "practitionerId" text references practitioners (id) on delete set null
 );
 
 create table if not exists "session" (
@@ -45,6 +46,8 @@ create table if not exists "verification" (
 );
 
 create index if not exists "session_userId_idx" on "session" ("userId");
+
+create index if not exists "user_practitionerId_idx" on "user" ("practitionerId");
 
 create index if not exists "account_userId_idx" on "account" ("userId");
 

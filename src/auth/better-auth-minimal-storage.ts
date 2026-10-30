@@ -54,6 +54,15 @@ export function stripPhysioUserImage<T extends Record<string, unknown>>(user: T)
   };
 }
 
+/** Removes client-supplied practitioner binding; only server hooks may set it. */
+export function stripClientPractitionerId<T extends Record<string, unknown>>(
+  user: T,
+): T {
+  const next = { ...user };
+  delete next.practitionerId;
+  return next;
+}
+
 export function looksLikePlaintextOAuthToken(
   value: string | null | undefined,
 ): boolean {

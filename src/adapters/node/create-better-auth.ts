@@ -8,6 +8,9 @@ import {
 import {
   createPhysioBetterAuthDatabaseHooks,
   PHYSIO_GOOGLE_OAUTH_SCOPES,
+  stripClientPractitionerId,
+  stripPhysioSessionMetadata,
+  stripPhysioUserImage,
 } from "../../auth/better-auth-minimal-storage.js";
 import { installFakeGoogleFetch } from "../../auth/fake-google-http.js";
 import type { PhysioAuthConfig } from "../../http/config.js";
@@ -17,42 +20,65 @@ import { findPractitionerByEmail } from "../../storage/repositories/practitioner
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
 
+export class PhysioPractitionerBindingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PhysioPractitionerBindingError";
+  }
+}
+
 function mergePhysioDatabaseHooks(sql: SqlStoragePort) {
   const storageHooks = createPhysioBetterAuthDatabaseHooks();
+
+  async function bindPractitionerForSessionUser(
+    session: Record<string, unknown>,
+  ): Promise<void> {
+    const userId = typeof session.userId === "string" ? session.userId.trim() : "";
+    if (!userId) {
+      throw new PhysioPractitionerBindingError("session_missing_user");
+    }
+    const userRow = await sql.first<{ email: string | null }>(
+      'SELECT email FROM "user" WHERE id = ? LIMIT 1',
+      [userId],
+    );
+    const email = typeof userRow?.email === "string" ? userRow.email : null;
+    if (!email) {
+      throw new PhysioPractitionerBindingError("session_user_missing_email");
+    }
+    const practitioner = await findPractitionerByEmail(sql, email);
+    if (!practitioner) {
+      throw new PhysioPractitionerBindingError("practitioner_row_missing");
+    }
+    await sql.run('UPDATE "user" SET "practitionerId" = ? WHERE id = ?', [
+      practitioner.id,
+      userId,
+    ]);
+  }
+
   return {
     ...storageHooks,
+    user: {
+      ...storageHooks.user,
+      create: {
+        ...storageHooks.user?.create,
+        before: async (user: Record<string, unknown>) => ({
+          data: stripClientPractitionerId(stripPhysioUserImage(user)),
+        }),
+      },
+      update: {
+        ...storageHooks.user?.update,
+        before: async (user: Record<string, unknown>) => ({
+          data: stripClientPractitionerId(stripPhysioUserImage(user)),
+        }),
+      },
+    },
     session: {
       ...storageHooks.session,
       create: {
         ...storageHooks.session?.create,
-        after: async (
-          session: { userId: string },
-          context: {
-            context: {
-              internalAdapter: {
-                findUserById: (id: string) => Promise<{ email?: string | null } | null>;
-                updateUser: (
-                  id: string,
-                  data: Record<string, unknown>,
-                ) => Promise<unknown>;
-              };
-            };
-          },
-        ) => {
-          const user = await context.context.internalAdapter.findUserById(
-            session.userId,
-          );
-          const email = typeof user?.email === "string" ? user.email : null;
-          if (!email) {
-            return;
-          }
-          const practitioner = await findPractitionerByEmail(sql, email);
-          if (!practitioner) {
-            return;
-          }
-          await context.context.internalAdapter.updateUser(session.userId, {
-            practitionerId: practitioner.id,
-          });
+        before: async (session: Record<string, unknown>) => {
+          await bindPractitionerForSessionUser(session);
+          return { data: stripPhysioSessionMetadata(session) };
         },
       },
     },

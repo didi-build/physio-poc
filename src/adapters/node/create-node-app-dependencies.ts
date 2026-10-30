@@ -8,7 +8,6 @@ import {
   MIGRATION_0002_ID,
   MIGRATION_0003_ID,
   MIGRATION_0004_ID,
-  MIGRATION_0005_ID,
 } from "../../storage/migrations/apply.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
 import { createNodeAuthPort } from "./create-auth-port.js";
@@ -34,10 +33,6 @@ const MIGRATION_0004_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0004_better_auth.sql"),
   "utf8",
 );
-const MIGRATION_0005_SQL = readFileSync(
-  join(REPO_ROOT, "migrations/0005_auth_practitioner_binding.sql"),
-  "utf8",
-);
 
 export type NodeEnvInput = WorkerEnv & {
   BETTER_AUTH_SECRET?: string;
@@ -58,7 +53,6 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
-  await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config);
   return {
     sql: storage,
