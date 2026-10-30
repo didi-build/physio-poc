@@ -23,7 +23,7 @@ import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 const BASE = "https://physio.test.example";
 const PRACT_A = testOpaqueEntityId("pract-a");
 const PRACT_B = testOpaqueEntityId("pract-b");
-const EX_B = "ex-b";
+const EX_B = testOpaqueEntityId("ex-b");
 
 type RouteCase = {
   label: string;
@@ -101,7 +101,7 @@ async function seedApprovedForPractitioner(
   await seedExercise(storage, practId, exerciseId);
   await storage.run(VERSION_INSERT_SQL, [
     ...versionInsertBindings({
-      id: `ver-${exerciseId}`,
+      id: testOpaqueEntityId("ver-ex-b"),
       exercise_id: exerciseId,
       status: "approved",
       approved_by: practId,

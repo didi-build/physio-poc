@@ -57,3 +57,5 @@ For Google sign-in with Better Auth on the Node dev server (`npm run dev`), copy
 ## License
 
 Proprietary — see [LICENSE](./LICENSE). [LICENSES/launchpad-MIT.txt](./LICENSES/launchpad-MIT.txt) preserves the MIT notice for the Launchpad template components.
+
+Vendored MCP validator runtime (`src/services/mcp/generated/runtime/ajv-ucs2length.js`) and Ajv-generated validators (`src/services/mcp/generated/input-validators.js`) are under [LICENSES/ajv-MIT.txt](./LICENSES/ajv-MIT.txt).
