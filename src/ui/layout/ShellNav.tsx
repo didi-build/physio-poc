@@ -127,6 +127,15 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
         closeMenu();
         return;
       }
+      if (event.key === "Tab") {
+        queueMicrotask(() => {
+          const active = document.activeElement;
+          if (!active || !wrap.contains(active)) {
+            onCloseRef.current();
+          }
+        });
+        return;
+      }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
         return;
       }
@@ -162,11 +171,21 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       onCloseRef.current();
     };
 
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (wrap.contains(target)) {
+        return;
+      }
+      onCloseRef.current();
+    };
+
     menu.addEventListener("keydown", onKeyDown);
     wrap.addEventListener("focusout", onFocusOut);
+    document.addEventListener("pointerdown", onPointerDown, true);
     return () => {
       menu.removeEventListener("keydown", onKeyDown);
       wrap.removeEventListener("focusout", onFocusOut);
+      document.removeEventListener("pointerdown", onPointerDown, true);
     };
   }, [open]);
 

@@ -17,6 +17,7 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
 import * as authClient from "../../src/ui/api/auth-client.js";
+import { ARIA_CLOSE_MENU } from "../../src/ui/copy/a11y.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -252,15 +253,64 @@ describe("app shell nav (integration)", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("closes the account menu on Tab and Shift+Tab out of the wrap", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    const outsideLink = within(topNav).getByRole("link", { name: "Routines" });
+
+    await user.click(trigger);
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    signOutItem.focus();
+    await user.tab();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    outsideLink.focus();
+    await user.click(trigger);
+    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
+    expect(document.activeElement).toBe(defaultsItem);
+    await user.tab({ shift: true });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+
+    await user.tab({ shift: true });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the account menu when the backdrop or an outside control is clicked", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: ARIA_CLOSE_MENU }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(within(topNav).getByRole("link", { name: "Programs" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("pins account menu focus-out wiring in ShellNav (structural)", () => {
     const source = readFileSync(
       join(import.meta.dirname, "../../src/ui/layout/ShellNav.tsx"),
       "utf8",
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
+    expect(source).toContain(
+      'document.addEventListener("pointerdown", onPointerDown, true)',
+    );
+    expect(source).toContain('event.key === "Tab"');
     expect(source).toContain("related === null");
     expect(source).toContain("menu.contains(related)");
     expect(source).toContain("wrap.contains(related)");
+    expect(source).toMatch(/shell-menu-backdrop[\s\S]*onClick=\{closeMenu\}/);
     expect(source).not.toContain("menu.contains(event.target as Node)");
   });
 
