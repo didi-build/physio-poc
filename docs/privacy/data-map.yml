@@ -793,4 +793,370 @@ d1_tables:
       updatedAt:
         whose: operational
 
+  jwks:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: server-side only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: MCP OAuth authorization server signing keys (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      publicKey:
+        whose: operational
+      privateKey:
+        whose: operational
+      createdAt:
+        whose: operational
+      expiresAt:
+        whose: operational
+      alg:
+        whose: operational
+      crv:
+        whose: operational
+
+  oauthAccessToken:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: MCP OAuth opaque access tokens (DIDI-1043); no patient information
+    columns:
+      id:
+        whose: operational
+      token:
+        whose: operational
+      clientId:
+        whose: operational
+      sessionId:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: MCP connector authentication
+        processors: [Cloudflare]
+        retention: until token revocation or expiry
+      referenceId:
+        whose: operational
+      authorizationCodeId:
+        whose: operational
+      resources:
+        whose: operational
+      requestedUserInfoClaims:
+        whose: operational
+      refreshId:
+        whose: operational
+      expiresAt:
+        whose: operational
+      createdAt:
+        whose: operational
+      revoked:
+        whose: operational
+      confirmation:
+        whose: operational
+      scopes:
+        whose: operational
+
+  oauthClient:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: server-side only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: Registered MCP OAuth clients (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      clientId:
+        whose: operational
+      clientSecret:
+        whose: operational
+      clientDiscoveryId:
+        whose: operational
+      disabled:
+        whose: operational
+      skipConsent:
+        whose: operational
+      enableEndSession:
+        whose: operational
+      subjectType:
+        whose: operational
+      scopes:
+        whose: operational
+      clientCredentialsScopes:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id for DCR-owned client
+        purpose: MCP client registration audit
+        processors: [Cloudflare]
+        retention: until client deleted
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+      name:
+        whose: operational
+      uri:
+        whose: operational
+      icon:
+        whose: operational
+      contacts:
+        whose: operational
+      tos:
+        whose: operational
+      policy:
+        whose: operational
+      softwareId:
+        whose: operational
+      softwareVersion:
+        whose: operational
+      softwareStatement:
+        whose: operational
+      redirectUris:
+        whose: operational
+      postLogoutRedirectUris:
+        whose: operational
+      backchannelLogoutUri:
+        whose: operational
+      backchannelLogoutSessionRequired:
+        whose: operational
+      tokenEndpointAuthMethod:
+        whose: operational
+      applicationType:
+        whose: operational
+      jwks:
+        whose: operational
+      jwksUri:
+        whose: operational
+      grantTypes:
+        whose: operational
+      responseTypes:
+        whose: operational
+      requirePKCE:
+        whose: operational
+      dpopBoundAccessTokens:
+        whose: operational
+      referenceId:
+        whose: operational
+      metadata:
+        whose: operational
+
+  oauthClientAssertion:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: server-side only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      expiresAt:
+        whose: operational
+
+  oauthClientResource:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: server-side only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      clientId:
+        whose: operational
+      resourceId:
+        whose: operational
+      metadata:
+        whose: operational
+      createdAt:
+        whose: operational
+
+  oauthConsent:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: Better Auth OAuth consent rows; cleared after each Allow so consent is never skipped (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      clientId:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: MCP OAuth consent bookkeeping
+        processors: [Cloudflare]
+        retention: until deleted after authorization
+      referenceId:
+        whose: operational
+      resources:
+        whose: operational
+      requestedUserInfoClaims:
+        whose: operational
+      scopes:
+        whose: operational
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
+  oauthRefreshToken:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: MCP OAuth refresh tokens with rotation (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      token:
+        whose: operational
+      clientId:
+        whose: operational
+      sessionId:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: MCP connector authentication
+        processors: [Cloudflare]
+        retention: until token revocation or expiry
+      referenceId:
+        whose: operational
+      authorizationCodeId:
+        whose: operational
+      resources:
+        whose: operational
+      requestedUserInfoClaims:
+        whose: operational
+      expiresAt:
+        whose: operational
+      createdAt:
+        whose: operational
+      revoked:
+        whose: operational
+      rotatedAt:
+        whose: operational
+      rotationReplayResponse:
+        whose: operational
+      rotationReplayExpiresAt:
+        whose: operational
+      authTime:
+        whose: operational
+      confirmation:
+        whose: operational
+      scopes:
+        whose: operational
+
+  oauthResource:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: server-side only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      identifier:
+        whose: operational
+      name:
+        whose: operational
+      accessTokenTtl:
+        whose: operational
+      refreshTokenTtl:
+        whose: operational
+      signingAlgorithm:
+        whose: operational
+      signingKeyId:
+        whose: operational
+      allowedScopes:
+        whose: operational
+      customClaims:
+        whose: operational
+      dpopBoundAccessTokensRequired:
+        whose: operational
+      disabled:
+        whose: operational
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+      policyVersion:
+        whose: operational
+      metadata:
+        whose: operational
+
+  physio_mcp_pending_consent:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: Single-use pending MCP consent requests (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Internal opaque practitioners.id
+        purpose: bind pending consent to signed-in practitioner
+        processors: [Cloudflare]
+        retention: until consumed or expiry
+      client_id:
+        whose: operational
+      redirect_uri:
+        whose: operational
+      scopes_json:
+        whose: operational
+      oauth_query:
+        whose: operational
+      csrf_token_hash:
+        whose: operational
+      created_at_ms:
+        whose: operational
+      expires_at_ms:
+        whose: operational
+      consumed_at_ms:
+        whose: operational
+
+  physio_mcp_practitioner_consent:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0006_mcp_oauth.sql
+      verified: true
+      notes: Allow audit rows; not used to skip consent (DIDI-1043)
+    columns:
+      id:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Internal opaque practitioners.id
+        purpose: record MCP Allow decisions per client
+        processors: [Cloudflare]
+        retention: until account deletion
+      client_id:
+        whose: operational
+      redirect_uri:
+        whose: operational
+      scopes_json:
+        whose: operational
+      created_at:
+        whose: operational
 other_items: []
