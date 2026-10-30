@@ -28,19 +28,6 @@ export async function insertPhysioMcpPractitionerConsent(
   );
 }
 
-export async function listPhysioMcpPractitionerConsentsForClient(
-  sql: SqlStoragePort,
-  practitionerId: string,
-  clientId: string,
-): Promise<PhysioMcpPractitionerConsentRow[]> {
-  return sql.all<PhysioMcpPractitionerConsentRow>(
-    `SELECT * FROM physio_mcp_practitioner_consent
-     WHERE practitioner_id = ? AND client_id = ?
-     ORDER BY created_at ASC`,
-    [practitionerId, clientId],
-  );
-}
-
 export async function deleteOAuthConsentRecordsForUserClient(
   sql: SqlStoragePort,
   userId: string,
