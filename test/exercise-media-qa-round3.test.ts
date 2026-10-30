@@ -5,13 +5,14 @@ import {
   FalFluxKleinImageGeneration,
 } from "../src/adapters/node/fal-flux-klein-image-generation.js";
 import { handleRequest } from "../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
-import { exerciseMediaExtraRouteHandlers } from "./helpers/exercise-media-http.js";
+import {
+  exerciseMediaSessionCookie,
+  exerciseMediaTestDeps,
+} from "./helpers/exercise-media-http.js";
 import {
   assertLeakFreeText,
   expectConsoleCallsLeakFree,
@@ -77,15 +78,28 @@ async function seedDraftVersionWithGeneratedMedia(
 
 function mediaHttpDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
   objects: InMemoryObjectStorage,
 ) {
-  return {
-    sql: storage,
-    objects,
-    config: MCP_TEST_CONFIG,
-    mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
-  };
+  return exerciseMediaTestDeps(
+    storage,
+    {
+      practitionerId,
+      email: "coach@example.com",
+      displayName: "Coach",
+    },
+    { objects },
+  );
+}
+
+function mediaRequest(
+  url: string,
+  deps: ReturnType<typeof mediaHttpDeps>,
+  init: RequestInit = {},
+) {
+  const headers = new Headers(init.headers);
+  headers.set("cookie", exerciseMediaSessionCookie(deps));
+  return new Request(url, { ...init, headers });
 }
 
 function createEndOnlyRegenFetchMock(startProviderUrl: string) {
@@ -150,8 +164,9 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
         createEndOnlyRegenFetchMock(startProviderUrl);
       const fal = new FalFluxKleinImageGeneration({ apiKey: FAL_API_KEY, fetchImpl });
       const response = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          mediaHttpDeps(storage, practitionerId, objectStorage),
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -159,7 +174,7 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
           },
         ),
         {
-          ...mediaHttpDeps(storage, objectStorage),
+          ...mediaHttpDeps(storage, practitionerId, objectStorage),
           exerciseMediaImages: fal,
         },
       );
@@ -219,8 +234,9 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
       });
 
       const httpResponse = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          mediaHttpDeps(storage, practitionerId, objectStorage),
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -228,7 +244,7 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
           },
         ),
         {
-          ...mediaHttpDeps(storage, objectStorage),
+          ...mediaHttpDeps(storage, practitionerId, objectStorage),
           exerciseMediaImages: fal,
         },
       );

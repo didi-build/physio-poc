@@ -1,0 +1,6 @@
+# Copy to `.dev.vars` for local Node dev (`npm run dev`). Names only in git.
+# Replace placeholder values before running Better Auth locally.
+
+BETTER_AUTH_SECRET=replace-me-with-at-least-32-characters-long
+PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true
+PHYSIO_ALLOWED_GOOGLE_EMAILS=you@example.com

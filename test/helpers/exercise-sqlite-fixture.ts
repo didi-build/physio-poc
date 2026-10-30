@@ -3,6 +3,10 @@ import { join } from "node:path";
 import type { SqlStoragePort } from "../../src/storage/ports/sql-storage.js";
 import { BetterSqliteStorage } from "../../src/adapters/node/better-sqlite-sql-storage.js";
 import {
+  generateOpaqueEntityId,
+  validateOpaqueEntityId,
+} from "../../src/domain/opaque-entity-id.js";
+import {
   applyMigration,
   MIGRATION_0001_ID,
   MIGRATION_0002_ID,
@@ -48,14 +52,17 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
 
 export async function seedPractitioner(
   storage: SqlStoragePort,
-  practitionerId = FIXTURE_PRACTITIONER_ID,
+  practitionerId?: string,
   email = "coach@example.com",
 ): Promise<string> {
+  const id = practitionerId
+    ? validateOpaqueEntityId(practitionerId, "Practitioner id")
+    : generateOpaqueEntityId();
   await storage.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    [practitionerId, email, TS],
+    [id, email, TS],
   );
-  return practitionerId;
+  return id;
 }
 
 export async function seedExercise(

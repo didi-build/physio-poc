@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
 import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
+import { postAuthSignOut } from "../api/auth-client.js";
 import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
@@ -194,17 +195,20 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                   {ACCOUNT_MY_DEFAULTS_DETAIL}
                 </span>
               </NavLink>
-              <a
-                href="#"
+              <button
+                type="button"
                 role="menuitem"
                 className="shell-menu-item shell-menu-sign-out"
                 onClick={(event) => {
                   event.preventDefault();
                   closeMenu();
+                  void postAuthSignOut().then(() => {
+                    window.location.href = "/sign-in";
+                  });
                 }}
               >
                 {ACCOUNT_SIGN_OUT}
-              </a>
+              </button>
             </div>
           </>
         ) : null}

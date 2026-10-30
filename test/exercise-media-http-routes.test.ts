@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { FalFluxKleinImageGeneration } from "../src/adapters/node/fal-flux-klein-image-generation.js";
-import { handleRequest } from "../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
-import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
-import { exerciseMediaExtraRouteHandlers } from "./helpers/exercise-media-http.js";
+import { handleRequest, type AppDependencies } from "../src/http/app.js";
+import {
+  exerciseMediaSessionCookie,
+  exerciseMediaTestDeps,
+} from "./helpers/exercise-media-http.js";
 import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
@@ -21,14 +21,30 @@ import {
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
 
-function mediaHttpDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
-  return {
-    sql: storage,
-    objects: new InMemoryObjectStorage(),
-    config: MCP_TEST_CONFIG,
-    mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
-  };
+function mediaHttpDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  extras: Partial<AppDependencies> = {},
+) {
+  return exerciseMediaTestDeps(
+    storage,
+    {
+      practitionerId,
+      email: "coach@example.com",
+      displayName: "Coach",
+    },
+    extras,
+  );
+}
+
+function mediaRequest(
+  url: string,
+  deps: AppDependencies,
+  init: RequestInit = {},
+): Request {
+  const headers = new Headers(init.headers);
+  headers.set("cookie", exerciseMediaSessionCookie(deps));
+  return new Request(url, { ...init, headers });
 }
 
 async function seedDraftVersion(
@@ -52,13 +68,13 @@ describe("Exercise media HTTP routes (integration)", () => {
   it("returns 400 invalid_input when access is missing or not public or internal", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const { versionId } = await seedDraftVersion(storage);
-      const deps = mediaHttpDeps(storage);
+      const { versionId, practitionerId } = await seedDraftVersion(storage);
+      const deps = mediaHttpDeps(storage, practitionerId);
       for (const url of [
         `http://127.0.0.1/api/exercise-versions/${versionId}/media`,
         `http://127.0.0.1/api/exercise-versions/${versionId}/media?access=bogus`,
       ]) {
-        const response = await handleRequest(new Request(url), deps);
+        const response = await handleRequest(mediaRequest(url, deps), deps);
         expect(response.status).toBe(400);
         const payload = (await response.json()) as { error?: string };
         expect(payload.error).toBe("invalid_input");
@@ -72,10 +88,11 @@ describe("Exercise media HTTP routes (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
-      const deps = mediaHttpDeps(storage);
+      const deps = mediaHttpDeps(storage, practitionerId);
       const generate = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          deps,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -87,16 +104,18 @@ describe("Exercise media HTTP routes (integration)", () => {
       expect(generate.status).toBe(201);
 
       const publicServe = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/exercise-versions/${versionId}/media?access=public`,
+          deps,
         ),
         deps,
       );
       expect(publicServe.status).toBe(404);
 
       const internalServe = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/exercise-versions/${versionId}/media?access=internal`,
+          deps,
         ),
         deps,
       );
@@ -110,10 +129,11 @@ describe("Exercise media HTTP routes (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
-      const deps = mediaHttpDeps(storage);
+      const deps = mediaHttpDeps(storage, practitionerId);
       await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          deps,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -125,8 +145,9 @@ describe("Exercise media HTTP routes (integration)", () => {
 
       for (let i = 0; i < 5; i += 1) {
         const regen = await handleRequest(
-          new Request(
+          mediaRequest(
             `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+            deps,
             {
               method: "POST",
               headers: { "content-type": "application/json" },
@@ -139,8 +160,9 @@ describe("Exercise media HTTP routes (integration)", () => {
       }
 
       const capped = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          deps,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -180,16 +202,18 @@ describe("Exercise media HTTP routes (integration)", () => {
         versionId,
       ]);
 
+      const deps = mediaHttpDeps(storage, practitionerId);
       const response = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          deps,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ scope: "end" }),
           },
         ),
-        mediaHttpDeps(storage),
+        deps,
       );
       expect(response.status).toBe(409);
       const payload = (await response.json()) as { error?: string };
@@ -209,19 +233,20 @@ describe("Exercise media HTTP routes (integration)", () => {
     const consoleSpies = spyAllConsoleLevels();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const deps = mediaHttpDeps(storage, practitionerId, {
+        exerciseMediaImages: fal,
+      });
       const response = await handleRequest(
-        new Request(
+        mediaRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          deps,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ note }),
           },
         ),
-        {
-          ...mediaHttpDeps(storage),
-          exerciseMediaImages: fal,
-        },
+        deps,
       );
       expect(response.status).toBe(502);
       const text = await response.text();

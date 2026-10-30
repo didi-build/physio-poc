@@ -44,6 +44,10 @@ export class BetterSqliteStorage implements SqlStoragePort {
     this.db.exec(sql);
   }
 
+  nativeDatabase(): Database.Database {
+    return this.db;
+  }
+
   async run(sql: string, bindings: SqlBindings = []): Promise<SqlRunResult> {
     const normalized = sql.trim().replace(/\s+/g, " ");
     if (/^BEGIN$/i.test(normalized)) {
