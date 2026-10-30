@@ -28,6 +28,7 @@ import {
   RESTORE,
   AUTO_SAVE_NOT_SAVED,
   deletedProgramToast,
+  libraryUpdatesToReviewFlag,
   listCountLabel,
   restoredProgramToast,
 } from "../../src/ui/copy/programs.js";
@@ -78,6 +79,7 @@ const LIST_ITEM: ProgramListItem = {
   auto_save_status: { kind: "not_published_yet" },
   library_updates_to_review: 0,
   deleted_at: null,
+  routine_origin: null,
 };
 
 function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilderView {
@@ -94,6 +96,7 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     rows: [],
     open_share_link: false,
     deleted_at: null,
+    routine_origin: null,
     ...overrides,
   };
 }
@@ -437,6 +440,23 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(
       screen.queryByRole("link", { name: /Create a new link/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows library updates to review flag from spec States line 23", async () => {
+    render(
+      <MemoryRouter initialEntries={["/programs"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({
+            listPrograms: vi.fn().mockResolvedValue({
+              items: [{ ...LIST_ITEM, library_updates_to_review: 2 }],
+              matched_code: null,
+            }),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(libraryUpdatesToReviewFlag(2)!)).toBeInTheDocument();
   });
 
   it("shows zero exercise card copy", async () => {

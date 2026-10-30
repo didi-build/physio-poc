@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { libraryUpdatesToReviewFlag } from "../../src/ui/copy/programs.js";
 import {
   filterProgramsClientSide,
   resolveProgramIdForBuilderCode,
 } from "../../src/ui/programs/programs-list-utils.js";
+
+describe("libraryUpdatesToReviewFlag (unit)", () => {
+  it("returns null for zero and the States table line 23 pattern when count is positive", () => {
+    expect(libraryUpdatesToReviewFlag(0)).toBeNull();
+    expect(libraryUpdatesToReviewFlag(2)).toBe("2 library updates to review");
+  });
+});
 
 describe("programs list utils", () => {
   it("accepts exact matched_code and item code only", () => {
@@ -19,6 +27,7 @@ describe("programs list utils", () => {
             auto_save_status: { kind: "not_published_yet" },
             library_updates_to_review: 0,
             deleted_at: null,
+            routine_origin: null,
           },
         ],
       },
@@ -41,6 +50,7 @@ describe("programs list utils", () => {
             auto_save_status: { kind: "not_published_yet" },
             library_updates_to_review: 0,
             deleted_at: null,
+            routine_origin: null,
           },
         ],
       },
@@ -60,6 +70,7 @@ describe("programs list utils", () => {
         auto_save_status: { kind: "not_published_yet" as const },
         library_updates_to_review: 0,
         deleted_at: null,
+        routine_origin: null,
       },
     ];
     expect(filterProgramsClientSide(items, "knee")).toHaveLength(1);

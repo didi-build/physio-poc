@@ -468,7 +468,9 @@ describe("app shell nav (integration)", () => {
     expect(
       within(header as HTMLElement).queryByRole("searchbox"),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: SEARCH_PROGRAMS_LABEL })).toBeInTheDocument();
+    expect(
+      screen.getByRole("searchbox", { name: SEARCH_PROGRAMS_LABEL }),
+    ).toBeInTheDocument();
   });
 
   it("does not render global search in the app shell header on library routes", () => {

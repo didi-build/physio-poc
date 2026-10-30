@@ -8,9 +8,9 @@ import {
   CODE_CHIP_PREFIX,
   cardExerciseCountAccessible,
   cardExerciseCountLine,
+  libraryUpdatesToReviewFlag,
   programCodeChipLabel,
 } from "../copy/programs.js";
-import { programsPendingCopySlots } from "../copy/programs-pending-copy.js";
 import { highlightMatchedCode } from "./programs-list-utils.js";
 
 export type ProgramListCardProps = {
@@ -30,9 +30,7 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
   } else if (item.auto_save_status.kind === "unpublished_changes") {
     flags.push(DRAFT_CHANGES_NOT_PUBLISHED);
   }
-  const libraryFlag = programsPendingCopySlots.libraryUpdatesReviewFlag?.(
-    item.library_updates_to_review,
-  );
+  const libraryFlag = libraryUpdatesToReviewFlag(item.library_updates_to_review);
   if (libraryFlag) {
     flags.push(libraryFlag);
   }

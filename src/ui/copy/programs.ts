@@ -173,6 +173,14 @@ export function listCountLabel(total: number, visible?: number): string | null {
   return `${visible} of ${total} programs`;
 }
 
+/** design/app/programs/spec.md States table line 23 (N replaced with the count). */
+export function libraryUpdatesToReviewFlag(count: number): string | null {
+  if (count <= 0) {
+    return null;
+  }
+  return `${count} library updates to review`;
+}
+
 /** States table line 24; mockup 04 search no match. */
 export function programsSearchNoMatch(query: string): string {
   return `No program matches "${query.trim()}"`;

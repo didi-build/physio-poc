@@ -5,7 +5,6 @@ export type ProgramsPendingCopySlots = {
   builderLoadErrorMessage: string | undefined;
   listLoadingMessage: string | undefined;
   builderLoadingMessage: string | undefined;
-  libraryUpdatesReviewFlag: ((count: number) => string) | undefined;
   cardSentDateLine: ((date: string) => string) | undefined;
   cardLinkStatusLine: string | undefined;
   doseParamLabels: Partial<
@@ -18,7 +17,6 @@ export const programsPendingCopySlots: ProgramsPendingCopySlots = {
   builderLoadErrorMessage: undefined,
   listLoadingMessage: undefined,
   builderLoadingMessage: undefined,
-  libraryUpdatesReviewFlag: undefined,
   cardSentDateLine: undefined,
   cardLinkStatusLine: undefined,
   doseParamLabels: {},
