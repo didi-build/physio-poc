@@ -1,20 +1,17 @@
-import { AUTH_APP_API_PREFIX, isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
+import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
 import type { PhysioServerConfig } from "./config.js";
 import { jsonForbidden } from "./responses.js";
 
-/** Only `/api/auth/**` is exempt from app API CSRF (`/api/auth/` prefix; bare `/api/auth` is not exempt). */
-export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = AUTH_APP_API_PREFIX;
-
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const APP_API_PATH_PREFIX = "/api/";
+const APP_API_CSRF_SCOPE_PREFIX = "/api/";
 
-/** True when pathname is under `/api/**` (prefix match is case-insensitive). */
-export function isAppApiPath(pathname: string): boolean {
-  if (pathname.length < APP_API_PATH_PREFIX.length) {
+function pathnameMatchesAppApiCsrfScope(pathname: string): boolean {
+  if (pathname.length < APP_API_CSRF_SCOPE_PREFIX.length) {
     return false;
   }
   return (
-    pathname.slice(0, APP_API_PATH_PREFIX.length).toLowerCase() === APP_API_PATH_PREFIX
+    pathname.slice(0, APP_API_CSRF_SCOPE_PREFIX.length).toLowerCase() ===
+    APP_API_CSRF_SCOPE_PREFIX
   );
 }
 
@@ -27,10 +24,10 @@ export function isCsrfExemptAppApiAuthPath(pathname: string): boolean {
 }
 
 export function requiresAppApiCsrfGuard(pathname: string, method: string): boolean {
-  if (!isAppApiPath(pathname)) {
+  if (!isNonSafeHttpMethod(method)) {
     return false;
   }
-  if (!isNonSafeHttpMethod(method)) {
+  if (!pathnameMatchesAppApiCsrfScope(pathname)) {
     return false;
   }
   return !isCsrfExemptAppApiAuthPath(pathname);

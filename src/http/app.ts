@@ -11,7 +11,6 @@ import { handleOptionsPreflight } from "./cors-preflight.js";
 import {
   rejectMutatingAppApiCsrf,
   requiresAppApiCsrfGuard,
-  isAppApiPath,
 } from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
@@ -112,6 +111,16 @@ export async function handleRequest(
     );
   }
 
+  if (
+    requiresAppApiCsrfGuard(pathname, request.method) &&
+    !pathname.startsWith("/api/")
+  ) {
+    const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+    if (csrfRejection) {
+      return csrfRejection;
+    }
+  }
+
   const asset = ui.tryServeAsset(pathname);
   if (asset) {
     return asset;
@@ -128,7 +137,7 @@ export async function handleRequest(
     return deps.mcp(request);
   }
 
-  if (isAppApiPath(pathname)) {
+  if (pathname.startsWith("/api/")) {
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
       if (requiresAppApiCsrfGuard(pathname, request.method)) {
         const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
@@ -196,7 +205,7 @@ async function guardAndRun(
   }
   const practitioner = await deps.auth.getPractitioner(request);
   if (!practitioner) {
-    if (isAppApiPath(url.pathname)) {
+    if (url.pathname.startsWith("/api/")) {
       return jsonUnauthorized();
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { AUTH_APP_API_PREFIX } from "../src/auth/auth-app-api-prefix.js";
 import {
   allowedMutatingAppApiOrigins,
-  CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isApplicationJsonContentType,
   isCsrfExemptAppApiAuthPath,
   isNonSafeHttpMethod,
@@ -32,7 +29,7 @@ describe("mutating app API CSRF (unit)", () => {
     expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises", "GET")).toBe(
       false,
     );
-    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe(AUTH_APP_API_PREFIX);
+    expect(requiresAppApiCsrfGuard("/API/AUTH/x", "POST")).toBe(true);
     expect(AUTH_APP_API_PREFIX).toBe("/api/auth/");
   });
 
@@ -120,16 +117,6 @@ describe("mutating app API CSRF (unit)", () => {
 });
 
 describe("mutating app API CSRF regression guards (mutant killers)", () => {
-  it("re-exports the auth API prefix from the auth module (no duplicate literal in CSRF guard)", () => {
-    const csrfSource = readFileSync(
-      join(import.meta.dirname, "../src/http/mutating-app-api-csrf.ts"),
-      "utf8",
-    );
-    expect(csrfSource).toMatch(
-      /export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = AUTH_APP_API_PREFIX;/,
-    );
-  });
-
   it("accepts WEB_APP_BASE_URL origin when the request URL host differs", () => {
     const request = new Request("https://physio.test.example/api/x", {
       method: "POST",

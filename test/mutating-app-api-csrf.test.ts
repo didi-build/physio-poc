@@ -8,7 +8,6 @@ import {
 } from "../src/http/app.js";
 import { AUTH_APP_API_PREFIX } from "../src/auth/auth-app-api-prefix.js";
 import {
-  CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isCsrfExemptAppApiAuthPath,
   rejectMutatingAppApiCsrf,
   requiresAppApiCsrfGuard,
@@ -338,9 +337,8 @@ describe("mutating app API CSRF guard", () => {
 });
 
 describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
-  it("pins the sole auth API prefix constant and CSRF import", () => {
+  it("pins the sole auth API prefix constant", () => {
     expect(AUTH_APP_API_PREFIX).toBe("/api/auth/");
-    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe(AUTH_APP_API_PREFIX);
     expect(isCsrfExemptAppApiAuthPath("/api/auth/sign-out")).toBe(true);
     expect(isCsrfExemptAppApiAuthPath("/api/auth")).toBe(false);
     expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
@@ -459,6 +457,16 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
       expect(response.status, path).toBe(403);
       expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
     }
+  });
+
+  it("redirects mixed-case app API GET without session to sign-in", async () => {
+    const { deps } = await sessionDeps();
+    const response = await handleRequest(
+      new Request(`${BASE}/API/foo`, { method: "GET" }),
+      deps,
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location") ?? "").toContain("/sign-in");
   });
 
   it("accepts each fixture allowed Origin and rejects look-alikes with 403", async () => {

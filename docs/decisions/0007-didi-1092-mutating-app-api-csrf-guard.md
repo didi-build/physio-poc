@@ -13,7 +13,9 @@ Follow-up on [DIDI-1092 comment 47311a43](https://linear.app/didi-build/issue/DI
 
 ## Decision
 
-For every request whose path starts with `/api/`, after the practitioner session guard succeeds, `handleRequest` runs `rejectMutatingAppApiCsrf` once before handler dispatch when the method is not safe (anything other than GET, HEAD, or OPTIONS) and the path is not under the sole exemption prefix `CSRF_EXEMPT_APP_API_AUTH_PREFIX` (`/api/auth/`; bare `/api/auth` and look-alikes such as `/api/authx` are not exempt). This runs whether or not a handler exists for the path.
+For every request whose path starts with `/api/`, after the practitioner session guard succeeds, `handleRequest` runs `rejectMutatingAppApiCsrf` once before handler dispatch when the method is not safe (anything other than GET, HEAD, or OPTIONS) and the path is not under the sole exemption prefix `AUTH_APP_API_PREFIX` (`/api/auth/`; bare `/api/auth` and look-alikes such as `/api/authx` are not exempt). This runs whether or not a handler exists for the path.
+
+Non-safe requests whose path lowercases to `/api/**` but does not start with the lowercase `/api/` prefix (mixed-case paths) run the same CSRF check in `handleRequest` before app dispatch, without entering the case-sensitive `/api/` routing branch. CSRF scope uses a lowercased path prefix; auth exemption matching stays case-sensitive on `AUTH_APP_API_PREFIX`.
 
 Before the guarded `/api/` branch, requests whose path starts with `/api/auth/` are handled only by `AuthPort.handleAuthRequest`. When that returns null, `handleRequest` responds with 404 and does not run app handlers or session-guarded dispatch for that request.
 
