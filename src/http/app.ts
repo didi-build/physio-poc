@@ -7,6 +7,10 @@ import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
+import {
+  handleExerciseLibraryRequest,
+  isExerciseLibraryApiPath,
+} from "./routes/exercise-library.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
@@ -24,6 +28,8 @@ export type AppDependencies = {
   /** Dev/test entries only; never true on the Worker entry. */
   enableFakeGoogleRoutes?: boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
+  /** Node dev and tests only: skip session guard on exercise library API routes. */
+  enableUnauthenticatedApi?: boolean;
 };
 
 export const MCP_PATH = "/mcp";
@@ -92,9 +98,16 @@ export async function handleRequest(
   }
 
   if (pathname.startsWith("/api/")) {
-    return guardAndRun(request, deps, sessionGuardOptions, async () =>
-      Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS }),
-    );
+    return guardAndRun(request, deps, sessionGuardOptions, async () => {
+      const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
+      if (exerciseResponse) {
+        return exerciseResponse;
+      }
+      return Response.json(
+        { error: "not_found" },
+        { status: 404, headers: JSON_HEADERS },
+      );
+    });
   }
 
   if (requiresPractitionerSession(pathname, request.method, sessionGuardOptions)) {
@@ -121,6 +134,12 @@ async function guardAndRun(
   next: () => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
+  if (
+    deps.enableUnauthenticatedApi === true &&
+    isExerciseLibraryApiPath(url.pathname)
+  ) {
+    return next();
+  }
   if (!requiresPractitionerSession(url.pathname, request.method, sessionGuardOptions)) {
     return next();
   }

@@ -47,6 +47,11 @@ const HANDLE_REQUEST_ROUTE_SAMPLES: readonly HandleRequestRouteSample[] = [
   { branchId: "ui-static-asset", samplePath: "/assets/index.js", method: "GET" },
   { branchId: "mcp", samplePath: MCP_PATH, method: "POST" },
   { branchId: "guarded-api", samplePath: "/api/unknown", method: "GET" },
+  {
+    branchId: "guarded-api",
+    samplePath: "/api/practitioners/pract-1/exercises/approved/search",
+    method: "GET",
+  },
   { branchId: "app-shell", samplePath: "/sign-in", method: "GET" },
   { branchId: "app-shell", samplePath: "/l/demo-code", method: "GET" },
   { branchId: "app-shell", samplePath: "/favicon.ico", method: "GET" },

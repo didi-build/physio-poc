@@ -24,10 +24,11 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
 export async function seedPractitioner(
   storage: SqlStoragePort,
   id = "pract-1",
+  email = "coach@example.com",
 ): Promise<string> {
   await storage.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    [id, "coach@example.com", TS],
+    [id, email, TS],
   );
   return id;
 }

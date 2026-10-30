@@ -25,5 +25,6 @@ export function createWorkerAppDependencies(env: WorkerEnv): AppDependencies {
     mcp: createPhysioMcpHttpHandler(config),
     enableFakeGoogleRoutes: false,
     guardedAppWithoutSession: "service-unavailable",
+    enableUnauthenticatedApi: false,
   };
 }
