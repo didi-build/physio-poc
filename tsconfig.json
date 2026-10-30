@@ -27,6 +27,7 @@
     "scripts/lib/launchpad-attribution.mjs",
     "scripts/lib/gh-api-errors.mjs",
     "scripts/lib/bootstrap.mjs",
+    "scripts/media-test/**/*.ts",
     "vitest.config.ts",
     "vite.config.ts",
     "eslint.config.js"
