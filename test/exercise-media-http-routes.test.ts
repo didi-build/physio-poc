@@ -20,6 +20,7 @@ import {
   restoreConsoleSpies,
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
+import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 
 function mediaHttpDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -42,9 +43,10 @@ function mediaRequest(
   deps: AppDependencies,
   init: RequestInit = {},
 ): Request {
-  const headers = new Headers(init.headers);
+  const withCsrf = mutatingAppApiRequestInit(url, init);
+  const headers = new Headers(withCsrf.headers);
   headers.set("cookie", exerciseMediaSessionCookie(deps));
-  return new Request(url, { ...init, headers });
+  return new Request(url, { ...withCsrf, headers });
 }
 
 async function seedDraftVersion(

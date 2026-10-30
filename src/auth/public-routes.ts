@@ -1,6 +1,5 @@
+import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 import { MCP_PATH } from "../http/app.js";
-
-const PUBLIC_API_AUTH_PREFIX = "/api/auth";
 
 export type SessionGuardOptions = {
   /** When true, `/__fake-google/*` skips the practitioner session guard (dev/test only). */
@@ -57,10 +56,7 @@ export function isPublicAppPath(pathname: string): boolean {
 }
 
 export function isPublicApiAuthPath(pathname: string): boolean {
-  return (
-    pathname === PUBLIC_API_AUTH_PREFIX ||
-    pathname.startsWith(`${PUBLIC_API_AUTH_PREFIX}/`)
-  );
+  return isAuthAppApiPath(pathname);
 }
 
 export function requiresPractitionerSession(

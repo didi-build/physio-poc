@@ -692,7 +692,11 @@ describe("Exercise library QA round 1 (integration)", () => {
       const save = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "save",
             saved_at: "2020-01-01T00:00:00.000Z",
@@ -710,7 +714,11 @@ describe("Exercise library QA round 1 (integration)", () => {
       const patch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "PATCH",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             text_overrides: {
               title: "Edited",
@@ -724,7 +732,11 @@ describe("Exercise library QA round 1 (integration)", () => {
       const objectPatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "PATCH",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             text_overrides: {
               title: { value: "Edited", base: "wrong" },
@@ -738,7 +750,11 @@ describe("Exercise library QA round 1 (integration)", () => {
       const undoMismatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {

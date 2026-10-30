@@ -13,6 +13,7 @@ import {
   exerciseMediaSessionCookie,
   exerciseMediaTestDeps,
 } from "./helpers/exercise-media-http.js";
+import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import {
   assertLeakFreeText,
   expectConsoleCallsLeakFree,
@@ -97,9 +98,10 @@ function mediaRequest(
   deps: ReturnType<typeof mediaHttpDeps>,
   init: RequestInit = {},
 ) {
-  const headers = new Headers(init.headers);
+  const withCsrf = mutatingAppApiRequestInit(url, init);
+  const headers = new Headers(withCsrf.headers);
   headers.set("cookie", exerciseMediaSessionCookie(deps));
-  return new Request(url, { ...init, headers });
+  return new Request(url, { ...withCsrf, headers });
 }
 
 function createEndOnlyRegenFetchMock(startProviderUrl: string) {
