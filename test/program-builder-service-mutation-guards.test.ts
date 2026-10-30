@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PATIENT_DETAIL_REJECTION_MESSAGE } from "../src/mcp-connector/patient-detail-validator.js";
 import { PRESCRIPTION_TYPES } from "../src/domain/exercise-types.js";
 import {
   ProgramBuilderService,
@@ -24,6 +25,14 @@ import {
 import { id } from "./helpers/opaque-test-ids.js";
 
 const MS_DAY = 24 * 60 * 60 * 1000;
+const BAD_OPAQUE_ID = "not-a-valid-opaque-id";
+const PROGRAM_ID_OPAQUE_MESSAGE = "Program id must be a UUID v4 opaque id";
+const ROW_ID_OPAQUE_MESSAGE = "Program row id must be a UUID v4 opaque id";
+const HOLD_S_RANGE_MESSAGE = "hold_s must be between 1 and 120";
+const LINK_VERSION_MISMATCH_MESSAGE =
+  "approvedVersionId does not match the exercise request";
+const ROW_NOTE_PATIENT_DETAIL_MESSAGE = `Row note: ${PATIENT_DETAIL_REJECTION_MESSAGE}`;
+const FLAGGED_NOTE = "coach@example.com";
 
 async function seedApprovedExerciseForBuilder(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -170,12 +179,18 @@ describe("ProgramBuilderService QA blocker 3 row isolation", () => {
     [
       "reorderRows",
       (s: ProgramBuilderService, b: string) =>
-        s.reorderRows(b, id("prog-b"), [id("row-a"), id("row-b")]),
+        s.reorderRows(b, id("prog-b"), [id("row-a")]),
       "invalid_input" as const,
+      "Reorder includes an unknown row id",
     ],
   ])(
     "%s rejects another practitioner's row id on B's program without changing A",
-    async (_name, invoke, expectedCode?: "program_row_not_found" | "invalid_input") => {
+    async (
+      _name,
+      invoke,
+      expectedCode?: "program_row_not_found" | "invalid_input",
+      expectedMessage?: string,
+    ) => {
       const code = expectedCode ?? "program_row_not_found";
       const storage = await openMigratedDatabase();
       try {
@@ -184,6 +199,7 @@ describe("ProgramBuilderService QA blocker 3 row isolation", () => {
         const beforeB = await snapshotProgramDbState(storage, id("prog-b"));
         await expect(invoke(serviceB, practitionerB)).rejects.toMatchObject({
           code,
+          ...(expectedMessage ? { message: expectedMessage } : {}),
         });
         const afterA = await snapshotProgramDbState(storage, id("prog-a"));
         const afterB = await snapshotProgramDbState(storage, id("prog-b"));
@@ -225,6 +241,59 @@ describe("ProgramBuilderService list isolation", () => {
       const listB = await serviceB.listPrograms(practitionerB);
       expect(listA.items.map((item) => item.program_id)).toEqual([id("prog-list-a")]);
       expect(listB.items.map((item) => item.program_id)).toEqual([id("prog-list-b")]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("listPrograms excludes soft-deleted programs", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: id("prog-active-list"),
+        createdBy: practitionerId,
+        createdAt: TS,
+      });
+      await programs.create({
+        id: id("prog-deleted-list"),
+        createdBy: practitionerId,
+        createdAt: TS,
+      });
+      await programs.softDelete(id("prog-deleted-list"), TS);
+      const service = new ProgramBuilderService(storage);
+      const list = await service.listPrograms(practitionerId);
+      expect(list.items.map((item) => item.program_id)).toEqual([
+        id("prog-active-list"),
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("listPrograms searchQuery filters by name", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: id("prog-alpha"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Alpha rehab",
+      });
+      await programs.create({
+        id: id("prog-beta"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Beta balance",
+      });
+      const service = new ProgramBuilderService(storage);
+      const filtered = await service.listPrograms(practitionerId, {
+        searchQuery: "alpha",
+      });
+      expect(filtered.items.map((item) => item.program_id)).toEqual([id("prog-alpha")]);
     } finally {
       storage.close();
     }
@@ -481,7 +550,32 @@ describe("ProgramBuilderService addExerciseRow guards", () => {
           exerciseId: FIXTURE_EXERCISE_ID,
           params: { hold_s: -1 },
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: HOLD_S_RANGE_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects an invalid prescriptionType literal on addExerciseRow", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-add-lit") });
+      await expect(
+        service.addExerciseRow(practitionerId, id("prog-add-lit"), {
+          rowId: id("row-add-lit"),
+          exerciseId: FIXTURE_EXERCISE_ID,
+          prescriptionType: "not-a-type" as "stretching",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: `prescriptionType must be one of: ${PRESCRIPTION_TYPES.join(", ")}`,
+      });
     } finally {
       storage.close();
     }
@@ -602,7 +696,69 @@ describe("ProgramBuilderService updateRow guards", () => {
         service.updateRow(practitionerId, id("prog-upd-params"), id("row-upd-params"), {
           params: { hold_s: -5 },
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: HOLD_S_RANGE_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps placeholder updateRow note validation through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-note-upd-ph"),
+        "Move",
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-note-upd-ph"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-note-upd-ph"), {
+        rowId: id("row-note-upd-ph"),
+        exerciseRequestId: id("req-note-upd-ph"),
+        prescriptionType: "stretching",
+      });
+      await expect(
+        service.updateRow(
+          practitionerId,
+          id("prog-note-upd-ph"),
+          id("row-note-upd-ph"),
+          {
+            note: FLAGGED_NOTE,
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_NOTE_PATIENT_DETAIL_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns program_row_not_found for a well-formed unknown row id", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-unknown-row"),
+      });
+      await expect(
+        service.updateRow(practitionerId, id("prog-unknown-row"), id("row-unknown"), {
+          params: { hold_s: 10 },
+        }),
+      ).rejects.toMatchObject({
+        code: "program_row_not_found",
+        message: "Program row not found",
+      });
     } finally {
       storage.close();
     }
@@ -631,6 +787,73 @@ describe("ProgramBuilderService library row actions", () => {
         code: "invalid_input",
         message: "No library update is available for this row",
       });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keepLibraryUpdateForRow rejects placeholder rows", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedOpenExerciseRequest(storage, practitionerId, id("req-keep-ph"), "Move");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-keep-ph") });
+      await service.addPlaceholderRow(practitionerId, id("prog-keep-ph"), {
+        rowId: id("row-keep-ph"),
+        exerciseRequestId: id("req-keep-ph"),
+        prescriptionType: "stretching",
+      });
+      await expect(
+        service.keepLibraryUpdateForRow(
+          practitionerId,
+          id("prog-keep-ph"),
+          id("row-keep-ph"),
+        ),
+      ).rejects.toMatchObject({
+        code: "program_row_not_found",
+        message: "Program row not found",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keepLibraryUpdateForRow returns exercise_not_found when pinned version is not approved", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const version2Id = id("ver-lib-2");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: version2Id,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-keep-pin") });
+      await service.addExerciseRow(practitionerId, id("prog-keep-pin"), {
+        rowId: id("row-keep-pin"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE id = ?`,
+        [FIXTURE_VERSION_ID],
+      );
+      await expect(
+        service.keepLibraryUpdateForRow(
+          practitionerId,
+          id("prog-keep-pin"),
+          id("row-keep-pin"),
+        ),
+      ).rejects.toMatchObject({ code: "exercise_not_found" });
     } finally {
       storage.close();
     }
@@ -790,7 +1013,10 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       );
       await expect(
         linkApprovedPlaceholders(storage, id("req-no-exercise-id"), FIXTURE_VERSION_ID),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: LINK_VERSION_MISMATCH_MESSAGE,
+      });
     } finally {
       storage.close();
     }
@@ -879,15 +1105,20 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       );
       const before1 = await snapshotProgramDbState(storage, id("prog-write-fail"));
       const before2 = await snapshotProgramDbState(storage, id("prog-write-fail-2"));
+      const rowsRepo = new ProgramRowsRepository(storage);
       const original = ProgramRowsRepository.prototype.replaceRow;
       let calls = 0;
       vi.spyOn(ProgramRowsRepository.prototype, "replaceRow").mockImplementation(
         async function (this: ProgramRowsRepository, input) {
           calls += 1;
+          await original.call(this, input);
+          if (calls === 1) {
+            const linked = await rowsRepo.findById(input.id);
+            expect(linked?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+          }
           if (calls === 2) {
             throw new Error("simulated mid-link write failure");
           }
-          return original.call(this, input);
         },
       );
       await storage.run("BEGIN");
@@ -915,7 +1146,10 @@ describe("ProgramBuilderService opaque id validation (extra entry points)", () =
       const service = new ProgramBuilderService(storage);
       await expect(
         service.createProgram(practitionerId, { programId: badId }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: PROGRAM_ID_OPAQUE_MESSAGE,
+      });
     } finally {
       storage.close();
     }
@@ -958,7 +1192,10 @@ describe("ProgramBuilderService opaque id validation (extra entry points)", () =
           sourceRowId: id("row-dup-src"),
           newRowId: badId,
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_ID_OPAQUE_MESSAGE,
+      });
     } finally {
       storage.close();
     }
@@ -973,7 +1210,10 @@ describe("ProgramBuilderService opaque id validation (extra entry points)", () =
         service.updateRow(practitionerId, badId, id("row-any"), {
           params: { hold_s: 1 },
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: PROGRAM_ID_OPAQUE_MESSAGE,
+      });
     } finally {
       storage.close();
     }
@@ -985,7 +1225,10 @@ describe("ProgramBuilderService opaque id validation (extra entry points)", () =
       const service = new ProgramBuilderService(storage);
       await expect(
         service.createProgram("bad-practitioner-id", { programId: id("prog-x") }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Practitioner id must be a UUID v4 opaque id",
+      });
     } finally {
       storage.close();
     }
@@ -1007,23 +1250,91 @@ describe("ProgramRowsRepository guard coverage used by program builder", () => {
     }
   });
 
-  it("maps reorderRows validation errors through service", async () => {
+  it("maps reorder duplicate row ids with an exact message", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
       const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerId, { programId: id("prog-reorder") });
-      await service.addExerciseRow(practitionerId, id("prog-reorder"), {
+      await service.createProgram(practitionerId, {
+        programId: id("prog-reorder-dup"),
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-dup"), {
         rowId: id("row-r1"),
         exerciseId: FIXTURE_EXERCISE_ID,
       });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-dup"), {
+        rowId: id("row-r2"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
       await expect(
-        service.reorderRows(practitionerId, id("prog-reorder"), [
+        service.reorderRows(practitionerId, id("prog-reorder-dup"), [
           id("row-r1"),
           id("row-r1"),
         ]),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Reorder row ids must be unique",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps reorder unknown row id with an exact message", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-reorder-unk"),
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-unk"), {
+        rowId: id("row-unk-a"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-unk"), {
+        rowId: id("row-unk-b"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await expect(
+        service.reorderRows(practitionerId, id("prog-reorder-unk"), [
+          id("row-unk-a"),
+          id("row-missing-reorder"),
+        ]),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Reorder includes an unknown row id",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps reorder missing row count with an exact message", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-reorder-cnt"),
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-cnt"), {
+        rowId: id("row-cnt-1"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-cnt"), {
+        rowId: id("row-cnt-2"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await expect(
+        service.reorderRows(practitionerId, id("prog-reorder-cnt"), [id("row-cnt-1")]),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Reorder must include every program row",
+      });
     } finally {
       storage.close();
     }
@@ -1070,7 +1381,10 @@ describe("ProgramBuilderService placeholder params validation", () => {
           prescriptionType: "stretching",
           params: { hold_s: -99 },
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: HOLD_S_RANGE_MESSAGE,
+      });
     } finally {
       storage.close();
     }
@@ -1093,6 +1407,368 @@ describe("ProgramBuilderService getProgram deleted view", () => {
       const view = await service.getProgram(practitionerId, id("prog-del-view"));
       expect(view.rows).toHaveLength(0);
       expect(view.open_share_link).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramBuilderService malformed program id parsing", () => {
+  async function seedProgramWithRow(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    practitionerId: string,
+  ) {
+    await seedApprovedExerciseForBuilder(storage, practitionerId);
+    const service = new ProgramBuilderService(storage);
+    await service.createProgram(practitionerId, { programId: id("prog-parse") });
+    await service.addExerciseRow(practitionerId, id("prog-parse"), {
+      rowId: id("row-parse"),
+      exerciseId: FIXTURE_EXERCISE_ID,
+    });
+    await seedOpenExerciseRequest(storage, practitionerId, id("req-parse"), "Move");
+    await service.addPlaceholderRow(practitionerId, id("prog-parse"), {
+      rowId: id("row-ph-parse"),
+      exerciseRequestId: id("req-parse"),
+      prescriptionType: "stretching",
+    });
+    return service;
+  }
+
+  it.each([
+    [
+      "addPlaceholderRow",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.addPlaceholderRow(practitionerId, BAD_OPAQUE_ID, {
+          rowId: id("row-new"),
+          exerciseRequestId: id("req-parse"),
+          prescriptionType: "stretching",
+        }),
+    ],
+    [
+      "duplicateRow",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.duplicateRow(practitionerId, BAD_OPAQUE_ID, {
+          sourceRowId: id("row-parse"),
+          newRowId: id("row-dup-new"),
+        }),
+    ],
+    [
+      "removeRow",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.removeRow(practitionerId, BAD_OPAQUE_ID, id("row-parse")),
+    ],
+    [
+      "reorderRows",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.reorderRows(practitionerId, BAD_OPAQUE_ID, [id("row-parse")]),
+    ],
+    [
+      "applyLibraryUpdateToRow",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.applyLibraryUpdateToRow(practitionerId, BAD_OPAQUE_ID, id("row-parse")),
+    ],
+    [
+      "keepLibraryUpdateForRow",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.keepLibraryUpdateForRow(practitionerId, BAD_OPAQUE_ID, id("row-parse")),
+    ],
+  ])(
+    "%s rejects malformed program id before program_not_found",
+    async (_name, invoke) => {
+      const storage = await openMigratedDatabase();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        const service = await seedProgramWithRow(storage, practitionerId);
+        await expect(invoke(service, practitionerId)).rejects.toMatchObject({
+          code: "invalid_input",
+          message: PROGRAM_ID_OPAQUE_MESSAGE,
+        });
+      } finally {
+        storage.close();
+      }
+    },
+  );
+});
+
+describe("ProgramBuilderService malformed row id parsing", () => {
+  it("addExerciseRow maps malformed row id to invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-bad-row-add"),
+      });
+      await expect(
+        service.addExerciseRow(practitionerId, id("prog-bad-row-add"), {
+          rowId: BAD_OPAQUE_ID,
+          exerciseId: FIXTURE_EXERCISE_ID,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_ID_OPAQUE_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("addPlaceholderRow maps malformed row id to invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedOpenExerciseRequest(storage, practitionerId, id("req-bad-row"), "Move");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-bad-row-ph") });
+      await expect(
+        service.addPlaceholderRow(practitionerId, id("prog-bad-row-ph"), {
+          rowId: BAD_OPAQUE_ID,
+          exerciseRequestId: id("req-bad-row"),
+          prescriptionType: "stretching",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_ID_OPAQUE_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("reorderRows maps malformed ordered row id to invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-reorder-bad-id"),
+      });
+      await service.addExerciseRow(practitionerId, id("prog-reorder-bad-id"), {
+        rowId: id("row-reorder-ok"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await expect(
+        service.reorderRows(practitionerId, id("prog-reorder-bad-id"), [BAD_OPAQUE_ID]),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_ID_OPAQUE_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramBuilderService restoreProgram guards", () => {
+  it("surfaces Program is not deleted when restoring an active program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, {
+        programId: id("prog-active-restore"),
+      });
+      await expect(
+        service.restoreProgram(practitionerId, id("prog-active-restore")),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Program is not deleted",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramBuilderService detectLibraryUpdate integration", () => {
+  it("shows no library update when the row is pinned to the latest approved version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const version2Id = id("ver-latest-pin");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: version2Id,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-latest-pin") });
+      await service.addExerciseRow(practitionerId, id("prog-latest-pin"), {
+        rowId: id("row-latest-pin"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: version2Id,
+      });
+      const view = await service.getProgram(practitionerId, id("prog-latest-pin"));
+      expect(view.library_updates_to_review).toBe(0);
+      expect(view.rows[0]?.library_update).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramBuilderService mapRowWriteError paths", () => {
+  it("maps addPlaceholderRow note validation through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedOpenExerciseRequest(storage, practitionerId, id("req-note-ph"), "Move");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-note-ph") });
+      await expect(
+        service.addPlaceholderRow(practitionerId, id("prog-note-ph"), {
+          rowId: id("row-note-ph"),
+          exerciseRequestId: id("req-note-ph"),
+          prescriptionType: "stretching",
+          note: FLAGGED_NOTE,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_NOTE_PATIENT_DETAIL_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps updateRow note validation through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-note-upd") });
+      await service.addExerciseRow(practitionerId, id("prog-note-upd"), {
+        rowId: id("row-note-upd"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await expect(
+        service.updateRow(practitionerId, id("prog-note-upd"), id("row-note-upd"), {
+          note: FLAGGED_NOTE,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_NOTE_PATIENT_DETAIL_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps duplicateRow write failures through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-dup-map") });
+      await service.addExerciseRow(practitionerId, id("prog-dup-map"), {
+        rowId: id("row-dup-src-map"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await expect(
+        service.duplicateRow(practitionerId, id("prog-dup-map"), {
+          sourceRowId: id("row-dup-src-map"),
+          newRowId: id("row-dup-src-map"),
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: "Program row id is already in use",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps applyLibraryUpdateToRow note validation through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const version2Id = id("ver-apply-note");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: version2Id,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-note-apply") });
+      await service.addExerciseRow(practitionerId, id("prog-note-apply"), {
+        rowId: id("row-note-apply"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await storage.run(`UPDATE program_rows SET note = ? WHERE id = ?`, [
+        FLAGGED_NOTE,
+        id("row-note-apply"),
+      ]);
+      await expect(
+        service.applyLibraryUpdateToRow(
+          practitionerId,
+          id("prog-note-apply"),
+          id("row-note-apply"),
+        ),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_NOTE_PATIENT_DETAIL_MESSAGE,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps keepLibraryUpdateForRow note validation through mapRowWriteError", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId: id("prog-note-keep") });
+      await service.addExerciseRow(practitionerId, id("prog-note-keep"), {
+        rowId: id("row-note-keep"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      const version2Id = id("ver-keep-note");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: version2Id,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+      await storage.run(`UPDATE program_rows SET note = ? WHERE id = ?`, [
+        FLAGGED_NOTE,
+        id("row-note-keep"),
+      ]);
+      await expect(
+        service.keepLibraryUpdateForRow(
+          practitionerId,
+          id("prog-note-keep"),
+          id("row-note-keep"),
+        ),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: ROW_NOTE_PATIENT_DETAIL_MESSAGE,
+      });
     } finally {
       storage.close();
     }

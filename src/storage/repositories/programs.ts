@@ -396,7 +396,6 @@ export class ProgramRowsRepository {
     textSnapshot: ProgramRowTextSnapshot;
     note?: string | null;
     draftUpdatedAt: string;
-    touchDraft?: boolean;
   }): Promise<void> {
     const rowId = validateOpaqueEntityId(input.id, "Program row id");
     const program = await new ProgramsRepository(this.sql).findById(input.programId);
@@ -449,12 +448,10 @@ export class ProgramRowsRepository {
         note,
       ],
     );
-    if (input.touchDraft !== false) {
-      await new ProgramsRepository(this.sql).touchDraft(
-        input.programId,
-        input.draftUpdatedAt,
-      );
-    }
+    await new ProgramsRepository(this.sql).touchDraft(
+      input.programId,
+      input.draftUpdatedAt,
+    );
   }
 
   async listForProgram(programId: string): Promise<ProgramRow[]> {
