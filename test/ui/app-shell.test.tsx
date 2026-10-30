@@ -162,7 +162,7 @@ describe("app shell nav (integration)", () => {
       "Types, links",
     );
     const signOut = screen.getByRole("menuitem", { name: "Sign out" });
-    expect(signOut.tagName).toBe("A");
+    expect(signOut.tagName).toBe("BUTTON");
   });
 
   it("does not render global search", () => {

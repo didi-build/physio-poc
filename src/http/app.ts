@@ -1,7 +1,13 @@
+import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
+import { requiresPractitionerSession } from "../auth/public-routes.js";
+import { signInPathWithReturnTo } from "../auth/return-to.js";
+import type { AuthPort } from "../auth/auth-port.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
+import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleHealthRequest } from "./routes/health.js";
+import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
@@ -9,7 +15,9 @@ export type AppDependencies = {
   sql: SqlStoragePort;
   objects: ObjectStoragePort;
   config: PhysioServerConfig;
+  auth: AuthPort;
   mcp: McpHttpHandler;
+  uiStatic?: UiStaticPort;
 };
 
 export const MCP_PATH = "/mcp";
@@ -23,10 +31,12 @@ export async function handleRequest(
   void deps.sql;
   void deps.objects;
   const url = new URL(request.url);
+  const pathname = url.pathname;
+  const ui = deps.uiStatic ?? noopUiStaticPort;
 
   if (
     (request.method === "GET" || request.method === "HEAD") &&
-    url.pathname === "/health"
+    pathname === "/health"
   ) {
     if (request.method === "HEAD") {
       return new Response(null, { status: 200 });
@@ -34,16 +44,84 @@ export async function handleRequest(
     return handleHealthRequest();
   }
 
-  if (request.method === "POST" && url.pathname === "/health") {
+  if (request.method === "POST" && pathname === "/health") {
     return Response.json(
       { error: "method_not_allowed" },
       { status: 405, headers: JSON_HEADERS },
     );
   }
 
-  if (url.pathname === MCP_PATH || url.pathname === `${MCP_PATH}/`) {
+  if (deps.config.auth.fakeGoogleProviderEnabled) {
+    const fakeGoogle = await handleFakeGoogleRequest(request);
+    if (fakeGoogle) {
+      return fakeGoogle;
+    }
+  }
+
+  const authResponse = await deps.auth.handleAuthRequest(request);
+  if (authResponse) {
+    return authResponse;
+  }
+
+  const asset = ui.tryServeAsset(pathname);
+  if (asset) {
+    return asset;
+  }
+
+  if (pathname === MCP_PATH || pathname === `${MCP_PATH}/`) {
+    const practitioner = await deps.auth.getPractitioner(request);
+    if (!practitioner) {
+      return jsonUnauthorized();
+    }
     return deps.mcp(request);
   }
 
+  if (pathname.startsWith("/api/")) {
+    return guardAndRun(request, deps, async () =>
+      Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS }),
+    );
+  }
+
+  if (requiresPractitionerSession(pathname, request.method)) {
+    const practitioner = await deps.auth.getPractitioner(request);
+    if (!practitioner) {
+      if (request.method === "GET" || request.method === "HEAD") {
+        const returnTo = `${pathname}${url.search}`;
+        return redirectResponse(signInPathWithReturnTo(returnTo));
+      }
+      return jsonUnauthorized();
+    }
+  }
+
+  if (request.method === "GET" || request.method === "HEAD") {
+    const shell = ui.renderAppShell();
+    if (shell) {
+      return shell;
+    }
+  }
+
   return Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS });
+}
+
+async function guardAndRun(
+  request: Request,
+  deps: AppDependencies,
+  next: () => Promise<Response>,
+): Promise<Response> {
+  const url = new URL(request.url);
+  if (!requiresPractitionerSession(url.pathname, request.method)) {
+    return next();
+  }
+  const practitioner = await deps.auth.getPractitioner(request);
+  if (!practitioner) {
+    if (url.pathname.startsWith("/api/")) {
+      return jsonUnauthorized();
+    }
+    if (request.method === "GET" || request.method === "HEAD") {
+      const returnTo = `${url.pathname}${url.search}`;
+      return redirectResponse(signInPathWithReturnTo(returnTo));
+    }
+    return jsonUnauthorized();
+  }
+  return next();
 }

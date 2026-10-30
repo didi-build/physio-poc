@@ -189,17 +189,23 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                   {ACCOUNT_MY_DEFAULTS_DETAIL}
                 </span>
               </NavLink>
-              <a
-                href="#"
+              <button
+                type="button"
                 role="menuitem"
                 className="shell-menu-item shell-menu-sign-out"
                 onClick={(event) => {
                   event.preventDefault();
                   closeMenu();
+                  void fetch("/api/auth/sign-out", {
+                    method: "POST",
+                    credentials: "include",
+                  }).then(() => {
+                    window.location.href = "/sign-in";
+                  });
                 }}
               >
                 {ACCOUNT_SIGN_OUT}
-              </a>
+              </button>
             </div>
           </>
         ) : null}

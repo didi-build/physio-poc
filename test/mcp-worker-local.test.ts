@@ -8,6 +8,7 @@ import {
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
 } from "../src/mcp-connector/index.js";
 import { MCP_PATH } from "../src/http/app.js";
+import { workerTestSessionCookie } from "../src/adapters/workers/create-app-dependencies.js";
 
 describe("Physio MCP Worker (wrangler dev --local smoke)", () => {
   let worker: Unstable_DevWorker | undefined;
@@ -29,11 +30,20 @@ describe("Physio MCP Worker (wrangler dev --local smoke)", () => {
     const transport = new StreamableHTTPClientTransport(
       new URL(`http://127.0.0.1${MCP_PATH}`),
       {
-        fetch: (input, init) =>
-          worker!.fetch(
-            input,
-            init as Parameters<Unstable_DevWorker["fetch"]>[1],
-          ) as unknown as Promise<Response>,
+        fetch: (input, init) => {
+          const cookie = workerTestSessionCookie();
+          const initHeaders = init?.headers;
+          const merged =
+            initHeaders instanceof Headers
+              ? Object.fromEntries(initHeaders.entries())
+              : initHeaders && typeof initHeaders === "object"
+                ? initHeaders
+                : {};
+          return worker!.fetch(input, {
+            ...(init as Parameters<Unstable_DevWorker["fetch"]>[1]),
+            headers: { ...merged, cookie },
+          }) as unknown as Promise<Response>;
+        },
       },
     );
     const client = new Client({ name: "physio-mcp-worker-test", version: "0.0.0" });

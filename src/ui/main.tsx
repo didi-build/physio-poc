@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { PhysioApp } from "./App.js";
 import "./styles/shell.css";
+import "./styles/sign-in.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {
