@@ -20,6 +20,12 @@ import {
   ShareLinkDefaultsRepository,
   ShareLinksRepository,
 } from "../src/storage/repositories/programs.js";
+import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
+import {
+  RoutineVersionRowsRepository,
+  RoutineVersionsRepository,
+  RoutinesRepository,
+} from "../src/storage/repositories/routines.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -32,6 +38,7 @@ import {
 import { id } from "./helpers/opaque-test-ids.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
+const BODY_REGION_KNEE = "br-knee";
 
 describe("program data model migration (integration, SQLite)", () => {
   it("0002 migration SQL has no BEGIN or COMMIT", () => {
@@ -296,6 +303,138 @@ describe("publish snapshots and delete or restore (repository, SQLite)", () => {
       expect(purgeable.map((p) => p.id)).toContain(id("prog-1"));
       await programs.purgeDeleted(id("prog-1"), purgeNow);
       expect(await programs.findById(id("prog-1"))).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramsRepository listForPractitioner", () => {
+  it("returns records that deep-equal findById including routine origin fields", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const programs = new ProgramsRepository(storage);
+
+      await routines.createDraft({
+        id: id("routine-list-eq"),
+        draftVersionId: id("rv-list-eq-draft"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await rows.replaceDraftRow({
+        id: id("rvr-list-eq"),
+        routineId: id("routine-list-eq"),
+        authorId: practitionerId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+        draftUpdatedAt: TS,
+      });
+      const published = await versions.publishDraft({
+        routineId: id("routine-list-eq"),
+        authorId: practitionerId,
+        publishedAt: TS,
+        name: "List parity routine",
+      });
+
+      const created = await programs.create({
+        id: id("prog-list-eq"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Program with origin",
+        routineOrigin: {
+          routineId: id("routine-list-eq"),
+          routineVersionId: published.id,
+          origin: "used_as_is",
+        },
+      });
+
+      const listed = await programs.listForPractitioner({ practitionerId });
+      const fromList = listed.find((row) => row.id === created.id);
+      expect(fromList).toBeDefined();
+      expect(fromList).toEqual(await programs.findById(created.id));
+      expect(fromList?.source_routine_id).toBe(id("routine-list-eq"));
+      expect(fromList?.source_routine_version_id).toBe(published.id);
+      expect(fromList?.source_routine_origin).toBe("used_as_is");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns each listed program deep-equal to findById for the same id", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: id("prog-list-parity-a"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Alpha",
+      });
+      await programs.create({
+        id: id("prog-list-parity-b"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Beta",
+      });
+      const listed = await programs.listForPractitioner({ practitionerId });
+      expect(listed.length).toBeGreaterThanOrEqual(2);
+      for (const record of listed) {
+        expect(record).toEqual(await programs.findById(record.id));
+      }
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramsRepository listForPractitioner draft order (M20)", () => {
+  it("orders by draft_updated_at descending (most recent first)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      const service = new ProgramBuilderService(storage);
+
+      await programs.create({
+        id: id("prog-list-old"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      await programs.create({
+        id: id("prog-list-mid"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-02T00:00:00.000Z",
+      });
+      await programs.create({
+        id: id("prog-list-new"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-03T00:00:00.000Z",
+      });
+      await programs.touchDraft(id("prog-list-old"), "2026-01-01T12:00:00.000Z");
+      await programs.touchDraft(id("prog-list-mid"), "2026-01-02T12:00:00.000Z");
+      await programs.touchDraft(id("prog-list-new"), "2026-01-03T12:00:00.000Z");
+
+      const expectedOrder = [
+        id("prog-list-new"),
+        id("prog-list-mid"),
+        id("prog-list-old"),
+      ];
+
+      const listed = await programs.listForPractitioner({ practitionerId });
+      expect(listed.map((row) => row.id)).toEqual(expectedOrder);
+
+      const fromService = await service.listPrograms(practitionerId);
+      expect(fromService.items.map((item) => item.program_id)).toEqual(expectedOrder);
     } finally {
       storage.close();
     }
