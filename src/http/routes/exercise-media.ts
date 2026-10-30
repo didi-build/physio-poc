@@ -14,7 +14,7 @@ export type ExerciseMediaHttpRouteCase = {
   path: string;
 };
 
-/** Paths registered when enableUnauthenticatedApi is true (Node dev and tests only). */
+/** Paths used by Worker 404 tests; registered only via Node dev/test extraRouteHandlers. */
 export function exerciseMediaHttpRouteCases(
   practitionerId = "pract-1",
   exerciseVersionId = "ver-1",
@@ -36,6 +36,10 @@ export function exerciseMediaHttpRouteCases(
     {
       method: "GET",
       path: `/api/exercise-versions/${exerciseVersionId}/media?access=public`,
+    },
+    {
+      method: "GET",
+      path: `/api/exercise-versions/${exerciseVersionId}/media?access=internal`,
     },
   ];
 }

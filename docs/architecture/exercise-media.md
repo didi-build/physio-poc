@@ -8,7 +8,7 @@ Area: app · Backend services for [DIDI-1013](https://linear.app/didi-build/issu
 - **FLUX.2 klein 4B on fal** behind `ImageGenerationPort`; **fake image adapter by default** in tests and local wiring.
 - **fal CDN downloads:** only `https` URLs on `fal.media` and subdomains (for example `v3b.fal.media`); `redirect: manual` with allowlisted redirect targets; 10 MiB size cap (`FAL_IMAGE_DOWNLOAD_MAX_BYTES` in `fal-flux-klein-image-generation.ts`).
 - **Object storage** behind `MediaStoragePort` (draft vs public visibility). In-memory fakes in this PR; R2 wiring is **DIDI-1040**.
-- **HTTP (dev and tests only):** exercise media routes register when `AppDependencies.enableUnauthenticatedApi === true` (Node `npm run dev`). The Workers entry does not set the flag; those paths return 404 until session auth lands in **DIDI-1001**.
+- **HTTP (dev and test entries only):** exercise media routes are registered through `AppDependencies.extraRouteHandlers` on the Node entry when `NODE_ENV` is `development` or `test`, and through the test harness helper `exerciseMediaExtraRouteHandlers()`. They are not imported into the Worker entry route table; those paths return 404 on Workers until session auth lands in **DIDI-1001**.
 
 ## Layers
 

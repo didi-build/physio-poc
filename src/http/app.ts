@@ -2,17 +2,25 @@ import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleHealthRequest } from "./routes/health.js";
-import { handleExerciseMediaRequest } from "./routes/exercise-media.js";
+import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
+
+/** Returns a Response when the handler owns the request; null to try the next handler. */
+export type AppRouteHandler = (
+  request: Request,
+  deps: AppDependencies,
+) => Promise<Response | null>;
 
 export type AppDependencies = {
   sql: SqlStoragePort;
   objects: ObjectStoragePort;
   config: PhysioServerConfig;
   mcp: McpHttpHandler;
-  /** When true, registers unauthenticated practitioner HTTP routes (Node dev and tests only). */
+  /** When true, registers unauthenticated practitioner exercise library API routes (Node dev and tests only). */
   enableUnauthenticatedApi?: boolean;
+  /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
+  extraRouteHandlers?: AppRouteHandler[];
 };
 
 export const MCP_PATH = "/mcp";
@@ -49,9 +57,18 @@ export async function handleRequest(
   }
 
   if (deps.enableUnauthenticatedApi === true) {
-    const mediaResponse = await handleExerciseMediaRequest(request, deps);
-    if (mediaResponse) {
-      return mediaResponse;
+    const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
+    if (exerciseResponse) {
+      return exerciseResponse;
+    }
+  }
+
+  if (deps.extraRouteHandlers) {
+    for (const handler of deps.extraRouteHandlers) {
+      const response = await handler(request, deps);
+      if (response) {
+        return response;
+      }
     }
   }
 

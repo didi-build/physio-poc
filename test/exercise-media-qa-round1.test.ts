@@ -39,7 +39,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
     expect(() => validateMediaRegenerationNote("a".repeat(201))).toThrow();
   });
 
-  it("rejects invalid visibility and scope CHECK values in migration 0003", async () => {
+  it("rejects invalid visibility, scope, and had_note CHECK values in migration 0003", async () => {
     const storage = BetterSqliteStorage.openInMemory();
     await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_SQL);
     await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
@@ -60,6 +60,14 @@ describe("exercise media QA round 1 (integration and unit)", () => {
             id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
           ["r1", practitionerId, exerciseId, null, "all", 0, TS],
+        ),
+      ).rejects.toThrow();
+      await expect(
+        storage.run(
+          `INSERT INTO media_regenerations (
+            id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          ["r2", practitionerId, exerciseId, null, "start", 2, TS],
         ),
       ).rejects.toThrow();
     } finally {
