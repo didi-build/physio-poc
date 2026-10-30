@@ -99,7 +99,6 @@ export {
   programCodeProperty,
   programTitleProperty,
   programVersionRefSchema,
-  publishOverridesInputSchema,
   rowParamsSchema,
   routineIdProperty,
   routineSummarySchema,

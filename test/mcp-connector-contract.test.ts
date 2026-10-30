@@ -329,11 +329,21 @@ describe("Physio MCP connector contract", () => {
     for (const tool of PHYSIO_MCP_TOOLS) {
       visitSchemaNodes(tool.inputSchema, (node) => {
         if (node.patternProperties) {
-          throw new Error(`${tool.name}: patternProperties is not allowed`);
+          throw new Error(`${tool.name} input: patternProperties is not allowed`);
         }
       });
       const violations = collectInputUrlLikeViolations(tool.inputSchema);
       expect(violations, `${tool.name} input URL-like violations`).toEqual([]);
+    }
+  });
+
+  it("has no patternProperties on any tool output schema", () => {
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      visitSchemaNodes(tool.outputSchema, (node) => {
+        if (node.patternProperties) {
+          throw new Error(`${tool.name} output: patternProperties is not allowed`);
+        }
+      });
     }
   });
 
