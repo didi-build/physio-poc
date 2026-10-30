@@ -142,17 +142,10 @@ function googleSocialProvider(config: PhysioAuthConfig) {
   };
 }
 
-export type BuildPhysioBetterAuthOptionsOverrides = {
-  validateUserInfo?: NonNullable<
-    NonNullable<Parameters<typeof betterAuth>[0]["user"]>["validateUserInfo"]
-  >;
-};
-
 export function buildPhysioBetterAuthOptions(
   sql: SqlStoragePort,
   config: PhysioAuthConfig,
-  overrides: BuildPhysioBetterAuthOptionsOverrides = {},
-): Parameters<typeof betterAuth>[0] {
+): Omit<Parameters<typeof betterAuth>[0], "database"> {
   const plugins = config.fakeGoogleProviderEnabled ? [fakeGooglePlugin(config)] : [];
   const secret = resolveBetterAuthSecretForRuntime(config.betterAuthSecret);
   const trustedOrigin = new URL(config.authBaseUrl).origin;
@@ -161,7 +154,6 @@ export function buildPhysioBetterAuthOptions(
     baseURL: config.authBaseUrl,
     basePath: "/api/auth",
     trustedOrigins: [trustedOrigin],
-    database: undefined as unknown as Database.Database,
     emailAndPassword: { enabled: false },
     rateLimit: { enabled: false },
     telemetry: { enabled: false },
@@ -181,8 +173,7 @@ export function buildPhysioBetterAuthOptions(
           input: false,
         },
       },
-      validateUserInfo:
-        overrides.validateUserInfo ?? createDefaultPhysioValidateUserInfo(sql, config),
+      validateUserInfo: createDefaultPhysioValidateUserInfo(sql, config),
     },
     onAPIError: {
       errorURL: "/api/auth/oauth-error",

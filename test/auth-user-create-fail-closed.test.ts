@@ -81,10 +81,13 @@ function createBetterAuthWithAllowlistOnlyValidateUserInfo(
   serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
 ) {
   installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
+  const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
   const auth = betterAuth({
-    ...buildPhysioBetterAuthOptions(storage, serverConfig.auth, {
+    ...options,
+    user: {
+      ...options.user,
       validateUserInfo: createAllowlistOnlyValidateUserInfo(serverConfig.auth),
-    }),
+    },
     database: storage.nativeDatabase(),
   });
   return auth as BetterAuthRuntime;

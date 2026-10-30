@@ -31,13 +31,18 @@ describe("runPhysioUserCreateBeforeHook (unit)", () => {
       await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
       await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
       const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET).auth;
+      const practId = generateOpaqueEntityId();
+      await storage.run(
+        "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+        [practId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+      );
       await expect(
         runPhysioUserCreateBeforeHook(storage, config, {
           email: FAKE_GOOGLE_ALLOWED_EMAIL,
           emailVerified: false,
           name: "Kojo",
         }),
-      ).rejects.toThrow(PhysioPractitionerBindingError);
+      ).rejects.toThrow("user_create_unverified");
     } finally {
       storage.close();
     }
@@ -49,13 +54,19 @@ describe("runPhysioUserCreateBeforeHook (unit)", () => {
       await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
       await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
       const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET).auth;
+      const nonAllowlistedEmail = "not.on.allowlist@example.com";
+      const practId = generateOpaqueEntityId();
+      await storage.run(
+        "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+        [practId, nonAllowlistedEmail, "2026-01-01T00:00:00.000Z"],
+      );
       await expect(
         runPhysioUserCreateBeforeHook(storage, config, {
-          email: "not.on.allowlist@example.com",
+          email: nonAllowlistedEmail,
           emailVerified: true,
           name: "Kojo",
         }),
-      ).rejects.toThrow(PhysioPractitionerBindingError);
+      ).rejects.toThrow("user_create_not_allowlisted");
     } finally {
       storage.close();
     }
