@@ -489,10 +489,12 @@ export class ProgramRowsRepository {
     textSnapshot: ProgramRowTextSnapshot;
     note?: string | null;
     draftUpdatedAt: string;
+    /** Internal approval batch only: link placeholders on soft-deleted programs. */
+    allowSoftDeletedProgram?: boolean;
   }): Promise<void> {
     const rowId = validateOpaqueEntityId(input.id, "Program row id");
     const program = await new ProgramsRepository(this.sql).findById(input.programId);
-    if (!program || program.deleted_at) {
+    if (!program || (!input.allowSoftDeletedProgram && program.deleted_at)) {
       throw new ProgramRepositoryError("Program not found");
     }
     const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);

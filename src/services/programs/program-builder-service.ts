@@ -132,8 +132,8 @@ export class ProgramBuilderService {
    * caller transaction, each matching row is still written individually (accepted for
    * this PR; DIDI-1101 tracks a stricter transactional caller shape).
    *
-   * Replaces matching placeholder rows on programs that are not soft-deleted. Returns
-   * how many placeholders were skipped because prescriptionType does not fit the approved
+   * Replaces matching placeholder rows, including on soft-deleted programs. Returns how
+   * many placeholders were skipped because prescriptionType does not fit the approved
    * exercise category (those rows stay placeholders).
    */
   async linkApprovedPlaceholders(
@@ -161,7 +161,7 @@ export class ProgramBuilderService {
     let skippedCount = 0;
     for (const row of rows) {
       const program = await this.programs.findById(row.program_id);
-      if (!program || program.deleted_at) {
+      if (!program) {
         continue;
       }
       if (!this.prescriptionTypeAllowed(version, row.prescription_type)) {
@@ -193,6 +193,7 @@ export class ProgramBuilderService {
         textSnapshot,
         note: row.note,
         draftUpdatedAt,
+        allowSoftDeletedProgram: true,
       });
     }
     return skippedCount;

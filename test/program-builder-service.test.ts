@@ -1491,6 +1491,55 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
     }
   });
 
+  it("skips type-mismatched placeholders on soft-deleted programs and returns the skipped count", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-del-mismatch"),
+        "Move",
+      );
+      await service.createProgram(practitionerId, {
+        programId: id("prog-del-mismatch"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-del-mismatch"), {
+        rowId: id("row-del-mismatch"),
+        exerciseRequestId: id("req-del-mismatch"),
+        prescriptionType: "isometric",
+        note: "misfit deleted",
+      });
+      await service.deleteProgram(practitionerId, id("prog-del-mismatch"));
+      await markExerciseRequestApproved(
+        storage,
+        id("req-del-mismatch"),
+        FIXTURE_EXERCISE_ID,
+      );
+      const skipped = await linkApprovedPlaceholders(
+        storage,
+        id("req-del-mismatch"),
+        FIXTURE_VERSION_ID,
+      );
+      expect(skipped).toBe(1);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const row = await rowsRepo.findById(id("row-del-mismatch"));
+      expect(row?.exercise_request_id).toBe(id("req-del-mismatch"));
+      expect(row?.prescription_type).toBe("isometric");
+      expect(row?.note).toBe("misfit deleted");
+      await service.restoreProgram(practitionerId, id("prog-del-mismatch"));
+      const restored = await service.getProgram(
+        practitionerId,
+        id("prog-del-mismatch"),
+      );
+      expect(restored.rows[0]?.kind).toBe("placeholder");
+      expect(restored.rows[0]?.exercise_request_id).toBe(id("req-del-mismatch"));
+    } finally {
+      storage.close();
+    }
+  });
+
   it("keeps prescription_type on rows that link", async () => {
     const { storage, service } = await openService();
     try {
