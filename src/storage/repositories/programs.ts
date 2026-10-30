@@ -604,6 +604,7 @@ export class ShareLinkDefaultsRepository {
     practitionerId: string,
     choice: ShareLinkExpiryChoice,
   ): Promise<void> {
+    const opaqueId = validateOpaqueEntityId(id, "Share link default id");
     const validated = validateShareLinkExpiryChoice(choice);
     await this.sql.run(
       `INSERT INTO share_link_defaults (id, scope, practitioner_id, expires_in, custom_expires_on)
@@ -612,7 +613,7 @@ export class ShareLinkDefaultsRepository {
          expires_in = excluded.expires_in,
          custom_expires_on = excluded.custom_expires_on`,
       [
-        id,
+        opaqueId,
         "practitioner",
         practitionerId,
         validated.expiresIn,

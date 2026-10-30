@@ -10,8 +10,10 @@ import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise
 import {
   ProgramRowsRepository,
   ProgramsRepository,
+  ShareLinkDefaultsRepository,
   ShareLinksRepository,
 } from "../src/storage/repositories/programs.js";
+import { SHARE_LINK_EXPIRES_IN } from "../src/mcp-connector/share-link-expiry.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -149,6 +151,43 @@ describe("DIDI-1000 opaque caller-supplied entity ids", () => {
         expiresAt: null,
       });
       expect(await links.findOpenByProgramId(programId)).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects invalid share link default ids and stores nothing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const defaults = new ShareLinkDefaultsRepository(storage);
+      for (const badId of REJECT_IDS) {
+        await expect(
+          defaults.upsertPractitionerDefault(badId, practitionerId, {
+            expiresIn: SHARE_LINK_EXPIRES_IN.never,
+          }),
+        ).rejects.toThrow("Share link default id must be a UUID v4 opaque id");
+        expect(
+          await storage.first<{ id: string }>(
+            "SELECT id FROM share_link_defaults WHERE id = ? LIMIT 1",
+            [badId],
+          ),
+        ).toBeNull();
+      }
+      const validId = generateOpaqueEntityId();
+      await defaults.upsertPractitionerDefault(validId, practitionerId, {
+        expiresIn: SHARE_LINK_EXPIRES_IN.one_year,
+      });
+      expect(await defaults.getPractitionerDefault(practitionerId)).toEqual({
+        expiresIn: SHARE_LINK_EXPIRES_IN.one_year,
+        customExpiresOn: null,
+      });
+      expect(
+        await storage.first<{ id: string }>(
+          "SELECT id FROM share_link_defaults WHERE practitioner_id = ? AND scope = ? LIMIT 1",
+          [practitionerId, "practitioner"],
+        ),
+      ).toMatchObject({ id: validId.toLowerCase() });
     } finally {
       storage.close();
     }
