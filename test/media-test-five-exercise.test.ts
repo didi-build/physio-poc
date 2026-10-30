@@ -13,12 +13,15 @@ import {
   FAL_IMAGE_DOWNLOAD_MAX_BYTES,
   FAL_STORE_IO_HEADER,
   FAL_STORE_IO_VALUE,
+  FAL_T2I_URL,
   IMAGE_SIZE_1MP,
   MAX_GENERATIONS_PER_RUN,
 } from "../scripts/media-test/constants.js";
 import {
   assertAllowedFalImageDownloadUrl,
   downloadFalImageBytes,
+  FAL_IMAGE_DOWNLOAD_REDIRECT_STATUS_LIST,
+  isAllowedFalImageDownloadHost,
 } from "../scripts/media-test/download-fal-image.js";
 import { buildExerciseImagePrompt } from "../scripts/media-test/prompts.js";
 import {
@@ -77,6 +80,48 @@ function assertNoFalSecrets(text: string, fakeKey: string): void {
   expect(text).not.toContain(`Authorization: Key ${fakeKey}`);
 }
 
+function assertDownloadRequestHeaders(
+  init: RequestInit | undefined,
+  fakeKey: string,
+): void {
+  expect(headerValue(init?.headers, "Authorization")).toBeUndefined();
+  const headers = init?.headers;
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      expect(key.toLowerCase()).not.toBe("authorization");
+      expect(value).not.toContain(fakeKey);
+    });
+    return;
+  }
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) {
+      expect(key.toLowerCase()).not.toBe("authorization");
+      expect(value).not.toContain(fakeKey);
+    }
+    return;
+  }
+  if (headers && typeof headers === "object") {
+    for (const [key, value] of Object.entries(headers)) {
+      expect(key.toLowerCase()).not.toBe("authorization");
+      expect(String(value)).not.toContain(fakeKey);
+    }
+  }
+}
+
+function streamDownloadResponse(chunks: Uint8Array[]): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(chunk);
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "content-type": "image/png" } },
+  );
+}
+
 describe("media-test cost constants (unit)", () => {
   it("pins fal megapixel pricing used for manifest estimates", () => {
     expect(COST_USD_PER_MP_T2I).toBe(0.005);
@@ -95,7 +140,7 @@ describe("media-test cli-support (unit)", () => {
     expect(resolveMediaTestOutputDir(cwd, "/custom/out")).toBe("/custom/out");
   });
 
-  it("createMediaTestCliLogger redacts key and Authorization lines like cli.ts", () => {
+  it("createMediaTestCliLogger redacts key and Authorization lines on error", () => {
     const lines: string[] = [];
     const logger = createMediaTestCliLogger(fakeKey, {
       log: (line) => lines.push(line),
@@ -105,6 +150,28 @@ describe("media-test cli-support (unit)", () => {
     logger.error(raw);
     expect(lines).toHaveLength(1);
     assertNoFalSecrets(lines[0] ?? "", fakeKey);
+  });
+
+  it("createMediaTestCliLogger redacts key and Authorization lines on info", () => {
+    const lines: string[] = [];
+    const logger = createMediaTestCliLogger(fakeKey, {
+      log: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+    logger.info(`status ${fakeKey} Authorization: Key ${fakeKey}`);
+    expect(lines).toHaveLength(1);
+    assertNoFalSecrets(lines[0] ?? "", fakeKey);
+  });
+
+  it("createMediaTestCliLogger applies redactFalSecrets (regression)", () => {
+    const lines: string[] = [];
+    const logger = createMediaTestCliLogger(fakeKey, {
+      log: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+    logger.error(fakeKey);
+    expect(lines[0]).toContain("[REDACTED_FAL_KEY]");
+    expect(lines[0]).not.toContain(fakeKey);
   });
 });
 
@@ -136,6 +203,15 @@ describe("media-test generation cap (unit)", () => {
     expect(counter.count).toBe(3);
     expect(() => counter.tick()).toThrow(GenerationCapError);
     expect(counter.count).toBe(3);
+  });
+
+  it("allows exactly cap ticks and rejects cap+1 with count unchanged", () => {
+    const counter = createGenerationCounter(2);
+    counter.tick();
+    counter.tick();
+    expect(counter.count).toBe(2);
+    expect(() => counter.tick()).toThrow(GenerationCapError);
+    expect(counter.count).toBe(2);
   });
 });
 
@@ -262,6 +338,7 @@ describe("downloadFalImageBytes (unit)", () => {
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === "string" ? input : input.toString();
+        assertDownloadRequestHeaders(init, fakeKey);
         expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe("0");
         expect(init?.redirect).toBe("manual");
         if (url === allowedImageUrl) {
@@ -283,6 +360,86 @@ describe("downloadFalImageBytes (unit)", () => {
     const bytes = await downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey);
     expect(bytes).toEqual(pngBytes);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("pins redirect status list including 307 and 308", () => {
+    expect(FAL_IMAGE_DOWNLOAD_REDIRECT_STATUS_LIST).toEqual([301, 302, 303, 307, 308]);
+  });
+
+  it.each([307, 308] as const)(
+    "follows %i redirect without Authorization on either hop",
+    async (status) => {
+      const redirectTarget = "https://v3b.fal.media/files/test/out-redirect.png";
+      const fetchImpl = vi.fn(
+        async (input: string | URL | Request, init?: RequestInit) => {
+          assertDownloadRequestHeaders(init, fakeKey);
+          const url = typeof input === "string" ? input : input.toString();
+          if (url === allowedImageUrl) {
+            return new Response(null, {
+              status,
+              headers: { location: redirectTarget },
+            });
+          }
+          return new Response(pngBytes, { status: 200 });
+        },
+      );
+      await downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("rejects non-default https port 8443", () => {
+    expect(() =>
+      assertAllowedFalImageDownloadUrl("https://v3b.fal.media:8443/files/out.png"),
+    ).toThrow("fal image download URL must use default https port");
+  });
+
+  it("accepts apex fal.media host on https default port", () => {
+    expect(isAllowedFalImageDownloadHost("fal.media")).toBe(true);
+    const url = assertAllowedFalImageDownloadUrl("https://fal.media/files/out.png");
+    expect(url.hostname).toBe("fal.media");
+  });
+
+  it.each(["evilfal.media", "fal.media.evil.example"] as const)(
+    "rejects lookalike host %s",
+    (hostname) => {
+      expect(isAllowedFalImageDownloadHost(hostname)).toBe(false);
+      expect(() =>
+        assertAllowedFalImageDownloadUrl(`https://${hostname}/files/out.png`),
+      ).toThrow("fal image download URL host is not allowed");
+    },
+  );
+
+  it("rejects password-only userinfo in download URLs", () => {
+    const url = new URL("https://v3b.fal.media/files/x.png");
+    url.password = "example-password-only";
+    expect(() => assertAllowedFalImageDownloadUrl(url.toString())).toThrow(
+      "fal image download URL must not include userinfo",
+    );
+  });
+
+  it("allows a streamed body exactly at the 10 MB cap without content-length", async () => {
+    const exact = new Uint8Array(FAL_IMAGE_DOWNLOAD_MAX_BYTES);
+    exact.fill(0x41);
+    const fetchImpl = vi.fn(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        assertDownloadRequestHeaders(init, fakeKey);
+        return streamDownloadResponse([exact]);
+      },
+    );
+    const bytes = await downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey);
+    expect(bytes.byteLength).toBe(FAL_IMAGE_DOWNLOAD_MAX_BYTES);
+  });
+
+  it("rejects a streamed body over the cap without content-length", async () => {
+    const first = new Uint8Array(FAL_IMAGE_DOWNLOAD_MAX_BYTES);
+    first.fill(0x41);
+    const second = new Uint8Array(1);
+    second[0] = 0x42;
+    const fetchImpl = vi.fn(async () => streamDownloadResponse([first, second]));
+    await expect(
+      downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey),
+    ).rejects.toThrow("fal image download exceeds size limit");
   });
 
   it("rejects an off-host redirect Location", async () => {
@@ -336,6 +493,7 @@ describe("runFiveExerciseMediaTest (unit, fake fetch)", () => {
         );
       }
       if (url.startsWith(allowedHost)) {
+        assertDownloadRequestHeaders(init, fakeKey);
         expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe("0");
         expect(init?.redirect).toBe("manual");
         return new Response(pngBytes, { status: 200 });
@@ -433,5 +591,14 @@ describe("runFiveExerciseMediaTest (unit, fake fetch)", () => {
     expect(bridgeEnd?.seed).toBe(4242);
     expect(bridgeEnd?.prompt).toBe(buildExerciseImagePrompt("bridge", "end"));
     expect(bridgeEnd?.estimatedCostUsd).toBeGreaterThan(0);
+
+    const bridgeStart = manifest.generations.find(
+      (g) => g.exerciseId === "bridge" && g.phase === "start",
+    );
+    expect(bridgeStart?.seed).toBe(1111);
+
+    const firstStartPost = postBodies.find((p) => p.url === FAL_T2I_URL);
+    expect(firstStartPost?.body.image_size).toEqual(IMAGE_SIZE_1MP);
+    expect(firstStartPost?.body.num_images).toBe(1);
   });
 });

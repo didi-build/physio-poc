@@ -96,6 +96,11 @@ function safeDownloadErrorMessage(message: string, falKey: string): string {
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
+/** Redirect HTTP statuses followed once with allowlist re-check (pinned in tests). */
+export const FAL_IMAGE_DOWNLOAD_REDIRECT_STATUS_LIST = [
+  301, 302, 303, 307, 308,
+] as const;
+
 export async function downloadFalImageBytes(
   fetchImpl: FetchLike,
   urlString: string,
