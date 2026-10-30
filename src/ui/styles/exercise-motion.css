@@ -1,0 +1,194 @@
+@keyframes exercise-motion-xfade-end {
+  0%,
+  22% {
+    opacity: 0;
+  }
+
+  42%,
+  72% {
+    opacity: 1;
+  }
+
+  92%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes exercise-motion-drift {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.035);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes exercise-motion-progress {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.exercise-motion-root {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.exercise-motion-loop {
+  position: absolute;
+  inset: 0;
+}
+
+.exercise-motion-stage {
+  position: absolute;
+  inset: 0;
+  animation: exercise-motion-drift 6s ease-in-out infinite;
+}
+
+.exercise-motion-start-img,
+.exercise-motion-end-img {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.exercise-motion-end-img {
+  animation: exercise-motion-xfade-end 6s ease-in-out infinite;
+}
+
+.exercise-motion-progress-track {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 0.25rem;
+  background: rgb(0 0 0 / 0.1);
+}
+
+.exercise-motion-progress-bar {
+  height: 100%;
+  transform-origin: left;
+  background: rgb(15 118 110 / 0.8);
+  animation: exercise-motion-progress 6s linear infinite;
+}
+
+.exercise-motion-pause-btn {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 9999px;
+  background: #ffffff;
+  color: #115e59;
+  box-shadow: 0 4px 6px rgb(15 23 42 / 0.12);
+  cursor: pointer;
+}
+
+.exercise-motion-pause-btn:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.exercise-motion-paused .exercise-motion-end-img,
+.exercise-motion-paused .exercise-motion-stage,
+.exercise-motion-paused .exercise-motion-progress-bar {
+  animation-play-state: paused;
+}
+
+.exercise-motion-static {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  height: 100%;
+}
+
+.exercise-motion-static-figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.exercise-motion-static-img {
+  aspect-ratio: 4 / 3;
+  width: 100%;
+  border-radius: 0.75rem;
+  object-fit: cover;
+}
+
+.exercise-motion-static-caption {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.exercise-motion-video-figure {
+  margin: 0;
+}
+
+.exercise-motion-video-caption {
+  margin: 0.375rem 0 0;
+  padding: 0 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.exercise-motion-link-toggle {
+  margin: 0.25rem 0 0 -0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #115e59;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.exercise-motion-link-toggle:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.exercise-motion-link-static-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exercise-motion-stage {
+    animation: none;
+  }
+}
+
+.exercise-motion-root.exercise-motion-prefers-reduced .exercise-motion-loop {
+  display: none;
+}
+
+.exercise-motion-root.exercise-motion-prefers-reduced .exercise-motion-static {
+  display: grid;
+}
+
+.exercise-motion-root.exercise-motion-prefers-reduced .exercise-motion-progress-track,
+.exercise-motion-root.exercise-motion-prefers-reduced .exercise-motion-pause-btn {
+  display: none;
+}

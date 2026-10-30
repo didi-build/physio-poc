@@ -51,6 +51,16 @@ function gitConfigEnvKeys(env: Record<string, string | undefined>) {
   );
 }
 
+function envWithoutGitConfigKeys(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const cleaned = { ...env };
+  for (const key of gitConfigEnvKeys(cleaned)) {
+    delete cleaned[key];
+  }
+  return cleaned;
+}
+
 function envValueContainsTokenLeak(value: string | undefined) {
   if (value === undefined || value === null) {
     return false;
@@ -244,7 +254,7 @@ function runBootstrapInitWithStubs(
     cwd: dir,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...envWithoutGitConfigKeys(process.env),
       ...hermeticEnv,
       PATH: pathPrefix,
       BOOTSTRAP_STUB_LOG: logPath,
