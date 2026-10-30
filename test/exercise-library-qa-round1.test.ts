@@ -25,6 +25,7 @@ import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
+import { authedAppApiRequest } from "./helpers/app-api-request.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -684,9 +685,8 @@ describe("Exercise library QA round 1 (integration)", () => {
       expect(badType.status).toBe(400);
 
       const save = await handleRequest(
-        new Request(`${base}/my-exercises/${exerciseId}`, {
+        authedAppApiRequest(`${base}/my-exercises/${exerciseId}`, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "save",
             saved_at: "2020-01-01T00:00:00.000Z",
@@ -702,9 +702,8 @@ describe("Exercise library QA round 1 (integration)", () => {
       expect(row?.savedAt).not.toBe("2020-01-01T00:00:00.000Z");
 
       const patch = await handleRequest(
-        new Request(`${base}/my-exercises/${exerciseId}`, {
+        authedAppApiRequest(`${base}/my-exercises/${exerciseId}`, sessionCookie, {
           method: "PATCH",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             text_overrides: {
               title: "Edited",
@@ -716,9 +715,8 @@ describe("Exercise library QA round 1 (integration)", () => {
       expect(patch.status).toBe(200);
 
       const objectPatch = await handleRequest(
-        new Request(`${base}/my-exercises/${exerciseId}`, {
+        authedAppApiRequest(`${base}/my-exercises/${exerciseId}`, sessionCookie, {
           method: "PATCH",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             text_overrides: {
               title: { value: "Edited", base: "wrong" },
@@ -730,9 +728,8 @@ describe("Exercise library QA round 1 (integration)", () => {
       expect(objectPatch.status).toBe(400);
 
       const undoMismatch = await handleRequest(
-        new Request(`${base}/my-exercises/${exerciseId}`, {
+        authedAppApiRequest(`${base}/my-exercises/${exerciseId}`, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {

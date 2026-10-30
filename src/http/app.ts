@@ -7,9 +7,16 @@ import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
+import {
+  rejectMutatingAppApiCsrf,
+  requiresAppApiCsrfGuard,
+} from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
-import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
+import {
+  handleMyDefaultsRequest,
+  isLegacyPractitionerMyDefaultsPath,
+} from "./routes/my-defaults.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
@@ -108,7 +115,19 @@ export async function handleRequest(
   }
 
   if (pathname.startsWith("/api/")) {
+    if (isLegacyPractitionerMyDefaultsPath(pathname)) {
+      return Response.json(
+        { error: "not_found", message: "Not found" },
+        { status: 404, headers: JSON_HEADERS },
+      );
+    }
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
+      if (requiresAppApiCsrfGuard(pathname, request.method)) {
+        const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+        if (csrfRejection) {
+          return csrfRejection;
+        }
+      }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
         sessionPractitioner,

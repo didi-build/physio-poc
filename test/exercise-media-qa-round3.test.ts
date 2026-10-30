@@ -20,6 +20,7 @@ import {
   restoreConsoleSpies,
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
+import { authedAppApiRequest } from "./helpers/app-api-request.js";
 import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
@@ -97,9 +98,7 @@ function mediaRequest(
   deps: ReturnType<typeof mediaHttpDeps>,
   init: RequestInit = {},
 ) {
-  const headers = new Headers(init.headers);
-  headers.set("cookie", exerciseMediaSessionCookie(deps));
-  return new Request(url, { ...init, headers });
+  return authedAppApiRequest(url, exerciseMediaSessionCookie(deps), init);
 }
 
 function createEndOnlyRegenFetchMock(startProviderUrl: string) {

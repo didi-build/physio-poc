@@ -26,6 +26,7 @@ import { TypeDefaultsRepository } from "../src/storage/repositories/type-default
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
+import { authedAppApiRequest } from "./helpers/app-api-request.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -472,9 +473,8 @@ describe("Exercise library QA round 2 (integration)", () => {
       const base = `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`;
 
       const missingSnapshot = await handleRequest(
-        new Request(base, {
+        authedAppApiRequest(base, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({ action: "undo", undo: { practitioner_id: practId } }),
         }),
         deps,
@@ -482,9 +482,8 @@ describe("Exercise library QA round 2 (integration)", () => {
       expect(missingSnapshot.status).toBe(400);
 
       const badJson = await handleRequest(
-        new Request(base, {
+        authedAppApiRequest(base, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -506,9 +505,8 @@ describe("Exercise library QA round 2 (integration)", () => {
       expect(badJson.status).toBe(400);
 
       const looseDate = await handleRequest(
-        new Request(base, {
+        authedAppApiRequest(base, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -535,9 +533,8 @@ describe("Exercise library QA round 2 (integration)", () => {
         savedAt: TS,
       });
       const badParams = await handleRequest(
-        new Request(base, {
+        authedAppApiRequest(base, sessionCookie, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {

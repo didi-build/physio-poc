@@ -14,6 +14,7 @@ import {
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { appApiRequest, authedAppApiRequest } from "./helpers/app-api-request.js";
 
 const exerciseId = testOpaqueEntityId("ex-1");
 const WORKER_PRACTITIONER_ID = testOpaqueEntityId("worker-exercise-library");
@@ -75,9 +76,8 @@ describe("Worker exercise library routes (integration)", () => {
   it("returns 401 for exercise API routes without a session on the Worker entry", async () => {
     for (const testCase of exerciseRouteCases(WORKER_PRACTITIONER_ID)) {
       const response = await worker.fetch(
-        new Request(testCase.path, {
+        appApiRequest(testCase.path, {
           method: testCase.method,
-          headers: testCase.body ? { "content-type": "application/json" } : undefined,
           body: testCase.body,
         }),
         {},
@@ -121,9 +121,7 @@ describe("Worker exercise library routes (integration)", () => {
     };
 
     const searchResponse = await handleRequest(
-      new Request(`${apiBase}/exercises/approved/search`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedAppApiRequest(`${apiBase}/exercises/approved/search`, sessionCookie),
       deps,
     );
     expect(searchResponse.status).toBe(200);
@@ -131,17 +129,14 @@ describe("Worker exercise library routes (integration)", () => {
     expect(searchBody.exercises).toHaveLength(1);
 
     const detailsResponse = await handleRequest(
-      new Request(`${apiBase}/exercises/${exerciseId}`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedAppApiRequest(`${apiBase}/exercises/${exerciseId}`, sessionCookie),
       deps,
     );
     expect(detailsResponse.status).toBe(200);
 
     const saveResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedAppApiRequest(`${apiBase}/my-exercises/${exerciseId}`, sessionCookie, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "save" }),
       }),
       deps,
@@ -149,9 +144,8 @@ describe("Worker exercise library routes (integration)", () => {
     expect(saveResponse.status).toBe(200);
 
     const pinResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedAppApiRequest(`${apiBase}/my-exercises/${exerciseId}`, sessionCookie, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "pin", pinned: true }),
       }),
       deps,
@@ -160,9 +154,8 @@ describe("Worker exercise library routes (integration)", () => {
     const pinBody = (await pinResponse.json()) as { undo: unknown };
 
     const patchResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedAppApiRequest(`${apiBase}/my-exercises/${exerciseId}`, sessionCookie, {
         method: "PATCH",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ text_overrides: { title: "My title" } }),
       }),
       deps,
@@ -170,9 +163,7 @@ describe("Worker exercise library routes (integration)", () => {
     expect(patchResponse.status).toBe(200);
 
     const listResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises`, {
-        headers: { cookie: sessionCookie },
-      }),
+      authedAppApiRequest(`${apiBase}/my-exercises`, sessionCookie),
       deps,
     );
     expect(listResponse.status).toBe(200);
@@ -180,9 +171,8 @@ describe("Worker exercise library routes (integration)", () => {
     expect(listBody.list_state).toBe("ok");
 
     const undoResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedAppApiRequest(`${apiBase}/my-exercises/${exerciseId}`, sessionCookie, {
         method: "POST",
-        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: pinBody.undo }),
       }),
       deps,
@@ -190,9 +180,9 @@ describe("Worker exercise library routes (integration)", () => {
     expect(undoResponse.status).toBe(200);
 
     const deleteResponse = await handleRequest(
-      new Request(`${apiBase}/my-exercises/${exerciseId}`, {
+      authedAppApiRequest(`${apiBase}/my-exercises/${exerciseId}`, sessionCookie, {
         method: "DELETE",
-        headers: { cookie: sessionCookie },
+        body: "{}",
       }),
       deps,
     );

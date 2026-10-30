@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveShareLinkExpiresAt } from "../src/domain/share-link-expiry.js";
 import { SHARE_LINK_EXPIRES_IN } from "../src/mcp-connector/share-link-expiry.js";
 import { MyDefaultsService } from "../src/services/my-defaults/index.js";
 import {
@@ -68,15 +69,21 @@ describe("MyDefaultsService (integration, SQLite)", () => {
         createdBy: practitionerId,
         createdAt: TS,
       });
+      const secondNow = new Date("2026-03-15T12:00:00.000Z");
       const secondLink = await links.createOpenLinkForProgram({
         id: id("link-2"),
         programId: id("prog-2"),
         practitionerId,
         createdAt: TS,
-        now: new Date("2026-03-15T12:00:00.000Z"),
+        now: secondNow,
       });
+      expect(secondLink.expires_at).toBe(
+        resolveShareLinkExpiresAt(
+          { expiresIn: SHARE_LINK_EXPIRES_IN.one_week },
+          secondNow,
+        ),
+      );
       expect(secondLink.expires_at).not.toBe(firstExpiresAt);
-      expect(secondLink.expires_at).not.toBeNull();
     } finally {
       storage.close();
     }

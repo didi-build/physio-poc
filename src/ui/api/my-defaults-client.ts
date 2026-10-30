@@ -6,9 +6,12 @@ import type {
   MyDefaultsPageView,
   ShareLinkExpiryDefaultsView,
 } from "../../services/my-defaults/types.js";
-
-/** Until DIDI-1059; bound to session on the server. */
-const DEV_PRACTITIONER_ID = "00000000-0000-4000-8000-000000000001";
+import {
+  MY_DEFAULTS_API_BASE,
+  myDefaultsShareLinkExpiryPath,
+  myDefaultsTypePath,
+} from "../../my-defaults-api-paths.js";
+import { mutatingAppApiRequestInitForRelativePath } from "./mutating-app-api-request.js";
 
 export type FetchFn = (
   input: RequestInfo | URL,
@@ -17,12 +20,9 @@ export type FetchFn = (
 
 export type MyDefaultsClientOptions = {
   fetchFn?: FetchFn;
-  practitionerId?: string;
+  /** Test override for mutating request Origin resolution. */
+  requestOrigin?: string;
 };
-
-function practitionerBase(practitionerId: string): string {
-  return `/api/practitioners/${encodeURIComponent(practitionerId)}/my-defaults`;
-}
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -33,46 +33,64 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export class MyDefaultsClient {
-  private readonly practitionerId: string;
   private readonly fetchFn: FetchFn;
+  private readonly requestOrigin: string;
 
   constructor(options: MyDefaultsClientOptions = {}) {
-    this.practitionerId = options.practitionerId ?? DEV_PRACTITIONER_ID;
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
+    this.requestOrigin =
+      options.requestOrigin ??
+      (typeof globalThis.location !== "undefined"
+        ? globalThis.location.origin
+        : "http://127.0.0.1");
+  }
+
+  private mutatingInit(path: string, init: RequestInit): RequestInit {
+    return mutatingAppApiRequestInitForRelativePath(path, init, this.requestOrigin);
   }
 
   getPage(): Promise<MyDefaultsPageView> {
-    return this.fetchFn(practitionerBase(this.practitionerId), { method: "GET" }).then(
-      (response) => readJson<MyDefaultsPageView>(response),
+    return this.fetchFn(MY_DEFAULTS_API_BASE, { method: "GET" }).then((response) =>
+      readJson<MyDefaultsPageView>(response),
     );
   }
 
   updateShareLinkExpiry(
     expiresIn: ShareLinkExpiresIn,
   ): Promise<ShareLinkExpiryDefaultsView> {
-    return this.fetchFn(`${practitionerBase(this.practitionerId)}/share-link-expiry`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ expires_in: expiresIn }),
-    }).then((response) => readJson<ShareLinkExpiryDefaultsView>(response));
+    const path = myDefaultsShareLinkExpiryPath();
+    return this.fetchFn(
+      path,
+      this.mutatingInit(path, {
+        method: "PATCH",
+        body: JSON.stringify({ expires_in: expiresIn }),
+      }),
+    ).then((response) => readJson<ShareLinkExpiryDefaultsView>(response));
   }
 
   upsertTypeDefault(
     type: PrescriptionType,
     params: ExerciseParams,
   ): Promise<MyDefaultsExerciseTypeView> {
-    return this.fetchFn(`${practitionerBase(this.practitionerId)}/types/${type}`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ params }),
-    }).then((response) => readJson<MyDefaultsExerciseTypeView>(response));
+    const path = myDefaultsTypePath(type);
+    return this.fetchFn(
+      path,
+      this.mutatingInit(path, {
+        method: "PUT",
+        body: JSON.stringify({ params }),
+      }),
+    ).then((response) => readJson<MyDefaultsExerciseTypeView>(response));
   }
 
   resetTypeDefault(type: PrescriptionType): Promise<MyDefaultsExerciseTypeView> {
-    return this.fetchFn(`${practitionerBase(this.practitionerId)}/types/${type}`, {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-    }).then((response) => readJson<MyDefaultsExerciseTypeView>(response));
+    const path = myDefaultsTypePath(type);
+    return this.fetchFn(
+      path,
+      this.mutatingInit(path, {
+        method: "DELETE",
+        body: "{}",
+      }),
+    ).then((response) => readJson<MyDefaultsExerciseTypeView>(response));
   }
 }
 

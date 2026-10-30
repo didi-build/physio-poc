@@ -5,7 +5,7 @@ import "./setup.js";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   ExerciseLibraryClient,
@@ -37,7 +37,34 @@ afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   setMyDefaultsClientForTests(null);
+  vi.unstubAllGlobals();
 });
+
+function stubMatchMedia(viewportWidth: number): void {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => {
+      const minWidthMatch = query.match(/min-width:\s*(\d+)px/);
+      const matches =
+        minWidthMatch !== null ? viewportWidth >= Number(minWidthMatch[1]) : false;
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      };
+    }),
+  );
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: viewportWidth,
+    writable: true,
+  });
+}
 
 function stubLibraryClient(): ExerciseLibraryClient {
   return {
@@ -205,30 +232,31 @@ describe("My defaults page (integration, jsdom)", () => {
     }
   });
 
-  it("loses dose input names when the card heading id no longer matches aria-labelledby", async () => {
-    render(
-      <MemoryRouter initialEntries={["/defaults"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          myDefaultsClient={stubMyDefaultsClient()}
-        />
-      </MemoryRouter>,
-    );
+  describe.each([
+    { label: "390px phone", width: 390 },
+    { label: "1280px desktop", width: 1280 },
+  ])("at $label", ({ width }) => {
+    beforeEach(() => {
+      stubMatchMedia(width);
+    });
 
-    await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE });
-    const card = screen.getByTestId("type-default-stretching");
-    await userEvent.click(
-      within(card).getByRole("button", {
-        name: editYourTypeDefaultLabel(TYPE_LABELS.stretching),
-      }),
-    );
-    const heading = within(card).getByRole("heading", { level: 2 });
-    const field = card.querySelector("input.md-param-input") as HTMLInputElement;
-    expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
-    heading.id = "md-type-title-stretching-broken";
-    expect(resolveAriaLabelledByName(field)).toBe("");
-    expect(() => {
-      expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
-    }).toThrow();
+    it("renders share link expiry and exercise type sections", async () => {
+      render(
+        <MemoryRouter initialEntries={["/defaults"]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            myDefaultsClient={stubMyDefaultsClient()}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: SHARE_LINK_EXPIRY_SECTION }),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("type-default-stretching")).toBeInTheDocument();
+    });
   });
 });

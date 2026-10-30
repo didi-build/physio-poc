@@ -4,19 +4,26 @@ import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
 import {
+  LEGACY_PRACTITIONER_MY_DEFAULTS_PATH,
+  MY_DEFAULTS_API_BASE,
+} from "../../my-defaults-api-paths.js";
+import {
   MyDefaultsService,
   MyDefaultsServiceError,
 } from "../../services/my-defaults/index.js";
-import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
+import { jsonUnauthorized } from "../responses.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
-const MY_DEFAULTS_PATH =
-  /^\/api\/practitioners\/([^/]+)\/my-defaults(?:\/([^/]+)(?:\/([^/]+))?)?$/;
+const MY_DEFAULTS_ME_PATH = /^\/api\/me\/my-defaults(?:\/([^/]+)(?:\/([^/]+))?)?$/;
+
+export function isLegacyPractitionerMyDefaultsPath(pathname: string): boolean {
+  return LEGACY_PRACTITIONER_MY_DEFAULTS_PATH.test(pathname);
+}
 
 export function isMyDefaultsApiPath(pathname: string): boolean {
-  return MY_DEFAULTS_PATH.test(pathname);
+  return pathname === MY_DEFAULTS_API_BASE || MY_DEFAULTS_ME_PATH.test(pathname);
 }
 
 function service(deps: AppDependencies): MyDefaultsService {
@@ -37,11 +44,46 @@ function errorResponse(error: unknown): Response {
   throw error;
 }
 
-function bindPathPractitioner(
-  pathPractitionerId: string,
+function practitionerIdFromSession(
   sessionPractitioner: PractitionerSession | null | undefined,
 ): string | Response {
-  return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
+  if (!sessionPractitioner) {
+    return jsonUnauthorized();
+  }
+  return sessionPractitioner.practitionerId;
+}
+
+function rejectBodyPractitionerId(body: Record<string, unknown>): Response | null {
+  if (
+    Object.prototype.hasOwnProperty.call(body, "practitionerId") ||
+    Object.prototype.hasOwnProperty.call(body, "practitioner_id")
+  ) {
+    return Response.json(
+      { error: "invalid_input", message: "invalid_input" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  return null;
+}
+
+async function readJsonObjectBody(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    const body = (await request.json()) as unknown;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid JSON body" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    return body as Record<string, unknown>;
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
 }
 
 function parseExpiresIn(raw: unknown): ShareLinkExpiresIn | null {
@@ -71,17 +113,25 @@ export async function handleMyDefaultsRequest(
   deps: AppDependencies,
   options: HandleMyDefaultsOptions = {},
 ): Promise<Response | null> {
-  const sessionPractitioner = options.sessionPractitioner;
   const url = new URL(request.url);
-  const match = MY_DEFAULTS_PATH.exec(url.pathname);
+  if (isLegacyPractitionerMyDefaultsPath(url.pathname)) {
+    return Response.json(
+      { error: "not_found", message: "Not found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
+  }
+
+  const match = MY_DEFAULTS_ME_PATH.exec(url.pathname);
   if (!match) {
     return null;
   }
-  const [, pathPractitionerId, segment, subSegment] = match;
-  const practitionerId = bindPathPractitioner(pathPractitionerId, sessionPractitioner);
+
+  const practitionerId = practitionerIdFromSession(options.sessionPractitioner);
   if (practitionerId instanceof Response) {
     return practitionerId;
   }
+
+  const [, segment, subSegment] = match;
 
   if (!segment && request.method === "GET") {
     try {
@@ -93,14 +143,13 @@ export async function handleMyDefaultsRequest(
   }
 
   if (segment === "share-link-expiry" && request.method === "PATCH") {
-    let body: Record<string, unknown> = {};
-    try {
-      body = (await request.json()) as Record<string, unknown>;
-    } catch {
-      return Response.json(
-        { error: "invalid_input", message: "Invalid JSON body" },
-        { status: 400, headers: JSON_HEADERS },
-      );
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const rejected = rejectBodyPractitionerId(body);
+    if (rejected) {
+      return rejected;
     }
     const expiresIn = parseExpiresIn(body.expires_in);
     if (!expiresIn) {
@@ -129,14 +178,13 @@ export async function handleMyDefaultsRequest(
       );
     }
     if (request.method === "PUT") {
-      let body: Record<string, unknown> = {};
-      try {
-        body = (await request.json()) as Record<string, unknown>;
-      } catch {
-        return Response.json(
-          { error: "invalid_input", message: "Invalid JSON body" },
-          { status: 400, headers: JSON_HEADERS },
-        );
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
       }
       if (
         !body.params ||
@@ -160,6 +208,16 @@ export async function handleMyDefaultsRequest(
       }
     }
     if (request.method === "DELETE") {
+      if (request.headers.get("content-type")?.includes("application/json")) {
+        const body = await readJsonObjectBody(request);
+        if (body instanceof Response) {
+          return body;
+        }
+        const rejected = rejectBodyPractitionerId(body);
+        if (rejected) {
+          return rejected;
+        }
+      }
       try {
         const result = await service(deps).resetTypeDefault(practitionerId, type);
         return Response.json(result, { headers: JSON_HEADERS });
@@ -169,5 +227,8 @@ export async function handleMyDefaultsRequest(
     }
   }
 
-  return null;
+  return Response.json(
+    { error: "not_found", message: "Not found" },
+    { status: 404, headers: JSON_HEADERS },
+  );
 }
