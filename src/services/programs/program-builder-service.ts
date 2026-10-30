@@ -37,6 +37,15 @@ import {
   type ProgramRow,
 } from "../../storage/repositories/programs.js";
 import { TypeDefaultsRepository } from "../../storage/repositories/type-defaults.js";
+import {
+  PractitionerRoutineRowsRepository,
+  PractitionerRoutinesRepository,
+  RoutineRepositoryError,
+  RoutineVersionRowsRepository,
+  RoutineVersionsRepository,
+  RoutinesRepository,
+  type RoutineVersionRecord,
+} from "../../storage/repositories/routines.js";
 import { resolveExerciseParams } from "../../domain/resolve-exercise-params.js";
 import {
   buildProgramRowTextSnapshot,
@@ -50,7 +59,10 @@ import type {
   ProgramLibraryUpdatePrompt,
   ProgramListItem,
   ProgramMutationResult,
+  ProgramOriginFilter,
   ProgramSearchResult,
+  RoutineProgramSource,
+  RoutineSentProgramStats,
 } from "./types.js";
 
 export class ProgramBuilderServiceError extends Error {
@@ -79,6 +91,11 @@ export class ProgramBuilderService {
   private readonly exerciseRequests: ExerciseRequestsRepository;
   private readonly libraryRead: ExerciseLibraryReadRepository;
   private readonly typeDefaults: TypeDefaultsRepository;
+  private readonly routines: RoutinesRepository;
+  private readonly routineVersions: RoutineVersionsRepository;
+  private readonly routineVersionRows: RoutineVersionRowsRepository;
+  private readonly practitionerRoutines: PractitionerRoutinesRepository;
+  private readonly practitionerRoutineRows: PractitionerRoutineRowsRepository;
 
   constructor(
     sql: SqlStoragePort,
@@ -92,6 +109,11 @@ export class ProgramBuilderService {
     this.exerciseRequests = new ExerciseRequestsRepository(sql);
     this.libraryRead = new ExerciseLibraryReadRepository(sql);
     this.typeDefaults = new TypeDefaultsRepository(sql);
+    this.routines = new RoutinesRepository(sql);
+    this.routineVersions = new RoutineVersionsRepository(sql);
+    this.routineVersionRows = new RoutineVersionRowsRepository(sql);
+    this.practitionerRoutines = new PractitionerRoutinesRepository(sql);
+    this.practitionerRoutineRows = new PractitionerRoutineRowsRepository(sql);
   }
 
   async createProgram(
@@ -112,6 +134,44 @@ export class ProgramBuilderService {
       this.mapFreeTextError(err);
     }
     return { program: await this.buildProgramView(practitionerId, programId) };
+  }
+
+  async createProgramFromRoutine(
+    practitionerId: string,
+    input: {
+      programId: string;
+      routineId: string;
+      source: RoutineProgramSource;
+      rowIds: string[];
+    },
+  ): Promise<ProgramMutationResult> {
+    return this.createProgramCopyFromRoutine(practitionerId, input);
+  }
+
+  async useRoutineForPatient(
+    practitionerId: string,
+    input: {
+      programId: string;
+      routineId: string;
+      source: RoutineProgramSource;
+      rowIds: string[];
+    },
+  ): Promise<ProgramMutationResult> {
+    return this.createProgramCopyFromRoutine(practitionerId, input);
+  }
+
+  async getRoutineSentProgramStats(
+    practitionerId: string,
+    routineId: string,
+  ): Promise<RoutineSentProgramStats> {
+    const validatedRoutineId = this.parseOpaqueId(routineId, "Routine id");
+    await this.requirePractitioner(practitionerId);
+    await this.requireVisiblePublishedRoutine(practitionerId, validatedRoutineId);
+    const codes = await this.programs.listSentCodesForSourceRoutine({
+      practitionerId,
+      routineId: validatedRoutineId,
+    });
+    return { sent_count: codes.length, codes };
   }
 
   async getProgram(
@@ -201,12 +261,19 @@ export class ProgramBuilderService {
 
   async listPrograms(
     practitionerId: string,
-    input?: { searchQuery?: string },
+    input?: { searchQuery?: string; originFilter?: ProgramOriginFilter },
   ): Promise<ProgramSearchResult> {
     await this.requirePractitioner(practitionerId);
+    const originFilter = input?.originFilter ?? "all";
     const records = await this.programs.listForPractitioner({
       practitionerId,
       searchQuery: input?.searchQuery,
+      originFilter:
+        originFilter === "all"
+          ? undefined
+          : originFilter === "from_routine"
+            ? "from_routine"
+            : "from_scratch",
     });
     const items: ProgramListItem[] = [];
     for (const record of records) {
@@ -265,6 +332,7 @@ export class ProgramBuilderService {
       this.mapFreeTextError(err);
     }
     await this.programs.touchDraft(validatedProgramId, this.now());
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return {
       program: await this.buildProgramView(practitionerId, validatedProgramId),
     };
@@ -342,6 +410,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapRowWriteError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -406,6 +475,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapRowWriteError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -471,6 +541,7 @@ export class ProgramBuilderService {
       } catch (err) {
         this.mapRowWriteError(err);
       }
+      await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
       return {
         program: await this.buildProgramView(practitionerId, validatedProgramId),
       };
@@ -499,6 +570,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapRowWriteError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -535,6 +607,7 @@ export class ProgramBuilderService {
     const ordered = rows.map((row) => row.id);
     ordered.splice(source.position + 1, 0, newRowId);
     await this.rows.reorderRows(validatedProgramId, ordered, this.now());
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -551,6 +624,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapProgramRepoError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -569,6 +643,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapProgramRepoError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -622,6 +697,7 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapRowWriteError(err);
     }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
@@ -736,6 +812,7 @@ export class ProgramBuilderService {
     const openLink = program.deleted_at
       ? null
       : await this.links.findOpenByProgramId(programId);
+    const routineOrigin = await this.buildRoutineOriginView(program);
     return {
       program_id: program.id,
       code: program.code,
@@ -749,6 +826,7 @@ export class ProgramBuilderService {
       rows: builderRows,
       open_share_link: openLink !== null,
       deleted_at: program.deleted_at,
+      routine_origin: routineOrigin,
     };
   }
 
@@ -768,6 +846,7 @@ export class ProgramBuilderService {
       auto_save_status: view.auto_save_status,
       library_updates_to_review: view.library_updates_to_review,
       deleted_at: view.deleted_at,
+      routine_origin: view.routine_origin,
     };
   }
 
@@ -1030,6 +1109,225 @@ export class ProgramBuilderService {
       }
     }
     this.mapProgramRepoError(err);
+  }
+
+  private async createProgramCopyFromRoutine(
+    practitionerId: string,
+    input: {
+      programId: string;
+      routineId: string;
+      source: RoutineProgramSource;
+      rowIds: string[];
+    },
+  ): Promise<ProgramMutationResult> {
+    await this.requirePractitioner(practitionerId);
+    const programId = this.parseOpaqueId(input.programId, "Program id");
+    const routineId = this.parseOpaqueId(input.routineId, "Routine id");
+    for (const rowId of input.rowIds) {
+      this.parseOpaqueId(rowId, "Program row id");
+    }
+    const routine = await this.requireVisiblePublishedRoutine(
+      practitionerId,
+      routineId,
+    );
+    const { version, rows } = await this.resolveRoutineRowsForProgramCopy(
+      practitionerId,
+      routine,
+      routineId,
+      input.source,
+    );
+    if (input.rowIds.length !== rows.length) {
+      throw new ProgramBuilderServiceError(
+        "rowIds must include one id per routine row",
+        "invalid_input",
+      );
+    }
+    const createdAt = this.now();
+    const prefilledName = version.name?.trim() ?? null;
+    try {
+      await this.programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt,
+        name: prefilledName,
+        routineOrigin: {
+          routineId,
+          routineVersionId: version.id,
+          origin: "used_as_is",
+        },
+      });
+    } catch (err) {
+      this.mapRoutineProgramCreateError(err);
+    }
+    for (let index = 0; index < rows.length; index += 1) {
+      const sourceRow = rows[index]!;
+      const rowId = input.rowIds[index]!;
+      const approved = await this.libraryRead.getApprovedVersionById(
+        sourceRow.exerciseVersionId,
+      );
+      if (!approved || approved.exercise_id !== sourceRow.exerciseId) {
+        throw new ProgramBuilderServiceError(
+          "Exercise not found",
+          "exercise_not_found",
+        );
+      }
+      const resolved = await this.resolveRowDefaults(
+        practitionerId,
+        approved,
+        sourceRow.prescriptionType,
+      );
+      const textSnapshot = buildProgramRowTextSnapshot({
+        version: approved,
+        overrides: resolved.overrides,
+        prescriptionType: sourceRow.prescriptionType,
+      });
+      try {
+        await this.rows.replaceRow({
+          id: rowId,
+          programId,
+          position: sourceRow.position,
+          exerciseId: sourceRow.exerciseId,
+          exerciseVersionId: sourceRow.exerciseVersionId,
+          prescriptionType: sourceRow.prescriptionType,
+          params: sourceRow.params,
+          textSnapshot,
+          note: null,
+          draftUpdatedAt: this.now(),
+        });
+      } catch (err) {
+        this.mapRowWriteError(err);
+      }
+    }
+    return { program: await this.buildProgramView(practitionerId, programId) };
+  }
+
+  private async requireVisiblePublishedRoutine(
+    practitionerId: string,
+    routineId: string,
+  ): Promise<import("../../storage/repositories/routines.js").RoutineRecord> {
+    const routine = await this.routines.findVisibleToPractitioner(
+      routineId,
+      practitionerId,
+    );
+    if (!routine) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    if (routine.published_version === null) {
+      throw new ProgramBuilderServiceError(
+        "Routine must be published before it can be used for a program",
+        "invalid_input",
+      );
+    }
+    return routine;
+  }
+
+  private async resolveRoutineRowsForProgramCopy(
+    practitionerId: string,
+    routine: import("../../storage/repositories/routines.js").RoutineRecord,
+    routineId: string,
+    source: RoutineProgramSource,
+  ): Promise<{
+    version: RoutineVersionRecord;
+    rows: {
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+  }> {
+    if (source === "my_copy") {
+      const saved = await this.practitionerRoutines.findForPractitioner(
+        practitionerId,
+        routineId,
+      );
+      if (saved) {
+        const version = await this.routineVersions.findById(
+          saved.source_routine_version_id,
+        );
+        if (!version) {
+          throw new ProgramBuilderServiceError(
+            "Program not found",
+            "program_not_found",
+          );
+        }
+        const copyRows = await this.practitionerRoutineRows.listForCopy(saved.id);
+        return {
+          version,
+          rows: copyRows.map((row) => ({
+            position: row.position,
+            exerciseId: row.exercise_id,
+            exerciseVersionId: row.exercise_version_id,
+            prescriptionType: row.prescription_type,
+            params: parseExerciseParamsJson(row.params_json),
+          })),
+        };
+      }
+    }
+    const version = await this.routineVersions.findPublishedVersion(
+      routineId,
+      routine.published_version!,
+    );
+    if (!version) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    const communityRows = await this.routineVersionRows.listForVersion(version.id);
+    return {
+      version,
+      rows: communityRows.map((row) => ({
+        position: row.position,
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+        prescriptionType: row.prescription_type,
+        params: parseExerciseParamsJson(row.params_json),
+      })),
+    };
+  }
+
+  private async markRoutineOriginTweakedAfterEdit(programId: string): Promise<void> {
+    await this.programs.markRoutineOriginTweakedIfUsedAsIs(programId);
+  }
+
+  private async buildRoutineOriginView(
+    program: ProgramRecord,
+  ): Promise<import("./types.js").ProgramRoutineOriginView | null> {
+    if (
+      !program.source_routine_id ||
+      !program.source_routine_version_id ||
+      !program.source_routine_origin
+    ) {
+      return null;
+    }
+    const version = await this.routineVersions.findById(
+      program.source_routine_version_id,
+    );
+    if (!version) {
+      return null;
+    }
+    return {
+      routine_id: program.source_routine_id,
+      routine_version_id: program.source_routine_version_id,
+      routine_version_number: version.version_number,
+      routine_name: version.name?.trim() ?? "",
+      used_as: program.source_routine_origin,
+    };
+  }
+
+  private mapRoutineProgramCreateError(err: unknown): never {
+    if (err instanceof RoutineRepositoryError) {
+      if (
+        err.message.includes("published routine version") ||
+        err.message.includes("Source routine version not found") ||
+        err.message.includes("belongs to a different routine")
+      ) {
+        throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+      }
+      throw new ProgramBuilderServiceError(err.message, "invalid_input");
+    }
+    if (err instanceof ProgramRepositoryError) {
+      this.mapProgramRepoError(err);
+    }
+    this.mapFreeTextError(err);
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {

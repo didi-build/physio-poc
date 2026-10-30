@@ -32,6 +32,14 @@ export type ProgramBuilderRow = {
   library_update: ProgramLibraryUpdatePrompt | null;
 };
 
+export type ProgramRoutineOriginView = {
+  routine_id: string;
+  routine_version_id: string;
+  routine_version_number: number;
+  routine_name: string;
+  used_as: "used_as_is" | "tweaked";
+};
+
 export type ProgramBuilderView = {
   program_id: string;
   code: string;
@@ -45,6 +53,7 @@ export type ProgramBuilderView = {
   rows: ProgramBuilderRow[];
   open_share_link: boolean;
   deleted_at: string | null;
+  routine_origin: ProgramRoutineOriginView | null;
 };
 
 export type ProgramListItem = {
@@ -56,6 +65,7 @@ export type ProgramListItem = {
   auto_save_status: ProgramAutoSaveStatus;
   library_updates_to_review: number;
   deleted_at: string | null;
+  routine_origin: ProgramRoutineOriginView | null;
 };
 
 export type ProgramSearchResult = {
@@ -65,4 +75,13 @@ export type ProgramSearchResult = {
 
 export type ProgramMutationResult = {
   program: ProgramBuilderView;
+};
+
+export type ProgramOriginFilter = "all" | "from_routine" | "from_scratch";
+
+export type RoutineProgramSource = "my_copy" | "community";
+
+export type RoutineSentProgramStats = {
+  sent_count: number;
+  codes: string[];
 };
