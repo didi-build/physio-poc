@@ -34,6 +34,7 @@ import {
   ExerciseLibraryReadRepository,
   type LatestApprovedVersionRow,
 } from "../../storage/repositories/exercise-library-read.js";
+import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
   PROGRAM_ID_ALREADY_IN_USE,
@@ -1391,6 +1392,15 @@ export class ProgramBuilderService {
       }
       throw new ProgramBuilderServiceError(err.message, "invalid_input");
     }
+    if (isSqlDuplicateIdError(err)) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    if (
+      err instanceof ProgramRepositoryError &&
+      err.message === PROGRAM_ID_ALREADY_IN_USE
+    ) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
     if (err instanceof ProgramRepositoryError) {
       this.mapProgramRepoError(err);
     }
@@ -1453,6 +1463,9 @@ export class ProgramBuilderService {
       }
       if (err.message === "Program not found") {
         throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+      }
+      if (err.message === PROGRAM_ID_ALREADY_IN_USE) {
+        throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
       }
       throw new ProgramBuilderServiceError(err.message, "invalid_input");
     }

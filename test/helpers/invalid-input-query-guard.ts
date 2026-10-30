@@ -5,6 +5,11 @@ export const INVALID_INPUT_QUERY_GUARD_BODY = {
   message: "invalid_input",
 } as const;
 
+/** Stable headers for the prefix query guard 400 (matches `rejectQueryPractitionerId`). */
+export const CANONICAL_INVALID_INPUT_QUERY_GUARD_HEADERS: ReadonlyArray<
+  [string, string]
+> = [["content-type", "application/json"]] as const;
+
 export function practitionerIdQuerySuffix(otherPractitionerId: string): string {
   return `?practitionerId=${encodeURIComponent(otherPractitionerId)}`;
 }
@@ -21,21 +26,12 @@ export function sortedHeaderEntries(response: Response): [string, string][] {
   );
 }
 
-let cachedExpectedHeaders: [string, string][] | null = null;
-
-export function rememberInvalidInputQueryGuardHeaders(response: Response): void {
-  cachedExpectedHeaders = sortedHeaderEntries(response);
-}
-
 export async function expectInvalidInputQueryGuardResponse(
   response: Response,
 ): Promise<void> {
   expect(response.status).toBe(400);
   expect(await response.text()).toBe(JSON.stringify(INVALID_INPUT_QUERY_GUARD_BODY));
-  const headers = sortedHeaderEntries(response);
-  if (cachedExpectedHeaders === null) {
-    rememberInvalidInputQueryGuardHeaders(response);
-  } else {
-    expect(headers).toEqual(cachedExpectedHeaders);
-  }
+  expect(sortedHeaderEntries(response)).toEqual([
+    ...CANONICAL_INVALID_INPUT_QUERY_GUARD_HEADERS,
+  ]);
 }
