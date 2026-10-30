@@ -249,10 +249,21 @@ describe("Exercise library practitioner session binding (integration)", () => {
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     };
 
-    const before = await storage.first<{ text_overrides_json: string }>(
-      "SELECT text_overrides_json FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+    const before = await storage.first<{
+      practitioner_id: string;
+      exercise_id: string;
+      favourite: number;
+      saved_at: string;
+      last_used_at: string | null;
+      text_overrides_json: string;
+      param_overrides_json: string;
+    }>(
+      `SELECT practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+              text_overrides_json, param_overrides_json
+       FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
       [practB, EX_B],
     );
+    expect(before).not.toBeNull();
 
     const response = await handleRequest(
       new Request(`${BASE}/api/practitioners/${PRACT_A}/my-exercises/${EX_B}`, {
@@ -276,19 +287,27 @@ describe("Exercise library practitioner session binding (integration)", () => {
       }),
       deps,
     );
-    expect([400, 403]).toContain(response.status);
-    const body = (await response.json()) as { error: string };
-    expect(["undo_mismatch", "forbidden"]).toContain(body.error);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "undo_mismatch",
+      message: "Undo snapshot does not match URL",
+    });
 
     const after = await storage.first<{
-      text_overrides_json: string;
+      practitioner_id: string;
+      exercise_id: string;
       favourite: number;
+      saved_at: string;
+      last_used_at: string | null;
+      text_overrides_json: string;
+      param_overrides_json: string;
     }>(
-      "SELECT text_overrides_json, favourite FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+      `SELECT practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+              text_overrides_json, param_overrides_json
+       FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
       [practB, EX_B],
     );
-    expect(after?.text_overrides_json).toBe(before?.text_overrides_json);
-    expect(after?.favourite).toBe(0);
+    expect(after).toEqual(before);
   });
 
   it("leaves B text_overrides_json unchanged when A PATCH targets B", async () => {
