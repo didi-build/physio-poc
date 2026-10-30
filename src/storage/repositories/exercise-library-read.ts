@@ -52,14 +52,19 @@ export type LatestApprovedVersionRow = {
  * rows in the same program count separately). Counts rows across all practitioners' programs.
  * Deleting a program is not a use; Recently deleted is a trash bin, so those rows are excluded
  * until the program is restored. Placeholder rows (exercise_id IS NULL) are excluded.
+ * Keep USAGE_COUNT_LIST_SQL and USAGE_COUNT_DETAILS_SQL in sync (All exercises list vs details).
  */
-const USAGE_COUNT_SUBQUERY = `
-  SELECT COUNT(*)
+const USAGE_COUNT_LIST_SQL = `SELECT COUNT(*)
   FROM program_rows pr_usage
   INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
   WHERE pr_usage.exercise_id = e.id
-    AND p_usage.deleted_at IS NULL
-`;
+    AND p_usage.deleted_at IS NULL`;
+
+const USAGE_COUNT_DETAILS_SQL = `SELECT COUNT(*) AS count
+  FROM program_rows pr_usage
+  INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
+  WHERE pr_usage.exercise_id = ?
+    AND p_usage.deleted_at IS NULL`;
 
 const LATEST_APPROVED_JOIN = `
   INNER JOIN (
@@ -82,6 +87,13 @@ function sortClause(sort: ApprovedExerciseSearchSort): string {
     case "a_to_z":
       return "ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
   }
+}
+
+/** Order-by SQL for approved exercise search (used in list queries). */
+export function approvedExerciseSearchOrderBy(
+  sort: ApprovedExerciseSearchSort,
+): string {
+  return sortClause(sort);
 }
 
 export class ExerciseLibraryReadRepository {
@@ -165,7 +177,7 @@ export class ExerciseLibraryReadRepository {
         ev.title,
         e.category,
         ev.approved_at,
-        (${USAGE_COUNT_SUBQUERY}) AS usage_count,
+        (${USAGE_COUNT_LIST_SQL}) AS usage_count,
         (
           SELECT ea.alias
           FROM exercise_aliases ea
@@ -378,14 +390,9 @@ export class ExerciseLibraryReadRepository {
   }
 
   async getUsageCount(exerciseId: string): Promise<number> {
-    const row = await this.sql.first<{ count: number }>(
-      `SELECT COUNT(*) AS count
-       FROM program_rows pr_usage
-       INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
-       WHERE pr_usage.exercise_id = ?
-         AND p_usage.deleted_at IS NULL`,
-      [exerciseId],
-    );
+    const row = await this.sql.first<{ count: number }>(USAGE_COUNT_DETAILS_SQL, [
+      exerciseId,
+    ]);
     return row?.count ?? 0;
   }
 }

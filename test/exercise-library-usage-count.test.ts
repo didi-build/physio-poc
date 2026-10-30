@@ -13,6 +13,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { addProgramExerciseRow } from "./helpers/exercise-library-program-usage-fixture.js";
+import { approvedExerciseSearchOrderBy } from "../src/storage/repositories/exercise-library-read.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
@@ -35,7 +36,20 @@ async function seedApprovedExercise(
   ]);
 }
 
+function listRow(
+  result: Awaited<ReturnType<ExerciseLibraryService["searchApprovedExercises"]>>,
+  exerciseId: string,
+) {
+  return result.exercises.find((row) => row.exercise_id === exerciseId);
+}
+
 describe("Exercise library usage_count from program rows (integration)", () => {
+  it("uses exercise_id ascending as the final most_used tie break in list SQL", () => {
+    expect(approvedExerciseSearchOrderBy("most_used")).toBe(
+      "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC",
+    );
+  });
+
   it("orders most used by program row count descending", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -125,6 +139,11 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const details = await service.getExerciseDetails(practId, exerciseId);
       expect(details.usage_count).toBe(2);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(2);
     } finally {
       storage.close();
     }
@@ -144,6 +163,61 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const details = await service.getExerciseDetails(practId, exerciseId);
       expect(details.usage_count).toBe(0);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("breaks most_used ties by exercise_id when titles and usage_count match", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const exLower = "00000000-0000-4000-8000-000000000001";
+      const exHigher = "00000000-0000-4000-8000-000000000002";
+      expect(exLower < exHigher).toBe(true);
+      const sharedTitle = "Shared tie title";
+      const verLower = "00000000-0000-4000-8000-000000000011";
+      const verHigher = "00000000-0000-4000-8000-000000000012";
+      await seedApprovedExercise(storage, practId, {
+        exerciseId: exHigher,
+        versionId: verHigher,
+        title: sharedTitle,
+      });
+      await seedApprovedExercise(storage, practId, {
+        exerciseId: exLower,
+        versionId: verLower,
+        title: sharedTitle,
+      });
+      for (const [exerciseId, versionId, rowId, progSeed] of [
+        [exHigher, verHigher, id("row-tie-id-higher"), "prog-tie-higher"],
+        [exLower, verLower, id("row-tie-id-lower"), "prog-tie-lower"],
+      ] as const) {
+        await addProgramExerciseRow(storage, {
+          practitionerId: practId,
+          programId: id(progSeed),
+          rowId,
+          exerciseId,
+          versionId,
+          position: 0,
+        });
+      }
+
+      const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const result = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(result.exercises.map((row) => row.exercise_id)).toEqual([
+        exLower,
+        exHigher,
+      ]);
+      expect(listRow(result, exLower)?.usage_count).toBe(1);
+      expect(listRow(result, exHigher)?.usage_count).toBe(1);
     } finally {
       storage.close();
     }
@@ -229,6 +303,11 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const forB = await service.getExerciseDetails(practB, exerciseId);
       expect(forB.usage_count).toBe(2);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practB,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(2);
     } finally {
       storage.close();
     }
@@ -290,6 +369,11 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const details = await service.getExerciseDetails(practId, exerciseId);
       expect(details.usage_count).toBe(1);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(1);
     } finally {
       storage.close();
     }
@@ -318,6 +402,11 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const details = await service.getExerciseDetails(practId, exerciseId);
       expect(details.usage_count).toBe(0);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(0);
     } finally {
       storage.close();
     }
@@ -330,6 +419,12 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const exerciseId = id("ex-del-restore");
       const versionId = id("ver-del-restore");
       const programId = id("prog-del-restore");
+      const fillerId = id("ex-del-restore-filler");
+      await seedApprovedExercise(storage, practId, {
+        exerciseId: fillerId,
+        versionId: id("ver-del-restore-filler"),
+        title: "AAA filler unused",
+      });
       await seedApprovedExercise(storage, practId, {
         exerciseId,
         versionId,
@@ -345,19 +440,25 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       });
 
       const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
-      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
-        1,
-      );
+      const assertCounts = async (used: number, order: string[]) => {
+        expect(
+          (await library.getExerciseDetails(practId, exerciseId)).usage_count,
+        ).toBe(used);
+        const list = await library.searchApprovedExercises({
+          practitionerId: practId,
+          sort: "most_used",
+        });
+        expect(listRow(list, exerciseId)?.usage_count).toBe(used);
+        expect(list.exercises.map((row) => row.exercise_id)).toEqual(order);
+      };
+
+      await assertCounts(1, [exerciseId, fillerId]);
 
       await programBuilder.deleteProgram(practId, programId);
-      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
-        0,
-      );
+      await assertCounts(0, [fillerId, exerciseId]);
 
       await programBuilder.restoreProgram(practId, programId);
-      expect((await library.getExerciseDetails(practId, exerciseId)).usage_count).toBe(
-        1,
-      );
+      await assertCounts(1, [exerciseId, fillerId]);
     } finally {
       storage.close();
     }
