@@ -7,7 +7,9 @@ import {
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_QUERY,
+  MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
+  MAX_LENGTH_ROW_NOTES,
   MCP_TOOL_ANNOTATIONS,
   PHYSIO_MCP_TOOLS,
   SEARCH_ROUTINES_TOOL_NAME,
@@ -17,6 +19,7 @@ import {
   searchApprovedExercisesOutputSchema,
   searchRoutinesInputSchema,
 } from "../src/mcp-connector/index.js";
+import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
 import {
   findSchemaAtPath,
   visitSchemaNodes,
@@ -67,6 +70,19 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
       }
     });
     expect(MAX_LENGTH_ROUTINE_NAME).toBe(80);
+
+    visitSchemaNodes(programRowInputSchema, (node) => {
+      const props = node.properties as
+        Record<string, { maxLength?: number }> | undefined;
+      if (props?.row_notes?.maxLength !== undefined) {
+        expect(props.row_notes.maxLength).toBe(MAX_LENGTH_ROW_NOTES);
+      }
+      if (props?.exercise_name?.maxLength !== undefined) {
+        expect(props.exercise_name.maxLength).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
+      }
+    });
+    expect(MAX_LENGTH_ROW_NOTES).toBe(300);
+    expect(MAX_LENGTH_REQUESTED_EXERCISE_NAME).toBe(100);
   });
 
   it("pins literal required arrays on tool output schemas", () => {

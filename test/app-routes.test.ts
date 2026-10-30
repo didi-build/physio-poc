@@ -116,9 +116,9 @@ describe("shared Physio app route table", () => {
 
   it("URL-encodes program codes in path segments", () => {
     const url = fillPhysioAppRoutePattern("programBuilder", {
-      programCode: "PRG-TEST1",
+      programCode: "PRG 7K3Q",
     });
-    expect(url).toBe("/programs/PRG-TEST1");
+    expect(url).toBe("/programs/PRG%207K3Q");
   });
 
   it("derives deprecated exercise search path constants from the route table", () => {
@@ -185,14 +185,39 @@ describe("buildWebAppExerciseSearchUrl", () => {
 
   it("never splits a surrogate pair or emoji when capping encoded q", () => {
     const emojiTail = "😀";
-    const raw = `${"a".repeat(90)}${emojiTail}`;
+    const raw = `${"a".repeat(188)}${emojiTail}`;
+    expect(encodedExerciseSearchQueryLength(raw)).toBeGreaterThan(199);
     expect([...raw].at(-1)).toBe(emojiTail);
+
     const capped = capRawExerciseSearchQueryForUrl(raw);
-    if (capped.length > 0) {
-      expect([...capped].at(-1)).not.toBe("\uD83D");
-      expect([...capped].at(-1)).not.toBe("\uDE00");
-    }
+    expect(capped).toBe("a".repeat(188));
     expect(encodedExerciseSearchQueryLength(capped)).toBeLessThanOrEqual(199);
+
+    const capByCodeUnit = (text: string): string => {
+      let trimmed = text;
+      while (trimmed.length > 0 && encodedExerciseSearchQueryLength(trimmed) > 199) {
+        trimmed = trimmed.slice(0, -1);
+      }
+      return trimmed;
+    };
+    const codeUnitCapped = capByCodeUnit(raw);
+    const hasLoneHighSurrogate = (value: string): boolean => {
+      for (let i = 0; i < value.length; i += 1) {
+        const code = value.charCodeAt(i);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          if (i + 1 >= value.length) {
+            return true;
+          }
+          const next = value.charCodeAt(i + 1);
+          if (next < 0xdc00 || next > 0xdfff) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    expect(hasLoneHighSurrogate(codeUnitCapped)).toBe(true);
+    expect(hasLoneHighSurrogate(capped)).toBe(false);
   });
 
   it("preserves ASCII space characters in encoded q length measurement", () => {
