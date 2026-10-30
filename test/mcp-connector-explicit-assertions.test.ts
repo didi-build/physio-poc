@@ -17,12 +17,133 @@ import {
 import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
 import {
   collectForbiddenLegacySchemaFields,
+  assertNoOutputPatternProperties,
+  collectOutputPatternPropertiesViolations,
+  collectPatternPropertiesViolations,
   collectPatientLikeDescriptionViolations,
   collectSchemaDescriptionViolations,
   collectSchemaPropertyNames,
   findSchemaAtPath,
   visitSchemaNodes,
 } from "./mcp-connector-schema-test-utils.js";
+
+const qaFixturePatternPropertiesTool = {
+  name: "qa_fixture_output_pattern_properties",
+  outputSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      rows: {
+        type: "object",
+        patternProperties: {
+          "^[a-z]+$": { type: "string" },
+        },
+      },
+    },
+  } satisfies JsonSchema,
+};
+
+const qaPatternPropertiesObjectSchema = {
+  type: "object",
+  patternProperties: {
+    "^qa$": { type: "string" },
+  },
+} satisfies JsonSchema;
+
+const schemaWalkerBranchFixtures: Array<{
+  branch: string;
+  schema: JsonSchema;
+  expectedPath: string;
+}> = [
+  {
+    branch: "anyOf",
+    schema: { anyOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "anyOf.0",
+  },
+  {
+    branch: "oneOf",
+    schema: { oneOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "oneOf.0",
+  },
+  {
+    branch: "allOf",
+    schema: { allOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "allOf.0",
+  },
+  {
+    branch: "items (single schema)",
+    schema: { items: qaPatternPropertiesObjectSchema },
+    expectedPath: "items",
+  },
+  {
+    branch: "items (tuple array)",
+    schema: {
+      items: [{ type: "string" }, qaPatternPropertiesObjectSchema],
+    },
+    expectedPath: "items.1",
+  },
+  {
+    branch: "prefixItems",
+    schema: { prefixItems: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "prefixItems.0",
+  },
+  {
+    branch: "additionalProperties",
+    schema: {
+      type: "object",
+      additionalProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "additionalProperties",
+  },
+  {
+    branch: "$defs",
+    schema: {
+      $defs: {
+        qa_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "$defs.qa_def_pattern_properties",
+  },
+  {
+    branch: "definitions",
+    schema: {
+      definitions: {
+        qa_legacy_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "definitions.qa_legacy_def_pattern_properties",
+  },
+  {
+    branch: "contains",
+    schema: { contains: qaPatternPropertiesObjectSchema },
+    expectedPath: "contains",
+  },
+  {
+    branch: "propertyNames",
+    schema: {
+      type: "object",
+      propertyNames: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "propertyNames",
+  },
+  {
+    branch: "unevaluatedProperties",
+    schema: {
+      type: "object",
+      unevaluatedProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedProperties",
+  },
+  {
+    branch: "unevaluatedItems",
+    schema: {
+      type: "array",
+      unevaluatedItems: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedItems",
+  },
+];
 
 describe("collectForbiddenLegacySchemaFields", () => {
   it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
@@ -67,6 +188,98 @@ describe("collectForbiddenLegacySchemaFields", () => {
     expect(collectForbiddenLegacySchemaFields(conditional)).toEqual([
       "property:exercises_not_found",
     ]);
+
+    const ifBranch: JsonSchema = {
+      if: {
+        type: "object",
+        properties: {
+          custom_date: { type: "string", format: "date" },
+        },
+      },
+      then: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+        },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(ifBranch).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
+  });
+});
+
+describe("collectPatternPropertiesViolations", () => {
+  it("detects patternProperties on nested output-shaped fixture schemas", () => {
+    const nestedOutputFixture: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        rows: {
+          type: "object",
+          patternProperties: {
+            "^[a-z]+$": { type: "string" },
+          },
+        },
+      },
+    };
+    expect(collectPatternPropertiesViolations(nestedOutputFixture)).toEqual([
+      "properties.rows",
+    ]);
+
+    const clean: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+      },
+    };
+    expect(collectPatternPropertiesViolations(clean)).toEqual([]);
+  });
+
+  it.each(schemaWalkerBranchFixtures)(
+    "detects patternProperties under $branch at $expectedPath",
+    ({ schema, expectedPath }) => {
+      expect(collectPatternPropertiesViolations(schema)).toEqual([expectedPath]);
+    },
+  );
+});
+
+describe("collectOutputPatternPropertiesViolations", () => {
+  it("reports a planted fixture tool by name and schema path alongside real tools", () => {
+    expect(
+      collectOutputPatternPropertiesViolations([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toEqual([
+      {
+        tool: qaFixturePatternPropertiesTool.name,
+        path: "properties.rows",
+      },
+    ]);
+  });
+});
+
+describe("assertNoOutputPatternProperties", () => {
+  it("does not throw for real tool output schemas alone", () => {
+    expect(() => assertNoOutputPatternProperties(PHYSIO_MCP_TOOLS)).not.toThrow();
+  });
+
+  it("throws naming the planted fixture tool and properties.rows when mixed with real tools", () => {
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/qa_fixture_output_pattern_properties/);
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/properties\.rows/);
   });
 });
 
@@ -177,6 +390,28 @@ describe("DIDI-1026 explicit MCP contract assertions", () => {
     expect(
       collectPatientLikeDescriptionViolations("Glute bridge and heel slides"),
     ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations("Romanian deadlift and bird dog"),
+    ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations(
+        "Clamshell, monster walk, band pull-apart",
+      ),
+    ).toEqual([]);
+
+    const madeUpSurnameCases: Array<{ text: string; pair: string }> = [
+      { text: "Billing contact Tessa Patel only", pair: "Tessa Patel" },
+      { text: "Escalate to Omar Khan when needed", pair: "Omar Khan" },
+      { text: "Copy Priya Singh on approvals", pair: "Priya Singh" },
+      { text: "Notify Wei Chen after review", pair: "Wei Chen" },
+      { text: "Loop in Hana Kim for scheduling", pair: "Hana Kim" },
+      { text: "Cc Rui Wang on the ticket", pair: "Rui Wang" },
+    ];
+    for (const { text, pair } of madeUpSurnameCases) {
+      expect(collectPatientLikeDescriptionViolations(text)).toEqual(
+        expect.arrayContaining([`capitalized-pair:${pair}`]),
+      );
+    }
 
     for (const tool of PHYSIO_MCP_TOOLS) {
       expect(

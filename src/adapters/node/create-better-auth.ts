@@ -82,7 +82,7 @@ export function createDefaultPhysioValidateUserInfo(
 > {
   return async ({ user, source }) => {
     if (source.oauth?.providerId !== "google") {
-      return;
+      return { error: ALLOWLIST_REFUSAL_ERROR };
     }
     const email = typeof user.email === "string" ? user.email : null;
     const verified =
