@@ -125,8 +125,13 @@ export class ProgramBuilderService {
   }
 
   /**
-   * Called when an exercise request is approved (same DB transaction as approval).
-   * Replaces placeholder rows tied to the request with the approved exercise version.
+   * Links placeholder program rows to an approved exercise version.
+   *
+   * Uses the caller's `SqlStoragePort` (or active transaction on that port) only;
+   * does not begin, commit, or roll back a transaction.
+   *
+   * The exercise request approval flow (for example DIDI-1004 `approveRequest`) must
+   * call this inside the same database transaction as marking the request approved.
    */
   async linkApprovedPlaceholders(
     exerciseRequestId: string,
@@ -340,6 +345,7 @@ export class ProgramBuilderService {
     );
     const request = await this.exerciseRequests.findById(requestId);
     this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
+    this.assertExerciseRequestOpenForPlaceholder(request);
     if (!input.prescriptionType) {
       throw new ProgramBuilderServiceError(
         "prescriptionType is required for placeholder rows",
@@ -505,10 +511,10 @@ export class ProgramBuilderService {
     orderedRowIds: string[],
   ): Promise<ProgramMutationResult> {
     const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
     for (const orderedRowId of orderedRowIds) {
       this.parseOpaqueId(orderedRowId, "Program row id");
     }
-    await this.requireOwnedProgram(practitionerId, validatedProgramId);
     try {
       await this.rows.reorderRows(validatedProgramId, orderedRowIds, this.now());
     } catch (err) {
@@ -840,6 +846,18 @@ export class ProgramBuilderService {
     }
   }
 
+  private assertExerciseRequestOpenForPlaceholder(request: {
+    status: import("../../domain/exercise-types.js").ExerciseRequestStatus;
+  }): void {
+    if (request.status === "open" || request.status === "drafting") {
+      return;
+    }
+    throw new ProgramBuilderServiceError(
+      "Only an in-progress exercise request can be attached to a placeholder row",
+      "invalid_input",
+    );
+  }
+
   private assertExerciseRequestOwnedByPractitioner(
     practitionerId: string,
     request: {
@@ -1018,7 +1036,13 @@ export function detectLibraryUpdate(
   };
 }
 
-/** Entry point for exercise request approval (same DB transaction). */
+/**
+ * Links placeholder program rows when an exercise request is approved.
+ *
+ * Uses the caller's `sql` port (including an in-flight transaction on that port) only;
+ * does not begin, commit, or roll back a transaction. DIDI-1004 `approveRequest` must
+ * call this inside the same transaction as approval.
+ */
 export async function linkApprovedPlaceholders(
   sql: SqlStoragePort,
   exerciseRequestId: string,

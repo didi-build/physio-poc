@@ -47,6 +47,63 @@ async function openService(now: () => string = () => TS) {
   return { storage, service };
 }
 
+function advancingClock(fromIso: string): () => string {
+  let ms = Date.parse(fromIso);
+  return () => {
+    const value = new Date(ms).toISOString();
+    ms += 1_000;
+    return value;
+  };
+}
+
+async function snapshotProgramDbState(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  programId: string,
+) {
+  const programs = new ProgramsRepository(storage);
+  const rows = new ProgramRowsRepository(storage);
+  return {
+    program: await programs.findById(programId),
+    rows: await rows.listForProgram(programId),
+  };
+}
+
+function expectDbStateUnchanged(
+  before: Awaited<ReturnType<typeof snapshotProgramDbState>>,
+  after: Awaited<ReturnType<typeof snapshotProgramDbState>>,
+): void {
+  expect(after.program).toEqual(before.program);
+  expect(after.rows).toEqual(before.rows);
+}
+
+async function markExerciseRequestApproved(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  requestId: string,
+  exerciseId: string,
+): Promise<void> {
+  await storage.run(
+    `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+    [exerciseId, TS, requestId],
+  );
+}
+
+async function seedOpenExerciseRequest(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  requestId: string,
+  requestedName: string,
+): Promise<void> {
+  const requests = new ExerciseRequestsRepository(storage);
+  await requests.insert({
+    id: requestId,
+    requestedName,
+    requestedBy: practitionerId,
+    status: "open",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+}
+
 describe("ProgramBuilderService (integration, SQLite)", () => {
   it("creates a program with an assigned code and optional name", async () => {
     const { storage, service } = await openService();
@@ -164,11 +221,11 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
-      await storage.run(
-        `INSERT INTO exercise_requests (
-          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, 'approved', ?, ?, ?)`,
-        [id("req-1"), "Pending squat", practitionerId, FIXTURE_EXERCISE_ID, TS, TS],
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-1"),
+        "Pending squat",
       );
       await service.createProgram(practitionerId, { programId: id("prog-ph") });
       await service.addPlaceholderRow(practitionerId, id("prog-ph"), {
@@ -178,6 +235,7 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         params: { hold_s: 45 },
         note: "Easy pace",
       });
+      await markExerciseRequestApproved(storage, id("req-1"), FIXTURE_EXERCISE_ID);
       await linkApprovedPlaceholders(storage, id("req-1"), FIXTURE_VERSION_ID);
       const view = await service.getProgram(practitionerId, id("prog-ph"));
       expect(view.rows[0]?.kind).toBe("exercise");
@@ -191,17 +249,46 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
     }
   });
 
-  it("linkApprovedPlaceholders is idempotent", async () => {
-    const { storage, service } = await openService(() => "2026-03-01T10:00:00.000Z");
+  it("linkApprovedPlaceholders rolls back with the caller transaction", async () => {
+    const { storage, service } = await openService();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
-      const programs = new ProgramsRepository(storage);
-      await storage.run(
-        `INSERT INTO exercise_requests (
-          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, 'approved', ?, ?, ?)`,
-        [id("req-idem"), "Pending squat", practitionerId, FIXTURE_EXERCISE_ID, TS, TS],
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-tx"),
+        "Pending squat",
+      );
+      await service.createProgram(practitionerId, { programId: id("prog-tx") });
+      await service.addPlaceholderRow(practitionerId, id("prog-tx"), {
+        rowId: id("row-tx"),
+        exerciseRequestId: id("req-tx"),
+        prescriptionType: "stretching",
+      });
+      await markExerciseRequestApproved(storage, id("req-tx"), FIXTURE_EXERCISE_ID);
+      const before = await snapshotProgramDbState(storage, id("prog-tx"));
+      await storage.run("BEGIN");
+      await linkApprovedPlaceholders(storage, id("req-tx"), FIXTURE_VERSION_ID);
+      await storage.run("ROLLBACK");
+      const after = await snapshotProgramDbState(storage, id("prog-tx"));
+      expectDbStateUnchanged(before, after);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("linkApprovedPlaceholders is idempotent", async () => {
+    const clock = advancingClock("2026-03-01T10:00:00.000Z");
+    const { storage, service } = await openService(clock);
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-idem"),
+        "Pending squat",
       );
       await service.createProgram(practitionerId, { programId: id("prog-idem") });
       await service.addPlaceholderRow(practitionerId, id("prog-idem"), {
@@ -209,27 +296,39 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         exerciseRequestId: id("req-idem"),
         prescriptionType: "stretching",
       });
-      await linkApprovedPlaceholders(storage, id("req-idem"), FIXTURE_VERSION_ID);
-      const afterFirst = await programs.findById(id("prog-idem"));
-      await linkApprovedPlaceholders(storage, id("req-idem"), FIXTURE_VERSION_ID);
-      const afterSecond = await programs.findById(id("prog-idem"));
-      expect(afterSecond?.draft_updated_at).toBe(afterFirst?.draft_updated_at);
+      await markExerciseRequestApproved(storage, id("req-idem"), FIXTURE_EXERCISE_ID);
+      await linkApprovedPlaceholders(
+        storage,
+        id("req-idem"),
+        FIXTURE_VERSION_ID,
+        clock,
+      );
+      const afterFirst = await snapshotProgramDbState(storage, id("prog-idem"));
+      await linkApprovedPlaceholders(
+        storage,
+        id("req-idem"),
+        FIXTURE_VERSION_ID,
+        clock,
+      );
+      const afterSecond = await snapshotProgramDbState(storage, id("prog-idem"));
+      expectDbStateUnchanged(afterFirst, afterSecond);
     } finally {
       storage.close();
     }
   });
 
   it("linkApprovedPlaceholders marks a published program as unpublished changes", async () => {
-    const { storage, service } = await openService(() => "2026-04-01T12:00:00.000Z");
+    const clock = advancingClock("2026-04-01T12:00:00.000Z");
+    const { storage, service } = await openService(clock);
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
       const programs = new ProgramsRepository(storage);
-      await storage.run(
-        `INSERT INTO exercise_requests (
-          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, 'approved', ?, ?, ?)`,
-        [id("req-pub"), "Pending squat", practitionerId, FIXTURE_EXERCISE_ID, TS, TS],
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-pub"),
+        "Pending squat",
       );
       await service.createProgram(practitionerId, {
         programId: id("prog-pub-ph"),
@@ -240,13 +339,9 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         exerciseRequestId: id("req-pub"),
         prescriptionType: "stretching",
       });
+      await markExerciseRequestApproved(storage, id("req-pub"), FIXTURE_EXERCISE_ID);
       await programs.publish(id("prog-pub-ph"), TS);
-      await linkApprovedPlaceholders(
-        storage,
-        id("req-pub"),
-        FIXTURE_VERSION_ID,
-        () => "2026-04-01T13:00:00.000Z",
-      );
+      await linkApprovedPlaceholders(storage, id("req-pub"), FIXTURE_VERSION_ID, clock);
       const view = await service.getProgram(practitionerId, id("prog-pub-ph"));
       expect(view.auto_save_status).toEqual({ kind: "unpublished_changes" });
       const record = await programs.findById(id("prog-pub-ph"));
@@ -569,16 +664,128 @@ describe("ProgramBuilderService patient-detail guard", () => {
 });
 
 describe("ProgramBuilderService opaque id validation", () => {
-  it("rejects invalid program and row ids with invalid_input", async () => {
+  const badId = "not-a-valid-opaque-id";
+
+  it.each([
+    [
+      "getProgram programId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.getProgram(practitionerId, badId),
+    ],
+    [
+      "updateProgramName programId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.updateProgramName(practitionerId, badId, "Name"),
+    ],
+    [
+      "addExerciseRow programId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.addExerciseRow(practitionerId, badId, {
+          rowId: id("row-bad"),
+          exerciseId: FIXTURE_EXERCISE_ID,
+        }),
+    ],
+    [
+      "addExerciseRow exerciseId",
+      async (s: ProgramBuilderService, practitionerId: string) => {
+        await s.createProgram(practitionerId, { programId: id("prog-bad-ex") });
+        return s.addExerciseRow(practitionerId, id("prog-bad-ex"), {
+          rowId: id("row-bad-ex"),
+          exerciseId: badId,
+        });
+      },
+    ],
+    [
+      "addPlaceholderRow exerciseRequestId",
+      async (s: ProgramBuilderService, practitionerId: string) => {
+        await s.createProgram(practitionerId, { programId: id("prog-bad-ph") });
+        return s.addPlaceholderRow(practitionerId, id("prog-bad-ph"), {
+          rowId: id("row-bad-ph"),
+          exerciseRequestId: badId,
+          prescriptionType: "stretching",
+        });
+      },
+    ],
+    [
+      "duplicateRow sourceRowId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.duplicateRow(practitionerId, id("prog-missing"), {
+          sourceRowId: badId,
+          newRowId: id("row-dup-new"),
+        }),
+    ],
+    [
+      "removeRow rowId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.removeRow(practitionerId, id("prog-missing"), badId),
+    ],
+    [
+      "reorderRows orderedRowIds",
+      async (s: ProgramBuilderService, practitionerId: string) => {
+        await s.createProgram(practitionerId, { programId: id("prog-reorder-bad") });
+        return s.reorderRows(practitionerId, id("prog-reorder-bad"), [badId]);
+      },
+    ],
+    [
+      "applyLibraryUpdateToRow rowId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.applyLibraryUpdateToRow(practitionerId, id("prog-missing"), badId),
+    ],
+    [
+      "keepLibraryUpdateForRow rowId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.keepLibraryUpdateForRow(practitionerId, id("prog-missing"), badId),
+    ],
+    [
+      "deleteProgram programId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.deleteProgram(practitionerId, badId),
+    ],
+    [
+      "restoreProgram programId",
+      (s: ProgramBuilderService, practitionerId: string) =>
+        s.restoreProgram(practitionerId, badId),
+    ],
+  ])("%s rejects invalid_input", async (_name, invoke) => {
     const { storage, service } = await openService();
     try {
       const practitionerId = await seedPractitioner(storage);
+      await expect(invoke(service, practitionerId)).rejects.toMatchObject({
+        code: "invalid_input",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects invalid updateRow rowId", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      await service.createProgram(practitionerId, { programId: id("prog-bad-row") });
+      await service.addExerciseRow(practitionerId, id("prog-bad-row"), {
+        rowId: id("row-good"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
       await expect(
-        service.getProgram(practitionerId, "not-a-uuid"),
+        service.updateRow(practitionerId, id("prog-bad-row"), badId, {
+          params: { hold_s: 5 },
+        }),
       ).rejects.toMatchObject({ code: "invalid_input" });
-      await service.createProgram(practitionerId, { programId: id("prog-id-test") });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects invalid linkApprovedPlaceholders ids", async () => {
+    const storage = await openMigratedDatabase();
+    try {
       await expect(
-        service.removeRow(practitionerId, id("prog-id-test"), "bad-row-id"),
+        linkApprovedPlaceholders(storage, badId, FIXTURE_VERSION_ID),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      await expect(
+        linkApprovedPlaceholders(storage, id("req-link"), badId),
       ).rejects.toMatchObject({ code: "invalid_input" });
     } finally {
       storage.close();
@@ -658,20 +865,59 @@ describe("ProgramBuilderService placeholder rows", () => {
       storage.close();
     }
   });
+
+  it.each([
+    ["approved", "approved"],
+    ["withdrawn", "withdrawn"],
+  ] as const)(
+    "rejects attaching a placeholder to a %s exercise request",
+    async (_label, status) => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        if (status === "approved") {
+          await seedApprovedExerciseForBuilder(storage, practitionerId);
+        }
+        const requests = new ExerciseRequestsRepository(storage);
+        await requests.insert({
+          id: id(`req-${status}`),
+          requestedName: "Done request",
+          requestedBy: practitionerId,
+          status,
+          exerciseId: status === "approved" ? FIXTURE_EXERCISE_ID : null,
+          createdAt: TS,
+          updatedAt: TS,
+        });
+        await service.createProgram(practitionerId, {
+          programId: id(`prog-${status}`),
+        });
+        await expect(
+          service.addPlaceholderRow(practitionerId, id(`prog-${status}`), {
+            rowId: id(`row-${status}`),
+            exerciseRequestId: id(`req-${status}`),
+            prescriptionType: "stretching",
+          }),
+        ).rejects.toMatchObject({ code: "invalid_input" });
+      } finally {
+        storage.close();
+      }
+    },
+  );
 });
 
 describe("ProgramBuilderService getProgram is read-only", () => {
   it("does not resolve placeholders or change draft_updated_at on getProgram", async () => {
-    const { storage, service } = await openService();
+    const clock = advancingClock("2026-05-01T08:00:00.000Z");
+    const { storage, service } = await openService(clock);
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
       const programs = new ProgramsRepository(storage);
-      await storage.run(
-        `INSERT INTO exercise_requests (
-          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
-        ) VALUES (?, ?, NULL, ?, 'approved', ?, ?, ?)`,
-        [id("req-ro"), "Pending squat", practitionerId, FIXTURE_EXERCISE_ID, TS, TS],
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-ro"),
+        "Pending squat",
       );
       await programs.create({
         id: id("prog-ro"),
@@ -684,20 +930,14 @@ describe("ProgramBuilderService getProgram is read-only", () => {
         exerciseRequestId: id("req-ro"),
         prescriptionType: "stretching",
       });
+      await markExerciseRequestApproved(storage, id("req-ro"), FIXTURE_EXERCISE_ID);
       await programs.publish(id("prog-ro"), TS);
-      const before = await programs.findById(id("prog-ro"));
-      const rowsBefore = await new ProgramRowsRepository(storage).listForProgram(
-        id("prog-ro"),
-      );
-      expect(rowsBefore[0]?.exercise_request_id).toBe(id("req-ro"));
+      const before = await snapshotProgramDbState(storage, id("prog-ro"));
+      expect(before.rows[0]?.exercise_request_id).toBe(id("req-ro"));
       const view = await service.getProgram(practitionerId, id("prog-ro"));
-      const after = await programs.findById(id("prog-ro"));
-      const rowsAfter = await new ProgramRowsRepository(storage).listForProgram(
-        id("prog-ro"),
-      );
+      const after = await snapshotProgramDbState(storage, id("prog-ro"));
       expect(view.auto_save_status.kind).toBe("published");
-      expect(after?.draft_updated_at).toBe(before?.draft_updated_at);
-      expect(rowsAfter[0]?.exercise_request_id).toBe(id("req-ro"));
+      expectDbStateUnchanged(before, after);
     } finally {
       storage.close();
     }
@@ -835,9 +1075,12 @@ describe("ProgramBuilderService cross-practitioner forbidden", () => {
       try {
         const { practitionerB } = await seedSharedProgramWithRow(storage);
         const serviceB = new ProgramBuilderService(storage);
+        const before = await snapshotProgramDbState(storage, id("prog-shared"));
         await expect(invoke(serviceB, practitionerB)).rejects.toMatchObject({
           code: "forbidden",
         });
+        const after = await snapshotProgramDbState(storage, id("prog-shared"));
+        expectDbStateUnchanged(before, after);
       } finally {
         storage.close();
       }
@@ -851,9 +1094,12 @@ describe("ProgramBuilderService cross-practitioner forbidden", () => {
       const serviceA = new ProgramBuilderService(storage);
       await serviceA.deleteProgram(practitionerA, id("prog-shared"));
       const serviceB = new ProgramBuilderService(storage);
+      const before = await snapshotProgramDbState(storage, id("prog-shared"));
       await expect(
         serviceB.restoreProgram(practitionerB, id("prog-shared"), new Date(TS)),
       ).rejects.toMatchObject({ code: "forbidden" });
+      const after = await snapshotProgramDbState(storage, id("prog-shared"));
+      expectDbStateUnchanged(before, after);
     } finally {
       storage.close();
     }
