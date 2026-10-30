@@ -14,6 +14,7 @@ import {
   RoutinesRepository,
 } from "../src/storage/repositories/routines.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import { isValidProgramCodeFormat } from "../src/domain/program-code.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -534,8 +535,16 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       expect(fromRoutine.items.map((item) => item.program_id)).toEqual([
         id("prog-from-routine"),
       ]);
+      const fromScratch = await service.listPrograms(practitionerA, {
+        originFilter: "from_scratch",
+      });
+      expect(fromScratch.items.map((item) => item.program_id)).toEqual([
+        id("prog-scratch"),
+      ]);
+      const routineNameQuery = "Mobility alpha unique";
+      expect(isValidProgramCodeFormat(routineNameQuery)).toBe(false);
       const byRoutineName = await service.listPrograms(practitionerA, {
-        searchQuery: "Mobility alpha unique",
+        searchQuery: routineNameQuery,
       });
       expect(byRoutineName.items.map((item) => item.program_id)).toEqual([
         id("prog-from-routine"),
@@ -579,6 +588,12 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         routineId: id("sent-routine"),
         source: "community",
         rowIds: [id("sent-row-deleted")],
+      });
+      await service.createProgramFromRoutine(practitionerA, {
+        programId: id("prog-sent-unpublished"),
+        routineId: id("sent-routine"),
+        source: "community",
+        rowIds: [id("sent-row-unpublished")],
       });
       await service.createProgramFromRoutine(practitionerB, {
         programId: id("prog-sent-other"),
@@ -944,7 +959,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
     }
   });
 
-  it("rolls back program create when row copy fails mid transaction", async () => {
+  it("does not create a program when a routine row pinned version is invalid", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA } = await seedTwoPractitioners(storage);
