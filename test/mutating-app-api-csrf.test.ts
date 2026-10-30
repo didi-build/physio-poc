@@ -4,7 +4,6 @@ import { handleRequest } from "../src/http/app.js";
 import {
   CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isCsrfExemptAppApiAuthPath,
-  isMutatingAppApiPath,
   rejectMutatingAppApiCsrf,
   requiresAppApiCsrfGuard,
 } from "../src/http/mutating-app-api-csrf.js";
@@ -119,9 +118,6 @@ describe("mutating app API CSRF guard", () => {
       mutatingAppApiRouteSampleKey,
     ).sort();
     expect(keys.length).toBeGreaterThan(0);
-    for (const sample of MUTATING_APP_API_ROUTE_SAMPLES) {
-      expect(isMutatingAppApiPath(sample.samplePath, sample.method)).toBe(true);
-    }
   });
 
   it("returns 403 for cross-origin mutating requests with a valid session and changes nothing", async () => {
@@ -253,9 +249,63 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
       deps,
     );
     expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
   });
 
-  it("does not apply CSRF to /api/auth/** paths", () => {
+  it("returns 404 not 403 for an unregistered /api/ path when CSRF passes", async () => {
+    const { deps, cookie } = await sessionDeps();
+    const response = await handleRequest(
+      new Request(`${BASE}${UNREGISTERED_PROBE_PATH}`, {
+        method: "POST",
+        headers: {
+          cookie,
+          ...sameOriginJsonHeaders(),
+        },
+        body: JSON.stringify({}),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "not_found" });
+  });
+
+  it("rejects lowercase non-standard methods on /api/** before routing when CSRF fails", async () => {
+    const { deps, cookie } = await sessionDeps();
+    for (const method of ["patch", "propfind"] as const) {
+      const response = await handleRequest(
+        new Request(`${BASE}${UNREGISTERED_PROBE_PATH}`, {
+          method,
+          headers: {
+            cookie,
+            origin: "https://evil.example.com",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      expect(response.status, method).toBe(403);
+    }
+  });
+
+  it("does not apply CSRF to /api/auth/<sub> through handleRequest", async () => {
+    const { deps } = await sessionDeps();
+    const response = await handleRequest(
+      new Request(`${BASE}/api/auth/sign-out`, {
+        method: "POST",
+        headers: {
+          origin: "https://evil.example.com",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+      deps,
+    );
+    expect(response.status).not.toBe(403);
+    expect(response.status).not.toBe(415);
+  });
+
+  it("does not apply CSRF to /api/auth/** paths in rejectMutatingAppApiCsrf", () => {
     const request = new Request(`${BASE}/api/auth/sign-out`, {
       method: "POST",
       headers: {

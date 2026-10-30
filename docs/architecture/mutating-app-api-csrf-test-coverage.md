@@ -11,17 +11,19 @@ Production enforces only:
 
 ## What `test/mutating-app-api-csrf.test.ts` and unit tests enforce
 
-| Behavior                                           | Test                                                                 |
-| -------------------------------------------------- | -------------------------------------------------------------------- |
-| Cross-origin non-safe `/api/` requests return 403  | handleRequest on registry samples and `/api/__probe_new_route`       |
-| Unregistered path gets 403 not 404 when CSRF fails | POST `/api/__probe_new_route` cross-origin with session              |
-| POST, PUT, PATCH, DELETE, PROPFIND covered         | loop on `/api/__probe_new_route`                                     |
-| `/api/auth/**` exempt                              | `rejectMutatingAppApiCsrf` on `/api/auth/sign-out`                   |
-| `/api/authx` and `/api/auth-like` not exempt       | handleRequest POST with cross-origin                                 |
-| GET, HEAD, OPTIONS not CSRF rejected               | `requiresAppApiCsrfGuard` false; handleRequest status not 403 or 415 |
-| Sole exemption prefix pinned                       | `CSRF_EXEMPT_APP_API_AUTH_PREFIX === "/api/auth"`                    |
-| JSON content type and origin rules                 | unit and integration cases                                           |
-| Known routes extra coverage                        | test-only `MUTATING_APP_API_ROUTE_SAMPLES`                           |
+| Behavior                                           | Test                                                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Cross-origin non-safe `/api/` requests return 403  | handleRequest on registry samples and `/api/__probe_new_route`                         |
+| Unregistered path gets 403 not 404 when CSRF fails | POST `/api/__probe_new_route` cross-origin with session; body `{ error: "forbidden" }` |
+| CSRF before dispatch on unregistered path          | same-origin POST on probe path returns 404 `{ error: "not_found" }`                    |
+| Lowercase non-standard methods guarded             | handleRequest `patch` and `propfind` cross-origin on probe path                        |
+| POST, PUT, PATCH, DELETE, PROPFIND covered         | loop on `/api/__probe_new_route`                                                       |
+| `/api/auth/**` exempt                              | handleRequest POST `/api/auth/sign-out` cross-origin; unit `rejectMutatingAppApiCsrf`  |
+| `/api/authx` and `/api/auth-like` not exempt       | handleRequest POST with cross-origin                                                   |
+| GET, HEAD, OPTIONS not CSRF rejected               | `requiresAppApiCsrfGuard` false; handleRequest status not 403 or 415                   |
+| Sole exemption prefix pinned                       | `CSRF_EXEMPT_APP_API_AUTH_PREFIX === "/api/auth"`                                      |
+| JSON content type and origin rules                 | unit and integration cases                                                             |
+| Known routes extra coverage                        | test-only `MUTATING_APP_API_ROUTE_SAMPLES`                                             |
 
 Removing the `/api/` CSRF call in `app.ts` or widening the exemption prefix should fail the tests above.
 

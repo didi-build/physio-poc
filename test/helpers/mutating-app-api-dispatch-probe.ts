@@ -1,7 +1,7 @@
 import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import { handleRequest } from "../../src/http/app.js";
-import { isMutatingAppApiPath } from "../../src/http/mutating-app-api-csrf.js";
+import { requiresAppApiCsrfGuard } from "../../src/http/mutating-app-api-csrf.js";
 import {
   buildMutatingAppApiRouteSamples,
   mutatingAppApiRouteSampleKey,
@@ -66,7 +66,7 @@ export async function probedMutatingAppApiRouteKeys(
     versionId,
   )) {
     for (const method of DISPATCH_PROBE_METHODS) {
-      if (!isMutatingAppApiPath(path, method)) {
+      if (!requiresAppApiCsrfGuard(path, method)) {
         continue;
       }
       const response = await handleRequest(

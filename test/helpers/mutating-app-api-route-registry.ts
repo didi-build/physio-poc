@@ -1,7 +1,5 @@
-import {
-  exerciseLibraryMutatingHttpRouteCases,
-  type ExerciseLibraryMutatingHttpRouteCase,
-} from "../../src/http/routes/exercise-library.js";
+import { exerciseLibraryMutatingHttpRouteCases } from "./exercise-library-mutating-route-cases.js";
+import type { ExerciseLibraryMutatingHttpRouteCase } from "./exercise-library-mutating-route-cases.js";
 import {
   exerciseMediaHttpRouteCases,
   type ExerciseMediaHttpRouteCase,

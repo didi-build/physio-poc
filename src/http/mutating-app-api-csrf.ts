@@ -10,11 +10,6 @@ export function isNonSafeHttpMethod(method: string): boolean {
   return !SAFE_HTTP_METHODS.has(method.toUpperCase());
 }
 
-/** @deprecated Use `requiresAppApiCsrfGuard`; kept for tests naming mutating paths. */
-export function isMutatingHttpMethod(method: string): boolean {
-  return isNonSafeHttpMethod(method);
-}
-
 export function isCsrfExemptAppApiAuthPath(pathname: string): boolean {
   return (
     pathname === CSRF_EXEMPT_APP_API_AUTH_PREFIX ||
@@ -30,11 +25,6 @@ export function requiresAppApiCsrfGuard(pathname: string, method: string): boole
     return false;
   }
   return !isCsrfExemptAppApiAuthPath(pathname);
-}
-
-/** True when `rejectMutatingAppApiCsrf` may run for this path and method. */
-export function isMutatingAppApiPath(pathname: string, method: string): boolean {
-  return requiresAppApiCsrfGuard(pathname, method);
 }
 
 export function allowedMutatingAppApiOrigins(
