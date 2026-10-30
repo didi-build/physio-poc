@@ -13,7 +13,6 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { addProgramExerciseRow } from "./helpers/exercise-library-program-usage-fixture.js";
-import { approvedExerciseSearchOrderBy } from "../src/storage/repositories/exercise-library-read.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
@@ -44,12 +43,6 @@ function listRow(
 }
 
 describe("Exercise library usage_count from program rows (integration)", () => {
-  it("uses exercise_id ascending as the final most_used tie break in list SQL", () => {
-    expect(approvedExerciseSearchOrderBy("most_used")).toBe(
-      "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC",
-    );
-  });
-
   it("orders most used by program row count descending", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -183,6 +176,7 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       const sharedTitle = "Shared tie title";
       const verLower = "00000000-0000-4000-8000-000000000011";
       const verHigher = "00000000-0000-4000-8000-000000000012";
+      // Seed the higher exercise_id first so insertion order would prefer exHigher without a tie break.
       await seedApprovedExercise(storage, practId, {
         exerciseId: exHigher,
         versionId: verHigher,
@@ -215,6 +209,10 @@ describe("Exercise library usage_count from program rows (integration)", () => {
       expect(result.exercises.map((row) => row.exercise_id)).toEqual([
         exLower,
         exHigher,
+      ]);
+      expect(result.exercises.map((row) => row.exercise_id)).not.toEqual([
+        exHigher,
+        exLower,
       ]);
       expect(listRow(result, exLower)?.usage_count).toBe(1);
       expect(listRow(result, exHigher)?.usage_count).toBe(1);

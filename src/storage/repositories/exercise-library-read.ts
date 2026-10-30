@@ -81,19 +81,12 @@ const LATEST_APPROVED_JOIN = `
 function sortClause(sort: ApprovedExerciseSearchSort): string {
   switch (sort) {
     case "most_used":
-      return "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
+      return "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC, ev.rowid ASC";
     case "newest":
       return "ev.approved_at DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
     case "a_to_z":
       return "ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
   }
-}
-
-/** Order-by SQL for approved exercise search (used in list queries). */
-export function approvedExerciseSearchOrderBy(
-  sort: ApprovedExerciseSearchSort,
-): string {
-  return sortClause(sort);
 }
 
 export class ExerciseLibraryReadRepository {
