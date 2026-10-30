@@ -30,6 +30,16 @@ import {
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  loadPublishedRoutineVersionForRoutine,
+  validateProgramRoutineOriginTrio,
+  type ProgramRoutineOrigin,
+} from "./routines.js";
+
+const PROGRAM_SELECT = `id, code, name, created_by, created_at, draft_version, draft_updated_at,
+              published_version, published_name, published_at, published_snapshot_json,
+              deleted_at, link_expires_in, link_expires_on,
+              source_routine_id, source_routine_version_id, source_routine_origin`;
 
 export class ProgramRepositoryError extends Error {
   constructor(message: string) {
@@ -66,6 +76,9 @@ export type ProgramRecord = {
   deleted_at: string | null;
   link_expires_in: ShareLinkExpiresIn | null;
   link_expires_on: string | null;
+  source_routine_id: string | null;
+  source_routine_version_id: string | null;
+  source_routine_origin: ProgramRoutineOrigin | null;
 };
 
 export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -123,9 +136,39 @@ export class ProgramsRepository {
     createdAt: string;
     name?: string | null;
     code?: string;
+    routineOrigin?: {
+      routineId: string;
+      routineVersionId: string;
+      origin: ProgramRoutineOrigin;
+    } | null;
   }): Promise<ProgramRecord> {
     const id = validateOpaqueEntityId(input.id, "Program id");
     const name = validateOptionalProgramName(input.name ?? null);
+    let sourceRoutineId: string | null = null;
+    let sourceRoutineVersionId: string | null = null;
+    let sourceRoutineOrigin: ProgramRoutineOrigin | null = null;
+    if (input.routineOrigin) {
+      sourceRoutineId = validateOpaqueEntityId(
+        input.routineOrigin.routineId,
+        "Source routine id",
+      );
+      sourceRoutineVersionId = validateOpaqueEntityId(
+        input.routineOrigin.routineVersionId,
+        "Source routine version id",
+      );
+      sourceRoutineOrigin = input.routineOrigin.origin;
+      validateProgramRoutineOriginTrio({
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        sourceRoutineOrigin,
+      });
+      await loadPublishedRoutineVersionForRoutine(
+        this.sql,
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        "routineVersionId",
+      );
+    }
     let code = input.code
       ? programCodeDomain.normalizeProgramCode(input.code)
       : programCodeDomain.generateProgramCode();
@@ -137,9 +180,20 @@ export class ProgramsRepository {
         await this.sql.run(
           `INSERT INTO programs (
             id, code, name, created_by, created_at,
-            draft_version, draft_updated_at
-          ) VALUES (?, ?, ?, ?, ?, 1, ?)`,
-          [id, code, name, input.createdBy, input.createdAt, input.createdAt],
+            draft_version, draft_updated_at,
+            source_routine_id, source_routine_version_id, source_routine_origin
+          ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+          [
+            id,
+            code,
+            name,
+            input.createdBy,
+            input.createdAt,
+            input.createdAt,
+            sourceRoutineId,
+            sourceRoutineVersionId,
+            sourceRoutineOrigin,
+          ],
         );
         const created = await this.findById(id);
         if (!created) {
@@ -165,9 +219,7 @@ export class ProgramsRepository {
 
   async findById(id: string): Promise<ProgramRecord | null> {
     return this.sql.first<ProgramRecord>(
-      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-              published_version, published_name, published_at, published_snapshot_json,
-              deleted_at, link_expires_in, link_expires_on
+      `SELECT ${PROGRAM_SELECT}
        FROM programs WHERE id = ? LIMIT 1`,
       [id],
     );
@@ -177,9 +229,7 @@ export class ProgramsRepository {
     const keys = programCodeDomain.programCodeSearchKeys(query);
     for (const key of keys) {
       const row = await this.sql.first<ProgramRecord>(
-        `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-                published_version, published_name, published_at, published_snapshot_json,
-                deleted_at, link_expires_in, link_expires_on
+        `SELECT ${PROGRAM_SELECT}
          FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
         [key],
       );
@@ -197,6 +247,53 @@ export class ProgramsRepository {
       `UPDATE programs SET name = ?, draft_updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
       [validated, now, programId],
     );
+  }
+
+  async setRoutineOrigin(
+    programId: string,
+    origin: {
+      routineId: string;
+      routineVersionId: string;
+      usedAs: ProgramRoutineOrigin;
+    },
+  ): Promise<void> {
+    const sourceRoutineId = validateOpaqueEntityId(
+      origin.routineId,
+      "Source routine id",
+    );
+    const sourceRoutineVersionId = validateOpaqueEntityId(
+      origin.routineVersionId,
+      "Source routine version id",
+    );
+    validateProgramRoutineOriginTrio({
+      sourceRoutineId,
+      sourceRoutineVersionId,
+      sourceRoutineOrigin: origin.usedAs,
+    });
+    await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      sourceRoutineId,
+      sourceRoutineVersionId,
+      "routineVersionId",
+    );
+    const result = await this.sql.run(
+      `UPDATE programs SET
+        source_routine_id = ?,
+        source_routine_version_id = ?,
+        source_routine_origin = ?
+       WHERE id = ? AND deleted_at IS NULL`,
+      [sourceRoutineId, sourceRoutineVersionId, origin.usedAs, programId],
+    );
+    if (result.rowsAffected === 0) {
+      const program = await this.findById(programId);
+      if (!program) {
+        throw new ProgramRepositoryError("Program not found");
+      }
+      if (program.deleted_at) {
+        throw new ProgramRepositoryError("Program is deleted");
+      }
+      throw new ProgramRepositoryError("Program origin update failed");
+    }
   }
 
   async setLinkExpiry(
@@ -302,9 +399,7 @@ export class ProgramsRepository {
   async listPurgeableDeleted(now: Date = new Date()): Promise<ProgramRecord[]> {
     const cutoff = purgeCutoffIso(now);
     return this.sql.all<ProgramRecord>(
-      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-              published_version, published_name, published_at, published_snapshot_json,
-              deleted_at, link_expires_in, link_expires_on
+      `SELECT ${PROGRAM_SELECT}
        FROM programs
        WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
       [cutoff],
