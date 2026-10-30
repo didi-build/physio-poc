@@ -292,39 +292,47 @@ describe("Program builder HTTP routes (integration)", () => {
       const badProgramPath = `${PROGRAMS_API_BASE}/${MALFORMED_PERCENT_PROGRAM_SEGMENT}`;
       const programId = id("prog-uri");
       const badRowPath = `${programRowsPath(programId)}/${MALFORMED_PERCENT_ROW_SEGMENT}`;
+      const badDuplicatePath = `${programRowsPath(programId)}/${MALFORMED_PERCENT_ROW_SEGMENT}/duplicate`;
+      const badLibraryApplyPath = `${programRowsPath(programId)}/${MALFORMED_PERCENT_ROW_SEGMENT}/library-update/apply`;
+      const badLibraryKeepPath = `${programRowsPath(programId)}/${MALFORMED_PERCENT_ROW_SEGMENT}/library-update/keep`;
 
-      for (const { method, path } of [
-        { method: "GET", path: badProgramPath },
-        { method: "PATCH", path: badProgramPath },
-        { method: "PATCH", path: badRowPath },
+      for (const { method, path, body } of [
+        { method: "GET", path: badProgramPath, body: undefined as string | undefined },
+        { method: "PATCH", path: badProgramPath, body: JSON.stringify({ name: "n" }) },
+        { method: "PATCH", path: badRowPath, body: JSON.stringify({ note: "n" }) },
+        {
+          method: "POST",
+          path: badDuplicatePath,
+          body: JSON.stringify({ new_row_id: id("row-dup-uri") }),
+        },
+        { method: "POST", path: badLibraryApplyPath, body: JSON.stringify({}) },
+        { method: "POST", path: badLibraryKeepPath, body: JSON.stringify({}) },
       ]) {
         const url = `${BASE}${path}`;
-        const init: RequestInit = { method };
-        if (method === "PATCH") {
-          const body =
-            path === badRowPath
-              ? JSON.stringify({ note: "n" })
-              : JSON.stringify({ name: "n" });
+        const rowScoped =
+          path !== badProgramPath ? PROGRAM_ROW_NOT_FOUND_BODY : PROGRAM_NOT_FOUND_BODY;
+        if (method === "GET") {
           const response = await handleRequest(
-            new Request(
-              url,
-              mutatingAppApiRequestInit(url, {
-                ...init,
-                headers: { cookie, origin: BASE },
-                body,
-              }),
-            ),
+            authedRequest(url, cookie, { method }),
             deps,
           );
           expect(response.status, `${method} ${path}`).toBe(404);
-          await expect(response.json()).resolves.toEqual(
-            path === badRowPath ? PROGRAM_ROW_NOT_FOUND_BODY : PROGRAM_NOT_FOUND_BODY,
-          );
+          await expect(response.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
           continue;
         }
-        const response = await handleRequest(authedRequest(url, cookie, init), deps);
+        const response = await handleRequest(
+          new Request(
+            url,
+            mutatingAppApiRequestInit(url, {
+              method,
+              headers: { cookie, origin: BASE },
+              body,
+            }),
+          ),
+          deps,
+        );
         expect(response.status, `${method} ${path}`).toBe(404);
-        await expect(response.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+        await expect(response.json()).resolves.toEqual(rowScoped);
       }
     } finally {
       storage.close();
