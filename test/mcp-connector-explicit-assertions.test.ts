@@ -17,6 +17,7 @@ import {
 import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
 import {
   collectForbiddenLegacySchemaFields,
+  assertNoOutputPatternProperties,
   collectOutputPatternPropertiesViolations,
   collectPatternPropertiesViolations,
   collectPatientLikeDescriptionViolations,
@@ -25,6 +26,23 @@ import {
   findSchemaAtPath,
   visitSchemaNodes,
 } from "./mcp-connector-schema-test-utils.js";
+
+const qaFixturePatternPropertiesTool = {
+  name: "qa_fixture_output_pattern_properties",
+  outputSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      rows: {
+        type: "object",
+        patternProperties: {
+          "^[a-z]+$": { type: "string" },
+        },
+      },
+    },
+  } satisfies JsonSchema,
+};
 
 describe("collectForbiddenLegacySchemaFields", () => {
   it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
@@ -121,23 +139,6 @@ describe("collectPatternPropertiesViolations", () => {
 });
 
 describe("collectOutputPatternPropertiesViolations", () => {
-  const qaFixturePatternPropertiesTool = {
-    name: "qa_fixture_output_pattern_properties",
-    outputSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        summary: { type: "string" },
-        rows: {
-          type: "object",
-          patternProperties: {
-            "^[a-z]+$": { type: "string" },
-          },
-        },
-      },
-    } satisfies JsonSchema,
-  };
-
   it("reports a planted fixture tool by name and schema path alongside real tools", () => {
     expect(
       collectOutputPatternPropertiesViolations([
@@ -150,6 +151,27 @@ describe("collectOutputPatternPropertiesViolations", () => {
         path: "properties.rows",
       },
     ]);
+  });
+});
+
+describe("assertNoOutputPatternProperties", () => {
+  it("does not throw for real tool output schemas alone", () => {
+    expect(() => assertNoOutputPatternProperties(PHYSIO_MCP_TOOLS)).not.toThrow();
+  });
+
+  it("throws naming the planted fixture tool and properties.rows when mixed with real tools", () => {
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/qa_fixture_output_pattern_properties/);
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/properties\.rows/);
   });
 });
 
