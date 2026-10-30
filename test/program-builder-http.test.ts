@@ -689,6 +689,7 @@ describe("Program builder HTTP routes (integration)", () => {
               row_id: rowId,
               exercise_request_id: requestId,
               prescription_type: "stretching",
+              note: "Fixture note",
             }),
           }),
         ),
@@ -699,6 +700,50 @@ describe("Program builder HTTP routes (integration)", () => {
       expect(row?.exercise_request_id).toBe(requestId);
       expect(row?.exercise_id).toBeNull();
       expect(row?.exercise_version_id).toBeNull();
+      expect(row?.prescription_type).toBe("stretching");
+      expect(row?.note).toBe("Fixture note");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("stores null note when POST placeholder row omits note", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-post-ph-no-note");
+      const requestId = id("req-post-ph-no-note");
+      const rowId = id("row-post-ph-no-note");
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        requestId,
+        "Pending hinge",
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const addRowUrl = `${BASE}${programRowsPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          addRowUrl,
+          mutatingAppApiRequestInit(addRowUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({
+              row_id: rowId,
+              exercise_request_id: requestId,
+              prescription_type: "stretching",
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const row = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(row?.prescription_type).toBe("stretching");
+      expect(row?.note).toBeNull();
     } finally {
       storage.close();
     }

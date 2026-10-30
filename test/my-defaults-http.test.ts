@@ -550,6 +550,188 @@ describe("My defaults HTTP routes (integration)", () => {
     }
   });
 
+  it("rejects practitioner_id query on PATCH share-link-expiry with invalid_input; B rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-patch-snake");
+      await seedPractitioner(storage, practitionerB, "b-query-patch-snake@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-patch-snake"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-patch-snake"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const patchResponse = await handleRequest(
+        authedJsonRequest(
+          `${myDefaultsShareLinkExpiryPath()}${practitionerUnderscoreIdQuerySuffix(practitionerB)}`,
+          cookie,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.never }),
+          },
+        ),
+        deps,
+      );
+      await expectInvalidInput(patchResponse);
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitioner_id query on PUT type default with invalid_input; B rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-put-snake");
+      await seedPractitioner(storage, practitionerB, "b-query-put-snake@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-put-snake"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-put-snake"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const putResponse = await handleRequest(
+        authedJsonRequest(
+          `${myDefaultsTypePath("isometric")}${practitionerUnderscoreIdQuerySuffix(practitionerB)}`,
+          cookie,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              params: { reps: 5, hold_s: 10, sets: 2, days_per_week: 3 },
+            }),
+          },
+        ),
+        deps,
+      );
+      await expectInvalidInput(putResponse);
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId and practitioner_id query on DELETE type default without changing B rows", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-del");
+      await seedPractitioner(storage, practitionerB, "b-query-del@example.com");
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-del"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      for (const querySuffix of [
+        practitionerIdQuerySuffix(practitionerB),
+        practitionerUnderscoreIdQuerySuffix(practitionerB),
+      ]) {
+        const deleteResponse = await handleRequest(
+          authedJsonRequest(
+            `${myDefaultsTypePath("stretching")}${querySuffix}`,
+            cookie,
+            { method: "DELETE", body: "{}" },
+          ),
+          deps,
+        );
+        await expectInvalidInput(deleteResponse);
+      }
+
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects nested practitionerId in PATCH share-link-expiry body with invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-nested-body-b");
+      await seedPractitioner(storage, practitionerB, "b-nested@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-nested-body-b"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const patchResponse = await handleRequest(
+        authedJsonRequest(myDefaultsShareLinkExpiryPath(), cookie, {
+          method: "PATCH",
+          body: JSON.stringify({
+            expires_in: SHARE_LINK_EXPIRES_IN.never,
+            meta: { practitionerId: practitionerB },
+          }),
+        }),
+        deps,
+      );
+      await expectInvalidInput(patchResponse);
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
   it("session A cannot mutate practitioner B defaults; B storage unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {

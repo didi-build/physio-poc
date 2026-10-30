@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
+import { SqlDuplicateIdError } from "../src/storage/errors/sql-duplicate-id-error.js";
 
 describe("InMemoryObjectStorage (unit)", () => {
   it("copies bytes on put and get", async () => {
@@ -117,12 +118,12 @@ describe("InMemorySqlStorage (unit)", () => {
     ).rejects.toThrow(/Unsupported SQL/);
   });
 
-  it("rejects duplicate ids", async () => {
+  it("rejects duplicate ids with SqlDuplicateIdError on programs only", async () => {
     const sql = new InMemorySqlStorage();
-    await sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["dup", "one"]);
+    await sql.run("INSERT INTO programs (id, label) VALUES (?, ?)", ["dup", "one"]);
     await expect(
-      sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["dup", "two"]),
-    ).rejects.toThrow(/Duplicate id/);
+      sql.run("INSERT INTO programs (id, label) VALUES (?, ?)", ["dup", "two"]),
+    ).rejects.toBeInstanceOf(SqlDuplicateIdError);
   });
 
   it("rejects binding count mismatch on insert", async () => {

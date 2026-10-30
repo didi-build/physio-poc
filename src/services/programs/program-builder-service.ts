@@ -29,6 +29,7 @@ import {
 } from "../../storage/repositories/exercise-library-read.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
+  PROGRAM_ID_ALREADY_IN_USE,
   ProgramRepositoryError,
   ProgramRowsRepository,
   ProgramsRepository,
@@ -110,8 +111,8 @@ export class ProgramBuilderService {
       });
     } catch (err) {
       if (
-        err instanceof Error &&
-        err.message.includes("UNIQUE constraint failed: programs.id")
+        err instanceof ProgramRepositoryError &&
+        err.message === PROGRAM_ID_ALREADY_IN_USE
       ) {
         throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
       }
