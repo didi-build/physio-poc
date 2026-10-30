@@ -300,6 +300,20 @@ describe("portable runtime import guard (unit)", () => {
     );
   });
 
+  it("flags import.meta bracket access when the key variable is named url", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      'const url = "env"; import.meta[url];',
+    );
+  });
+
+  it("flags parenthesized import.meta bracket access when the key variable is named url", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      'const url = "env"; import.meta[(url)];',
+    );
+  });
+
   it("flags type-assertion-wrapped import.meta url reads", () => {
     for (const source of [
       "(import.meta as any).url;",
