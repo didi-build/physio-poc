@@ -9,7 +9,7 @@ import {
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
-import { applyMigration, MIGRATION_0002_ID } from "../src/storage/migrations/apply.js";
+import { applyMigration, MIGRATION_0003_ID } from "../src/storage/migrations/apply.js";
 import {
   ExerciseMediaService,
   DAILY_MEDIA_REGENERATION_CAP,
@@ -23,8 +23,8 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
-const MIGRATION_0002_SQL = readFileSync(
-  join(REPO_ROOT, "migrations/0002_exercise_media.sql"),
+const MIGRATION_0003_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0003_exercise_media.sql"),
   "utf8",
 );
 
@@ -103,7 +103,7 @@ describe("ExerciseMediaService (integration)", () => {
   it("applies migration 0002", async () => {
     const storage = await openMigratedDatabase();
     try {
-      await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+      await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
       const tables = await storage.all<{ name: string }>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('exercise_media_sets', 'media_regenerations')",
       );
@@ -118,7 +118,7 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("stores draft media as non-public until promotion", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const { versionId } = await seedDraftVersion(storage);
       const { service, media } = await createService(storage);
@@ -137,7 +137,7 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("enforces five regenerations per practitioner per UTC day", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const { service } = await createService(storage);
@@ -165,7 +165,7 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("creates a new approved version when regenerating media on an approved exercise", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
@@ -223,7 +223,7 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("does not persist regeneration note text; records had_note only", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     const secretNote = "UNPERSISTED_REGEN_NOTE_xyzzy";
     const objects = new InMemoryObjectStorage();
     const objectPutSpy = vi.spyOn(objects, "put");
@@ -295,7 +295,7 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("rejects patient details in the note before calling image generation", async () => {
     const storage = await openMigratedDatabase();
-    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
     const generateStartImage = vi.fn();
     const images: ImageGenerationPort = {
       generateStartAndEndImages: vi.fn(),

@@ -6,6 +6,7 @@ Area: app · Backend services for [DIDI-1013](https://linear.app/didi-build/issu
 
 - **Images only** (start and end stills). No video generation in this POC slice (product direction update on DIDI-594, Oct 30, 2026).
 - **FLUX.2 klein 4B on fal** behind `ImageGenerationPort`; **fake image adapter by default** in tests and local wiring.
+- **fal CDN downloads:** only `https` URLs on `fal.media` and subdomains (for example `v3b.fal.media`); `redirect: manual` with allowlisted redirect targets; 10 MiB size cap (`FAL_IMAGE_DOWNLOAD_MAX_BYTES` in `fal-flux-klein-image-generation.ts`).
 - **Object storage** behind `MediaStoragePort` (draft vs public visibility). S3-compatible adapter for R2 lives under `src/adapters/node/`; Workers bindings and secrets are **DIDI-1040**.
 
 ## Layers
@@ -17,7 +18,7 @@ Area: app · Backend services for [DIDI-1013](https://linear.app/didi-build/issu
 | Fake / prefix adapters                                         | `src/storage/adapters/memory/`         |
 | fal FLUX adapter, S3-compatible object storage                 | `src/adapters/node/`                   |
 | Regeneration cap, draft vs approved flows                      | `src/services/exercise-media/`         |
-| SQL: `exercise_media_sets`, `media_regenerations`              | `migrations/0002_exercise_media.sql`   |
+| SQL: `exercise_media_sets`, `media_regenerations`              | `migrations/0003_exercise_media.sql`   |
 
 ## Behaviour
 

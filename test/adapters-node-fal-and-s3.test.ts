@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createImageGenerationPort } from "../src/adapters/node/create-image-generation-port.js";
 import {
   FAL_FLUX_KLEIN_4B_MODEL_ID,
+  FAL_IMAGE_DOWNLOAD_MAX_BYTES,
   FAL_STORE_IO_DISABLED,
   FAL_STORE_IO_HEADER,
   FalFluxKleinImageGeneration,
@@ -34,6 +35,7 @@ function headerValue(
 
 describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
   const apiKey = "fal-test-key-must-not-appear-in-errors";
+  const allowedImageUrl = "https://v3b.fal.media/files/test/out.png";
 
   it("POSTs to fal.run with Authorization and X-Fal-Store-IO: 0; download has X-Fal-Store-IO only", async () => {
     const seen: Array<{ url: string; init?: RequestInit }> = [];
@@ -45,18 +47,16 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
           FAL_STORE_IO_DISABLED,
         );
         expect(headerValue(init?.headers, "Authorization")).toMatch(/^Key /);
-        return new Response(
-          JSON.stringify({ images: [{ url: "https://cdn.example/out.png" }] }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        );
+        return new Response(JSON.stringify({ images: [{ url: allowedImageUrl }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe(
         FAL_STORE_IO_DISABLED,
       );
       expect(headerValue(init?.headers, "Authorization")).toBeUndefined();
+      expect(init?.redirect).toBe("manual");
       return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
         status: 200,
         headers: { "content-type": "image/png" },
@@ -69,8 +69,93 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
     expect(image.contentType).toBe("image/png");
     expect(seen[0]?.url).toBe(`https://fal.run/${FAL_FLUX_KLEIN_4B_MODEL_ID}`);
     expect(seen[0]?.init?.method).toBe("POST");
-    expect(seen[1]?.url).toBe("https://cdn.example/out.png");
+    expect(seen[1]?.url).toBe(allowedImageUrl);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a non-fal image URL from the API without a download fetch", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("fal.run")) {
+        return new Response(
+          JSON.stringify({ images: [{ url: "https://cdn.example/out.png" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error("download fetch must not run");
+    });
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("test")).rejects.toThrow(
+      "fal image download URL host is not allowed",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses plain http image URLs", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("fal.run")) {
+        return new Response(
+          JSON.stringify({
+            images: [{ url: "http://v3b.fal.media/files/test/out.png" }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error("download fetch must not run");
+    });
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("test")).rejects.toThrow(
+      "fal image download URL must use https",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses an off-host redirect without following it", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("fal.run")) {
+        return new Response(JSON.stringify({ images: [{ url: allowedImageUrl }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      expect(init?.redirect).toBe("manual");
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://evil.example/steal.png" },
+      });
+    });
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("test")).rejects.toThrow(
+      "fal image download URL host is not allowed",
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("refuses a response over the download size cap", async () => {
+    const overCap = FAL_IMAGE_DOWNLOAD_MAX_BYTES + 1;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("fal.run")) {
+        return new Response(JSON.stringify({ images: [{ url: allowedImageUrl }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      expect(init?.redirect).toBe("manual");
+      return new Response(new Uint8Array(overCap), {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "content-length": String(overCap),
+        },
+      });
+    });
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("test")).rejects.toThrow(
+      "fal image download exceeds size limit",
+    );
   });
 
   it("does not include the API key or practitioner guidance in thrown errors", async () => {

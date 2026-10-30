@@ -5,6 +5,15 @@ export const FAL_FLUX_KLEIN_4B_MODEL_ID = "fal-ai/flux-2/klein/4b";
 export const FAL_STORE_IO_HEADER = "X-Fal-Store-IO";
 export const FAL_STORE_IO_DISABLED = "0";
 
+/**
+ * fal image API returns HTTPS URLs on fal.media (for example
+ * https://v3b.fal.media/files/...). Only that host and its subdomains are fetched.
+ */
+export const FAL_IMAGE_DOWNLOAD_ALLOWED_HOST_SUFFIX = ".fal.media";
+
+/** Maximum downloaded image size (PNG from flux klein). */
+export const FAL_IMAGE_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
 export type FalFluxKleinImageGenerationConfig = {
   apiKey: string;
   modelId?: string;
@@ -14,6 +23,27 @@ export type FalFluxKleinImageGenerationConfig = {
 type FalImageResponse = {
   images?: Array<{ url?: string }>;
 };
+
+export function isAllowedFalImageDownloadHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "fal.media" || host.endsWith(FAL_IMAGE_DOWNLOAD_ALLOWED_HOST_SUFFIX);
+}
+
+export function assertAllowedFalImageDownloadUrl(urlString: string): URL {
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    throw new Error("fal image download URL is invalid");
+  }
+  if (url.protocol !== "https:") {
+    throw new Error("fal image download URL must use https");
+  }
+  if (!isAllowedFalImageDownloadHost(url.hostname)) {
+    throw new Error("fal image download URL host is not allowed");
+  }
+  return url;
+}
 
 function redactSecret(text: string, secret: string): string {
   if (!secret) {
@@ -32,6 +62,16 @@ function redactStringsFromPrompt(prompt: string): string[] {
   const end = rest.indexOf(".");
   const guidance = (end === -1 ? rest : rest.slice(0, end)).trim();
   return guidance.length > 0 ? [guidance] : [];
+}
+
+function concatChunks(chunks: Uint8Array[], totalLength: number): Uint8Array {
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out;
 }
 
 export class FalFluxKleinImageGeneration implements ImageGenerationPort {
@@ -99,6 +139,77 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     return out;
   }
 
+  private async readBodyWithSizeCap(response: Response): Promise<Uint8Array> {
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+      const len = Number(contentLength);
+      if (Number.isFinite(len) && len > FAL_IMAGE_DOWNLOAD_MAX_BYTES) {
+        throw new Error("fal image download exceeds size limit");
+      }
+    }
+
+    const body = response.body;
+    if (!body) {
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > FAL_IMAGE_DOWNLOAD_MAX_BYTES) {
+        throw new Error("fal image download exceeds size limit");
+      }
+      return new Uint8Array(buffer);
+    }
+
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      total += value.length;
+      if (total > FAL_IMAGE_DOWNLOAD_MAX_BYTES) {
+        throw new Error("fal image download exceeds size limit");
+      }
+      chunks.push(value);
+    }
+    return concatChunks(chunks, total);
+  }
+
+  private async downloadFalImage(
+    urlString: string,
+    redactInErrors: string[],
+  ): Promise<{ bytes: Uint8Array; contentType: string }> {
+    const initialUrl = assertAllowedFalImageDownloadUrl(urlString);
+    let response = await this.fetchImpl(initialUrl.toString(), {
+      method: "GET",
+      headers: this.falImageDownloadHeaders(),
+      redirect: "manual",
+    });
+
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error("fal image download redirect missing Location");
+      }
+      const redirectUrl = assertAllowedFalImageDownloadUrl(
+        new URL(location, initialUrl).toString(),
+      );
+      response = await this.fetchImpl(redirectUrl.toString(), {
+        method: "GET",
+        headers: this.falImageDownloadHeaders(),
+        redirect: "manual",
+      });
+    }
+
+    if (!response.ok) {
+      const detail = this.sanitizeErrorDetail(await response.text(), redactInErrors);
+      throw new Error(`fal image download failed (${response.status}): ${detail}`);
+    }
+
+    const contentType = response.headers.get("content-type") ?? "image/png";
+    const bytes = await this.readBodyWithSizeCap(response);
+    return { bytes, contentType };
+  }
+
   private async generateFromPrompt(
     prompt: string,
     redactInErrors: string[] = [],
@@ -125,19 +236,6 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     if (!imageUrl) {
       throw new Error("fal image generation returned no image URL");
     }
-    const imageResponse = await this.fetchImpl(imageUrl, {
-      method: "GET",
-      headers: this.falImageDownloadHeaders(),
-    });
-    if (!imageResponse.ok) {
-      const detail = this.sanitizeErrorDetail(
-        await imageResponse.text(),
-        redactInErrors,
-      );
-      throw new Error(`fal image download failed (${imageResponse.status}): ${detail}`);
-    }
-    const contentType = imageResponse.headers.get("content-type") ?? "image/png";
-    const buffer = await imageResponse.arrayBuffer();
-    return { bytes: new Uint8Array(buffer), contentType };
+    return this.downloadFalImage(imageUrl, redactInErrors);
   }
 }

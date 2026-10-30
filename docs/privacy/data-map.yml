@@ -294,7 +294,7 @@ d1_tables:
       processors: [Cloudflare]
       retention: until exercise version deleted
       who_can_see: all_practitioners when public; draft author and reviewers only via app
-      source: migrations/0002_exercise_media.sql
+      source: migrations/0003_exercise_media.sql
       verified: true
     columns:
       id: {}
@@ -313,7 +313,7 @@ d1_tables:
       processors: [Cloudflare]
       retention: indefinite
       who_can_see: server-side only
-      source: migrations/0002_exercise_media.sql
+      source: migrations/0003_exercise_media.sql
       verified: true
     columns:
       id: {}

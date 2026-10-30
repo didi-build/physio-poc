@@ -5,7 +5,7 @@ import { BetterSqliteStorage } from "../../src/adapters/node/better-sqlite-sql-s
 import {
   applyMigration,
   MIGRATION_0001_ID,
-  MIGRATION_0002_ID,
+  MIGRATION_0003_ID,
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
@@ -13,8 +13,8 @@ export const MIGRATION_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0001_exercise_data_model.sql"),
   "utf8",
 );
-export const MIGRATION_0002_SQL = readFileSync(
-  join(REPO_ROOT, "migrations/0002_exercise_media.sql"),
+export const MIGRATION_0003_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0003_exercise_media.sql"),
   "utf8",
 );
 
@@ -23,7 +23,7 @@ export const TS = "2026-01-01T00:00:00.000Z";
 export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   const storage = BetterSqliteStorage.openInMemory();
   await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_SQL);
-  await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+  await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   return storage;
 }
 
