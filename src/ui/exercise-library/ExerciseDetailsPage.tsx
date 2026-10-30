@@ -220,11 +220,11 @@ export function ExerciseDetailsPage() {
         <dl className="ex-meta-dl">
           <div>
             <dt>{ALSO_CALLED}</dt>
-            <dd>{details.aliases.join(", ") || "—"}</dd>
+            <dd>{details.aliases.join(", ") || "-"}</dd>
           </div>
           <div>
             <dt>{EQUIPMENT}</dt>
-            <dd>{details.library.equipment || "—"}</dd>
+            <dd>{details.library.equipment || "-"}</dd>
           </div>
           <div>
             <dt>{BODY_REGIONS}</dt>
@@ -257,7 +257,7 @@ export function ExerciseDetailsPage() {
 
       <div className="ex-detail-panel ex-precautions">
         <h2>{PRECAUTIONS}</h2>
-        <p>{details.library.precautions || "—"}</p>
+        <p>{details.library.precautions || "-"}</p>
         <p className="ex-muted">{PRECAUTIONS_FOOTER}</p>
       </div>
 
