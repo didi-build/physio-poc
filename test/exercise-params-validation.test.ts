@@ -3,8 +3,10 @@ import { GLOBAL_TYPE_DEFAULTS_SEED } from "../src/domain/global-type-defaults-se
 import {
   PARAM_VALUE_BOUNDS,
   ParamValidationError,
+  orderedParamKeysAllowedForPrescriptionType,
   parseExerciseParamsJson,
   validateExerciseParams,
+  validateExerciseParamsForPrescriptionType,
   validateParamOverridesByType,
 } from "../src/domain/exercise-params.js";
 import {
@@ -23,6 +25,42 @@ import {
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
+
+describe("PARAM_META allowed keys per prescription type", () => {
+  it.each([
+    [
+      "stretching",
+      ["hold_s", "per_day", "days_per_week", "ascent_s", "descent_s", "rest_s"],
+    ],
+    [
+      "isometric",
+      ["reps", "sets", "hold_s", "days_per_week", "ascent_s", "descent_s", "rest_s"],
+    ],
+    [
+      "concentric",
+      ["reps", "sets", "hold_s", "days_per_week", "ascent_s", "descent_s", "rest_s"],
+    ],
+    ["eccentric", ["reps", "sets", "descent_s", "days_per_week", "ascent_s", "rest_s"]],
+  ] as const)(
+    "orderedParamKeysAllowedForPrescriptionType(%s)",
+    (prescriptionType, expected) => {
+      expect(orderedParamKeysAllowedForPrescriptionType(prescriptionType)).toEqual(
+        expected,
+      );
+    },
+  );
+
+  it("validateExerciseParamsForPrescriptionType rejects unknown keys before bounds", () => {
+    expect(() =>
+      validateExerciseParamsForPrescriptionType(
+        {
+          bogus: 1,
+        } as unknown as import("../src/domain/exercise-params.js").ExerciseParams,
+        "stretching",
+      ),
+    ).toThrow(/Unknown param key: bogus/);
+  });
+});
 
 describe("exercise params validation (unit)", () => {
   it("accepts known keys and rejects unknown keys", () => {

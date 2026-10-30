@@ -10,9 +10,8 @@ import {
 } from "../../domain/exercise-types.js";
 import {
   ParamValidationError,
-  assertExerciseParamKeysAllowedForPrescriptionType,
   filterExerciseParamsForPrescriptionType,
-  validateExerciseParams,
+  validateExerciseParamsForPrescriptionType,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 import { parseExerciseParamsJson } from "../../domain/exercise-params.js";
@@ -308,7 +307,10 @@ export class ProgramBuilderService {
     let params: ExerciseParams;
     if (input.params) {
       try {
-        params = validateExerciseParams(input.params);
+        params = validateExerciseParamsForPrescriptionType(
+          input.params,
+          prescriptionType,
+        );
       } catch (err) {
         this.mapParamError(err);
       }
@@ -367,7 +369,10 @@ export class ProgramBuilderService {
     let params: ExerciseParams;
     if (input.params) {
       try {
-        params = validateExerciseParams(input.params);
+        params = validateExerciseParamsForPrescriptionType(
+          input.params,
+          prescriptionType,
+        );
       } catch (err) {
         this.mapParamError(err);
       }
@@ -400,8 +405,9 @@ export class ProgramBuilderService {
    * When prescriptionType changes, stored doses are trimmed to keys allowed for the
    * new type (per programModel PARAM_META / CORE). Shared keys keep their values;
    * keys the new type allows but the row did not have stay unset (no defaults).
-   * Params in the same request are validated against the new type; disallowed keys
-   * return invalid_input and leave the row unchanged.
+   * Params in the same request are validated against the target type via
+   * `validateExerciseParamsForPrescriptionType` (CTO DIDI-1005 option b); disallowed
+   * keys return invalid_input and leave the row unchanged.
    */
   async updateRow(
     practitionerId: string,
@@ -429,11 +435,10 @@ export class ProgramBuilderService {
     }
     if (input.params) {
       try {
-        assertExerciseParamKeysAllowedForPrescriptionType(
+        params = validateExerciseParamsForPrescriptionType(
           input.params,
           targetPrescriptionType,
         );
-        params = validateExerciseParams(input.params);
       } catch (err) {
         this.mapParamError(err);
       }

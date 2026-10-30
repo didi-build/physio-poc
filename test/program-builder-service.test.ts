@@ -387,6 +387,170 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         storage.close();
       }
     });
+
+    it("rejects updateRow with an unknown param key", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-bogus-key"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-bogus-key"),
+        });
+        await service.addPlaceholderRow(practitionerId, id("prog-bogus-key"), {
+          rowId: id("row-bogus-key"),
+          exerciseRequestId: id("req-bogus-key"),
+          prescriptionType: "stretching",
+          params: { hold_s: 10 },
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-bogus-key"));
+        await expect(
+          service.updateRow(practitionerId, id("prog-bogus-key"), id("row-bogus-key"), {
+            params: { bogus: 1 } as unknown as { hold_s: number },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "Unknown param key: bogus",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-bogus-key"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+  });
+
+  describe("ProgramBuilderService PARAM_META dose validation (CTO DIDI-1005 option b)", () => {
+    it("addExerciseRow rejects a disallowed param key for the row prescription type", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        const exerciseId = id("ex-iso-add");
+        const versionId = id("ver-iso-add");
+        await seedStrengtheningApprovedExercise(
+          storage,
+          practitionerId,
+          exerciseId,
+          versionId,
+        );
+        await service.createProgram(practitionerId, { programId: id("prog-iso-add") });
+        const before = await snapshotProgramDbState(storage, id("prog-iso-add"));
+        await expect(
+          service.addExerciseRow(practitionerId, id("prog-iso-add"), {
+            rowId: id("row-iso-add"),
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "isometric",
+            params: { per_day: 2 },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "per_day is not allowed for prescription type isometric",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-iso-add"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("addPlaceholderRow rejects a disallowed param key for the row prescription type", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-ph-iso-add"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-ph-iso-add"),
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-ph-iso-add"));
+        await expect(
+          service.addPlaceholderRow(practitionerId, id("prog-ph-iso-add"), {
+            rowId: id("row-ph-iso-add"),
+            exerciseRequestId: id("req-ph-iso-add"),
+            prescriptionType: "isometric",
+            params: { per_day: 2 },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "per_day is not allowed for prescription type isometric",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-ph-iso-add"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("same-type updateRow rejects a disallowed param key and leaves the row unchanged", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-same-type"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-same-type"),
+        });
+        await service.addPlaceholderRow(practitionerId, id("prog-same-type"), {
+          rowId: id("row-same-type"),
+          exerciseRequestId: id("req-same-type"),
+          prescriptionType: "isometric",
+          params: { reps: 2, sets: 3, hold_s: 10 },
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-same-type"));
+        await expect(
+          service.updateRow(practitionerId, id("prog-same-type"), id("row-same-type"), {
+            params: { per_day: 2 },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "per_day is not allowed for prescription type isometric",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-same-type"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("same-type updateRow accepts allowed param keys", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-same-ok"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, { programId: id("prog-same-ok") });
+        await service.addPlaceholderRow(practitionerId, id("prog-same-ok"), {
+          rowId: id("row-same-ok"),
+          exerciseRequestId: id("req-same-ok"),
+          prescriptionType: "isometric",
+          params: { reps: 2, sets: 3, hold_s: 10 },
+        });
+        await service.updateRow(practitionerId, id("prog-same-ok"), id("row-same-ok"), {
+          params: { hold_s: 20 },
+        });
+        const view = await service.getProgram(practitionerId, id("prog-same-ok"));
+        expect(view.rows[0]?.params).toEqual({ hold_s: 20 });
+      } finally {
+        storage.close();
+      }
+    });
   });
 
   it("links placeholder rows when the exercise request is approved", async () => {
@@ -986,11 +1150,22 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = id("ex-strength-link");
       const versionId = id("ver-strength-link");
-      await seedStrengtheningApprovedExercise(
-        storage,
-        practitionerId,
-        exerciseId,
-        versionId,
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [exerciseId, "strengthening", practitionerId, TS],
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Squat",
+          cue_isometric: "Isometric cue for test",
+          cue_eccentric: "Eccentric cue for test",
+        }),
       );
       await seedOpenExerciseRequest(
         storage,
@@ -1005,12 +1180,19 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
         rowId: id("row-strength-ecc"),
         exerciseRequestId: id("req-strength-ecc"),
         prescriptionType: "eccentric",
+        params: { reps: 2, sets: 3, descent_s: 4 },
       });
+      await storage.run(`UPDATE program_rows SET params_json = ? WHERE id = ?`, [
+        JSON.stringify({ reps: 2, sets: 3, descent_s: 4, hold_s: 10 }),
+        id("row-strength-ecc"),
+      ]);
       await markExerciseRequestApproved(storage, id("req-strength-ecc"), exerciseId);
       await linkApprovedPlaceholders(storage, id("req-strength-ecc"), versionId);
       const view = await service.getProgram(practitionerId, id("prog-strength-ecc"));
       expect(view.rows[0]?.kind).toBe("exercise");
       expect(view.rows[0]?.prescription_type).toBe("eccentric");
+      expect(view.rows[0]?.params).toEqual({ reps: 2, sets: 3, descent_s: 4 });
+      expect(view.rows[0]?.text_snapshot.cue).toBe("Eccentric cue for test");
       const row = await new ProgramRowsRepository(storage).findById(
         id("row-strength-ecc"),
       );

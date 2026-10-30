@@ -226,6 +226,31 @@ export function paramKeysAllowedForPrescriptionType(
   ]);
 }
 
+/** CORE keys then ADDABLE keys, omitting duplicates (stable PARAM_META order for tests). */
+export function orderedParamKeysAllowedForPrescriptionType(
+  prescriptionType: PrescriptionType,
+): ParamKey[] {
+  const allowed = paramKeysAllowedForPrescriptionType(prescriptionType);
+  const ordered: ParamKey[] = [];
+  for (const key of [
+    ...CORE_PARAM_KEYS_BY_PRESCRIPTION_TYPE[prescriptionType],
+    ...ADDABLE_PARAM_KEYS,
+  ]) {
+    if (allowed.has(key) && !ordered.includes(key)) {
+      ordered.push(key);
+    }
+  }
+  return ordered;
+}
+
+export function validateExerciseParamsForPrescriptionType(
+  params: ExerciseParams,
+  prescriptionType: PrescriptionType,
+): ExerciseParams {
+  assertExerciseParamKeysAllowedForPrescriptionType(params, prescriptionType);
+  return validateExerciseParams(params);
+}
+
 export function filterExerciseParamsForPrescriptionType(
   params: ExerciseParams,
   prescriptionType: PrescriptionType,
