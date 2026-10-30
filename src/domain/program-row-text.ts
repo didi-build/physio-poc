@@ -20,5 +20,15 @@ export function validateProgramRowTextSnapshot(
   if (cue !== null) {
     result.cue = cue;
   }
+  if (snapshot.libraryUpdateDismissedVersionNumber !== undefined) {
+    if (
+      !Number.isInteger(snapshot.libraryUpdateDismissedVersionNumber) ||
+      snapshot.libraryUpdateDismissedVersionNumber < 1
+    ) {
+      throw new Error("libraryUpdateDismissedVersionNumber must be a positive integer");
+    }
+    result.libraryUpdateDismissedVersionNumber =
+      snapshot.libraryUpdateDismissedVersionNumber;
+  }
   return result;
 }
