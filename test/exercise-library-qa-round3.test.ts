@@ -129,13 +129,13 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-long",
+        id: "alias-slr-raise",
         exerciseId,
-        alias: "LONGALIAS",
+        alias: "SLR raise",
         createdAt: TS,
       });
       await aliases.insert({
-        id: "alias-short",
+        id: "alias-slr",
         exerciseId,
         alias: "SLR",
         createdAt: TS,
@@ -197,12 +197,12 @@ describe("Exercise library QA round 3 (tests only)", () => {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
         exerciseId: "ex-stretch",
-        title: "Shared token stretch",
+        title: "Alpha Shared token stretch",
         category: "stretch",
       });
       await seedApproved(storage, practId, {
         exerciseId: "ex-strength",
-        title: "Shared token strength",
+        title: "Zulu Shared token strength",
         category: "strengthening",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
@@ -232,6 +232,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
       expect(items).toHaveLength(1);
       expect(items[0]?.exercise_id).toBe("ex-strength");
       expect(items[0]?.category).toBe("Strengthening");
+      expect(items.some((item) => item.exercise_id === "ex-stretch")).toBe(false);
     } finally {
       storage.close();
     }
@@ -243,11 +244,11 @@ describe("Exercise library QA round 3 (tests only)", () => {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
         exerciseId: "ex-saved",
-        title: "Saved needle exercise",
+        title: "Zulu Saved needle saved",
       });
       await seedApproved(storage, practId, {
         exerciseId: "ex-unsaved",
-        title: "Saved needle library only",
+        title: "Alpha Saved needle library only",
       });
       await new PractitionerExercisesRepository(storage).upsert({
         practitionerId: practId,
@@ -268,6 +269,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
       ];
       expect(items).toHaveLength(1);
       expect(items[0]?.exercise_id).toBe("ex-saved");
+      expect(items.some((item) => item.exercise_id === "ex-unsaved")).toBe(false);
     } finally {
       storage.close();
     }
@@ -279,10 +281,20 @@ describe("Exercise library QA round 3 (tests only)", () => {
       const practId = await seedPractitioner(storage);
       const otherId = await seedPractitioner(storage, "pract-2", "other@example.com");
       await seedApproved(storage, practId, {
+        exerciseId: "ex-unrelated",
+        title: "Unrelated saved move",
+      });
+      await seedApproved(storage, practId, {
         exerciseId: "ex-match",
         title: "Practitioner scope token",
       });
-      await new PractitionerExercisesRepository(storage).upsert({
+      const myRepo = new PractitionerExercisesRepository(storage);
+      await myRepo.upsert({
+        practitionerId: practId,
+        exerciseId: "ex-unrelated",
+        savedAt: TS,
+      });
+      await myRepo.upsert({
         practitionerId: otherId,
         exerciseId: "ex-match",
         savedAt: TS,
@@ -293,13 +305,14 @@ describe("Exercise library QA round 3 (tests only)", () => {
         practitionerId: practId,
         query: "Practitioner scope",
       });
-      expect(list.list_state).toBe("no_saved_exercises_with_filters");
+      expect(list.list_state).toBe("nothing_in_my_exercises_matches");
       const items = [
         ...list.sections.new_from_requests,
         ...list.sections.pinned,
         ...list.sections.recently_used_and_saved,
       ];
       expect(items).toHaveLength(0);
+      expect(items.some((item) => item.exercise_id === "ex-match")).toBe(false);
     } finally {
       storage.close();
     }
