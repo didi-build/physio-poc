@@ -11,11 +11,7 @@ export const TYPE_DEFAULT_CORE_PARAMS: Record<PrescriptionType, readonly ParamKe
 };
 
 /** Optional params a practitioner may add on My defaults ("Add parameter"). */
-export const TYPE_DEFAULT_ADDABLE_PARAMS: readonly ParamKey[] = [
-  "ascent_s",
-  "descent_s",
-  "rest_s",
-];
+export const TYPE_DEFAULT_ADDABLE_PARAMS: readonly ParamKey[] = ["descent_s", "rest_s"];
 
 export function addableTypeDefaultParams(
   type: PrescriptionType,

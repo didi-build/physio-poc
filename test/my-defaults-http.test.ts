@@ -163,6 +163,76 @@ describe("My defaults HTTP routes (integration)", () => {
         sets: 2,
         days_per_week: 4,
       });
+      const row = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerId, "stretching"],
+      );
+      expect(row).not.toBeNull();
+      expect(JSON.parse(row!.params_json)).toEqual({
+        hold_s: 45,
+        sets: 2,
+        days_per_week: 4,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PUT preserves ascent_s when other params change", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const firstPut = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/types/concentric`,
+          cookie,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              params: {
+                reps: 10,
+                hold_s: 2,
+                ascent_s: 3,
+                sets: 3,
+                days_per_week: 3,
+              },
+            }),
+          },
+        ),
+        deps,
+      );
+      expect(firstPut.status).toBe(200);
+
+      const secondPut = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/types/concentric`,
+          cookie,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              params: {
+                reps: 11,
+                hold_s: 2,
+                ascent_s: 3,
+                sets: 3,
+                days_per_week: 3,
+              },
+            }),
+          },
+        ),
+        deps,
+      );
+      expect(secondPut.status).toBe(200);
+
+      const row = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerId, "concentric"],
+      );
+      expect(JSON.parse(row!.params_json)).toMatchObject({ ascent_s: 3, reps: 11 });
     } finally {
       storage.close();
     }

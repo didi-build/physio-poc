@@ -14,4 +14,10 @@ describe("formatExerciseParams (unit)", () => {
       "10 reps, 2s hold, 3 sets, 3x a week",
     );
   });
+
+  it("omits sets readout when sets is 1", () => {
+    expect(
+      formatExerciseParams({ reps: 1, sets: 1, hold_s: 10, days_per_week: 7 }),
+    ).toBe("1 rep, 10s hold, every day");
+  });
 });

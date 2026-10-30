@@ -32,6 +32,9 @@ export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
     case "reps":
       return n === 1 ? "1 rep" : `${n} reps`;
     case "sets":
+      if (n === null || n <= 1) {
+        return "";
+      }
       return `${n} sets`;
     case "hold_s":
       return `${n}s hold`;
@@ -60,4 +63,15 @@ export function formatExerciseParams(params: ExerciseParams): string {
 
 export function exerciseParamsKeys(params: ExerciseParams): ParamKey[] {
   return keysInDisplayOrder(params);
+}
+
+/** Non-empty when the param has an approved readout phrase for accessibility labels. */
+export function paramAccessibleName(
+  key: ParamKey,
+  value: NumericOrRange | undefined,
+  fallback: NumericOrRange,
+): string | null {
+  const resolved = value ?? fallback;
+  const phrase = paramPhrase(key, resolved);
+  return phrase.length > 0 ? phrase : null;
 }
