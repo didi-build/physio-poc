@@ -46,6 +46,21 @@ export type LatestApprovedVersionRow = {
   created_by: string;
 };
 
+/**
+ * usage_count: number of program_rows whose exercise_id equals the exercise, in programs
+ * that are not soft-deleted (programs.deleted_at IS NULL). Each row counts once (duplicate
+ * rows in the same program count separately). Counts rows across all practitioners' programs.
+ * Deleting a program is not a use; Recently deleted is a trash bin, so those rows are excluded
+ * until the program is restored. Placeholder rows (exercise_id IS NULL) are excluded.
+ */
+const USAGE_COUNT_SUBQUERY = `
+  SELECT COUNT(*)
+  FROM program_rows pr_usage
+  INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
+  WHERE pr_usage.exercise_id = e.id
+    AND p_usage.deleted_at IS NULL
+`;
+
 const LATEST_APPROVED_JOIN = `
   INNER JOIN (
     SELECT exercise_id, MAX(version_number) AS max_version
@@ -150,11 +165,7 @@ export class ExerciseLibraryReadRepository {
         ev.title,
         e.category,
         ev.approved_at,
-        (
-          SELECT COUNT(*)
-          FROM practitioner_exercises pe
-          WHERE pe.exercise_id = e.id AND pe.last_used_at IS NOT NULL
-        ) AS usage_count,
+        (${USAGE_COUNT_SUBQUERY}) AS usage_count,
         (
           SELECT ea.alias
           FROM exercise_aliases ea
@@ -369,8 +380,10 @@ export class ExerciseLibraryReadRepository {
   async getUsageCount(exerciseId: string): Promise<number> {
     const row = await this.sql.first<{ count: number }>(
       `SELECT COUNT(*) AS count
-       FROM practitioner_exercises
-       WHERE exercise_id = ? AND last_used_at IS NOT NULL`,
+       FROM program_rows pr_usage
+       INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
+       WHERE pr_usage.exercise_id = ?
+         AND p_usage.deleted_at IS NULL`,
       [exerciseId],
     );
     return row?.count ?? 0;
