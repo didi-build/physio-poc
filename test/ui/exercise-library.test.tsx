@@ -25,6 +25,7 @@ import {
   NO_EDITS_YET,
   NO_SAVED_WITH_FILTERS,
   NOT_IN_LIBRARY_YET,
+  PINNED_PREFIX,
   SUBMIT_REQUEST,
   USE_LIBRARY_VERSION,
   editsOnTopOfLibraryLine,
@@ -36,7 +37,12 @@ import { NAV_TAB_EXERCISES } from "../../src/ui/copy/nav.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
 import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  assertExerciseLibraryErrorPageCopy,
   assertLoadingErrorRegionsOnlyAllowlisted,
+  exerciseLibraryDetailsErrorPageAllowlist,
+  exerciseLibraryListErrorPageAllowlistAll,
+  exerciseLibraryListErrorPageAllowlistMine,
+  exerciseLibraryMyCopyErrorPageAllowlist,
 } from "./exercise-library-loading-error-copy-guard.js";
 import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
@@ -595,6 +601,10 @@ describe("Exercise library UI", () => {
     });
     expect(screen.queryByText(NO_SAVED_WITH_FILTERS)).not.toBeInTheDocument();
     expectLibraryErrorChrome(LIB_HEADING);
+    assertExerciseLibraryErrorPageCopy(
+      document.body,
+      exerciseLibraryListErrorPageAllowlistMine(),
+    );
   });
 
   it("does not show All exercises no-match or request form when load fails", async () => {
@@ -625,6 +635,10 @@ describe("Exercise library UI", () => {
       screen.queryByRole("heading", { name: noExactMatchHeading("Missing") }),
     ).not.toBeInTheDocument();
     expectLibraryErrorChrome(LIB_HEADING);
+    assertExerciseLibraryErrorPageCopy(
+      document.body,
+      exerciseLibraryListErrorPageAllowlistAll(),
+    );
   });
 
   it("renders the list error slot without unsourced copy when load fails", async () => {
@@ -647,9 +661,9 @@ describe("Exercise library UI", () => {
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
-    assertLoadingErrorRegionsOnlyAllowlisted(
+    assertExerciseLibraryErrorPageCopy(
       document.body,
-      LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+      exerciseLibraryListErrorPageAllowlistMine(),
     );
   });
 
@@ -669,6 +683,10 @@ describe("Exercise library UI", () => {
       ).toBeInTheDocument();
     });
     expectLibraryErrorChrome(EXERCISE_DETAILS);
+    assertExerciseLibraryErrorPageCopy(
+      document.body,
+      exerciseLibraryDetailsErrorPageAllowlist(),
+    );
   });
 
   it("keeps Library back link, heading and app nav on My copy load error", async () => {
@@ -687,6 +705,60 @@ describe("Exercise library UI", () => {
       ).toBeInTheDocument();
     });
     expectLibraryErrorChrome(MY_COPY);
+    assertExerciseLibraryErrorPageCopy(
+      document.body,
+      exerciseLibraryMyCopyErrorPageAllowlist(),
+    );
+  });
+
+  it("shows No edits yet when my copy has no overrides", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        in_my_exercises: true,
+        favourite: false,
+        resolved_text: [
+          {
+            key: "title",
+            resolved: "Heel slide",
+            library_value: "Heel slide",
+            library_updated: false,
+          },
+        ],
+        library: { ...baseDetails.library, title: "Heel slide" },
+      }),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByText(NO_EDITS_YET)).toBeInTheDocument();
+    });
+  });
+
+  it("shows Pinned prefix when favourite and no overrides", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        in_my_exercises: true,
+        favourite: true,
+        resolved_text: [
+          {
+            key: "title",
+            resolved: "Heel slide",
+            library_value: "Heel slide",
+            library_updated: false,
+          },
+        ],
+        library: { ...baseDetails.library, title: "Heel slide" },
+      }),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByText(`${PINNED_PREFIX}${NO_EDITS_YET}`)).toBeInTheDocument();
+    });
   });
 
   it("shows edits-on-top copy instead of No edits yet when overrides exist", async () => {

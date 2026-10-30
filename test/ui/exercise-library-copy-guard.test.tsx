@@ -15,8 +15,11 @@ import {
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
 import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  assertExerciseLibraryErrorPageCopy,
   assertLoadingErrorRegionsOnlyAllowlisted,
+  assertPageTextOnlyFromAllowlist,
   assertUnsourcedGuardListNonEmpty,
+  exerciseLibraryDetailsErrorPageAllowlist,
 } from "./exercise-library-loading-error-copy-guard.js";
 
 afterEach(() => {
@@ -97,10 +100,38 @@ describe("exercise library loading/error copy guard", () => {
   });
 
   it("mutation: an emptied guard list fails the non-empty assertion", () => {
-    expect(() => {
-      if ([].length === 0) {
-        throw new Error("Unsourced guard list must not be empty");
-      }
-    }).toThrow();
+    expect(() => assertUnsourcedGuardListNonEmpty([])).toThrow(
+      "Unsourced guard list must not be empty",
+    );
+  });
+
+  it("mutation: whole details error page rejects literal undefined beside the slot", () => {
+    const page = document.createElement("div");
+    page.textContent = "Library Exercise details Exercise details undefined";
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects Something went wrong beside the slot", () => {
+    const page = document.createElement("div");
+    page.textContent = "Library Exercise details Exercise details Something went wrong";
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+      ),
+    ).toThrow();
+  });
+});
+
+describe("whole-page allowlist helper", () => {
+  it("mutation: assertPageTextOnlyFromAllowlist fails on stray copy", () => {
+    const page = document.createElement("div");
+    page.textContent = "Allowed only stray";
+    expect(() => assertPageTextOnlyFromAllowlist(page, ["Allowed only"])).toThrow();
   });
 });
