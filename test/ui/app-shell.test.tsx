@@ -22,7 +22,7 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
-import { SEARCH_BY_NAME_OR_CODE } from "../../src/ui/copy/programs.js";
+import { SEARCH_PROGRAMS_LABEL } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
