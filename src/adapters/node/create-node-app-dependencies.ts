@@ -5,7 +5,7 @@ import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-o
 import {
   applyMigration,
   MIGRATION_0001_ID,
-  MIGRATION_0002_ID,
+  MIGRATION_0004_ID,
 } from "../../storage/migrations/apply.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
 import { createNodeAuthPort } from "./create-auth-port.js";
@@ -19,8 +19,8 @@ const MIGRATION_0001_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0001_exercise_data_model.sql"),
   "utf8",
 );
-const MIGRATION_0002_SQL = readFileSync(
-  join(REPO_ROOT, "migrations/0002_better_auth.sql"),
+const MIGRATION_0004_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0004_better_auth.sql"),
   "utf8",
 );
 
@@ -40,7 +40,7 @@ export async function createNodeAppDependencies(
   const config = resolveNodePhysioServerConfig(env, "127.0.0.1:8787");
   const storage = BetterSqliteStorage.openInMemory();
   await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
-  await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+  await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config);
   return {
     sql: storage,
@@ -49,5 +49,7 @@ export async function createNodeAppDependencies(
     auth: authBundle.auth,
     mcp: createPhysioMcpHttpHandler(config),
     uiStatic: createDistUiStaticPort(),
+    enableFakeGoogleRoutes: config.auth.fakeGoogleProviderEnabled,
+    guardedAppWithoutSession: "redirect",
   };
 }

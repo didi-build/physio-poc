@@ -287,4 +287,157 @@ d1_tables:
         processors: [Cloudflare]
         retention: until row deleted
 
+  user:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: practitioner
+        data: Better Auth user id linked to practitioner sign-in
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      name:
+        whose: practitioner
+        data: Display name from Google profile
+        purpose: account profile
+        processors: [Cloudflare]
+        retention: until account deletion
+      email:
+        whose: practitioner
+        data: Practitioner sign-in email
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      emailVerified:
+        whose: operational
+      image:
+        whose: practitioner
+        data: Profile image URL from Google
+        purpose: account profile
+        processors: [Cloudflare]
+        retention: until account deletion
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
+  session:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      expiresAt:
+        whose: operational
+      token:
+        whose: practitioner
+        data: Session token
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+      ipAddress:
+        whose: practitioner
+        data: Client IP at sign-in
+        purpose: security audit
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+      userAgent:
+        whose: practitioner
+        data: Client user agent at sign-in
+        purpose: security audit
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until session expiry or sign-out
+
+  account:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      accountId:
+        whose: operational
+      providerId:
+        whose: operational
+      userId:
+        whose: practitioner
+        data: Linked Better Auth user id
+        purpose: authentication
+        processors: [Cloudflare]
+        retention: until account deletion
+      accessToken:
+        whose: practitioner
+        data: Google OAuth access token
+        purpose: authentication
+        processors: [Cloudflare, Google]
+        retention: until account deletion or token rotation
+      refreshToken:
+        whose: practitioner
+        data: Google OAuth refresh token
+        purpose: authentication
+        processors: [Cloudflare, Google]
+        retention: until account deletion or token rotation
+      idToken:
+        whose: practitioner
+        data: Google OIDC id token
+        purpose: authentication
+        processors: [Cloudflare, Google]
+        retention: until account deletion or token rotation
+      accessTokenExpiresAt:
+        whose: operational
+      refreshTokenExpiresAt:
+        whose: operational
+      scope:
+        whose: operational
+      password:
+        whose: operational
+        notes: unused; Google OAuth only
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
+  verification:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      who_can_see: owner_only
+      source: migrations/0004_better_auth.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      identifier:
+        whose: operational
+      value:
+        whose: operational
+      expiresAt:
+        whose: operational
+      createdAt:
+        whose: operational
+      updatedAt:
+        whose: operational
+
 other_items: []

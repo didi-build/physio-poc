@@ -11,6 +11,8 @@ import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
+export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
+
 export type AppDependencies = {
   sql: SqlStoragePort;
   objects: ObjectStoragePort;
@@ -18,6 +20,9 @@ export type AppDependencies = {
   auth: AuthPort;
   mcp: McpHttpHandler;
   uiStatic?: UiStaticPort;
+  /** Dev/test entries only; never true on the Worker entry. */
+  enableFakeGoogleRoutes?: boolean;
+  guardedAppWithoutSession?: GuardedAppWithoutSession;
 };
 
 export const MCP_PATH = "/mcp";
@@ -51,7 +56,7 @@ export async function handleRequest(
     );
   }
 
-  if (deps.config.auth.fakeGoogleProviderEnabled) {
+  if (deps.enableFakeGoogleRoutes) {
     const fakeGoogle = await handleFakeGoogleRequest(request);
     if (fakeGoogle) {
       return fakeGoogle;
@@ -85,11 +90,7 @@ export async function handleRequest(
   if (requiresPractitionerSession(pathname, request.method)) {
     const practitioner = await deps.auth.getPractitioner(request);
     if (!practitioner) {
-      if (request.method === "GET" || request.method === "HEAD") {
-        const returnTo = `${pathname}${url.search}`;
-        return redirectResponse(signInPathWithReturnTo(returnTo));
-      }
-      return jsonUnauthorized();
+      return unauthenticatedAppResponse(request, deps, pathname, url.search);
     }
   }
 
@@ -117,11 +118,23 @@ async function guardAndRun(
     if (url.pathname.startsWith("/api/")) {
       return jsonUnauthorized();
     }
-    if (request.method === "GET" || request.method === "HEAD") {
-      const returnTo = `${url.pathname}${url.search}`;
-      return redirectResponse(signInPathWithReturnTo(returnTo));
-    }
-    return jsonUnauthorized();
+    return unauthenticatedAppResponse(request, deps, url.pathname, url.search);
   }
   return next();
+}
+
+function unauthenticatedAppResponse(
+  request: Request,
+  deps: AppDependencies,
+  pathname: string,
+  search: string,
+): Response {
+  if (deps.guardedAppWithoutSession === "service-unavailable") {
+    return new Response(null, { status: 503 });
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    const returnTo = `${pathname}${search}`;
+    return redirectResponse(signInPathWithReturnTo(returnTo));
+  }
+  return jsonUnauthorized();
 }

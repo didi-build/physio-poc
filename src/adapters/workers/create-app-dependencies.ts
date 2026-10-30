@@ -1,4 +1,4 @@
-import { FakeAuthPort } from "../../auth/fake-auth-port.js";
+import { FailClosedAuthPort } from "../../auth/fail-closed-auth-port.js";
 import type { AppDependencies } from "../../http/app.js";
 import { resolveNodePhysioServerConfig } from "../node/resolve-node-config.js";
 import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-object-storage.js";
@@ -7,15 +7,11 @@ import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
 
 export type WorkerEnv = {
   WEB_APP_BASE_URL?: string;
+  PHYSIO_USE_FAKE_GOOGLE_PROVIDER?: string;
 };
 
-const WORKER_TEST_PRACTITIONER = {
-  practitionerId: "pract-worker-test",
-  email: "worker.test@example.com",
-  displayName: "Kojo",
-} as const;
-
 export function createWorkerAppDependencies(env: WorkerEnv): AppDependencies {
+  void env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER;
   const config = resolveNodePhysioServerConfig({
     WEB_APP_BASE_URL: env.WEB_APP_BASE_URL,
     PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "false",
@@ -25,13 +21,9 @@ export function createWorkerAppDependencies(env: WorkerEnv): AppDependencies {
     sql: new InMemorySqlStorage(),
     objects: new InMemoryObjectStorage(),
     config,
-    auth: new FakeAuthPort({ practitioner: WORKER_TEST_PRACTITIONER }),
+    auth: new FailClosedAuthPort(),
     mcp: createPhysioMcpHttpHandler(config),
+    enableFakeGoogleRoutes: false,
+    guardedAppWithoutSession: "service-unavailable",
   };
-}
-
-export function workerTestSessionCookie(): string {
-  return new FakeAuthPort({
-    practitioner: WORKER_TEST_PRACTITIONER,
-  }).createSessionCookieHeader();
 }
