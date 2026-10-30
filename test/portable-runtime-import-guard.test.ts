@@ -9,6 +9,11 @@ import {
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
 
+/**
+ * import.meta fixtures follow the portable guard rule: only import.meta.url,
+ * import.meta["url"], (import.meta).url, and ((import.meta))["url"] are allowed.
+ * Type-assertion-wrapped url reads and every other import.meta shape are violations.
+ */
 describe("portable runtime import guard (unit)", () => {
   it("scans a non-zero set of portable files under src/", () => {
     const files = listPortableSourceFiles(SRC_ROOT);
@@ -253,6 +258,76 @@ describe("portable runtime import guard (unit)", () => {
     expect(
       findPortableViolations("src/http/example.ts", 'const u = import.meta["url"];'),
     ).toEqual([]);
+    expect(
+      findPortableViolations("src/http/example.ts", "const u = (import.meta).url;"),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        'const u = ((import.meta))["url"];',
+      ),
+    ).toEqual([]);
+  });
+
+  it("flags type-assertion-wrapped import.meta url reads", () => {
+    for (const source of [
+      "(import.meta as any).url;",
+      "(import.meta satisfies Record<string, unknown>).url;",
+      "(import.meta!).url;",
+      "(<any>import.meta).url;",
+    ]) {
+      const messages = findPortableViolations("src/http/example.ts", source);
+      expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+    }
+  });
+
+  it("flags import.meta nested in array indexing and follow-on env access", () => {
+    expect(
+      findPortableViolations("src/http/example.ts", "[import.meta][0];").some((m) =>
+        m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/http/example.ts", "[import.meta][0].env;").some((m) =>
+        m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags import.meta inside object literals, calls, and iife env chains", () => {
+    expect(
+      findPortableViolations("src/http/example.ts", "({ m: import.meta }).m.env;").some(
+        (m) => m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/http/example.ts", "foo(import.meta).x;").some((m) =>
+        m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/http/example.ts", "(() => import.meta)().env;").some(
+        (m) => m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags import.meta used as call or assignment operands for env access", () => {
+    expect(
+      findPortableViolations("src/http/example.ts", "obj[String(import.meta)];").some(
+        (m) => m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/http/example.ts", "(x = import.meta).env;").some(
+        (m) => m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
+    expect(
+      findPortableViolations("src/http/example.ts", "(0, import.meta).env;").some((m) =>
+        m.includes("import.meta.env"),
+      ),
+    ).toBe(true);
   });
 
   it("does not flag unrelated config.env property access as import.meta.env", () => {

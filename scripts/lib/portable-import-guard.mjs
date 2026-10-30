@@ -198,28 +198,56 @@ function isImportMetaMetaProperty(node) {
 }
 
 /**
- * Portable src/ may use import.meta only as import.meta.url or import.meta["url"].
- * Every other import.meta occurrence is reported as import.meta.env access (ADR 0004 item 11).
+ * True when expression is import.meta or only parenthesized wrappers around it.
+ *
+ * @param {import("typescript").Expression} expression
+ * @param {import("typescript").MetaProperty} metaProp
+ * @returns {boolean}
+ */
+function isImportMetaReceiverExpression(expression, metaProp) {
+  if (expression === metaProp) {
+    return true;
+  }
+  let current = expression;
+  while (current !== metaProp) {
+    if (!ts.isParenthesizedExpression(current)) {
+      return false;
+    }
+    current = current.expression;
+  }
+  return true;
+}
+
+/**
+ * Portable src/ may read import.meta only as a direct url access (ADR 0004 item 11).
+ * Allowed: import.meta.url, import.meta["url"], (import.meta).url, ((import.meta))["url"].
+ * The import.meta node must be the receiver after stripping parentheses only; type assertions,
+ * satisfies, non-null assertions, and every other shape are flagged as import.meta.env access.
  *
  * @param {import("typescript").MetaProperty} metaProp
  * @returns {boolean}
  */
 function isAllowedImportMetaUrlAccess(metaProp) {
-  const parent = metaProp.parent;
+  let parent = metaProp.parent;
+  while (parent && ts.isParenthesizedExpression(parent)) {
+    parent = parent.parent;
+  }
   if (
     ts.isPropertyAccessExpression(parent) &&
-    parent.expression === metaProp &&
-    parent.name.text === "url"
+    parent.name.text === "url" &&
+    isImportMetaReceiverExpression(parent.expression, metaProp)
   ) {
     return true;
   }
-  if (
-    ts.isElementAccessExpression(parent) &&
-    parent.expression === metaProp &&
-    ts.isStringLiteral(parent.argumentExpression) &&
-    parent.argumentExpression.text === "url"
-  ) {
-    return true;
+  if (ts.isElementAccessExpression(parent)) {
+    const arg = parent.argumentExpression;
+    if (
+      ts.isStringLiteral(arg) &&
+      arg.text === "url" &&
+      isImportMetaReceiverExpression(parent.expression, metaProp)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -294,39 +322,6 @@ export function findPortableViolations(repoRelativePath, source) {
     violations.push("import.meta.env access");
   }
 
-  /**
-   * @param {import("typescript").MetaProperty} metaProp
-   * @returns {boolean}
-   */
-  function importMetaAccessSkipsMetaPropertyVisit(metaProp) {
-    const parent = metaProp.parent;
-    if (ts.isPropertyAccessExpression(parent) && parent.expression === metaProp) {
-      return true;
-    }
-    if (ts.isElementAccessExpression(parent) && parent.expression === metaProp) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * @param {import("typescript").MetaProperty} metaProp
-   * @returns {boolean}
-   */
-  function importMetaUnderAccessExpression(metaProp) {
-    let current = metaProp.parent;
-    while (current) {
-      if (
-        ts.isPropertyAccessExpression(current) ||
-        ts.isElementAccessExpression(current)
-      ) {
-        return true;
-      }
-      current = current.parent;
-    }
-    return false;
-  }
-
   function visit(node) {
     if (ts.isImportTypeNode(node)) {
       const literal = stringLiteralFromImportType(node);
@@ -382,39 +377,12 @@ export function findPortableViolations(repoRelativePath, source) {
     ) {
       violations.push("process string element access");
     }
-    if (isImportMetaMetaProperty(node)) {
-      if (importMetaAccessSkipsMetaPropertyVisit(node)) {
-        // import.meta.url handled below
-      } else if (importMetaUnderAccessExpression(node)) {
-        // property or element access (unwrap decides env vs url)
-      } else if (!isAllowedImportMetaUrlAccess(node)) {
-        flagImportMetaEnvAccess();
-      }
-    }
-    if (ts.isPropertyAccessExpression(node)) {
-      const receiver = unwrapExpression(node.expression);
-      if (isImportMetaMetaProperty(receiver)) {
-        if (node.name.text === "url" && node.expression === receiver) {
-          // allowed direct import.meta.url
-        } else {
-          flagImportMetaEnvAccess();
-        }
-      }
+    if (isImportMetaMetaProperty(node) && !isAllowedImportMetaUrlAccess(node)) {
+      flagImportMetaEnvAccess();
     }
     if (ts.isElementAccessExpression(node)) {
       const receiver = unwrapExpression(node.expression);
-      if (isImportMetaMetaProperty(receiver)) {
-        const arg = node.argumentExpression;
-        if (
-          ts.isStringLiteral(arg) &&
-          arg.text === "url" &&
-          node.expression === receiver
-        ) {
-          // allowed direct import.meta["url"]
-        } else {
-          flagImportMetaEnvAccess();
-        }
-      } else if (
+      if (
         ts.isIdentifier(receiver) &&
         receiver.text === "globalThis" &&
         node.argumentExpression &&
