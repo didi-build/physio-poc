@@ -1,5 +1,6 @@
 import type { AppDependencies } from "../app.js";
 import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
+import { OpaqueEntityIdValidationError } from "../../domain/opaque-entity-id.js";
 import {
   ExerciseRequestsService,
   ExerciseRequestsServiceError,
@@ -27,11 +28,19 @@ function errorResponse(error: unknown): Response {
       { status: 400, headers: JSON_HEADERS },
     );
   }
+  if (error instanceof OpaqueEntityIdValidationError) {
+    return Response.json(
+      { error: "invalid_input", message: error.message },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
   if (error instanceof ExerciseRequestsServiceError) {
     const status =
       error.code === "practitioner_not_found" || error.code === "request_not_found"
         ? 404
-        : error.code === "conflict_target_not_found" || error.code === "draft_not_ready"
+        : error.code === "conflict_target_not_found" ||
+            error.code === "draft_not_ready" ||
+            error.code === "merge_target_not_ready"
           ? 404
           : error.code === "approve_failed"
             ? 409

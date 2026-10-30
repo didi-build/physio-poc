@@ -45,6 +45,7 @@ import type {
 } from "./types.js";
 
 const SIMILAR_LIBRARY_LIMIT = 10;
+const FORM_OPENED_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
 export class ExerciseRequestsServiceError extends Error {
   constructor(
@@ -55,6 +56,7 @@ export class ExerciseRequestsServiceError extends Error {
       | "invalid_input"
       | "draft_not_ready"
       | "conflict_target_not_found"
+      | "merge_target_not_ready"
       | "approve_failed",
   ) {
     super(message);
@@ -71,6 +73,17 @@ function isIsoDateTimeString(value: string): boolean {
     return false;
   }
   return new Date(parsed).toISOString() === value;
+}
+
+function assertFormOpenedAtNotFarFuture(formOpenedAt: string, nowIso: string): void {
+  const openedMs = Date.parse(formOpenedAt);
+  const nowMs = Date.parse(nowIso);
+  if (openedMs > nowMs + FORM_OPENED_MAX_FUTURE_SKEW_MS) {
+    throw new ExerciseRequestsServiceError(
+      "form_opened_at must not be far in the future",
+      "invalid_input",
+    );
+  }
 }
 
 function mapFreeTextError(err: unknown): never {
@@ -228,6 +241,7 @@ export class ExerciseRequestsService {
         "invalid_input",
       );
     }
+    assertFormOpenedAtNotFarFuture(input.formOpenedAt, this.now());
 
     const resolution = input.resolution ?? "submit";
     const { requestedName, exerciseNote } = parseSubmitText(
@@ -256,6 +270,12 @@ export class ExerciseRequestsService {
           request_id: target.id,
           exercise_id: target.exercise_id,
         };
+      }
+      if (!target.exercise_id) {
+        throw new ExerciseRequestsServiceError(
+          "Merge target has no draft yet",
+          "merge_target_not_ready",
+        );
       }
       await appendMergeToDraftRequest({
         sql: this.sql,
@@ -344,7 +364,6 @@ export class ExerciseRequestsService {
         exercise_note: row.note,
         status: row.status as "open" | "drafting",
         requested_by: row.requested_by,
-        requester_email: row.requester_email,
         exercise_id: row.exercise_id,
         draft_title: row.draft_title,
         updated_at: row.updated_at,

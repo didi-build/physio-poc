@@ -59,7 +59,6 @@ export type InProgressRequestListItem = {
   exercise_note: string | null;
   status: "open" | "drafting";
   requested_by: string;
-  requester_email: string;
   exercise_id: string | null;
   draft_title: string | null;
   updated_at: string;

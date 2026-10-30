@@ -193,7 +193,7 @@ d1_tables:
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
       note:
         whose: operational
-        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+        notes: exercise note; must never hold patient details; patient_detail_risk; validateFreeTextForPatientDetails on write
       requested_by:
         whose: practitioner
         data: Practitioner id of requester

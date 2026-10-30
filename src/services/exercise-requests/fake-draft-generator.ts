@@ -88,17 +88,16 @@ export async function appendMergeToDraftRequest(input: {
   if (row.note) {
     mergedParts.push(row.note);
   }
-  const contributorLine = `Also requested as: ${validateRequestedExerciseName(input.mergedName)}`;
   if (input.mergedNote) {
-    mergedParts.push(`${contributorLine}. ${input.mergedNote}`);
-  } else {
-    mergedParts.push(contributorLine);
+    mergedParts.push(input.mergedNote);
   }
-  await requests.updateNote({
-    id: input.targetRequestId,
-    note: mergedParts.join("\n"),
-    updatedAt: input.now,
-  });
+  if (mergedParts.length > 0) {
+    await requests.updateNote({
+      id: input.targetRequestId,
+      note: mergedParts.join("\n"),
+      updatedAt: input.now,
+    });
+  }
 
   const aliasName = validateRequestedExerciseName(input.mergedName);
   const versions = new ExerciseVersionsRepository(input.sql);
