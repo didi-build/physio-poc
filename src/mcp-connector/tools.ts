@@ -95,7 +95,7 @@ export const searchApprovedExercisesOutputSchema: JsonSchema = {
 export const SEARCH_ROUTINES_TOOL_NAME = "search_routines" as const;
 
 export const searchRoutinesDescription =
-  "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.";
+  "Search routines (read-only): cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.";
 
 export const searchRoutinesInputSchema: JsonSchema = {
   type: "object",

@@ -13,6 +13,7 @@ import {
   buildWebAppExerciseSearchUrl,
   getProgramShareLinkOrPdfInputSchema,
   inferGetProgramDisplayState,
+  MAX_EXERCISE_SEARCH_QUERY_LENGTH,
   PATIENT_DETAIL_REJECTION_MESSAGE,
   PHYSIO_MCP_TOOLS,
   publishedLinkFieldsPresent,
@@ -428,6 +429,19 @@ describe("Physio MCP connector contract", () => {
     expect(url.startsWith("https://app.example.com/exercises/search?")).toBe(true);
     const params = new URLSearchParams(url.split("?")[1] ?? "");
     expect(params.get("q")).toBe(tricky);
+
+    const capped = buildWebAppExerciseSearchUrl(
+      "https://app.example.com",
+      "x".repeat(250),
+    );
+    const cappedParams = new URLSearchParams(new URL(capped).search);
+    expect(cappedParams.get("q")?.length).toBe(MAX_EXERCISE_SEARCH_QUERY_LENGTH);
+
+    const flagged = buildWebAppExerciseSearchUrl(
+      "https://app.example.com",
+      "Contact user@example.com",
+    );
+    expect(flagged).toBe("https://app.example.com/exercises/search");
   });
 });
 

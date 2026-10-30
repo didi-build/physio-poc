@@ -4,6 +4,8 @@
  * Nav list paths match design/README.md (Shared layout).
  */
 
+import { validateFreeTextForPatientDetails } from "./mcp-connector/patient-detail-validator.js";
+
 export const PHYSIO_APP_ROUTE_PATTERNS = {
   exercises: "/exercises",
   exerciseSearch: "/exercises/search",
@@ -34,6 +36,7 @@ export type ConnectorPhysioAppRouteName =
   (typeof CONNECTOR_PHYSIO_APP_ROUTE_NAMES)[number];
 
 export const EXERCISE_SEARCH_QUERY_PARAM = "q";
+export const MAX_EXERCISE_SEARCH_QUERY_LENGTH = 200;
 export const FROM_ROUTINE_ID_QUERY_PARAM = "from_routine_id";
 
 export type FillPhysioAppRouteParams = {
@@ -110,8 +113,13 @@ export function buildWebAppExerciseSearchUrl(
   webAppBaseUrl: string,
   exerciseName: string,
 ): string {
+  const capped = exerciseName.slice(0, MAX_EXERCISE_SEARCH_QUERY_LENGTH);
+  const validation = validateFreeTextForPatientDetails(capped);
+  if (!validation.ok) {
+    return buildPhysioAppUrl(webAppBaseUrl, "exerciseSearch");
+  }
   return buildPhysioAppUrl(webAppBaseUrl, "exerciseSearch", {
-    query: { [EXERCISE_SEARCH_QUERY_PARAM]: exerciseName },
+    query: { [EXERCISE_SEARCH_QUERY_PARAM]: capped },
   });
 }
 
