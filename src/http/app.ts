@@ -14,6 +14,7 @@ import {
 } from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
+import { handleProgramBuilderRequest } from "./routes/program-builder.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
 
@@ -146,6 +147,12 @@ export async function handleRequest(
         }
       }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (programBuilderResponse) {
+        return programBuilderResponse;
+      }
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
         sessionPractitioner,
       });

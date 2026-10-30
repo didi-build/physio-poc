@@ -1,5 +1,7 @@
 import { exerciseLibraryMutatingHttpRouteCases } from "./exercise-library-mutating-route-cases.js";
 import type { ExerciseLibraryMutatingHttpRouteCase } from "./exercise-library-mutating-route-cases.js";
+import { programBuilderMutatingHttpRouteCases } from "./program-builder-http-route-cases.js";
+import type { ProgramBuilderHttpRouteCase } from "./program-builder-http-route-cases.js";
 import {
   exerciseMediaHttpRouteCases,
   type ExerciseMediaHttpRouteCase,
@@ -38,6 +40,10 @@ export const MUTATING_APP_API_HANDLER_ROUTE_TABLES: readonly MutatingAppApiHandl
         exerciseMediaHttpRouteCases(practitionerId, versionId).filter(
           (routeCase) => routeCase.method !== "GET",
         ),
+    },
+    {
+      ruleId: "program-builder",
+      routes: () => programBuilderMutatingHttpRouteCases(),
     },
   ];
 
@@ -78,4 +84,8 @@ export function mutatingAppApiRouteSampleKey(
   return `${sample.method} ${sample.samplePath}`;
 }
 
-export type { ExerciseLibraryMutatingHttpRouteCase, ExerciseMediaHttpRouteCase };
+export type {
+  ExerciseLibraryMutatingHttpRouteCase,
+  ExerciseMediaHttpRouteCase,
+  ProgramBuilderHttpRouteCase,
+};
