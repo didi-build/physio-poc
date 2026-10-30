@@ -15,3 +15,13 @@ export async function findPractitionerByEmail(
     [normalized],
   );
 }
+
+export async function findPractitionerById(
+  sql: SqlStoragePort,
+  practitionerId: string,
+): Promise<PractitionerRow | null> {
+  return sql.first<PractitionerRow>(
+    "SELECT id, email FROM practitioners WHERE id = ? LIMIT 1",
+    [practitionerId],
+  );
+}

@@ -2,6 +2,7 @@ import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
 import type { AuthPort } from "../auth/auth-port.js";
+import type { ImageGenerationPort } from "../storage/ports/image-generation.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
@@ -15,6 +16,12 @@ export type McpHttpHandler = (request: Request) => Promise<Response>;
 
 export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
 
+/** Returns a Response when the handler owns the request; null to try the next handler. */
+export type AppRouteHandler = (
+  request: Request,
+  deps: AppDependencies,
+) => Promise<Response | null>;
+
 export type AppDependencies = {
   sql: SqlStoragePort;
   objects: ObjectStoragePort;
@@ -25,6 +32,10 @@ export type AppDependencies = {
   /** Dev/test entries only; never true on the Worker entry. */
   enableFakeGoogleRoutes?: boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
+  /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
+  extraRouteHandlers?: AppRouteHandler[];
+  /** Optional image port for exercise media routes (tests only). */
+  exerciseMediaImages?: ImageGenerationPort;
 };
 
 export const MCP_PATH = "/mcp";
@@ -101,6 +112,14 @@ export async function handleRequest(
       if (exerciseResponse) {
         return exerciseResponse;
       }
+      if (deps.extraRouteHandlers) {
+        for (const handler of deps.extraRouteHandlers) {
+          const response = await handler(request, deps);
+          if (response) {
+            return response;
+          }
+        }
+      }
       return Response.json(
         { error: "not_found" },
         { status: 404, headers: JSON_HEADERS },
@@ -119,6 +138,15 @@ export async function handleRequest(
     const shell = ui.renderAppShell();
     if (shell) {
       return shell;
+    }
+  }
+
+  if (deps.extraRouteHandlers) {
+    for (const handler of deps.extraRouteHandlers) {
+      const response = await handler(request, deps);
+      if (response) {
+        return response;
+      }
     }
   }
 

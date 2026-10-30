@@ -111,6 +111,49 @@ async function seedApprovedForPractitioner(
 }
 
 describe("Exercise library practitioner session binding (integration)", () => {
+  it("returns 401 on each exercise route without a session and performs no writes", async () => {
+    const storage = await openMigratedDatabase();
+    const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+    await seedApprovedForPractitioner(storage, practA, EX_B);
+    await new PractitionerExercisesRepository(storage).upsert({
+      practitionerId: practA,
+      exerciseId: EX_B,
+      favourite: true,
+      savedAt: TS,
+      lastUsedAt: null,
+    });
+
+    const deps = {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      auth: new FakeAuthPort({ practitioner: null }),
+      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+    };
+
+    const before = await storage.first<{ c: number }>(
+      "SELECT count(*) as c FROM practitioner_exercises",
+    );
+
+    for (const testCase of FORBIDDEN_ROUTE_CASES) {
+      const body = testCase.body?.({ practA, exerciseId: EX_B });
+      const response = await handleRequest(
+        new Request(testCase.path(PRACT_A), {
+          method: testCase.method,
+          headers: body ? { "content-type": "application/json" } : undefined,
+          body: body ? JSON.stringify(body) : undefined,
+        }),
+        deps,
+      );
+      expect(response.status, testCase.label).toBe(401);
+    }
+
+    const after = await storage.first<{ c: number }>(
+      "SELECT count(*) as c FROM practitioner_exercises",
+    );
+    expect(after?.c).toBe(before?.c);
+  });
+
   it("returns 403 when session practitioner A targets practitioner B on each route", async () => {
     const storage = await openMigratedDatabase();
     const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");

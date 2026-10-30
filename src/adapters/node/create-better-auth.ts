@@ -17,6 +17,48 @@ import { findPractitionerByEmail } from "../../storage/repositories/practitioner
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
 
+function mergePhysioDatabaseHooks(sql: SqlStoragePort) {
+  const storageHooks = createPhysioBetterAuthDatabaseHooks();
+  return {
+    ...storageHooks,
+    session: {
+      ...storageHooks.session,
+      create: {
+        ...storageHooks.session?.create,
+        after: async (
+          session: { userId: string },
+          context: {
+            context: {
+              internalAdapter: {
+                findUserById: (id: string) => Promise<{ email?: string | null } | null>;
+                updateUser: (
+                  id: string,
+                  data: Record<string, unknown>,
+                ) => Promise<unknown>;
+              };
+            };
+          },
+        ) => {
+          const user = await context.context.internalAdapter.findUserById(
+            session.userId,
+          );
+          const email = typeof user?.email === "string" ? user.email : null;
+          if (!email) {
+            return;
+          }
+          const practitioner = await findPractitionerByEmail(sql, email);
+          if (!practitioner) {
+            return;
+          }
+          await context.context.internalAdapter.updateUser(session.userId, {
+            practitionerId: practitioner.id,
+          });
+        },
+      },
+    },
+  };
+}
+
 export const PHYSIO_BETTER_AUTH_ACCOUNT = {
   encryptOAuthTokens: true,
 } as const;
@@ -89,9 +131,18 @@ export function createBetterAuthInstance(
       ? {}
       : googleSocialProvider(config),
     account: PHYSIO_BETTER_AUTH_ACCOUNT,
-    databaseHooks: createPhysioBetterAuthDatabaseHooks(),
+    databaseHooks: mergePhysioDatabaseHooks(sql) as NonNullable<
+      Parameters<typeof betterAuth>[0]["databaseHooks"]
+    >,
     plugins,
     user: {
+      additionalFields: {
+        practitionerId: {
+          type: "string",
+          required: false,
+          input: false,
+        },
+      },
       validateUserInfo: async ({ user, source }) => {
         if (source.oauth?.providerId !== "google") {
           return;

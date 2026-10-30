@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
+import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
 import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
@@ -20,25 +21,25 @@ export type MainNavProps = {
 
 const tabs = [
   {
-    to: "/exercises",
+    to: PHYSIO_APP_ROUTE_PATTERNS.exercises,
     desktopLabel: NAV_TAB_EXERCISES,
     phoneLabel: NAV_TAB_EXERCISES,
     showCount: false,
   },
   {
-    to: "/routines",
+    to: PHYSIO_APP_ROUTE_PATTERNS.routines,
     desktopLabel: NAV_TAB_ROUTINES,
     phoneLabel: NAV_TAB_ROUTINES,
     showCount: false,
   },
   {
-    to: "/programs",
+    to: PHYSIO_APP_ROUTE_PATTERNS.programs,
     desktopLabel: NAV_TAB_PROGRAMS,
     phoneLabel: NAV_TAB_PROGRAMS,
     showCount: false,
   },
   {
-    to: "/requests",
+    to: PHYSIO_APP_ROUTE_PATTERNS.requests,
     desktopLabel: NAV_TAB_REQUESTS_DESKTOP,
     phoneLabel: NAV_TAB_REQUESTS_PHONE,
     showCount: true,
@@ -179,7 +180,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
             <div ref={menuRef} role="menu" className="shell-menu-panel">
               <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
               <NavLink
-                to="/defaults"
+                to={PHYSIO_APP_ROUTE_PATTERNS.defaults}
                 role="menuitem"
                 className="shell-menu-item"
                 onClick={closeMenu}

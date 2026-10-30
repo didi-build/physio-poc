@@ -1,9 +1,14 @@
 export type BetterAuthRuntime = {
   handler(request: Request): Promise<Response>;
   api: {
-    getSession(input: {
-      headers: Headers;
-    }): Promise<{ user?: { email?: string | null; name?: string | null } } | null>;
+    getSession(input: { headers: Headers }): Promise<{
+      session?: { token?: string };
+      user?: {
+        email?: string | null;
+        name?: string | null;
+        practitionerId?: string | null;
+      };
+    } | null>;
   };
 };
 

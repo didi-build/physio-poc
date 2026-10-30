@@ -74,7 +74,7 @@
               "enum": [""]
             }
           ],
-          "description": "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies."
+          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
         },
         "exercises": {
           "type": "array",
@@ -141,11 +141,16 @@
           }
         }
       ]
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   {
     "name": "search_routines",
-    "description": "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.",
+    "description": "Search routines (read-only): cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -204,7 +209,7 @@
               "enum": [""]
             }
           ],
-          "description": "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies."
+          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
         },
         "routines": {
           "type": "array",
@@ -243,11 +248,16 @@
           "description": "Opaque cursor for the next page. Omit when there are no more results."
         }
       }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   {
-    "name": "build_or_edit_program",
-    "description": "Create or replace a program. Omit program_code to create; pass program_code to replace that program's full rows list (no incremental ops). Create from a routine with from_routine_id in one call; optional rows replaces the copied rows. Records source_routine_id on the program. Each row uses exercise_version_id or exercise_name, not both; the server resolves names and omits unresolved rows (no placeholder rows). Unresolved names appear in exercises_not_found with up to three candidates and a prefilled web app search link (URL built from server config). Publishing and link expiry use get_program_share_link_or_pdf. Closing a link stays in the web app. Do not include patient information in program_title or row_notes.",
+    "name": "get_program_builder_link",
+    "description": "Read-only deep link to the program builder in the web app. Pass program_code to open that program, or from_routine_id (UUID v4 opaque id) to start a new program from that routine, or omit both for a new blank program. When both program_code and from_routine_id are given, program_code wins and from_routine_id is ignored. No rows are passed in the link. Publishing and share links use get_program_share_link_or_pdf. Do not pass patient information.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -257,431 +267,18 @@
           "pattern": "^PRG-[A-Z0-9]+$",
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
-        "program_title": {
-          "type": "string",
-          "maxLength": 80,
-          "description": "Non-identifying program title the practitioner uses to recognise this program later. Do not include patient names, contact details, health card numbers, or dates of birth."
-        },
         "from_routine_id": {
           "type": "string",
-          "description": "When creating a new program, copy rows from this routine id. Optional rows replaces the copy in the same call."
-        },
-        "rows": {
-          "type": "array",
-          "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["exercise_version_id", "prescription_type", "params"],
-                "properties": {
-                  "exercise_version_id": {
-                    "type": "string",
-                    "description": "Pinned approved exercise version id for this row."
-                  },
-                  "prescription_type": {
-                    "type": "string",
-                    "enum": ["stretching", "isometric", "concentric", "eccentric"],
-                    "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
-                  },
-                  "params": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "reps": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "sets": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "hold_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "ascent_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "descent_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "rest_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "per_day": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "days_per_week": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      }
-                    },
-                    "description": "Dose parameters for this program row. Only include keys that apply to the exercise and prescription type."
-                  },
-                  "row_notes": {
-                    "type": "string",
-                    "maxLength": 300,
-                    "description": "Optional notes about the exercise prescription on this row only. Do not include patient names, contact details, health card numbers, or dates of birth."
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["exercise_name", "prescription_type", "params"],
-                "properties": {
-                  "exercise_name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 100,
-                    "description": "Approved exercise display name or alias; server resolves case-insensitively. Do not include patient names, contact details, health card numbers, or dates of birth."
-                  },
-                  "prescription_type": {
-                    "type": "string",
-                    "enum": ["stretching", "isometric", "concentric", "eccentric"],
-                    "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
-                  },
-                  "params": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                      "reps": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "sets": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "hold_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "ascent_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "descent_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "rest_s": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "per_day": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      },
-                      "days_per_week": {
-                        "oneOf": [
-                          {
-                            "type": "number"
-                          },
-                          {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["min", "max"],
-                            "properties": {
-                              "min": {
-                                "type": "number"
-                              },
-                              "max": {
-                                "type": "number"
-                              }
-                            },
-                            "description": "Inclusive numeric range."
-                          }
-                        ]
-                      }
-                    },
-                    "description": "Dose parameters for this program row. Only include keys that apply to the exercise and prescription type."
-                  },
-                  "row_notes": {
-                    "type": "string",
-                    "maxLength": 300,
-                    "description": "Optional notes about the exercise prescription on this row only. Do not include patient names, contact details, health card numbers, or dates of birth."
-                  }
-                }
-              }
-            ],
-            "description": "One row in a program request. Provide exercise_version_id or exercise_name, not both. Same exercise may appear more than once."
-          },
-          "description": "Full rows list that replaces the program contents on save."
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+          "maxLength": 36,
+          "description": "When creating a new program, open the builder seeded from this routine id."
         }
       }
     },
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "summary",
-        "share_link",
-        "manage_url",
-        "program_code",
-        "program_title",
-        "rows"
-      ],
+      "required": ["summary", "share_link", "builder_link"],
       "properties": {
         "summary": {
           "type": "string",
@@ -701,6 +298,11 @@
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
         },
+        "builder_link": {
+          "type": "string",
+          "format": "uri",
+          "description": "Deep link to the program builder in the web app (built from server-configured base URL and shared route table)."
+        },
         "manage_url": {
           "oneOf": [
             {
@@ -712,276 +314,30 @@
               "enum": [""]
             }
           ],
-          "description": "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies."
+          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
         },
         "program_code": {
           "type": "string",
           "pattern": "^PRG-[A-Z0-9]+$",
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
-        "program_title": {
+        "from_routine_id": {
           "type": "string",
-          "maxLength": 80,
-          "description": "Non-identifying program title the practitioner uses to recognise this program later. Do not include patient names, contact details, health card numbers, or dates of birth."
-        },
-        "source_routine_id": {
-          "type": "string",
-          "description": "Routine id when this program was created from a routine."
-        },
-        "rows": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "exercise_version_id",
-              "exercise_name",
-              "prescription_type",
-              "params"
-            ],
-            "properties": {
-              "exercise_version_id": {
-                "type": "string",
-                "description": "Pinned approved exercise version id saved on this row."
-              },
-              "exercise_name": {
-                "type": "string",
-                "description": "Display name snapshot for this row."
-              },
-              "prescription_type": {
-                "type": "string",
-                "enum": ["stretching", "isometric", "concentric", "eccentric"],
-                "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
-              },
-              "params": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "reps": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "sets": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "hold_s": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "ascent_s": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "descent_s": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "rest_s": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "per_day": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  },
-                  "days_per_week": {
-                    "oneOf": [
-                      {
-                        "type": "number"
-                      },
-                      {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["min", "max"],
-                        "properties": {
-                          "min": {
-                            "type": "number"
-                          },
-                          "max": {
-                            "type": "number"
-                          }
-                        },
-                        "description": "Inclusive numeric range."
-                      }
-                    ]
-                  }
-                },
-                "description": "Dose parameters for this program row. Only include keys that apply to the exercise and prescription type."
-              },
-              "row_notes": {
-                "type": "string",
-                "maxLength": 300,
-                "description": "Optional notes about the exercise prescription on this row only. Do not include patient names, contact details, health card numbers, or dates of birth."
-              }
-            },
-            "description": "One saved program row. Snapshots params and text; unresolved names are omitted from rows and listed under exercises_not_found."
-          }
-        },
-        "exercises_not_found": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["requested_exercise_name", "web_app_exercise_search_url"],
-            "properties": {
-              "requested_exercise_name": {
-                "type": "string",
-                "maxLength": 100,
-                "description": "Exercise name that could not be resolved to exactly one approved exercise. Do not include patient names, contact details, health card numbers, or dates of birth."
-              },
-              "candidate_matches": {
-                "type": "array",
-                "maxItems": 3,
-                "items": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": ["exercise_version_id", "exercise_name"],
-                  "properties": {
-                    "exercise_version_id": {
-                      "type": "string"
-                    },
-                    "exercise_name": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "description": "Up to three similar approved exercises when the name was ambiguous."
-              },
-              "web_app_exercise_search_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Web app exercise search URL with the query prefilled, built from server-configured web app base URL and the requested name."
-              }
-            }
-          },
-          "description": "Exercise names that were not resolved to exactly one approved exercise."
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+          "maxLength": 36,
+          "description": "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000)."
         }
       }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   },
   {
     "name": "get_program_share_link_or_pdf",
-    "description": "Read or publish a program share link and PDF. Provide program_code or program_title. Never publishes unless publish is true. Set publish to true only after the practitioner explicitly confirms in the conversation. Without publish, returns draft and published (each null or a version snapshot). When a published version exists, also returns its share_link, pdf_url, and expires_at; share_link and pdf_url are empty strings when nothing is published yet. The summary should ask which version the practitioner wants and whether to publish with defaults or overrides. With publish true, publishes the current draft and returns share_link, pdf_url, and expires_at (republishing replaces the live version at the same share link). Optional overrides.expires_in sets expiry (1_week, 30_days, 90_days, 1_year, never, or custom_date with overrides.custom_date); omit overrides to use the practitioner default. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Deleting a link is web app only.",
+    "description": "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Do not pass patient information.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -995,49 +351,6 @@
           "type": "string",
           "maxLength": 80,
           "description": "Non-identifying program title the practitioner uses to recognise this program later. Do not include patient names, contact details, health card numbers, or dates of birth."
-        },
-        "publish": {
-          "type": "boolean",
-          "default": false,
-          "description": "When false, read only. When true, publish the current draft after explicit practitioner confirmation in chat."
-        },
-        "overrides": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "expires_in": {
-              "type": "string",
-              "enum": [
-                "1_week",
-                "30_days",
-                "90_days",
-                "1_year",
-                "never",
-                "custom_date"
-              ],
-              "description": "Share link expiry for this publish. Omit overrides entirely to use the practitioner default."
-            },
-            "custom_date": {
-              "type": "string",
-              "format": "date",
-              "description": "Required when expires_in is custom_date. Any calendar date from tomorrow onward per product rules."
-            }
-          },
-          "allOf": [
-            {
-              "if": {
-                "properties": {
-                  "expires_in": {
-                    "const": "custom_date"
-                  }
-                },
-                "required": ["expires_in"]
-              },
-              "then": {
-                "required": ["custom_date"]
-              }
-            }
-          ]
         }
       }
     },
@@ -1049,6 +362,8 @@
         "share_link",
         "manage_url",
         "pdf_url",
+        "publish_link",
+        "manage_link",
         "draft",
         "published"
       ],
@@ -1095,7 +410,33 @@
               "enum": [""]
             }
           ],
-          "description": "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies."
+          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+        },
+        "publish_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ],
+          "description": "Deep link to the program publish page when a draft needs publishing. Empty when no draft publish page applies."
+        },
+        "manage_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ],
+          "description": "Deep link to the program share page in the web app (expiry, close link, delete). Empty when no program applies."
         },
         "expires_at": {
           "type": "string",
@@ -1189,6 +530,11 @@
           "description": "When program_title matches more than one program, list candidates and ask for program_code."
         }
       }
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "openWorldHint": false
     }
   }
 ]

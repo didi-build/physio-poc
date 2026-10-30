@@ -367,7 +367,11 @@ describe("Google sign-in (integration)", () => {
         body: JSON.stringify({ provider: "google", callbackURL: "/exercises" }),
       },
     );
-    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      code: "INVALID_ORIGIN",
+      message: "Invalid origin",
+    });
   });
 
   it("rejects invalid callbackURL values with INVALID_CALLBACK_URL", async () => {
@@ -385,7 +389,25 @@ describe("Google sign-in (integration)", () => {
       method: "POST",
       headers: { origin: "https://evil.example" },
     });
-    expect(signedOut.status).toBeGreaterThanOrEqual(400);
+    expect(signedOut.status).toBe(403);
+    await expect(signedOut.json()).resolves.toEqual({
+      code: "INVALID_ORIGIN",
+      message: "Invalid origin",
+    });
+  });
+
+  it("rejects sign-out when Origin is null with MISSING_OR_NULL_ORIGIN", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    const signedOut = await requestWithJar(`${BASE}/api/auth/sign-out`, deps, jar, {
+      method: "POST",
+      headers: { origin: "null" },
+    });
+    expect(signedOut.status).toBe(403);
+    await expect(signedOut.json()).resolves.toEqual({
+      code: "MISSING_OR_NULL_ORIGIN",
+      message: "Missing or null Origin",
+    });
   });
 
   it("redirects signed-out deep links through sign-in and preserves returnTo", async () => {

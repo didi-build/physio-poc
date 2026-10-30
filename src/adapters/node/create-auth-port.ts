@@ -19,7 +19,7 @@ export function createNodeAuthPort(
   const { auth } = createBetterAuthInstance(sqliteDb, config.auth, sql);
   return {
     sqliteDb,
-    auth: new BetterAuthPort(auth, sql),
+    auth: new BetterAuthPort(auth, sql, config.auth),
   };
 }
 

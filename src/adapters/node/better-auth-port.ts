@@ -1,10 +1,14 @@
 import type { AuthPort, PractitionerSession } from "../../auth/auth-port.js";
 import {
+  deleteAuthSessionByToken,
+  resolveBoundPractitionerSession,
+} from "../../auth/resolve-bound-practitioner-session.js";
+import {
   handleAuthOAuthErrorRequest,
   isAuthOAuthErrorPath,
 } from "../../http/auth-oauth-error.js";
+import type { PhysioAuthConfig } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
-import { findPractitionerByEmail } from "../../storage/repositories/practitioner-auth.js";
 import type { BetterAuthRuntime } from "./better-auth-types.js";
 
 const AUTH_PREFIX = "/api/auth";
@@ -13,29 +17,30 @@ export class BetterAuthPort implements AuthPort {
   constructor(
     private readonly auth: BetterAuthRuntime,
     private readonly sql: SqlStoragePort,
+    private readonly authConfig: PhysioAuthConfig,
   ) {}
 
   async getPractitioner(request: Request): Promise<PractitionerSession | null> {
-    const session = await this.auth.api.getSession({
+    const payload = await this.auth.api.getSession({
       headers: request.headers,
     });
-    const email = session?.user?.email;
-    if (!email) {
+    const sessionToken = payload?.session?.token;
+    if (!sessionToken) {
       return null;
     }
-    const practitioner = await findPractitionerByEmail(this.sql, email);
-    if (!practitioner) {
-      return null;
+    const resolved = await resolveBoundPractitionerSession(this.sql, this.authConfig, {
+      email: payload?.user?.email,
+      name: payload?.user?.name,
+      boundPractitionerId: payload?.user?.practitionerId,
+      sessionToken,
+    });
+    if (resolved.ok) {
+      return resolved.session;
     }
-    const displayName =
-      typeof session?.user?.name === "string" && session.user.name.trim().length > 0
-        ? session.user.name.trim()
-        : practitioner.email;
-    return {
-      practitionerId: practitioner.id,
-      email: practitioner.email,
-      displayName,
-    };
+    if (resolved.shouldDeleteSession) {
+      await deleteAuthSessionByToken(this.sql, sessionToken);
+    }
+    return null;
   }
 
   async handleAuthRequest(request: Request): Promise<Response | null> {

@@ -2,13 +2,27 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { pathToFileURL } from "node:url";
 import { createNodeAppDependencies } from "../adapters/node/create-node-app-dependencies.js";
 import { loadLocalDevEnv } from "../adapters/node/load-local-dev-env.js";
-import { handleRequest, type AppDependencies } from "../http/app.js";
+import {
+  handleRequest,
+  type AppDependencies,
+  type AppRouteHandler,
+} from "../http/app.js";
+import { handleExerciseMediaRequest } from "../http/routes/exercise-media.js";
 
 export type NodeServerOptions = {
   port?: number;
   host?: string;
   deps?: AppDependencies;
 };
+
+/** Exercise media HTTP routes: Node dev and test entries only (never the Worker entry). */
+export function nodeExerciseMediaRouteHandlers(nodeEnv?: string): AppRouteHandler[] {
+  const resolved = arguments.length >= 1 ? nodeEnv : process.env.NODE_ENV;
+  if (resolved === "development" || resolved === "test") {
+    return [handleExerciseMediaRequest];
+  }
+  return [];
+}
 
 async function readRequestBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
   if (req.method === "GET" || req.method === "HEAD") {
@@ -62,7 +76,7 @@ export async function writeWebResponse(
 
 export async function createDefaultNodeDependencies(): Promise<AppDependencies> {
   loadLocalDevEnv();
-  return createNodeAppDependencies({
+  const deps = await createNodeAppDependencies({
     WEB_APP_BASE_URL: process.env.WEB_APP_BASE_URL,
     AUTH_BASE_URL: process.env.AUTH_BASE_URL,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
@@ -72,6 +86,10 @@ export async function createDefaultNodeDependencies(): Promise<AppDependencies> 
     PHYSIO_USE_FAKE_GOOGLE_PROVIDER: process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER,
     NODE_ENV: process.env.NODE_ENV,
   });
+  return {
+    ...deps,
+    extraRouteHandlers: nodeExerciseMediaRouteHandlers(process.env.NODE_ENV),
+  };
 }
 
 export function createNodeServer(options: NodeServerOptions = {}) {
@@ -81,16 +99,15 @@ export function createNodeServer(options: NodeServerOptions = {}) {
 
   const server = createServer(async (req, res) => {
     try {
-      if (!options.deps) {
+      let deps: AppDependencies;
+      if (options.deps) {
+        deps = options.deps;
+      } else {
         depsPromise ??= createDefaultNodeDependencies();
-        const deps = await depsPromise;
-        const request = await readWebRequest(req);
-        const response = await handleRequest(request, deps);
-        await writeWebResponse(res, response);
-        return;
+        deps = await depsPromise;
       }
       const request = await readWebRequest(req);
-      const response = await handleRequest(request, options.deps);
+      const response = await handleRequest(request, deps);
       await writeWebResponse(res, response);
     } catch (error) {
       console.error("request_failed", error);

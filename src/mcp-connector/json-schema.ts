@@ -5,6 +5,10 @@
 
 import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
 import {
+  OPAQUE_ENTITY_ID_LENGTH,
+  OPAQUE_ENTITY_ID_PATTERN,
+} from "../domain/opaque-entity-id.js";
+import {
   FREE_TEXT_NO_PATIENT_DETAILS,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
@@ -72,7 +76,26 @@ export const searchLinkOutputProperty: JsonSchema = {
 export const manageUrlOutputProperty: JsonSchema = {
   ...uriOrEmptyStringSchema,
   description:
-    "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies.",
+    "HTTPS link to open the related screen in the web app. Empty when no screen applies.",
+};
+
+export const builderLinkOutputProperty: JsonSchema = {
+  type: "string",
+  format: "uri",
+  description:
+    "Deep link to the program builder in the web app (built from server-configured base URL and shared route table).",
+};
+
+export const publishLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program publish page when a draft needs publishing. Empty when no draft publish page applies.",
+};
+
+export const manageLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program share page in the web app (expiry, close link, delete). Empty when no program applies.",
 };
 
 export const expiresAtOutputProperty: JsonSchema = {
@@ -193,6 +216,14 @@ export const programCodeProperty: JsonSchema = {
   type: "string",
   pattern: "^PRG-[A-Z0-9]+$",
   description: "Stable program code assigned by the system (for example PRG-7K3Q).",
+};
+
+export const routineIdProperty: JsonSchema = {
+  type: "string",
+  pattern: OPAQUE_ENTITY_ID_PATTERN,
+  maxLength: OPAQUE_ENTITY_ID_LENGTH,
+  description:
+    "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000).",
 };
 
 const programRowSharedProperties: Record<string, JsonSchema> = {
