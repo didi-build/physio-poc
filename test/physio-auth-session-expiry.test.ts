@@ -76,54 +76,60 @@ describe("Physio Better Auth session expiry (unit)", () => {
   });
 });
 
-describe("Physio Better Auth session expiry (integration)", () => {
-  it("sets session_token Max-Age and session row expiry from the pinned lifetime", async () => {
-    const { deps } = await createDeps();
-    const sessionSetCookies: string[] = [];
-    const jar = new CookieJar();
-    const signIn = await requestWithJar(
-      BASE,
-      `${BASE}/api/auth/sign-in/social`,
-      deps,
-      jar,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: "/exercises" }),
-      },
-    );
-    sessionSetCookies.push(...sessionTokenSetCookies([signIn]));
-    const payload = (await signIn.json()) as { url?: string };
-    expect(payload.url).toBeTruthy();
-    const authorizeUrl = new URL(payload.url ?? "");
-    authorizeUrl.searchParams.set("fixture", "allowed");
-    let response = await requestWithJar(BASE, authorizeUrl.toString(), deps, jar);
-    for (
-      let step = 0;
-      step < 8 && response.status >= 300 && response.status < 400;
-      step += 1
-    ) {
-      sessionSetCookies.push(...sessionTokenSetCookies([response]));
-      const nextUrl = response.headers.get("location");
-      if (!nextUrl) {
-        break;
-      }
-      response = await requestWithJar(
-        BASE,
-        new URL(nextUrl, BASE).toString(),
-        deps,
-        jar,
-      );
-    }
+async function completeGoogleSignInCollectingSessionCookies(
+  deps: Awaited<ReturnType<typeof createDeps>>["deps"],
+): Promise<{ jar: CookieJar; sessionSetCookies: string[] }> {
+  const sessionSetCookies: string[] = [];
+  const jar = new CookieJar();
+  const signIn = await requestWithJar(
+    BASE,
+    `${BASE}/api/auth/sign-in/social`,
+    deps,
+    jar,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "google", callbackURL: "/exercises" }),
+    },
+  );
+  sessionSetCookies.push(...sessionTokenSetCookies([signIn]));
+  const payload = (await signIn.json()) as { url?: string };
+  expect(payload.url).toBeTruthy();
+  const authorizeUrl = new URL(payload.url ?? "");
+  authorizeUrl.searchParams.set("fixture", "allowed");
+  let response = await requestWithJar(BASE, authorizeUrl.toString(), deps, jar);
+  for (
+    let step = 0;
+    step < 8 && response.status >= 300 && response.status < 400;
+    step += 1
+  ) {
     sessionSetCookies.push(...sessionTokenSetCookies([response]));
-    expect(jar.header()).toContain("better-auth.session_token=");
+    const nextUrl = response.headers.get("location");
+    if (!nextUrl) {
+      break;
+    }
+    response = await requestWithJar(BASE, new URL(nextUrl, BASE).toString(), deps, jar);
+  }
+  sessionSetCookies.push(...sessionTokenSetCookies([response]));
+  expect(jar.header()).toContain("better-auth.session_token=");
+  return { jar, sessionSetCookies };
+}
 
+describe("Physio Better Auth session expiry (integration)", () => {
+  it("sets session_token Max-Age from the pinned lifetime", async () => {
+    const { deps } = await createDeps();
+    const { sessionSetCookies } =
+      await completeGoogleSignInCollectingSessionCookies(deps);
     expect(sessionSetCookies.length).toBeGreaterThan(0);
     const combined = sessionSetCookies.join("\n");
     expect(combined).toMatch(
       new RegExp(`Max-Age=${PHYSIO_BETTER_AUTH_SESSION_EXPIRES_IN_SECONDS}\\b`),
     );
+  });
 
+  it("stores session row expiry at the pinned lifetime from createdAt", async () => {
+    const { deps } = await createDeps();
+    await completeGoogleSignInCollectingSessionCookies(deps);
     const row = await deps.sql.first<{ expiresAt: string; createdAt: string }>(
       'SELECT "expiresAt", "createdAt" FROM "session" LIMIT 1',
     );
