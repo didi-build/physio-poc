@@ -1020,7 +1020,7 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
     }
   });
 
-  it("blocks cross-practitioner access with forbidden", async () => {
+  it("blocks cross-practitioner program access with the same error as a missing program", async () => {
     const { storage, service } = await openService();
     try {
       const practitionerA = await seedPractitioner(storage);
@@ -1030,14 +1030,40 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         "other@example.com",
       );
       await service.createProgram(practitionerA, { programId: id("prog-a") });
-      await expect(
-        service.getProgram(practitionerB, id("prog-a")),
-      ).rejects.toMatchObject({
-        code: "forbidden",
-      });
-      await expect(
-        service.updateProgramName(practitionerB, id("prog-a"), "Stolen"),
-      ).rejects.toMatchObject({ code: "forbidden" });
+      let missingError: ProgramBuilderServiceError | undefined;
+      try {
+        await service.getProgram(practitionerB, id("prog-missing-inline"));
+      } catch (err) {
+        missingError = err as ProgramBuilderServiceError;
+      }
+      let foreignError: ProgramBuilderServiceError | undefined;
+      try {
+        await service.getProgram(practitionerB, id("prog-a"));
+      } catch (err) {
+        foreignError = err as ProgramBuilderServiceError;
+      }
+      expect(missingError?.code).toBe("program_not_found");
+      expect(foreignError?.code).toBe(missingError?.code);
+      expect(foreignError?.message).toBe(missingError?.message);
+
+      let missingNameError: ProgramBuilderServiceError | undefined;
+      try {
+        await service.updateProgramName(
+          practitionerB,
+          id("prog-missing-name"),
+          "Stolen",
+        );
+      } catch (err) {
+        missingNameError = err as ProgramBuilderServiceError;
+      }
+      let foreignNameError: ProgramBuilderServiceError | undefined;
+      try {
+        await service.updateProgramName(practitionerB, id("prog-a"), "Stolen");
+      } catch (err) {
+        foreignNameError = err as ProgramBuilderServiceError;
+      }
+      expect(foreignNameError?.code).toBe(missingNameError?.code);
+      expect(foreignNameError?.message).toBe(missingNameError?.message);
     } finally {
       storage.close();
     }
@@ -1890,105 +1916,139 @@ async function seedSharedProgramWithRow(
   return { practitionerA, practitionerB, serviceA };
 }
 
-describe("ProgramBuilderService cross-practitioner forbidden", () => {
-  it.each([
-    [
-      "getProgram",
-      (s: ProgramBuilderService, b: string) => s.getProgram(b, id("prog-shared")),
-    ],
-    [
-      "updateProgramName",
-      (s: ProgramBuilderService, b: string) =>
-        s.updateProgramName(b, id("prog-shared"), "Taken"),
-    ],
-    [
-      "addExerciseRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.addExerciseRow(b, id("prog-shared"), {
-          rowId: id("row-new"),
-          exerciseId: FIXTURE_EXERCISE_ID,
-        }),
-    ],
-    [
-      "addPlaceholderRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.addPlaceholderRow(b, id("prog-shared"), {
-          rowId: id("row-ph-b"),
-          exerciseRequestId: id("req-b"),
-          prescriptionType: "stretching",
-        }),
-    ],
-    [
-      "updateRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.updateRow(b, id("prog-shared"), id("row-shared"), { params: { hold_s: 5 } }),
-    ],
-    [
-      "duplicateRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.duplicateRow(b, id("prog-shared"), {
-          sourceRowId: id("row-shared"),
-          newRowId: id("row-dup-b"),
-        }),
-    ],
-    [
-      "removeRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.removeRow(b, id("prog-shared"), id("row-shared")),
-    ],
-    [
-      "reorderRows",
-      (s: ProgramBuilderService, b: string) =>
-        s.reorderRows(b, id("prog-shared"), [id("row-shared")]),
-    ],
-    [
-      "applyLibraryUpdateToRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.applyLibraryUpdateToRow(b, id("prog-shared"), id("row-shared")),
-    ],
-    [
-      "keepLibraryUpdateForRow",
-      (s: ProgramBuilderService, b: string) =>
-        s.keepLibraryUpdateForRow(b, id("prog-shared"), id("row-shared")),
-    ],
-    [
-      "deleteProgram",
-      (s: ProgramBuilderService, b: string) => s.deleteProgram(b, id("prog-shared")),
-    ],
-  ])(
-    "%s returns forbidden for another practitioner's program",
+async function captureProgramBuilderError(
+  invoke: () => Promise<unknown>,
+): Promise<ProgramBuilderServiceError> {
+  try {
+    await invoke();
+    throw new Error("expected ProgramBuilderServiceError");
+  } catch (err) {
+    if (err instanceof ProgramBuilderServiceError) {
+      return err;
+    }
+    throw err;
+  }
+}
+
+function expectIdenticalProgramAccessErrors(
+  ...errors: ProgramBuilderServiceError[]
+): void {
+  expect(errors.length).toBeGreaterThanOrEqual(2);
+  const [first, ...rest] = errors;
+  for (const err of rest) {
+    expect(err.code).toBe(first.code);
+    expect(err.message).toBe(first.message);
+  }
+  expect(first.code).toBe("program_not_found");
+  expect(first.message).toBe("Program not found");
+}
+
+const PROGRAM_ID_SERVICE_METHODS: [
+  string,
+  (
+    s: ProgramBuilderService,
+    practitionerB: string,
+    programId: string,
+  ) => Promise<unknown>,
+][] = [
+  ["getProgram", (s, b, programId) => s.getProgram(b, programId)],
+  [
+    "updateProgramName",
+    (s, b, programId) => s.updateProgramName(b, programId, "Taken"),
+  ],
+  [
+    "addExerciseRow",
+    (s, b, programId) =>
+      s.addExerciseRow(b, programId, {
+        rowId: id("row-new"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      }),
+  ],
+  [
+    "addPlaceholderRow",
+    (s, b, programId) =>
+      s.addPlaceholderRow(b, programId, {
+        rowId: id("row-ph-b"),
+        exerciseRequestId: id("req-b"),
+        prescriptionType: "stretching",
+      }),
+  ],
+  [
+    "updateRow",
+    (s, b, programId) =>
+      s.updateRow(b, programId, id("row-shared"), { params: { hold_s: 5 } }),
+  ],
+  [
+    "duplicateRow",
+    (s, b, programId) =>
+      s.duplicateRow(b, programId, {
+        sourceRowId: id("row-shared"),
+        newRowId: id("row-dup-b"),
+      }),
+  ],
+  ["removeRow", (s, b, programId) => s.removeRow(b, programId, id("row-shared"))],
+  ["reorderRows", (s, b, programId) => s.reorderRows(b, programId, [id("row-shared")])],
+  [
+    "applyLibraryUpdateToRow",
+    (s, b, programId) => s.applyLibraryUpdateToRow(b, programId, id("row-shared")),
+  ],
+  [
+    "keepLibraryUpdateForRow",
+    (s, b, programId) => s.keepLibraryUpdateForRow(b, programId, id("row-shared")),
+  ],
+  ["deleteProgram", (s, b, programId) => s.deleteProgram(b, programId)],
+  ["restoreProgram", (s, b, programId) => s.restoreProgram(b, programId)],
+];
+
+describe("ProgramBuilderService cross-practitioner program_not_found", () => {
+  it.each(PROGRAM_ID_SERVICE_METHODS)(
+    "%s matches missing, active foreign, and soft-deleted foreign errors without changing A",
     async (_name, invoke) => {
       const storage = await openMigratedDatabase();
       try {
-        const { practitionerB } = await seedSharedProgramWithRow(storage);
+        const { practitionerA, practitionerB, serviceA } =
+          await seedSharedProgramWithRow(storage);
         const serviceB = new ProgramBuilderService(storage);
-        const before = await snapshotProgramDbState(storage, id("prog-shared"));
-        await expect(invoke(serviceB, practitionerB)).rejects.toMatchObject({
-          code: "forbidden",
-        });
-        const after = await snapshotProgramDbState(storage, id("prog-shared"));
-        expectDbStateUnchanged(before, after);
+        const programId = id("prog-shared");
+        const missingId = id("prog-missing-1102");
+
+        const activeBefore = await snapshotProgramDbState(storage, programId);
+
+        const missingError = await captureProgramBuilderError(() =>
+          invoke(serviceB, practitionerB, missingId),
+        );
+        expectDbStateUnchanged(
+          activeBefore,
+          await snapshotProgramDbState(storage, programId),
+        );
+
+        const activeForeignError = await captureProgramBuilderError(() =>
+          invoke(serviceB, practitionerB, programId),
+        );
+        expectDbStateUnchanged(
+          activeBefore,
+          await snapshotProgramDbState(storage, programId),
+        );
+
+        await serviceA.deleteProgram(practitionerA, programId);
+        const deletedBefore = await snapshotProgramDbState(storage, programId);
+
+        const deletedForeignError = await captureProgramBuilderError(() =>
+          invoke(serviceB, practitionerB, programId),
+        );
+        expectDbStateUnchanged(
+          deletedBefore,
+          await snapshotProgramDbState(storage, programId),
+        );
+
+        expectIdenticalProgramAccessErrors(
+          missingError,
+          activeForeignError,
+          deletedForeignError,
+        );
       } finally {
         storage.close();
       }
     },
   );
-
-  it("restoreProgram returns forbidden for another practitioner's deleted program", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const { practitionerA, practitionerB } = await seedSharedProgramWithRow(storage);
-      const serviceA = new ProgramBuilderService(storage);
-      await serviceA.deleteProgram(practitionerA, id("prog-shared"));
-      const serviceB = new ProgramBuilderService(storage);
-      const before = await snapshotProgramDbState(storage, id("prog-shared"));
-      await expect(
-        serviceB.restoreProgram(practitionerB, id("prog-shared")),
-      ).rejects.toMatchObject({ code: "forbidden" });
-      const after = await snapshotProgramDbState(storage, id("prog-shared"));
-      expectDbStateUnchanged(before, after);
-    } finally {
-      storage.close();
-    }
-  });
 });
