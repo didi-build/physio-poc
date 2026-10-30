@@ -287,4 +287,134 @@ d1_tables:
         processors: [Cloudflare]
         retention: until row deleted
 
+  programs:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until purged after 30 days in Recently deleted
+      who_can_see: owner_only
+      source: migrations/0002_program_data_model.sql
+      verified: true
+      notes: Practitioner-chosen program name plus code only; no patient details.
+    columns:
+      id:
+        whose: operational
+      code:
+        whose: operational
+        notes: PRG- prefixed lookup code; no patient details
+      name:
+        whose: operational
+        notes: validateOptionalProgramName on create or rename; validateProgramName on publish
+      created_by:
+        whose: practitioner
+        data: Practitioner id of program owner
+        purpose: programs list ownership
+        processors: [Cloudflare]
+        retention: until program purged
+      created_at:
+        whose: operational
+      draft_version:
+        whose: operational
+      draft_updated_at:
+        whose: operational
+      published_version:
+        whose: operational
+      published_name:
+        whose: operational
+        notes: patient_detail_risk; frozen at publish for the share link
+      published_at:
+        whose: operational
+      published_snapshot_json:
+        whose: operational
+        notes: Frozen published rows JSON; link serves this until republish
+      deleted_at:
+        whose: operational
+      link_expires_in:
+        whose: operational
+      link_expires_on:
+        whose: operational
+
+  program_rows:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until program purged
+      who_can_see: owner_only
+      source: migrations/0002_program_data_model.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      program_id:
+        whose: operational
+      position:
+        whose: operational
+      exercise_id:
+        whose: operational
+      exercise_version_id:
+        whose: operational
+      exercise_request_id:
+        whose: operational
+      prescription_type:
+        whose: operational
+      params_json:
+        whose: operational
+      text_snapshot_json:
+        whose: operational
+        notes: validateProgramRowTextSnapshot on write (title, description, cue)
+      note:
+        whose: operational
+        notes: patient_detail_risk; validateProgramRowNote on write
+
+  share_links:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until program purged
+      who_can_see: operational
+      source: migrations/0002_program_data_model.sql
+      verified: true
+      notes: Opaque token only; no patient information in URL beyond token.
+    columns:
+      id:
+        whose: operational
+      program_id:
+        whose: operational
+      token:
+        whose: operational
+        notes: CSPRNG opaque token; unguessable
+      expires_at:
+        whose: operational
+        notes: null means never expires until closed
+      closed_at:
+        whose: operational
+      created_at:
+        whose: operational
+
+  share_link_defaults:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until row deleted
+      who_can_see: all_practitioners
+      source: migrations/0002_program_data_model.sql
+      verified: true
+      notes: Global default is 1 year; practitioner scope overrides My defaults expiry.
+    columns:
+      id:
+        whose: operational
+      scope:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for My defaults share link expiry
+        purpose: default expiry for new share links
+        processors: [Cloudflare]
+        retention: until row deleted or reset
+        who_can_see: owner_only
+      expires_in:
+        whose: operational
+      custom_expires_on:
+        whose: operational
+
 other_items: []

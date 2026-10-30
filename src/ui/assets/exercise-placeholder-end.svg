@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img" aria-hidden="true">
+  <rect width="400" height="300" fill="#f1f5f9"/>
+  <rect x="24" y="24" width="352" height="252" rx="16" fill="#e2e8f0"/>
+  <circle cx="200" cy="108" r="28" fill="#94a3b8"/>
+  <rect x="168" y="136" width="64" height="96" rx="12" fill="#64748b"/>
+  <rect x="120" y="158" width="160" height="16" rx="8" fill="#0f766e" opacity="0.85"/>
+  <text x="200" y="268" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#475569">End</text>
+</svg>
