@@ -16,7 +16,7 @@ import {
 import { downloadFalImageBytes, type FetchLike } from "./download-fal-image.js";
 import { FIVE_TEST_EXERCISES } from "./exercises.js";
 import { buildExerciseImagePrompt, type ExerciseImagePhase } from "./prompts.js";
-import { redactAuthorizationHeader, redactFalKey } from "./redact.js";
+import { redactFalSecrets } from "./redact.js";
 
 export type { FetchLike };
 
@@ -96,7 +96,7 @@ export function buildFalHeaders(falKey: string): Record<string, string> {
 }
 
 export function safeLogMessage(message: string, falKey: string): string {
-  return redactAuthorizationHeader(redactFalKey(message, falKey));
+  return redactFalSecrets(message, falKey);
 }
 
 function safeFalError(message: string, falKey: string): Error {

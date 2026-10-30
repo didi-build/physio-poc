@@ -3,7 +3,7 @@ import {
   FAL_STORE_IO_HEADER,
   FAL_STORE_IO_VALUE,
 } from "./constants.js";
-import { redactFalKey } from "./redact.js";
+import { redactFalSecrets } from "./redact.js";
 
 export type FetchLike = (
   input: string | URL | Request,
@@ -91,7 +91,7 @@ function falImageDownloadHeaders(): Record<string, string> {
 }
 
 function safeDownloadErrorMessage(message: string, falKey: string): string {
-  return redactFalKey(message, falKey);
+  return redactFalSecrets(message, falKey);
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);

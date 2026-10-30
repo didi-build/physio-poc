@@ -1,7 +1,6 @@
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { runFiveExerciseMediaTest } from "./run-five-exercise-test.js";
-import { redactFalKey } from "./redact.js";
+import { createMediaTestCliLogger, resolveMediaTestOutputDir } from "./cli-support.js";
 
 const falKey = process.env.FAL_KEY?.trim();
 if (!falKey) {
@@ -9,19 +8,14 @@ if (!falKey) {
   process.exit(1);
 }
 
-const outputDir =
-  process.env.MEDIA_TEST_OUTPUT_DIR?.trim() ?? join(process.cwd(), "media-test-output");
+const outputDir = resolveMediaTestOutputDir(
+  process.cwd(),
+  process.env.MEDIA_TEST_OUTPUT_DIR,
+);
 
 mkdirSync(outputDir, { recursive: true });
 
-const logger = {
-  info(message: string) {
-    console.log(redactFalKey(message, falKey));
-  },
-  error(message: string) {
-    console.error(redactFalKey(message, falKey));
-  },
-};
+const logger = createMediaTestCliLogger(falKey);
 
 try {
   await runFiveExerciseMediaTest({

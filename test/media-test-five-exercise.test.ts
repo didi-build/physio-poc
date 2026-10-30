@@ -1,9 +1,16 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createMediaTestCliLogger,
+  resolveMediaTestOutputDir,
+} from "../scripts/media-test/cli-support.js";
+import {
+  COST_USD_PER_MP_EDIT,
+  COST_USD_PER_MP_T2I,
   FAL_EDIT_URL,
+  FAL_IMAGE_DOWNLOAD_MAX_BYTES,
   FAL_STORE_IO_HEADER,
   FAL_STORE_IO_VALUE,
   IMAGE_SIZE_1MP,
@@ -24,8 +31,24 @@ import {
   createGenerationCounter,
   GenerationCapError,
   runFiveExerciseMediaTest,
-  safeLogMessage,
 } from "../scripts/media-test/run-five-exercise-test.js";
+
+const tempDirs: string[] = [];
+
+function trackTempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
 
 function headerValue(
   headers: HeadersInit | undefined,
@@ -48,6 +71,42 @@ function headerValue(
   }
   return undefined;
 }
+
+function assertNoFalSecrets(text: string, fakeKey: string): void {
+  expect(text).not.toContain(fakeKey);
+  expect(text).not.toContain(`Authorization: Key ${fakeKey}`);
+}
+
+describe("media-test cost constants (unit)", () => {
+  it("pins fal megapixel pricing used for manifest estimates", () => {
+    expect(COST_USD_PER_MP_T2I).toBe(0.005);
+    expect(COST_USD_PER_MP_EDIT).toBe(0.01);
+    expect(FAL_IMAGE_DOWNLOAD_MAX_BYTES).toBe(10 * 1024 * 1024);
+  });
+});
+
+describe("media-test cli-support (unit)", () => {
+  const fakeKey = "fal-test-secret-key-abcdef";
+
+  it("treats blank MEDIA_TEST_OUTPUT_DIR as unset", () => {
+    const cwd = "/tmp/physio-media-test";
+    expect(resolveMediaTestOutputDir(cwd, "")).toBe(join(cwd, "media-test-output"));
+    expect(resolveMediaTestOutputDir(cwd, "   ")).toBe(join(cwd, "media-test-output"));
+    expect(resolveMediaTestOutputDir(cwd, "/custom/out")).toBe("/custom/out");
+  });
+
+  it("createMediaTestCliLogger redacts key and Authorization lines like cli.ts", () => {
+    const lines: string[] = [];
+    const logger = createMediaTestCliLogger(fakeKey, {
+      log: (line) => lines.push(line),
+      error: (line) => lines.push(line),
+    });
+    const raw = `failed ${fakeKey} Authorization: Key ${fakeKey}`;
+    logger.error(raw);
+    expect(lines).toHaveLength(1);
+    assertNoFalSecrets(lines[0] ?? "", fakeKey);
+  });
+});
 
 describe("media-test prompts (unit)", () => {
   it("builds ADR bridge start prompt", () => {
@@ -102,13 +161,21 @@ describe("media-test key redaction (unit)", () => {
     expect(scrubbed).not.toContain(fakeKey);
   });
 
-  it("never puts the key in thrown fal error messages", async () => {
-    const fetchImpl = vi.fn(async () => {
-      return new Response(`invalid key ${fakeKey}`, { status: 401 });
-    });
+  it("redacts fal error bodies on the logger and thrown error paths", async () => {
+    const logErrors: string[] = [];
+    const errorBody = `denied ${fakeKey} Authorization: Key ${fakeKey}`;
+    const fetchImpl = vi.fn(async () => new Response(errorBody, { status: 401 }));
+
     await expect(
       callFalKleinEndpoint(
-        { fetch: fetchImpl, falKey: fakeKey },
+        {
+          fetch: fetchImpl,
+          falKey: fakeKey,
+          logger: {
+            info: () => {},
+            error: (message) => logErrors.push(message),
+          },
+        },
         {
           url: "https://fal.run/fal-ai/flux-2/klein/4b",
           modelId: "fal-ai/flux-2/klein/4b",
@@ -118,9 +185,14 @@ describe("media-test key redaction (unit)", () => {
       ),
     ).rejects.toSatisfy((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      expect(message).not.toContain(fakeKey);
+      assertNoFalSecrets(message, fakeKey);
       return true;
     });
+
+    expect(logErrors.length).toBeGreaterThan(0);
+    for (const line of logErrors) {
+      assertNoFalSecrets(line, fakeKey);
+    }
   });
 });
 
@@ -137,6 +209,52 @@ describe("downloadFalImageBytes (unit)", () => {
       downloadFalImageBytes(fetchImpl, "https://cdn.example.com/out.png", fakeKey),
     ).rejects.toThrow("fal image download URL host is not allowed");
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects plain http image URLs before fetch", async () => {
+    expect(() =>
+      assertAllowedFalImageDownloadUrl("http://v3b.fal.media/files/test/out.png"),
+    ).toThrow("fal image download URL must use https");
+    const fetchImpl = vi.fn(async () => new Response(pngBytes, { status: 200 }));
+    await expect(
+      downloadFalImageBytes(
+        fetchImpl,
+        "http://v3b.fal.media/files/test/out.png",
+        fakeKey,
+      ),
+    ).rejects.toThrow("fal image download URL must use https");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("redacts secrets when download response is not ok", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(`forbidden ${fakeKey} Authorization: Key ${fakeKey}`, {
+        status: 403,
+      });
+    });
+    await expect(
+      downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey),
+    ).rejects.toSatisfy((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      assertNoFalSecrets(message, fakeKey);
+      return true;
+    });
+  });
+
+  it("refuses a response over the 10 MB download size cap", async () => {
+    const overCap = FAL_IMAGE_DOWNLOAD_MAX_BYTES + 1;
+    const fetchImpl = vi.fn(async () => {
+      return new Response(new Uint8Array(overCap), {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "content-length": String(overCap),
+        },
+      });
+    });
+    await expect(
+      downloadFalImageBytes(fetchImpl, allowedImageUrl, fakeKey),
+    ).rejects.toThrow("fal image download exceeds size limit");
   });
 
   it("follows an allowed redirect and sends X-Fal-Store-IO: 0 on each GET", async () => {
@@ -199,7 +317,7 @@ describe("runFiveExerciseMediaTest (unit, fake fetch)", () => {
 
   it("never writes the fal key to manifest or logs", async () => {
     const logLines: string[] = [];
-    const outputDir = mkdtempSync(join(tmpdir(), "media-test-run-"));
+    const outputDir = trackTempDir("media-test-run-");
 
     let genIndex = 0;
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -262,7 +380,7 @@ describe("runFiveExerciseMediaTest (unit, fake fetch)", () => {
   });
 
   it("POSTs end image to klein edit with start URL reference and manifest fields", async () => {
-    const outputDir = mkdtempSync(join(tmpdir(), "media-test-run-"));
+    const outputDir = trackTempDir("media-test-run-");
     const startUrl = `${allowedHost}/bridge-start.png`;
     const endUrl = `${allowedHost}/bridge-end.png`;
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -315,10 +433,5 @@ describe("runFiveExerciseMediaTest (unit, fake fetch)", () => {
     expect(bridgeEnd?.seed).toBe(4242);
     expect(bridgeEnd?.prompt).toBe(buildExerciseImagePrompt("bridge", "end"));
     expect(bridgeEnd?.estimatedCostUsd).toBeGreaterThan(0);
-  });
-
-  it("safeLogMessage redacts keys for CLI-style logging", () => {
-    const line = safeLogMessage(`failed with ${fakeKey}`, fakeKey);
-    expect(line).not.toContain(fakeKey);
   });
 });

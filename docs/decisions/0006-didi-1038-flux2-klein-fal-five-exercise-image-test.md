@@ -43,9 +43,9 @@ Implementation: `scripts/media-test/` and `.github/workflows/media-test.yml` ([D
 
 Whether Physio's exercise-education use is restricted is for Diadem in the provider-pick RfM, not decided here.
 
-**fal (chosen gateway for this test).** **terms risk: PHI collection clause in Acceptable Use Policy; needs Diadem's call.** [fal Acceptable Use Policy](https://fal.ai/legal/acceptable-use-policy), scope: Section 7, Security, item 1 (retrieved 2026-10-30), verbatim:
+**fal (chosen gateway for this test).** **terms risk: PHI collection clause in Acceptable Use Policy; needs Diadem's call.** [fal Acceptable Use Policy](https://fal.ai/legal/acceptable-use-policy), scope: Section 7, Security, item 1 (retrieved 2026-10-30). Verbatim excerpt through **(ii)**; items **(iii)** through **(vi)** in the same list are omitted:
 
-> Collecting, processing, or disclosing personal or sensitive information such as (i) Personally identifiable information (PII). (ii) Protected health information (PHI).
+> Collecting, processing, or disclosing personal or sensitive information such as (i) Personally identifiable information (PII). (ii) Protected health information (PHI). …
 
 **Google Vertex (dropped for this test).** **terms risk: clinical-purpose restriction; needs Diadem's call.** Verbatim quote in [ADR 0005 section A](./0005-didi-999-exercise-media-style-and-model-test.md) (Service Specific Terms s. 20(e), retrieved 2026-10-29):
 
