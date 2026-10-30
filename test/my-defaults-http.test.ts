@@ -233,6 +233,23 @@ describe("My defaults HTTP routes (integration)", () => {
         ["practitioner", practitionerId, "concentric"],
       );
       expect(JSON.parse(row!.params_json)).toMatchObject({ ascent_s: 3, reps: 11 });
+
+      const getResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults`,
+          cookie,
+        ),
+        deps,
+      );
+      expect(getResponse.status).toBe(200);
+      const page = (await getResponse.json()) as {
+        exercise_types: Array<{
+          type: string;
+          practitioner_params: { ascent_s?: number } | null;
+        }>;
+      };
+      const concentric = page.exercise_types.find((row) => row.type === "concentric");
+      expect(concentric?.practitioner_params?.ascent_s).toBe(3);
     } finally {
       storage.close();
     }

@@ -13,7 +13,7 @@ import {
 } from "../../domain/type-default-param-layout.js";
 import {
   formatExerciseParams,
-  paramAccessibleName,
+  paramInputAccessibleName,
 } from "../../domain/format-exercise-params.js";
 import { mergeExerciseParams } from "../../domain/exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../domain/global-type-defaults-seed.js";
@@ -90,10 +90,8 @@ export function TypeDefaultEditor({
 
   const visibleKeys = useMemo(() => {
     const keys = new Set<ParamKey>([...TYPE_DEFAULT_CORE_PARAMS[type], ...addedKeys]);
-    return [...keys].filter(
-      (key) => draft[key] !== undefined && !UI_HIDDEN_PARAM_KEYS.has(key),
-    );
-  }, [type, addedKeys, draft]);
+    return [...keys].filter((key) => !UI_HIDDEN_PARAM_KEYS.has(key));
+  }, [type, addedKeys]);
 
   const addable = addableTypeDefaultParams(
     type,
@@ -101,7 +99,7 @@ export function TypeDefaultEditor({
   );
 
   const perDayOptions = approvedPerDayOptions();
-  const showPerDayField =
+  const perDayUsesApprovedSelect =
     visibleKeys.includes("per_day") &&
     perDayOptions.length > 0 &&
     perDayValueHasApprovedLabel(draft.per_day);
@@ -119,12 +117,25 @@ export function TypeDefaultEditor({
     });
   };
 
-  const updatePerDay = (raw: string) => {
+  const updatePerDaySelect = (raw: string) => {
     const option = perDayOptions.find((entry) => entry.optionValue === raw);
     if (!option) {
       return;
     }
     setDraft((current) => ({ ...current, per_day: option.value }));
+  };
+
+  const updatePerDayScalar = (raw: string) => {
+    const parsed = parseNumericField("per_day", raw);
+    setDraft((current) => {
+      const next = { ...current };
+      if (parsed === null) {
+        delete next.per_day;
+      } else {
+        next.per_day = parsed;
+      }
+      return next;
+    });
   };
 
   const addParam = (key: ParamKey) => {
@@ -135,6 +146,8 @@ export function TypeDefaultEditor({
     }));
   };
 
+  const perDayFallback = globalParams.per_day ?? { min: 1, max: 3 };
+
   return (
     <div className="md-type-edit">
       <p className="md-type-global-ref">
@@ -143,52 +156,58 @@ export function TypeDefaultEditor({
       <div className="md-param-grid">
         {visibleKeys.map((key) => {
           if (key === "per_day") {
-            if (!showPerDayField) {
-              return null;
-            }
-            const selectLabel = paramAccessibleName(
-              "per_day",
-              draft.per_day,
-              globalParams.per_day ?? { min: 1, max: 3 },
-            );
-            if (!selectLabel) {
-              return null;
+            if (perDayUsesApprovedSelect) {
+              return (
+                <label key={key} className="md-param-field">
+                  <select
+                    className="md-param-input"
+                    aria-label={paramInputAccessibleName(
+                      "per_day",
+                      draft.per_day,
+                      perDayFallback,
+                    )}
+                    value={matchApprovedPerDayOptionValue(draft.per_day)}
+                    onChange={(event) => {
+                      updatePerDaySelect(event.target.value);
+                    }}
+                  >
+                    {perDayOptions.map((option) => (
+                      <option key={option.optionValue} value={option.optionValue}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              );
             }
             return (
               <label key={key} className="md-param-field">
-                <select
+                <input
                   className="md-param-input"
-                  aria-label={selectLabel}
-                  value={matchApprovedPerDayOptionValue(draft.per_day)}
+                  inputMode="numeric"
+                  aria-label={paramInputAccessibleName(
+                    "per_day",
+                    draft.per_day,
+                    perDayFallback,
+                  )}
+                  value={numericFieldValue(
+                    typeof draft.per_day === "number" ? draft.per_day : undefined,
+                  )}
                   onChange={(event) => {
-                    updatePerDay(event.target.value);
+                    updatePerDayScalar(event.target.value);
                   }}
-                >
-                  {perDayOptions.map((option) => (
-                    <option key={option.optionValue} value={option.optionValue}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
             );
           }
 
-          const inputLabel = paramAccessibleName(
-            key,
-            draft[key],
-            globalParams[key] ?? PARAM_VALUE_BOUNDS[key].min,
-          );
-          if (!inputLabel) {
-            return null;
-          }
-
+          const fallback = globalParams[key] ?? PARAM_VALUE_BOUNDS[key].min;
           return (
             <label key={key} className="md-param-field">
               <input
                 className="md-param-input"
                 inputMode="numeric"
-                aria-label={inputLabel}
+                aria-label={paramInputAccessibleName(key, draft[key], fallback)}
                 value={numericFieldValue(draft[key])}
                 onChange={(event) => {
                   updateNumber(key, event.target.value);

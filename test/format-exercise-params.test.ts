@@ -20,4 +20,10 @@ describe("formatExerciseParams (unit)", () => {
       formatExerciseParams({ reps: 1, sets: 1, hold_s: 10, days_per_week: 7 }),
     ).toBe("1 rep, 10s hold, every day");
   });
+
+  it("omits scalar per_day readouts", () => {
+    expect(formatExerciseParams({ per_day: 1 })).toBe("");
+    expect(formatExerciseParams({ per_day: 2 })).toBe("");
+    expect(formatExerciseParams({ per_day: 3 })).toBe("");
+  });
 });

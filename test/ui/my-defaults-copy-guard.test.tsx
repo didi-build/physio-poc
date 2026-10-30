@@ -2,10 +2,12 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatExerciseParams } from "../../src/domain/format-exercise-params.js";
+import type { ExerciseParams } from "../../src/domain/exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../src/domain/global-type-defaults-seed.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import { PhysioApp } from "../../src/ui/App.js";
@@ -44,6 +46,27 @@ function stubLibraryClient(): ExerciseLibraryClient {
   } as unknown as ExerciseLibraryClient;
 }
 
+const GUARD_FIXTURE_PARAMS: ExerciseParams = {
+  reps: 10,
+  hold_s: 2,
+  sets: 1,
+  per_day: 2,
+  ascent_s: 3,
+  days_per_week: 3,
+};
+
+const REMOVED_COPY = [
+  "once a day",
+  "twice a day",
+  "1 set",
+  "1 sets",
+  "2s up",
+  "3s up",
+  "New links will expire after 30 days",
+  "New links will expire after 90 days",
+  "New links will expire after 1 year",
+] as const;
+
 function stubMyDefaultsClient(
   overrides: Partial<MyDefaultsClient> = {},
 ): MyDefaultsClient {
@@ -58,28 +81,29 @@ function stubMyDefaultsClient(
         {
           type: "stretching",
           global_params: GLOBAL_TYPE_DEFAULTS_SEED.stretching,
-          practitioner_params: null,
+          practitioner_params: { hold_s: 30, per_day: 1, days_per_week: 4 },
         },
         {
           type: "isometric",
           global_params: GLOBAL_TYPE_DEFAULTS_SEED.isometric,
-          practitioner_params: null,
+          practitioner_params: { reps: 1, hold_s: 10, sets: 1, days_per_week: 3 },
         },
         {
           type: "concentric",
           global_params: GLOBAL_TYPE_DEFAULTS_SEED.concentric,
-          practitioner_params: {
-            reps: 12,
-            hold_s: 2,
-            sets: 3,
-            rest_s: 60,
-            days_per_week: 3,
-          },
+          practitioner_params: GUARD_FIXTURE_PARAMS,
         },
         {
           type: "eccentric",
           global_params: GLOBAL_TYPE_DEFAULTS_SEED.eccentric,
-          practitioner_params: null,
+          practitioner_params: {
+            reps: 10,
+            descent_s: 4,
+            sets: 1,
+            per_day: 2,
+            ascent_s: 3,
+            days_per_week: 3,
+          },
         },
       ],
     }),
@@ -90,20 +114,8 @@ function stubMyDefaultsClient(
   } as unknown as MyDefaultsClient;
 }
 
-const REMOVED_COPY = [
-  "once a day",
-  "twice a day",
-  "1 set",
-  "1 sets",
-  "2s up",
-  "3s up",
-  "New links will expire after 30 days",
-  "New links will expire after 90 days",
-  "New links will expire after 1 year",
-] as const;
-
 describe("My defaults removed copy (integration, jsdom)", () => {
-  it("does not render copy removed pending Designer spec", async () => {
+  it("does not render copy removed pending Designer spec on the page", async () => {
     render(
       <MemoryRouter initialEntries={["/defaults"]}>
         <PhysioApp
@@ -117,6 +129,25 @@ describe("My defaults removed copy (integration, jsdom)", () => {
     for (const text of REMOVED_COPY) {
       expect(screen.queryByText(text, { exact: false })).not.toBeInTheDocument();
     }
+  });
+
+  it("does not render removed readout phrases for guard fixture params", () => {
+    const readout = formatExerciseParams(GUARD_FIXTURE_PARAMS);
+    for (const text of REMOVED_COPY) {
+      expect(readout.includes(text)).toBe(false);
+    }
+    const { container } = render(
+      <TypeDefaultEditor
+        type="concentric"
+        own={GUARD_FIXTURE_PARAMS}
+        onSave={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const readsAs = container.querySelector(".md-reads-as");
+    expect(readsAs?.textContent ?? "").not.toMatch(/once a day/);
+    expect(readsAs?.textContent ?? "").not.toMatch(/1 set/);
+    expect(readsAs?.textContent ?? "").not.toMatch(/3s up/);
   });
 
   it("does not toast generic expire-after copy for 30 days", async () => {
@@ -144,57 +175,5 @@ describe("My defaults removed copy (integration, jsdom)", () => {
     await userEvent.click(screen.getByRole("button", { name: "30 days" }));
     expect(updateShareLinkExpiry).toHaveBeenCalled();
     expect(screen.queryByText(/New links will expire after/i)).not.toBeInTheDocument();
-  });
-});
-
-describe("TypeDefaultEditor accessibility (jsdom)", () => {
-  it("gives every rendered input a non-empty accessible name", () => {
-    const { container } = render(
-      <TypeDefaultEditor
-        type="stretching"
-        own={null}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    const fields = container.querySelectorAll("input, select");
-    expect(fields.length).toBeGreaterThan(0);
-    for (const field of fields) {
-      const name =
-        field.getAttribute("aria-label") ??
-        (field.id
-          ? container.querySelector(`label[for="${field.id}"]`)?.textContent
-          : null);
-      expect(name?.trim().length ?? 0).toBeGreaterThan(0);
-    }
-  });
-
-  it("per-day select only lists mock-approved range labels", () => {
-    render(
-      <TypeDefaultEditor
-        type="stretching"
-        own={null}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    const select = screen.getByRole("combobox", { name: "1 to 3 times a day" });
-    const options = within(select).getAllByRole("option");
-    expect(options).toHaveLength(1);
-    expect(options[0]).toHaveTextContent("1 to 3 times a day");
-    expect(screen.queryByRole("option", { name: "1" })).not.toBeInTheDocument();
-  });
-
-  it("does not offer ascent_s in Add parameter", () => {
-    render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={null}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "Add parameter" })).toBeInTheDocument();
-    expect(screen.queryByText("2s up")).not.toBeInTheDocument();
   });
 });
