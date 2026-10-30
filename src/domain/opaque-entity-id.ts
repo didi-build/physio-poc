@@ -11,8 +11,9 @@ export const OPAQUE_ENTITY_ID_FORMAT =
 
 /**
  * Practitioner ids on exercise data rows are `practitioners.id` values, not Better Auth
- * `user.id`. DIDI-1001 (`BetterAuthPort.getPractitioner`) loads the practitioner row by
- * session email and exposes that row's id as `PractitionerSession.practitionerId`. Better
+ * `user.id`. DIDI-1001 (`BetterAuthPort.getPractitioner`) reads `user.practitionerId` from
+ * the Better Auth session, resolves the practitioner row with
+ * `resolveBoundPractitionerSession`, and checks the row email matches the session. Better
  * Auth still generates its own opaque ids for auth tables (`user`, `session`, `account`);
  * those stay in the auth schema and are not written through these repositories. New
  * practitioner rows inserted via `PractitionersRepository` must use UUID v4 ids here.
