@@ -283,6 +283,112 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
     }
   });
 
+  describe("ProgramBuilderService updateRow prescription type doses (CTO aac3d237)", () => {
+    it("drops isometric-only dose fields when prescription type changes to stretching", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-iso-stretch"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-iso-stretch"),
+        });
+        await service.addPlaceholderRow(practitionerId, id("prog-iso-stretch"), {
+          rowId: id("row-iso-stretch"),
+          exerciseRequestId: id("req-iso-stretch"),
+          prescriptionType: "isometric",
+          params: { reps: 2, sets: 3, hold_s: 10 },
+        });
+        await service.updateRow(
+          practitionerId,
+          id("prog-iso-stretch"),
+          id("row-iso-stretch"),
+          {
+            prescriptionType: "stretching",
+          },
+        );
+        const view = await service.getProgram(practitionerId, id("prog-iso-stretch"));
+        expect(view.rows[0]?.prescription_type).toBe("stretching");
+        expect(view.rows[0]?.params).toEqual({ hold_s: 10 });
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("keeps dose fields shared by the old and new prescription types on updateRow", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-iso-con"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, { programId: id("prog-iso-con") });
+        await service.addPlaceholderRow(practitionerId, id("prog-iso-con"), {
+          rowId: id("row-iso-con"),
+          exerciseRequestId: id("req-iso-con"),
+          prescriptionType: "isometric",
+          params: { reps: 2, sets: 3, hold_s: 15 },
+        });
+        await service.updateRow(practitionerId, id("prog-iso-con"), id("row-iso-con"), {
+          prescriptionType: "concentric",
+        });
+        const view = await service.getProgram(practitionerId, id("prog-iso-con"));
+        expect(view.rows[0]?.prescription_type).toBe("concentric");
+        expect(view.rows[0]?.params).toEqual({ reps: 2, sets: 3, hold_s: 15 });
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("rejects updateRow params that are not allowed for the new prescription type", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-bad-dose-type"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-bad-dose-type"),
+        });
+        await service.addPlaceholderRow(practitionerId, id("prog-bad-dose-type"), {
+          rowId: id("row-bad-dose-type"),
+          exerciseRequestId: id("req-bad-dose-type"),
+          prescriptionType: "isometric",
+          params: { reps: 2, sets: 3, hold_s: 10 },
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-bad-dose-type"));
+        await expect(
+          service.updateRow(
+            practitionerId,
+            id("prog-bad-dose-type"),
+            id("row-bad-dose-type"),
+            {
+              prescriptionType: "stretching",
+              params: { reps: 5 },
+            },
+          ),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "reps is not allowed for prescription type stretching",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-bad-dose-type"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+  });
+
   it("links placeholder rows when the exercise request is approved", async () => {
     const { storage, service } = await openService();
     try {
@@ -874,6 +980,91 @@ describe("ProgramBuilderService opaque id validation", () => {
 });
 
 describe("ProgramBuilderService linkApprovedPlaceholders", () => {
+  it("keeps eccentric prescription_type when linking a strengthening placeholder", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const exerciseId = id("ex-strength-link");
+      const versionId = id("ver-strength-link");
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerId,
+        exerciseId,
+        versionId,
+      );
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-strength-ecc"),
+        "Squat",
+      );
+      await service.createProgram(practitionerId, {
+        programId: id("prog-strength-ecc"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-strength-ecc"), {
+        rowId: id("row-strength-ecc"),
+        exerciseRequestId: id("req-strength-ecc"),
+        prescriptionType: "eccentric",
+      });
+      await markExerciseRequestApproved(storage, id("req-strength-ecc"), exerciseId);
+      await linkApprovedPlaceholders(storage, id("req-strength-ecc"), versionId);
+      const view = await service.getProgram(practitionerId, id("prog-strength-ecc"));
+      expect(view.rows[0]?.kind).toBe("exercise");
+      expect(view.rows[0]?.prescription_type).toBe("eccentric");
+      const row = await new ProgramRowsRepository(storage).findById(
+        id("row-strength-ecc"),
+      );
+      expect(row?.prescription_type).toBe("eccentric");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("linkApprovedPlaceholders drops dose fields not allowed for the row prescription type", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const exerciseId = id("ex-link-filter");
+      const versionId = id("ver-link-filter");
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerId,
+        exerciseId,
+        versionId,
+      );
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-link-filter-params"),
+        "Squat",
+      );
+      await service.createProgram(practitionerId, {
+        programId: id("prog-link-filter"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-link-filter"), {
+        rowId: id("row-link-filter"),
+        exerciseRequestId: id("req-link-filter-params"),
+        prescriptionType: "isometric",
+        params: { hold_s: 10, days_per_week: 3 },
+      });
+      await storage.run(`UPDATE program_rows SET params_json = ? WHERE id = ?`, [
+        JSON.stringify({ hold_s: 10, days_per_week: 3, per_day: 2 }),
+        id("row-link-filter"),
+      ]);
+      await markExerciseRequestApproved(
+        storage,
+        id("req-link-filter-params"),
+        exerciseId,
+      );
+      await linkApprovedPlaceholders(storage, id("req-link-filter-params"), versionId);
+      const view = await service.getProgram(practitionerId, id("prog-link-filter"));
+      expect(view.rows[0]?.kind).toBe("exercise");
+      expect(view.rows[0]?.params).toEqual({ hold_s: 10, days_per_week: 3 });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("skips incompatible prescription types and returns the skipped count", async () => {
     const { storage, service } = await openService();
     try {
@@ -914,46 +1105,6 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
       expect(misfitAfter?.prescription_type).toBe("isometric");
       expect(misfitAfter?.note).toBe("misfit");
       expect(misfitAfter?.params_json).toBe(misfitBefore?.params_json);
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("keeps eccentric prescription_type when linking a strengthening placeholder", async () => {
-    const { storage, service } = await openService();
-    try {
-      const practitionerId = await seedPractitioner(storage);
-      const exerciseId = id("ex-strength-link");
-      const versionId = id("ver-strength-link");
-      await seedStrengtheningApprovedExercise(
-        storage,
-        practitionerId,
-        exerciseId,
-        versionId,
-      );
-      await seedOpenExerciseRequest(
-        storage,
-        practitionerId,
-        id("req-strength-ecc"),
-        "Squat",
-      );
-      await service.createProgram(practitionerId, {
-        programId: id("prog-strength-ecc"),
-      });
-      await service.addPlaceholderRow(practitionerId, id("prog-strength-ecc"), {
-        rowId: id("row-strength-ecc"),
-        exerciseRequestId: id("req-strength-ecc"),
-        prescriptionType: "eccentric",
-      });
-      await markExerciseRequestApproved(storage, id("req-strength-ecc"), exerciseId);
-      await linkApprovedPlaceholders(storage, id("req-strength-ecc"), versionId);
-      const view = await service.getProgram(practitionerId, id("prog-strength-ecc"));
-      expect(view.rows[0]?.kind).toBe("exercise");
-      expect(view.rows[0]?.prescription_type).toBe("eccentric");
-      const row = await new ProgramRowsRepository(storage).findById(
-        id("row-strength-ecc"),
-      );
-      expect(row?.prescription_type).toBe("eccentric");
     } finally {
       storage.close();
     }

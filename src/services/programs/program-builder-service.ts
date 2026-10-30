@@ -10,6 +10,8 @@ import {
 } from "../../domain/exercise-types.js";
 import {
   ParamValidationError,
+  assertExerciseParamKeysAllowedForPrescriptionType,
+  filterExerciseParamsForPrescriptionType,
   validateExerciseParams,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
@@ -175,7 +177,10 @@ export class ProgramBuilderService {
         version,
         row.prescription_type,
       );
-      const params = parseExerciseParamsJson(row.params_json);
+      const params = filterExerciseParamsForPrescriptionType(
+        parseExerciseParamsJson(row.params_json),
+        row.prescription_type,
+      );
       const textSnapshot = buildProgramRowTextSnapshot({
         version,
         overrides: resolved.overrides,
@@ -389,6 +394,15 @@ export class ProgramBuilderService {
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
+  /**
+   * Updates a program row's prescription type, doses, or note.
+   *
+   * When prescriptionType changes, stored doses are trimmed to keys allowed for the
+   * new type (per programModel PARAM_META / CORE). Shared keys keep their values;
+   * keys the new type allows but the row did not have stay unset (no defaults).
+   * Params in the same request are validated against the new type; disallowed keys
+   * return invalid_input and leave the row unchanged.
+   */
   async updateRow(
     practitionerId: string,
     programId: string,
@@ -403,9 +417,22 @@ export class ProgramBuilderService {
     const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
     await this.requireOwnedProgram(practitionerId, validatedProgramId);
     const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
+    const targetPrescriptionType = input.prescriptionType
+      ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
+      : row.prescription_type;
+    const prescriptionTypeChanging =
+      input.prescriptionType !== undefined &&
+      targetPrescriptionType !== row.prescription_type;
     let params = parseExerciseParamsJson(row.params_json);
+    if (prescriptionTypeChanging) {
+      params = filterExerciseParamsForPrescriptionType(params, targetPrescriptionType);
+    }
     if (input.params) {
       try {
+        assertExerciseParamKeysAllowedForPrescriptionType(
+          input.params,
+          targetPrescriptionType,
+        );
         params = validateExerciseParams(input.params);
       } catch (err) {
         this.mapParamError(err);
@@ -413,9 +440,7 @@ export class ProgramBuilderService {
     }
     const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     if (row.exercise_request_id) {
-      const prescriptionType = input.prescriptionType
-        ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
-        : row.prescription_type;
+      const prescriptionType = targetPrescriptionType;
       try {
         await this.rows.replaceRow({
           id: row.id,
@@ -441,9 +466,7 @@ export class ProgramBuilderService {
     if (!version) {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
-    const prescriptionType = input.prescriptionType
-      ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
-      : row.prescription_type;
+    const prescriptionType = targetPrescriptionType;
     this.assertPrescriptionAllowed(version, prescriptionType);
     try {
       await this.rows.replaceRow({
