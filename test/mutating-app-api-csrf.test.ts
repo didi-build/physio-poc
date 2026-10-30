@@ -13,56 +13,36 @@ import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-m
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
+  seedExercise,
   seedPractitioner,
+  TS,
+  VERSION_INSERT_SQL,
+  versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
 const PRACTITIONER_ID = testOpaqueEntityId("csrf-practitioner");
-const EXERCISE_ID = "ex-csrf-1";
+const EXERCISE_ID = testOpaqueEntityId("csrf-exercise");
+const VERSION_ID = testOpaqueEntityId("csrf-version");
 
-async function seedApproved(
+async function seedApprovedExercise(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   practitionerId: string,
   exerciseId: string,
 ): Promise<void> {
+  await seedExercise(storage, practitionerId, exerciseId);
   await storage.run(
-    "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
-    [exerciseId, "stretch", practitionerId, "2026-01-01T00:00:00.000Z"],
-  );
-  await storage.run(
-    `INSERT INTO exercise_versions (
-      id, exercise_id, version_number, status, approved_by, approved_at,
-      title, description, equipment, starting_position, steps,
-      common_mistakes, regressions, progressions, precautions,
-      cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
-      media_set_id, change_summary, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      "ver-csrf-1",
-      exerciseId,
-      1,
-      "approved",
-      practitionerId,
-      "2026-01-01T00:00:00.000Z",
-      "Example",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      "",
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      "2026-01-01T00:00:00.000Z",
-    ],
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      id: VERSION_ID,
+      exercise_id: exerciseId,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title: "Example",
+    }),
   );
 }
 
@@ -103,7 +83,7 @@ describe("mutating app API CSRF guard", () => {
   it("returns 403 for cross-origin mutating requests with a valid session and changes nothing", async () => {
     const storage = await openMigratedDatabase();
     await seedPractitioner(storage, PRACTITIONER_ID);
-    await seedApproved(storage, PRACTITIONER_ID, EXERCISE_ID);
+    await seedApprovedExercise(storage, PRACTITIONER_ID, EXERCISE_ID);
     const auth = new FakeAuthPort({
       practitioner: {
         practitionerId: PRACTITIONER_ID,
@@ -154,7 +134,7 @@ describe("mutating app API CSRF guard", () => {
   it("returns 415 for non-JSON content types and changes nothing", async () => {
     const storage = await openMigratedDatabase();
     await seedPractitioner(storage, PRACTITIONER_ID);
-    await seedApproved(storage, PRACTITIONER_ID, EXERCISE_ID);
+    await seedApprovedExercise(storage, PRACTITIONER_ID, EXERCISE_ID);
     const auth = new FakeAuthPort({
       practitioner: {
         practitionerId: PRACTITIONER_ID,
@@ -197,7 +177,7 @@ describe("mutating app API CSRF guard", () => {
   it("allows same-origin JSON mutating requests", async () => {
     const storage = await openMigratedDatabase();
     await seedPractitioner(storage, PRACTITIONER_ID);
-    await seedApproved(storage, PRACTITIONER_ID, EXERCISE_ID);
+    await seedApprovedExercise(storage, PRACTITIONER_ID, EXERCISE_ID);
     const auth = new FakeAuthPort({
       practitioner: {
         practitionerId: PRACTITIONER_ID,

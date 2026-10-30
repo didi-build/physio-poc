@@ -11,6 +11,7 @@ import { requiresPractitionerSession } from "../src/auth/public-routes.js";
 import {
   MUTATING_APP_API_ROUTE_SAMPLES,
   mutatingAppApiRouteSampleKey,
+  mutatingAppApiRouteSampleKeysFromHandlerTables,
 } from "../src/http/mutating-app-api-route-registry.js";
 import { isMutatingAppApiPath } from "../src/http/mutating-app-api-csrf.js";
 
@@ -49,22 +50,13 @@ describe("HTTP route table (session guards)", () => {
     }
   });
 
-  it("covers every mutating app API route sample with the CSRF guard predicate", () => {
-    const keys = MUTATING_APP_API_ROUTE_SAMPLES.map(
-      mutatingAppApiRouteSampleKey,
-    ).sort();
-    expect(keys).toEqual(
-      [
-        "DELETE /api/practitioners/11111111-1111-4111-8111-111111111111/my-exercises/ex-example",
-        "PATCH /api/practitioners/11111111-1111-4111-8111-111111111111/my-exercises/ex-example",
-        "POST /api/practitioners/11111111-1111-4111-8111-111111111111/exercise-versions/ver-example/media/generate",
-        "POST /api/practitioners/11111111-1111-4111-8111-111111111111/exercise-versions/ver-example/media/regenerate",
-        "POST /api/practitioners/11111111-1111-4111-8111-111111111111/my-exercises/ex-example",
-      ].sort(),
-    );
+  it("merges every handler mutating route table into registry samples", () => {
     for (const sample of MUTATING_APP_API_ROUTE_SAMPLES) {
       expect(isMutatingAppApiPath(sample.samplePath, sample.method)).toBe(true);
       expect(requiresPractitionerSession(sample.samplePath, sample.method)).toBe(true);
     }
+    expect(
+      MUTATING_APP_API_ROUTE_SAMPLES.map(mutatingAppApiRouteSampleKey).sort(),
+    ).toEqual(mutatingAppApiRouteSampleKeysFromHandlerTables());
   });
 });

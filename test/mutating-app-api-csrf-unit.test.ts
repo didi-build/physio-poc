@@ -7,6 +7,8 @@ import {
   requestSourceOrigin,
 } from "../src/http/mutating-app-api-csrf.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 describe("mutating app API CSRF (unit)", () => {
   it("recognizes mutating app API paths but not Better Auth or GET", () => {
@@ -72,6 +74,34 @@ describe("mutating app API CSRF (unit)", () => {
     });
     expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(415);
   });
+
+  it("rejects application/x-www-form-urlencoded with 415", () => {
+    expect(isApplicationJsonContentType("application/x-www-form-urlencoded")).toBe(
+      false,
+    );
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "https://physio.test.example",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(415);
+  });
+
+  it("rejects multipart/form-data with 415", () => {
+    expect(isApplicationJsonContentType("multipart/form-data; boundary=test")).toBe(
+      false,
+    );
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "https://physio.test.example",
+        "Content-Type": "multipart/form-data; boundary=test",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(415);
+  });
 });
 
 describe("mutating app API CSRF regression guards (mutant killers)", () => {
@@ -113,5 +143,28 @@ describe("mutating app API CSRF regression guards (mutant killers)", () => {
     expect(isMutatingAppApiPath("/api/practitioners/x/my-exercises/y", "PUT")).toBe(
       true,
     );
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "PUT",
+      headers: {
+        Origin: "https://evil.example.com",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)?.status).toBe(403);
+  });
+
+  it("accepts Origin equal to AUTH_BASE_URL when request and web app origins differ", () => {
+    const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET, {
+      webAppBaseUrl: "https://web-only.example.com",
+      authBaseUrl: "http://127.0.0.1:8787",
+    });
+    const request = new Request("https://physio.test.example/api/x", {
+      method: "POST",
+      headers: {
+        Origin: "http://127.0.0.1:8787",
+        "Content-Type": "application/json",
+      },
+    });
+    expect(rejectMutatingAppApiCsrf(request, config)).toBeNull();
   });
 });
