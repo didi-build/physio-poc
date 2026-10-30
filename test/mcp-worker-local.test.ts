@@ -55,7 +55,7 @@ describe("Physio MCP Worker (wrangler dev --local smoke)", () => {
         name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
         arguments: { program_code: "PRG-STUB01", publish: true },
       });
-      expect(publishResult.isError).not.toBe(true);
+      expect(publishResult.isError).toBe(true);
     } finally {
       await client.close();
     }

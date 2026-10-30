@@ -2,9 +2,10 @@ import type { JsonSchema } from "./json-schema.js";
 import {
   ambiguousProgramMatchSchema,
   approvedExerciseSummarySchema,
+  builderLinkOutputProperty,
   exerciseCategorySchema,
-  exerciseNotFoundSchema,
   expiresAtOutputProperty,
+  manageLinkOutputProperty,
   manageUrlOutputProperty,
   nullableProgramVersionRefSchema,
   paginationCursorInputProperty,
@@ -13,16 +14,23 @@ import {
   pdfUrlOutputProperty,
   prescriptionTypeSchema,
   programCodeProperty,
-  programRowInputSchema,
-  programRowOutputSchema,
   programTitleProperty,
-  publishOverridesInputSchema,
+  publishLinkOutputProperty,
+  routineIdProperty,
   routineSummarySchema,
   searchLinkOutputProperty,
   shareLinkOutputProperty,
   summaryOutputProperty,
 } from "./json-schema.js";
 import { FREE_TEXT_NO_PATIENT_DETAILS, MAX_LENGTH_QUERY } from "./text-limits.js";
+
+export const MCP_TOOL_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  openWorldHint: false,
+} as const;
+
+export type PhysioMcpToolAnnotations = typeof MCP_TOOL_ANNOTATIONS;
 
 export const SEARCH_APPROVED_EXERCISES_TOOL_NAME = "search_approved_exercises" as const;
 
@@ -88,7 +96,7 @@ export const searchApprovedExercisesOutputSchema: JsonSchema = {
 export const SEARCH_ROUTINES_TOOL_NAME = "search_routines" as const;
 
 export const searchRoutinesDescription =
-  "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.";
+  "Search routines (read-only): cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information.";
 
 export const searchRoutinesInputSchema: JsonSchema = {
   type: "object",
@@ -123,61 +131,35 @@ export const searchRoutinesOutputSchema: JsonSchema = {
   },
 };
 
-export const BUILD_OR_EDIT_PROGRAM_TOOL_NAME = "build_or_edit_program" as const;
+export const GET_PROGRAM_BUILDER_LINK_TOOL_NAME = "get_program_builder_link" as const;
 
-export const buildOrEditProgramDescription =
-  "Create or replace a program. Omit program_code to create; pass program_code to replace that program's full rows list (no incremental ops). Create from a routine with from_routine_id in one call; optional rows replaces the copied rows. Records source_routine_id on the program. Each row uses exercise_version_id or exercise_name, not both; the server resolves names and omits unresolved rows (no placeholder rows). Unresolved names appear in exercises_not_found with up to three candidates and a prefilled web app search link (URL built from server config). Publishing and link expiry use get_program_share_link_or_pdf. Closing a link stays in the web app. Do not include patient information in program_title or row_notes.";
+export const getProgramBuilderLinkDescription =
+  "Read-only deep link to the program builder in the web app. Pass program_code to open that program, or from_routine_id (UUID v4 opaque id) to start a new program from that routine, or omit both for a new blank program. When both program_code and from_routine_id are given, program_code wins and from_routine_id is ignored. No rows are passed in the link. Publishing and share links use get_program_share_link_or_pdf. Do not pass patient information.";
 
-export const buildOrEditProgramInputSchema: JsonSchema = {
+export const getProgramBuilderLinkInputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
     program_code: programCodeProperty,
-    program_title: programTitleProperty,
     from_routine_id: {
-      type: "string",
+      ...routineIdProperty,
       description:
-        "When creating a new program, copy rows from this routine id. Optional rows replaces the copy in the same call.",
-    },
-    rows: {
-      type: "array",
-      items: programRowInputSchema,
-      description: "Full rows list that replaces the program contents on save.",
+        "When creating a new program, open the builder seeded from this routine id.",
     },
   },
 };
 
-export const buildOrEditProgramOutputSchema: JsonSchema = {
+export const getProgramBuilderLinkOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "summary",
-    "share_link",
-    "manage_url",
-    "program_code",
-    "program_title",
-    "rows",
-  ],
+  required: ["summary", "share_link", "builder_link"],
   properties: {
     summary: summaryOutputProperty,
     share_link: shareLinkOutputProperty,
+    builder_link: builderLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
     program_code: programCodeProperty,
-    program_title: programTitleProperty,
-    source_routine_id: {
-      type: "string",
-      description: "Routine id when this program was created from a routine.",
-    },
-    rows: {
-      type: "array",
-      items: programRowOutputSchema,
-    },
-    exercises_not_found: {
-      type: "array",
-      items: exerciseNotFoundSchema,
-      description:
-        "Exercise names that were not resolved to exactly one approved exercise.",
-    },
+    from_routine_id: routineIdProperty,
   },
 };
 
@@ -185,7 +167,7 @@ export const GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME =
   "get_program_share_link_or_pdf" as const;
 
 export const getProgramShareLinkOrPdfDescription =
-  "Read or publish a program share link and PDF. Provide program_code or program_title. Never publishes unless publish is true. Set publish to true only after the practitioner explicitly confirms in the conversation. Without publish, returns draft and published (each null or a version snapshot). When a published version exists, also returns its share_link, pdf_url, and expires_at; share_link and pdf_url are empty strings when nothing is published yet. The summary should ask which version the practitioner wants and whether to publish with defaults or overrides. With publish true, publishes the current draft and returns share_link, pdf_url, and expires_at (republishing replaces the live version at the same share link). Optional overrides.expires_in sets expiry (1_week, 30_days, 90_days, 1_year, never, or custom_date with overrides.custom_date); omit overrides to use the practitioner default. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Deleting a link is web app only.";
+  "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Do not pass patient information.";
 
 export const getProgramShareLinkOrPdfInputSchema: JsonSchema = {
   type: "object",
@@ -193,25 +175,29 @@ export const getProgramShareLinkOrPdfInputSchema: JsonSchema = {
   properties: {
     program_code: programCodeProperty,
     program_title: programTitleProperty,
-    publish: {
-      type: "boolean",
-      default: false,
-      description:
-        "When false, read only. When true, publish the current draft after explicit practitioner confirmation in chat.",
-    },
-    overrides: publishOverridesInputSchema,
   },
 };
 
 export const getProgramShareLinkOrPdfOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "share_link", "manage_url", "pdf_url", "draft", "published"],
+  required: [
+    "summary",
+    "share_link",
+    "manage_url",
+    "pdf_url",
+    "publish_link",
+    "manage_link",
+    "draft",
+    "published",
+  ],
   properties: {
     summary: summaryOutputProperty,
     share_link: shareLinkOutputProperty,
     pdf_url: pdfUrlOutputProperty,
     manage_url: manageUrlOutputProperty,
+    publish_link: publishLinkOutputProperty,
+    manage_link: manageLinkOutputProperty,
     expires_at: expiresAtOutputProperty,
     draft: nullableProgramVersionRefSchema,
     published: nullableProgramVersionRefSchema,

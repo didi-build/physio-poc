@@ -595,4 +595,55 @@ d1_tables:
       params_json:
         whose: operational
 
+  exercise_media_sets:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise version deleted
+      who_can_see: all_practitioners when public; draft author and reviewers only via app
+      source: migrations/0003_exercise_media.sql
+      verified: true
+    columns:
+      id: {}
+      start_object_key:
+        notes: Object storage key (MediaStoragePort wiring in DIDI-1040); no patient information in key path
+      end_object_key:
+        notes: Object storage key (MediaStoragePort wiring in DIDI-1040); no patient information in key path
+      start_provider_url:
+        notes: fal CDN URL for the start image when returned by the provider; used to chain end-image edit
+      visibility:
+        notes: draft until exercise version approved; public when live
+      created_at: {}
+
+  media_regenerations:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: server-side only
+      source: migrations/0003_exercise_media.sql
+      verified: true
+    columns:
+      id:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Practitioner id for regeneration audit row
+        purpose: daily regeneration cap
+        processors: [Cloudflare]
+        retention: 30 days after created_at
+        notes: Purged by scheduled job in DIDI-1073
+      exercise_id:
+        whose: operational
+      exercise_version_id:
+        whose: operational
+      scope:
+        whose: operational
+      had_note:
+        whose: operational
+        notes: audit flag only; regeneration note text is never stored
+      created_at:
+        whose: operational
+
 other_items: []

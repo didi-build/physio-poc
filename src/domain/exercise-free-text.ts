@@ -6,6 +6,7 @@ import {
   MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+  MAX_LENGTH_MEDIA_REGENERATION_NOTE,
   MAX_LENGTH_ROW_NOTES,
 } from "../mcp-connector/text-limits.js";
 
@@ -170,6 +171,24 @@ export function validateConditionLabel(label: string): string {
   }
   assertMaxLength(trimmed, MAX_LENGTH_PROGRAM_TITLE, "Condition label");
   assertNoPatientDetails(trimmed, "Condition label");
+  return trimmed;
+}
+
+/**
+ * Regeneration note for exercise media: prompt-only, never persisted (CTO ruling).
+ */
+export function validateMediaRegenerationNote(
+  note: string | null | undefined,
+): string | null {
+  if (note === null || note === undefined || note === "") {
+    return null;
+  }
+  const trimmed = note.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  assertMaxLength(trimmed, MAX_LENGTH_MEDIA_REGENERATION_NOTE, "Regeneration note");
+  assertNoPatientDetails(trimmed, "Regeneration note");
   return trimmed;
 }
 
