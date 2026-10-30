@@ -106,8 +106,8 @@ export function validateRequestNote(note: string | null | undefined): string | n
   if (note === null || note === undefined || note === "") {
     return null;
   }
-  assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Note");
-  assertNoPatientDetails(note, "Note");
+  assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Exercise note");
+  assertNoPatientDetails(note, "Exercise note");
   return note;
 }
 

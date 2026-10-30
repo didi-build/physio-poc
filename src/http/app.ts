@@ -3,6 +3,7 @@ import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
+import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
@@ -52,6 +53,10 @@ export async function handleRequest(
     const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
     if (exerciseResponse) {
       return exerciseResponse;
+    }
+    const requestResponse = await handleExerciseRequestsHttpRequest(request, deps);
+    if (requestResponse) {
+      return requestResponse;
     }
   }
 

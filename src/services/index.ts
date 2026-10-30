@@ -3,3 +3,7 @@ export {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
 } from "./exercise-library/index.js";
+export {
+  ExerciseRequestsService,
+  ExerciseRequestsServiceError,
+} from "./exercise-requests/index.js";
