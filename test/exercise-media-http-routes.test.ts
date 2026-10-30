@@ -49,6 +49,25 @@ async function seedDraftVersion(
 }
 
 describe("Exercise media HTTP routes (integration)", () => {
+  it("returns 400 invalid_input when access is missing or not public or internal", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { versionId } = await seedDraftVersion(storage);
+      const deps = mediaHttpDeps(storage);
+      for (const url of [
+        `http://127.0.0.1/api/exercise-versions/${versionId}/media`,
+        `http://127.0.0.1/api/exercise-versions/${versionId}/media?access=bogus`,
+      ]) {
+        const response = await handleRequest(new Request(url), deps);
+        expect(response.status).toBe(400);
+        const payload = (await response.json()) as { error?: string };
+        expect(payload.error).toBe("invalid_input");
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
   it("generates draft media and blocks public serving until approved", async () => {
     const storage = await openMigratedDatabase();
     try {
