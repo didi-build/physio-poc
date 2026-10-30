@@ -1,15 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
-import { createPhysioMcpHttpHandler } from "../adapters/workers/mcp/handle-mcp-http-request.js";
+import { createNodeAppDependencies } from "../adapters/node/create-node-app-dependencies.js";
+import { loadLocalDevEnv } from "../adapters/node/load-local-dev-env.js";
 import {
   handleRequest,
   type AppDependencies,
   type AppRouteHandler,
 } from "../http/app.js";
 import { handleExerciseMediaRequest } from "../http/routes/exercise-media.js";
-import { resolveWebAppBaseUrl } from "../http/config.js";
-import { InMemoryObjectStorage } from "../storage/adapters/memory/in-memory-object-storage.js";
-import { InMemorySqlStorage } from "../storage/adapters/memory/in-memory-sql-storage.js";
 
 export type NodeServerOptions = {
   port?: number;
@@ -24,20 +22,6 @@ export function nodeExerciseMediaRouteHandlers(nodeEnv?: string): AppRouteHandle
     return [handleExerciseMediaRequest];
   }
   return [];
-}
-
-function defaultDependencies(): AppDependencies {
-  const config = {
-    webAppBaseUrl: resolveWebAppBaseUrl(process.env.WEB_APP_BASE_URL),
-  };
-  return {
-    sql: new InMemorySqlStorage(),
-    objects: new InMemoryObjectStorage(),
-    config,
-    mcp: createPhysioMcpHttpHandler(config),
-    enableUnauthenticatedApi: true,
-    extraRouteHandlers: nodeExerciseMediaRouteHandlers(),
-  };
 }
 
 async function readRequestBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
@@ -90,13 +74,38 @@ export async function writeWebResponse(
   res.end(buffer);
 }
 
+export async function createDefaultNodeDependencies(): Promise<AppDependencies> {
+  loadLocalDevEnv();
+  const deps = await createNodeAppDependencies({
+    WEB_APP_BASE_URL: process.env.WEB_APP_BASE_URL,
+    AUTH_BASE_URL: process.env.AUTH_BASE_URL,
+    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    PHYSIO_ALLOWED_GOOGLE_EMAILS: process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS,
+    PHYSIO_USE_FAKE_GOOGLE_PROVIDER: process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER,
+    NODE_ENV: process.env.NODE_ENV,
+  });
+  return {
+    ...deps,
+    extraRouteHandlers: nodeExerciseMediaRouteHandlers(process.env.NODE_ENV),
+  };
+}
+
 export function createNodeServer(options: NodeServerOptions = {}) {
-  const deps = options.deps ?? defaultDependencies();
   const port = options.port ?? 8787;
   const host = options.host ?? "127.0.0.1";
+  let depsPromise: Promise<AppDependencies> | null = null;
 
   const server = createServer(async (req, res) => {
     try {
+      let deps: AppDependencies;
+      if (options.deps) {
+        deps = options.deps;
+      } else {
+        depsPromise ??= createDefaultNodeDependencies();
+        deps = await depsPromise;
+      }
       const request = await readWebRequest(req);
       const response = await handleRequest(request, deps);
       await writeWebResponse(res, response);

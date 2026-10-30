@@ -18,12 +18,14 @@ import {
   VERSION_INSERT_SQL,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-data.js";
 import { ExerciseBodyRegionsRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -37,8 +39,8 @@ async function seedApproved(
     bodyRegionId?: string;
   } = {},
 ) {
-  const exerciseId = options.exerciseId ?? "ex-1";
-  const versionId = options.versionId ?? `ver-${exerciseId}`;
+  const exerciseId = options.exerciseId ?? id("ex-1");
+  const versionId = options.versionId ?? id(`ver-${exerciseId}`);
   await seedExercise(storage, practId, exerciseId);
   await storage.run(VERSION_INSERT_SQL, [
     ...versionInsertBindings({
@@ -54,7 +56,7 @@ async function seedApproved(
   if (options.alias) {
     const aliases = new ExerciseAliasesRepository(storage);
     await aliases.insert({
-      id: `alias-${exerciseId}-${options.alias}`,
+      id: id(`alias-${exerciseId}-${options.alias}`),
       exerciseId,
       alias: options.alias,
       createdAt: TS,
@@ -67,13 +69,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -84,7 +97,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
       await new TypeDefaultsRepository(storage).upsertPractitionerDefaults(
-        "td-1",
+        id("td-1"),
         practId,
         "stretching",
         { reps: 7 },
@@ -115,13 +128,13 @@ describe("Exercise library QA round 2 (integration)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-long",
+        id: id("alias-long"),
         exerciseId,
         alias: "LONGALIAS",
         createdAt: TS,
       });
       await aliases.insert({
-        id: "alias-short",
+        id: id("alias-short"),
         exerciseId,
         alias: "SLR",
         createdAt: TS,
@@ -149,12 +162,12 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-low",
+        exerciseId: id("ex-low"),
         title: "AAA low usage",
         approvedAt: "2026-03-01T00:00:00.000Z",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-high",
+        exerciseId: id("ex-high"),
         title: "ZZZ high usage",
         approvedAt: "2026-01-01T00:00:00.000Z",
       });
@@ -162,12 +175,12 @@ describe("Exercise library QA round 2 (integration)", () => {
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-low",
+        exerciseId: id("ex-low"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-high",
+        exerciseId: id("ex-high"),
         savedAt: TS,
         lastUsedAt: TS,
       });
@@ -176,13 +189,13 @@ describe("Exercise library QA round 2 (integration)", () => {
       const defaultSort = await service.searchApprovedExercises({
         practitionerId: practId,
       });
-      expect(defaultSort.exercises[0]?.exercise_id).toBe("ex-high");
+      expect(defaultSort.exercises[0]?.exercise_id).toBe(id("ex-high"));
 
       const newest = await service.searchApprovedExercises({
         practitionerId: practId,
         sort: "newest",
       });
-      expect(newest.exercises[0]?.exercise_id).toBe("ex-low");
+      expect(newest.exercises[0]?.exercise_id).toBe(id("ex-low"));
     } finally {
       storage.close();
     }
@@ -195,7 +208,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
 
       const { exerciseId: freshId } = await seedApproved(storage, practId, {
-        exerciseId: "ex-fresh",
+        exerciseId: id("ex-fresh"),
         title: "Fresh",
       });
       const firstSave = await service.saveToMyExercises(practId, freshId);
@@ -206,7 +219,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       ).toBeNull();
 
       const { exerciseId } = await seedApproved(storage, practId, {
-        exerciseId: "ex-undo",
+        exerciseId: id("ex-undo"),
         title: "Lib",
       });
       await service.saveToMyExercises(practId, exerciseId);
@@ -303,11 +316,11 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-percent",
+        exerciseId: id("ex-percent"),
         title: "100% effort",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-other",
+        exerciseId: id("ex-other"),
         title: "100X effort",
       });
 
@@ -317,7 +330,7 @@ describe("Exercise library QA round 2 (integration)", () => {
         query: "100%",
       });
       expect(hit.exercises).toHaveLength(1);
-      expect(hit.exercises[0]?.exercise_id).toBe("ex-percent");
+      expect(hit.exercises[0]?.exercise_id).toBe(id("ex-percent"));
     } finally {
       storage.close();
     }
@@ -328,24 +341,24 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-knee",
+        exerciseId: id("ex-knee"),
         title: "Knee move",
         bodyRegionId: "br-knee",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-hip",
+        exerciseId: id("ex-hip"),
         title: "Hip move",
         bodyRegionId: "br-hip",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-knee",
+        exerciseId: id("ex-knee"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-hip",
+        exerciseId: id("ex-hip"),
         savedAt: TS,
       });
 
@@ -361,7 +374,7 @@ describe("Exercise library QA round 2 (integration)", () => {
         ...list.sections.recently_used_and_saved,
       ];
       expect(allItems).toHaveLength(1);
-      expect(allItems[0]?.exercise_id).toBe("ex-knee");
+      expect(allItems[0]?.exercise_id).toBe(id("ex-knee"));
     } finally {
       storage.close();
     }
@@ -378,12 +391,12 @@ describe("Exercise library QA round 2 (integration)", () => {
         });
       }
       await seedApproved(storage, practId, {
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         title: "Saved unique title",
       });
       await new PractitionerExercisesRepository(storage).upsert({
         practitionerId: practId,
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         savedAt: TS,
       });
 
@@ -455,13 +468,13 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
-      const deps = apiDeps(storage);
+      const { sessionCookie, ...deps } = apiDeps(storage, practId);
       const base = `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`;
 
       const missingSnapshot = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({ action: "undo", undo: { practitioner_id: practId } }),
         }),
         deps,
@@ -471,7 +484,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badJson = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -495,7 +508,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const looseDate = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -524,7 +537,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badParams = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {

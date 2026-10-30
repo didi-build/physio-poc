@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Navigate, type RouteObject } from "react-router-dom";
 import {
   PHYSIO_APP_ROUTE_PATTERNS,
@@ -6,6 +7,16 @@ import {
   physioAppSpaRoutePath,
   type PhysioAppSpaRouteName,
 } from "../app-routes.js";
+import { PublicLinkPage } from "./pages/PublicLinkPage.js";
+import { SignInPage } from "./pages/SignInPage.js";
+import { normalizeReturnTo } from "./routing/return-to.js";
+
+function SignInRoute() {
+  const [params] = useSearchParams();
+  const returnTo = normalizeReturnTo(params.get("returnTo"));
+  const authError = params.get("error");
+  return <SignInPage returnTo={returnTo} authError={authError} />;
+}
 
 export type PhysioAppRouteElements = Partial<
   Record<PhysioAppSpaRouteName, ReactElement | null>
@@ -17,6 +28,8 @@ export function createPhysioAppRouteObjects(
   routeElements: PhysioAppRouteElements = {},
 ): RouteObject[] {
   return [
+    { path: "/sign-in", element: <SignInRoute /> },
+    { path: "/l/:code", element: <PublicLinkPage /> },
     {
       element: shellElement,
       children: [

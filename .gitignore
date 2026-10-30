@@ -20,6 +20,8 @@ media-test-output/
 .env
 .env.*
 !.env.example
+.dev.vars
+!.dev.vars.example
 
 # Logs
 logs/

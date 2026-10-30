@@ -14,10 +14,13 @@ import {
   VERSION_INSERT_SQL,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -30,8 +33,8 @@ async function seedApproved(
     alias?: string;
   } = {},
 ) {
-  const exerciseId = options.exerciseId ?? "ex-1";
-  const versionId = options.versionId ?? `ver-${exerciseId}`;
+  const exerciseId = options.exerciseId ?? id("ex-1");
+  const versionId = options.versionId ?? id(`ver-${exerciseId}`);
   await seedExercise(storage, practId, exerciseId);
   if (options.category && options.category !== "stretch") {
     await storage.run("UPDATE exercises SET category = ? WHERE id = ?", [
@@ -53,7 +56,7 @@ async function seedApproved(
   if (options.alias) {
     const aliases = new ExerciseAliasesRepository(storage);
     await aliases.insert({
-      id: `alias-${exerciseId}-${options.alias}`,
+      id: id(`alias-${exerciseId}-${options.alias}`),
       exerciseId,
       alias: options.alias,
       createdAt: TS,
@@ -62,13 +65,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -78,13 +92,13 @@ function undoPost(
   exerciseId: string,
   undoBody: unknown,
 ) {
-  const deps = apiDeps(storage);
+  const { sessionCookie, ...deps } = apiDeps(storage, practId);
   return handleRequest(
     new Request(
       `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: undoBody }),
       },
     ),
@@ -102,7 +116,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-slr",
+        id: id("alias-slr"),
         exerciseId,
         alias: "SLR",
         createdAt: TS,
@@ -129,13 +143,13 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
       const aliases = new ExerciseAliasesRepository(storage);
       await aliases.insert({
-        id: "alias-slr-raise",
+        id: id("alias-slr-raise"),
         exerciseId,
         alias: "SLR raise",
         createdAt: TS,
       });
       await aliases.insert({
-        id: "alias-slr",
+        id: id("alias-slr"),
         exerciseId,
         alias: "SLR",
         createdAt: TS,
@@ -196,24 +210,24 @@ describe("Exercise library QA round 3 (tests only)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-stretch",
+        exerciseId: id("ex-stretch"),
         title: "Alpha Shared token stretch",
         category: "stretch",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-strength",
+        exerciseId: id("ex-strength"),
         title: "Zulu Shared token strength",
         category: "strengthening",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-stretch",
+        exerciseId: id("ex-stretch"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-strength",
+        exerciseId: id("ex-strength"),
         savedAt: TS,
       });
 
@@ -230,9 +244,9 @@ describe("Exercise library QA round 3 (tests only)", () => {
         ...list.sections.recently_used_and_saved,
       ];
       expect(items).toHaveLength(1);
-      expect(items[0]?.exercise_id).toBe("ex-strength");
+      expect(items[0]?.exercise_id).toBe(id("ex-strength"));
       expect(items[0]?.category).toBe("Strengthening");
-      expect(items.some((item) => item.exercise_id === "ex-stretch")).toBe(false);
+      expect(items.some((item) => item.exercise_id === id("ex-stretch"))).toBe(false);
     } finally {
       storage.close();
     }
@@ -243,16 +257,16 @@ describe("Exercise library QA round 3 (tests only)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         title: "Zulu Saved needle saved",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-unsaved",
+        exerciseId: id("ex-unsaved"),
         title: "Alpha Saved needle library only",
       });
       await new PractitionerExercisesRepository(storage).upsert({
         practitionerId: practId,
-        exerciseId: "ex-saved",
+        exerciseId: id("ex-saved"),
         savedAt: TS,
       });
 
@@ -268,8 +282,8 @@ describe("Exercise library QA round 3 (tests only)", () => {
         ...list.sections.recently_used_and_saved,
       ];
       expect(items).toHaveLength(1);
-      expect(items[0]?.exercise_id).toBe("ex-saved");
-      expect(items.some((item) => item.exercise_id === "ex-unsaved")).toBe(false);
+      expect(items[0]?.exercise_id).toBe(id("ex-saved"));
+      expect(items.some((item) => item.exercise_id === id("ex-unsaved"))).toBe(false);
     } finally {
       storage.close();
     }
@@ -279,24 +293,28 @@ describe("Exercise library QA round 3 (tests only)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
-      const otherId = await seedPractitioner(storage, "pract-2", "other@example.com");
+      const otherId = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("pract-2"),
+        "other@example.com",
+      );
       await seedApproved(storage, practId, {
-        exerciseId: "ex-unrelated",
+        exerciseId: id("ex-unrelated"),
         title: "Unrelated saved move",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-match",
+        exerciseId: id("ex-match"),
         title: "Practitioner scope token",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-unrelated",
+        exerciseId: id("ex-unrelated"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: otherId,
-        exerciseId: "ex-match",
+        exerciseId: id("ex-match"),
         savedAt: TS,
       });
 
@@ -312,24 +330,26 @@ describe("Exercise library QA round 3 (tests only)", () => {
         ...noMatchForPractitioner.sections.recently_used_and_saved,
       ];
       expect(emptyItems).toHaveLength(0);
-      expect(emptyItems.some((item) => item.exercise_id === "ex-match")).toBe(false);
+      expect(emptyItems.some((item) => item.exercise_id === id("ex-match"))).toBe(
+        false,
+      );
 
       await seedApproved(storage, practId, {
-        exerciseId: "ex-alpha",
+        exerciseId: id("ex-alpha"),
         title: "Scope token alpha",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-z",
+        exerciseId: id("ex-z"),
         title: "Scope token zulu",
       });
       await myRepo.upsert({
         practitionerId: otherId,
-        exerciseId: "ex-alpha",
+        exerciseId: id("ex-alpha"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-z",
+        exerciseId: id("ex-z"),
         savedAt: TS,
       });
 
@@ -343,7 +363,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
         ...scopedList.sections.pinned,
         ...scopedList.sections.recently_used_and_saved,
       ];
-      expect(scopedItems.map((item) => item.exercise_id)).toEqual(["ex-z"]);
+      expect(scopedItems.map((item) => item.exercise_id)).toEqual([id("ex-z")]);
     } finally {
       storage.close();
     }
@@ -354,22 +374,22 @@ describe("Exercise library QA round 3 (tests only)", () => {
     try {
       const practId = await seedPractitioner(storage);
       await seedApproved(storage, practId, {
-        exerciseId: "ex-a",
+        exerciseId: id("ex-a"),
         title: "Pair query alpha",
       });
       await seedApproved(storage, practId, {
-        exerciseId: "ex-b",
+        exerciseId: id("ex-b"),
         title: "Pair query beta",
       });
       const myRepo = new PractitionerExercisesRepository(storage);
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-a",
+        exerciseId: id("ex-a"),
         savedAt: TS,
       });
       await myRepo.upsert({
         practitionerId: practId,
-        exerciseId: "ex-b",
+        exerciseId: id("ex-b"),
         savedAt: TS,
       });
 
@@ -384,7 +404,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
         ...list.sections.pinned,
         ...list.sections.recently_used_and_saved,
       ].map((item) => item.exercise_id);
-      expect(ids.sort()).toEqual(["ex-a", "ex-b"]);
+      expect(ids.sort()).toEqual([id("ex-a"), id("ex-b")].sort());
     } finally {
       storage.close();
     }
