@@ -350,6 +350,28 @@ describe("routine drafts and versions (repository, SQLite)", () => {
       expect(await routines.listDraftsForAuthor(other)).toHaveLength(0);
       expect(await routines.listDraftsForAuthor(author)).toHaveLength(1);
       expect(await routines.listPublishedCommunity()).toHaveLength(0);
+      await seedApprovedExerciseVersion(storage, author);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      await rows.replaceDraftRow({
+        id: id("rvr-draft-publish"),
+        routineId: id("routine-draft"),
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+        draftUpdatedAt: TS,
+      });
+      await versions.publishDraft({
+        routineId: id("routine-draft"),
+        authorId: author,
+        publishedAt: TS,
+        name: "Now published",
+      });
+      expect(await routines.listDraftsForAuthor(author)).toHaveLength(0);
+      expect(await routines.listPublishedCommunity()).toHaveLength(1);
     } finally {
       storage.close();
     }
@@ -448,6 +470,8 @@ describe("practitioner frozen copies (repository, SQLite)", () => {
         publishedAt: TS,
         name: "Community knee",
       });
+      const routineAtV1 = await routines.findById(id("routine-community"));
+      expect(routineAtV1?.published_version).toBe(1);
       const copy = await my.saveFrozenCopy({
         id: id("pr-copy"),
         practitionerId: saver,
@@ -465,6 +489,17 @@ describe("practitioner frozen copies (repository, SQLite)", () => {
           },
         ],
       });
+      expect(
+        my.hasCommunityUpdateFlag(copy, routineAtV1!),
+        "mutant: flag must be false when published_version equals frozen source_version_number",
+      ).toBe(false);
+      expect(
+        my.hasCommunityUpdateFlag(copy, {
+          ...routineAtV1!,
+          published_version: null,
+        }),
+        "mutant: flag must be false when routine has no published_version",
+      ).toBe(false);
       await versions.savePublishedVersion({
         id: id("rv-comm-v2"),
         routineId: id("routine-community"),

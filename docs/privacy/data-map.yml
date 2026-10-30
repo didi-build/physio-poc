@@ -471,7 +471,7 @@ d1_tables:
         whose: operational
       who_its_for:
         whose: operational
-        notes: patient_detail_risk; optional general audience line only; validateRoutineWhoItsFor on write
+        notes: patient_detail_risk; must not hold patient details; optional general audience line only; validateRoutineWhoItsFor on write
       published_version:
         whose: operational
       draft_updated_at:

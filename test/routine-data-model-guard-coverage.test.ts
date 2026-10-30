@@ -995,6 +995,22 @@ describe("validateConditionLabel (unit via ConditionsRepository)", () => {
       storage.close();
     }
   });
+
+  it("stores a padded condition label trimmed", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const conditions = new ConditionsRepository(storage);
+      const conditionId = id("cond-trim-label");
+      await conditions.insert({ id: conditionId, label: "  General knee  " });
+      const row = await storage.first<{ label: string }>(
+        "SELECT label FROM conditions WHERE id = ? LIMIT 1",
+        [conditionId],
+      );
+      expect(row?.label).toBe("General knee");
+    } finally {
+      storage.close();
+    }
+  });
 });
 
 describe("opaque id validation prevents partial writes", () => {

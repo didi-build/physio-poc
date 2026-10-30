@@ -276,7 +276,7 @@ export class ProgramsRepository {
       sourceRoutineVersionId,
       "routineVersionId",
     );
-    await this.sql.run(
+    const result = await this.sql.run(
       `UPDATE programs SET
         source_routine_id = ?,
         source_routine_version_id = ?,
@@ -284,6 +284,16 @@ export class ProgramsRepository {
        WHERE id = ? AND deleted_at IS NULL`,
       [sourceRoutineId, sourceRoutineVersionId, origin.usedAs, programId],
     );
+    if (result.rowsAffected === 0) {
+      const program = await this.findById(programId);
+      if (!program) {
+        throw new ProgramRepositoryError("Program not found");
+      }
+      if (program.deleted_at) {
+        throw new ProgramRepositoryError("Program is deleted");
+      }
+      throw new ProgramRepositoryError("Program origin update failed");
+    }
   }
 
   async setLinkExpiry(
