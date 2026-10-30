@@ -9,9 +9,24 @@ import {
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
 
+const IMPORT_META_ENV_VIOLATION = "import.meta.env access";
+
+function countImportMetaEnvViolations(messages: string[]): number {
+  return messages.filter((m) => m === IMPORT_META_ENV_VIOLATION).length;
+}
+
+function expectExactlyOneImportMetaEnvViolation(
+  repoPath: string,
+  source: string,
+): void {
+  const messages = findPortableViolations(repoPath, source);
+  expect(countImportMetaEnvViolations(messages)).toBe(1);
+}
+
 /**
  * import.meta fixtures follow the portable guard rule: only import.meta.url,
- * import.meta["url"], (import.meta).url, and ((import.meta))["url"] are allowed.
+ * import.meta["url"], (import.meta).url, and ((import.meta))["url"] are allowed,
+ * including chained property reads such as import.meta.url.length.
  * Type-assertion-wrapped url reads and every other import.meta shape are violations.
  */
 describe("portable runtime import guard (unit)", () => {
@@ -175,80 +190,70 @@ describe("portable runtime import guard (unit)", () => {
   });
 
   it("detects import.meta.env reads under portable src/", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/ui/App.tsx",
       "const mode = import.meta.env.MODE;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects import.meta.env reads outside src/ui/", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "const x = import.meta.env;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects import.meta bracket env reads under src/ui/", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/ui/App.tsx",
       'const m = import.meta["env"].MODE;',
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects destructuring env from import.meta", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "const { env } = import.meta;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects import.meta aliasing before env access", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "const meta = import.meta; meta.env;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects import.meta env access with a template literal key", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "const x = import.meta[`env`];",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects angle-bracket type assertion on import.meta", () => {
-    const messages = findPortableViolations("src/http/example.ts", "<any>import.meta;");
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+    expectExactlyOneImportMetaEnvViolation("src/http/example.ts", "<any>import.meta;");
   });
 
   it("detects as-any cast before import.meta env property access", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "(import.meta as any).env;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects angle-bracket cast before import.meta env property access", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       "(<any>import.meta).env;",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("detects as-any cast before import.meta env bracket access", () => {
-    const messages = findPortableViolations(
+    expectExactlyOneImportMetaEnvViolation(
       "src/http/example.ts",
       '(import.meta as any)["env"];',
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
   it("allows import.meta.url and import.meta bracket url reads", () => {
@@ -267,6 +272,32 @@ describe("portable runtime import guard (unit)", () => {
         'const u = ((import.meta))["url"];',
       ),
     ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        "const n = import.meta.url.length;",
+      ),
+    ).toEqual([]);
+    expect(
+      findPortableViolations(
+        "src/http/example.ts",
+        "const n = (import.meta).url.length;",
+      ),
+    ).toEqual([]);
+  });
+
+  it("flags import.meta url access with a template literal key", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const u = import.meta[`url`];",
+    );
+  });
+
+  it("flags import.meta url access with an identifier key", () => {
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "const k = 'url'; const u = import.meta[k];",
+    );
   });
 
   it("flags type-assertion-wrapped import.meta url reads", () => {
@@ -276,58 +307,46 @@ describe("portable runtime import guard (unit)", () => {
       "(import.meta!).url;",
       "(<any>import.meta).url;",
     ]) {
-      const messages = findPortableViolations("src/http/example.ts", source);
-      expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+      expectExactlyOneImportMetaEnvViolation("src/http/example.ts", source);
     }
   });
 
   it("flags import.meta nested in array indexing and follow-on env access", () => {
-    expect(
-      findPortableViolations("src/http/example.ts", "[import.meta][0];").some((m) =>
-        m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
-    expect(
-      findPortableViolations("src/http/example.ts", "[import.meta][0].env;").some((m) =>
-        m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
+    expectExactlyOneImportMetaEnvViolation("src/http/example.ts", "[import.meta][0];");
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "[import.meta][0].env;",
+    );
   });
 
   it("flags import.meta inside object literals, calls, and iife env chains", () => {
-    expect(
-      findPortableViolations("src/http/example.ts", "({ m: import.meta }).m.env;").some(
-        (m) => m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
-    expect(
-      findPortableViolations("src/http/example.ts", "foo(import.meta).x;").some((m) =>
-        m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
-    expect(
-      findPortableViolations("src/http/example.ts", "(() => import.meta)().env;").some(
-        (m) => m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "({ m: import.meta }).m.env;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "foo(import.meta).x;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(() => import.meta)().env;",
+    );
   });
 
   it("flags import.meta used as call or assignment operands for env access", () => {
-    expect(
-      findPortableViolations("src/http/example.ts", "obj[String(import.meta)];").some(
-        (m) => m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
-    expect(
-      findPortableViolations("src/http/example.ts", "(x = import.meta).env;").some(
-        (m) => m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
-    expect(
-      findPortableViolations("src/http/example.ts", "(0, import.meta).env;").some((m) =>
-        m.includes("import.meta.env"),
-      ),
-    ).toBe(true);
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "obj[String(import.meta)];",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(x = import.meta).env;",
+    );
+    expectExactlyOneImportMetaEnvViolation(
+      "src/http/example.ts",
+      "(0, import.meta).env;",
+    );
   });
 
   it("does not flag unrelated config.env property access as import.meta.env", () => {
@@ -335,7 +354,7 @@ describe("portable runtime import guard (unit)", () => {
       "src/http/example.ts",
       'const config = { env: 1 }; const x = config.env; const y = config["env"];',
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
   });
 
   it("does not flag new.target.env as import.meta.env", () => {
@@ -343,7 +362,7 @@ describe("portable runtime import guard (unit)", () => {
       "src/http/example.ts",
       "function F() { return new.target.env; }",
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
   });
 
   it("does not flag new.target bracket env as import.meta.env", () => {
@@ -351,7 +370,7 @@ describe("portable runtime import guard (unit)", () => {
       "src/http/example.ts",
       'function F() { return new.target["env"]; }',
     );
-    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
+    expect(countImportMetaEnvViolations(messages)).toBe(0);
   });
 
   it("detects relative imports into src/adapters/workers", () => {
