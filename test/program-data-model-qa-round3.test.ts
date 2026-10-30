@@ -96,6 +96,12 @@ describe("DIDI-1000 QA round 3", () => {
         ninetyDays: "2027-04-01T03:59:59.999Z",
         oneYear: "2028-01-01T04:59:59.999Z",
       },
+      {
+        nowIso: "2027-01-01T04:30:00.000Z",
+        oneWeek: "2027-01-08T04:59:59.999Z",
+        ninetyDays: "2027-04-01T03:59:59.999Z",
+        oneYear: "2028-01-01T04:59:59.999Z",
+      },
     ];
     for (const c of cases) {
       const now = new Date(c.nowIso);
