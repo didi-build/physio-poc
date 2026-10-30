@@ -111,6 +111,35 @@ function isPlatformModuleSpecifier(specifierText) {
 }
 
 /**
+ * Pure UI non-relative import check (platform deny before allowlist). Used by the scanner
+ * and by tests with injected predicates.
+ *
+ * @param {string} specifierText
+ * @param {string} kind
+ * @param {{
+ *   isPlatformModule: (text: string) => boolean,
+ *   isAllowedUiModule: (text: string) => boolean,
+ *   isDisallowedBareUiModule: (text: string) => boolean,
+ * }} checks
+ * @returns {string | null}
+ */
+export function uiNonRelativeImportViolationMessage(specifierText, kind, checks) {
+  if (checks.isPlatformModule(specifierText)) {
+    return `${kind} platform module in ui: ${specifierText}`;
+  }
+  if (specifierText.includes("..")) {
+    return `${kind} ui import with parent segments: ${specifierText}`;
+  }
+  if (checks.isDisallowedBareUiModule(specifierText)) {
+    return `${kind} disallowed bare module in ui: ${specifierText}`;
+  }
+  if (checks.isAllowedUiModule(specifierText)) {
+    return null;
+  }
+  return `${kind} disallowed ui import: ${specifierText}`;
+}
+
+/**
  * @param {string} srcRoot absolute path to src/
  * @returns {string[]} repo-relative paths like src/http/app.ts
  */
@@ -286,22 +315,15 @@ export function findPortableViolations(repoRelativePath, source) {
       return;
     }
     if (isUiSourceFile(repoRelativePath)) {
-      if (isPlatformModuleSpecifier(text)) {
-        violations.push(`${kind} platform module in ui: ${text}`);
-        return;
+      const uiChecks = {
+        isPlatformModule: isPlatformModuleSpecifier,
+        isAllowedUiModule: isAllowedUiModuleSpecifier,
+        isDisallowedBareUiModule: isDisallowedBareUiModule,
+      };
+      const message = uiNonRelativeImportViolationMessage(text, kind, uiChecks);
+      if (message) {
+        violations.push(message);
       }
-      if (text.includes("..")) {
-        violations.push(`${kind} ui import with parent segments: ${text}`);
-        return;
-      }
-      if (isDisallowedBareUiModule(text)) {
-        violations.push(`${kind} disallowed bare module in ui: ${text}`);
-        return;
-      }
-      if (isAllowedUiModuleSpecifier(text)) {
-        return;
-      }
-      violations.push(`${kind} disallowed ui import: ${text}`);
       return;
     }
     violations.push(`${kind} non-relative import: ${text}`);

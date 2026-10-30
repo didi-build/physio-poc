@@ -4,10 +4,13 @@ import {
   findPortableViolations,
   listPortableSourceFiles,
   scanPortableTree,
+  uiNonRelativeImportViolationMessage,
 } from "../scripts/lib/portable-import-guard.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SRC_ROOT = join(REPO_ROOT, "src");
+
+const UI_IMPORT_ORDER_OVERLAP_SPECIFIER = "test-only-overlap-specifier";
 
 const IMPORT_META_ENV_VIOLATION = "import.meta.env access";
 
@@ -409,6 +412,41 @@ describe("portable runtime import guard (unit)", () => {
       "import { useState } from 'react';",
     );
     expect(allowedMessages).toEqual([]);
+  });
+
+  it("UI package allowlist imports are not treated as platform modules", () => {
+    for (const pkg of ["react", "react-dom", "react-router-dom"] as const) {
+      expect(
+        findPortableViolations("src/ui/App.tsx", `import x from '${pkg}';`),
+      ).toEqual([]);
+    }
+  });
+
+  it("denies overlap when both injected predicates match (platform before allowlist)", () => {
+    const checks = {
+      isPlatformModule: () => true,
+      isAllowedUiModule: (text: string) => text === UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+      isDisallowedBareUiModule: () => false,
+    };
+    expect(checks.isAllowedUiModule(UI_IMPORT_ORDER_OVERLAP_SPECIFIER)).toBe(true);
+    const message = uiNonRelativeImportViolationMessage(
+      UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+      "import",
+      checks,
+    );
+    expect(message).toBe(
+      `import platform module in ui: ${UI_IMPORT_ORDER_OVERLAP_SPECIFIER}`,
+    );
+  });
+
+  it("accepts overlap specifier when only the injected allowlist matches", () => {
+    expect(
+      uiNonRelativeImportViolationMessage(UI_IMPORT_ORDER_OVERLAP_SPECIFIER, "import", {
+        isPlatformModule: () => false,
+        isAllowedUiModule: (text: string) => text === UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+        isDisallowedBareUiModule: () => false,
+      }),
+    ).toBeNull();
   });
 
   it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {
