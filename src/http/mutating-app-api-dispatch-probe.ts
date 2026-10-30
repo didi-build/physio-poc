@@ -1,12 +1,9 @@
-import type { PractitionerSession } from "../auth/auth-port.js";
+import { FakeAuthPort } from "../auth/fake-auth-port.js";
 import type { AppDependencies } from "./app.js";
+import { handleRequest } from "./app.js";
 import { isMutatingAppApiPath } from "./mutating-app-api-csrf.js";
-import {
-  MUTATING_APP_API_HANDLER_ROUTE_TABLES,
-  mutatingAppApiRouteSampleKey,
-} from "./mutating-app-api-route-registry.js";
-import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
-import { handleExerciseMediaRequest } from "./routes/exercise-media.js";
+import { uniqueMutatingAppApiProbePaths } from "./mutating-app-api-route-gate.js";
+import { mutatingAppApiRouteSampleKey } from "./mutating-app-api-route-registry.js";
 
 const DISPATCH_PROBE_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
 
@@ -26,59 +23,46 @@ function probeRequestBody(path: string, method: string): string | undefined {
   return JSON.stringify({ action: "save" });
 }
 
-function uniqueProbePaths(
-  practitionerId: string,
-  exerciseId: string,
-  versionId: string,
-): string[] {
-  const paths = new Set<string>();
-  for (const table of MUTATING_APP_API_HANDLER_ROUTE_TABLES) {
-    for (const routeCase of table.routes(practitionerId, exerciseId, versionId)) {
-      paths.add(routeCase.path);
-    }
-  }
-  return [...paths].sort();
-}
-
-async function dispatchAppApiRoute(
-  request: Request,
-  deps: AppDependencies,
-  sessionPractitioner: PractitionerSession,
-): Promise<Response | null> {
-  const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
-    sessionPractitioner,
-  });
-  if (exerciseResponse) {
-    return exerciseResponse;
-  }
-  return handleExerciseMediaRequest(request, deps);
+function probeRequestHeaders(baseUrl: string, cookie: string): HeadersInit {
+  return {
+    cookie,
+    origin: new URL(baseUrl).origin,
+    "content-type": "application/json",
+  };
 }
 
 /**
- * Keys for mutating app API routes the HTTP handlers dispatch for the probed method,
- * discovered by probing every mutating method on handler-table paths (405 excluded).
+ * Mutating route keys where `handleRequest` (Worker entry) returns a non-404 response,
+ * probing every mutating method on each registry path.
  */
 export async function probedMutatingAppApiRouteKeys(
   deps: AppDependencies,
-  sessionPractitioner: PractitionerSession,
   practitionerId: string,
   exerciseId: string,
   versionId: string,
   baseUrl: string,
 ): Promise<string[]> {
+  const auth = deps.auth as FakeAuthPort;
+  const cookie = auth.createSessionCookieHeader();
   const keys: string[] = [];
-  for (const path of uniqueProbePaths(practitionerId, exerciseId, versionId)) {
+  for (const path of uniqueMutatingAppApiProbePaths(
+    practitionerId,
+    exerciseId,
+    versionId,
+  )) {
     for (const method of DISPATCH_PROBE_METHODS) {
       if (!isMutatingAppApiPath(path, method)) {
         continue;
       }
-      const request = new Request(`${baseUrl}${path}`, {
-        method,
-        headers: { "content-type": "application/json" },
-        body: probeRequestBody(path, method),
-      });
-      const response = await dispatchAppApiRoute(request, deps, sessionPractitioner);
-      if (response && response.status !== 405) {
+      const response = await handleRequest(
+        new Request(`${baseUrl}${path}`, {
+          method,
+          headers: probeRequestHeaders(baseUrl, cookie),
+          body: probeRequestBody(path, method),
+        }),
+        deps,
+      );
+      if (response.status !== 404) {
         keys.push(
           mutatingAppApiRouteSampleKey({ ruleId: "", samplePath: path, method }),
         );

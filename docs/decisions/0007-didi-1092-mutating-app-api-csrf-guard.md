@@ -17,7 +17,7 @@ The guard:
 2. Requires `Origin`, or `Referer` when Origin is absent, to match an allowed app origin: the request URL origin, `WEB_APP_BASE_URL`, or `AUTH_BASE_URL` (403 when missing or cross-site).
 3. Returns only **403** or **415** with no new user-facing copy (existing JSON `{ error: "forbidden" }` for 403; empty body for 415).
 
-`MUTATING_APP_API_HANDLER_ROUTE_TABLES` in `src/http/mutating-app-api-route-registry.ts` merges handler-owned mutating route tables (exercise library, exercise media, and future app API modules). `MUTATING_APP_API_ROUTE_SAMPLES` is built from those tables. `test/route-table.test.ts` compares registry keys to keys from `probedMutatingAppApiRouteKeys` in `src/http/mutating-app-api-dispatch-probe.ts`, which probes handler dispatch for every mutating HTTP method on each handler-table path (responses with status 405 are not counted).
+`MUTATING_APP_API_HANDLER_ROUTE_TABLES` merges handler-owned mutating route tables into `MUTATING_APP_API_ROUTE_SAMPLES`. The `/api/` branch rejects mutating requests that are not registered (`isRegisteredMutatingAppApiRoute`) before calling handlers. `test/route-table.test.ts` checks wired ruleIds against those tables, requires registry keys to match `probedMutatingAppApiRouteKeys` (non-404 `handleRequest` responses on registry paths), and expects 404 for a POST to an unregistered mutating `/api/` path.
 
 ## Reasons
 

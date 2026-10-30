@@ -10,7 +10,12 @@ import {
 import { requiresPractitionerSession } from "../src/auth/public-routes.js";
 import { probedMutatingAppApiRouteKeys } from "../src/http/mutating-app-api-dispatch-probe.js";
 import {
+  handleRequest,
+  MUTATING_APP_API_HANDLE_REQUEST_RULE_IDS,
+} from "../src/http/app.js";
+import {
   buildMutatingAppApiRouteSamples,
+  MUTATING_APP_API_HANDLER_ROUTE_TABLES,
   MUTATING_APP_API_ROUTE_SAMPLES,
   mutatingAppApiRouteSampleKey,
 } from "../src/http/mutating-app-api-route-registry.js";
@@ -24,6 +29,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { exerciseMediaTestDeps } from "./helpers/exercise-media-http.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const PROBE_BASE = "https://physio.test.example";
@@ -66,7 +72,10 @@ describe("HTTP route table (session guards)", () => {
     }
   });
 
-  it("matches mutating app API registry samples to handler dispatch", async () => {
+  it("matches mutating app API registry samples to handleRequest dispatch", async () => {
+    expect([...MUTATING_APP_API_HANDLE_REQUEST_RULE_IDS].sort()).toEqual(
+      MUTATING_APP_API_HANDLER_ROUTE_TABLES.map((table) => table.ruleId).sort(),
+    );
     for (const sample of MUTATING_APP_API_ROUTE_SAMPLES) {
       expect(isMutatingAppApiPath(sample.samplePath, sample.method)).toBe(true);
       expect(requiresPractitionerSession(sample.samplePath, sample.method)).toBe(true);
@@ -91,6 +100,8 @@ describe("HTTP route table (session guards)", () => {
       displayName: "Route table",
     };
     const deps = exerciseMediaTestDeps(storage, practitioner);
+    const auth = deps.auth as FakeAuthPort;
+    const cookie = auth.createSessionCookieHeader();
     const registryKeys = buildMutatingAppApiRouteSamples(
       PROBE_PRACTITIONER_ID,
       PROBE_EXERCISE_ID,
@@ -100,12 +111,28 @@ describe("HTTP route table (session guards)", () => {
       .sort();
     const dispatchKeys = await probedMutatingAppApiRouteKeys(
       deps,
-      practitioner,
       PROBE_PRACTITIONER_ID,
       PROBE_EXERCISE_ID,
       PROBE_VERSION_ID,
       PROBE_BASE,
     );
     expect(registryKeys).toEqual(dispatchKeys);
+
+    const unregistered = await handleRequest(
+      new Request(
+        `${PROBE_BASE}/api/practitioners/${PROBE_PRACTITIONER_ID}/unregistered-mutating-route`,
+        {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: new URL(PROBE_BASE).origin,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({}),
+        },
+      ),
+      deps,
+    );
+    expect(unregistered.status).toBe(404);
   });
 });
