@@ -72,9 +72,16 @@ const schemaWalkerBranchFixtures: Array<{
     expectedPath: "allOf.0",
   },
   {
-    branch: "items",
+    branch: "items (single schema)",
     schema: { items: qaPatternPropertiesObjectSchema },
     expectedPath: "items",
+  },
+  {
+    branch: "items (tuple array)",
+    schema: {
+      items: [{ type: "string" }, qaPatternPropertiesObjectSchema],
+    },
+    expectedPath: "items.1",
   },
   {
     branch: "prefixItems",
@@ -106,6 +113,35 @@ const schemaWalkerBranchFixtures: Array<{
       },
     },
     expectedPath: "definitions.qa_legacy_def_pattern_properties",
+  },
+  {
+    branch: "contains",
+    schema: { contains: qaPatternPropertiesObjectSchema },
+    expectedPath: "contains",
+  },
+  {
+    branch: "propertyNames",
+    schema: {
+      type: "object",
+      propertyNames: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "propertyNames",
+  },
+  {
+    branch: "unevaluatedProperties",
+    schema: {
+      type: "object",
+      unevaluatedProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedProperties",
+  },
+  {
+    branch: "unevaluatedItems",
+    schema: {
+      type: "array",
+      unevaluatedItems: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedItems",
   },
 ];
 

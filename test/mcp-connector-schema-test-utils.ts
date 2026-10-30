@@ -14,6 +14,10 @@ export const SCHEMA_WALK_KEYS = [
   "$defs",
   "definitions",
   "dependentSchemas",
+  "contains",
+  "propertyNames",
+  "unevaluatedProperties",
+  "unevaluatedItems",
 ] as const;
 
 const URL_LIKE_FORMATS = new Set([
