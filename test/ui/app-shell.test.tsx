@@ -220,7 +220,6 @@ describe("app shell nav (integration)", () => {
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
     expect(source).toContain("wrap.contains(related)");
-    expect(source).toContain("wrap.contains(event.target as Node)");
     expect(source).not.toContain("menu.contains(event.target as Node)");
   });
 

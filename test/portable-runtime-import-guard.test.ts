@@ -5,7 +5,7 @@ import {
   findPortableViolations,
   listPortableSourceFiles,
   scanPortableTree,
-  UI_IMPORT_ORDER_PIN_SPECIFIER,
+  uiNonRelativeImportViolationMessage,
 } from "../scripts/lib/portable-import-guard.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -15,15 +15,14 @@ const PORTABLE_IMPORT_GUARD_PATH = join(
   "scripts/lib/portable-import-guard.mjs",
 );
 
-function checkModuleSpecifierFunctionBody(source: string): string {
-  const fnNeedle = "function checkModuleSpecifier";
+function extractFunctionBody(source: string, fnNeedle: string): string {
   const fnStart = source.indexOf(fnNeedle);
   if (fnStart < 0) {
-    throw new Error("checkModuleSpecifier not found");
+    throw new Error(`${fnNeedle} not found`);
   }
   const braceStart = source.indexOf("{", fnStart);
   if (braceStart < 0) {
-    throw new Error("checkModuleSpecifier body start not found");
+    throw new Error(`${fnNeedle} body start not found`);
   }
   let depth = 0;
   for (let index = braceStart; index < source.length; index += 1) {
@@ -37,8 +36,10 @@ function checkModuleSpecifierFunctionBody(source: string): string {
       }
     }
   }
-  throw new Error("checkModuleSpecifier body not found");
+  throw new Error(`${fnNeedle} body not found`);
 }
+
+const UI_IMPORT_ORDER_OVERLAP_SPECIFIER = "test-only-overlap-specifier";
 
 describe("portable runtime import guard (unit)", () => {
   it("scans a non-zero set of portable files under src/", () => {
@@ -184,27 +185,44 @@ describe("portable runtime import guard (unit)", () => {
     expect(allowedMessages).toEqual([]);
   });
 
-  it("pins denylist-before-allowlist order in checkModuleSpecifier (structural)", () => {
+  it("pins denylist-before-allowlist order in uiNonRelativeImportViolationMessage (structural)", () => {
     const source = readFileSync(PORTABLE_IMPORT_GUARD_PATH, "utf8");
-    const fnBody = checkModuleSpecifierFunctionBody(source);
-    const uiBranch = fnBody.indexOf("if (isUiSourceFile(repoRelativePath))");
-    expect(uiBranch).toBeGreaterThan(-1);
-    const uiSection = fnBody.slice(uiBranch);
-    const platformCheck = uiSection.indexOf("isPlatformModuleSpecifier(text)");
-    const allowlistCheck = uiSection.indexOf("isAllowedUiModuleSpecifier(text)");
+    const fnBody = extractFunctionBody(
+      source,
+      "export function uiNonRelativeImportViolationMessage",
+    );
+    const platformCheck = fnBody.indexOf("checks.isPlatformModule(specifierText)");
+    const allowlistCheck = fnBody.indexOf("checks.isAllowedUiModule(specifierText)");
     expect(platformCheck).toBeGreaterThan(-1);
     expect(allowlistCheck).toBeGreaterThan(-1);
     expect(platformCheck).toBeLessThan(allowlistCheck);
   });
 
-  it("denies the import-order pin specifier as platform before allowlist skip", () => {
-    const messages = findPortableViolations(
-      "src/ui/App.tsx",
-      `import x from '${UI_IMPORT_ORDER_PIN_SPECIFIER}';`,
+  it("denies overlap when both injected predicates match (platform before allowlist)", () => {
+    const checks = {
+      isPlatformModule: () => true,
+      isAllowedUiModule: (text: string) => text === UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+      isDisallowedBareUiModule: () => false,
+    };
+    expect(checks.isAllowedUiModule(UI_IMPORT_ORDER_OVERLAP_SPECIFIER)).toBe(true);
+    const message = uiNonRelativeImportViolationMessage(
+      UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+      "import",
+      checks,
     );
-    expect(messages.some((m) => m.includes("platform module in ui"))).toBe(true);
-    expect(messages.some((m) => m.includes("disallowed ui import"))).toBe(false);
-    expect(messages).toHaveLength(1);
+    expect(message).toBe(
+      `import platform module in ui: ${UI_IMPORT_ORDER_OVERLAP_SPECIFIER}`,
+    );
+  });
+
+  it("accepts overlap specifier when only the injected allowlist matches", () => {
+    expect(
+      uiNonRelativeImportViolationMessage(UI_IMPORT_ORDER_OVERLAP_SPECIFIER, "import", {
+        isPlatformModule: () => false,
+        isAllowedUiModule: (text: string) => text === UI_IMPORT_ORDER_OVERLAP_SPECIFIER,
+        isDisallowedBareUiModule: () => false,
+      }),
+    ).toBeNull();
   });
 
   it("allows react/jsx-runtime and react-dom/client under src/ui/", () => {

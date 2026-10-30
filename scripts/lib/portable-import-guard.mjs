@@ -17,9 +17,6 @@ const PLATFORM_PREFIXES = ["entry/", "adapters/node/", "adapters/workers/"];
 
 const UI_SOURCE_PREFIX = "src/ui/";
 
-/** Internal overlap pin for import-order tests (not a real package). */
-export const UI_IMPORT_ORDER_PIN_SPECIFIER = "__ui_import_order_pin__";
-
 /** @type {readonly string[]} */
 const UI_PACKAGE_ALLOWLIST = ["react", "react-dom", "react-router-dom"];
 
@@ -73,9 +70,6 @@ function isAllowedUiModuleSpecifier(specifierText) {
   if (specifierText.includes("..")) {
     return false;
   }
-  if (specifierText === UI_IMPORT_ORDER_PIN_SPECIFIER) {
-    return true;
-  }
   return UI_PACKAGE_ALLOWLIST.some(
     (pkg) => specifierText === pkg || specifierText.startsWith(`${pkg}/`),
   );
@@ -98,9 +92,6 @@ function isDisallowedBareUiModule(specifierText) {
  * @returns {boolean}
  */
 function isPlatformModuleSpecifier(specifierText) {
-  if (specifierText === UI_IMPORT_ORDER_PIN_SPECIFIER) {
-    return true;
-  }
   if (specifierText.startsWith("node:")) {
     return true;
   }
@@ -117,6 +108,35 @@ function isPlatformModuleSpecifier(specifierText) {
     return true;
   }
   return false;
+}
+
+/**
+ * Pure UI non-relative import check (platform deny before allowlist). Used by the scanner
+ * and by tests with injected predicates.
+ *
+ * @param {string} specifierText
+ * @param {string} kind
+ * @param {{
+ *   isPlatformModule: (text: string) => boolean,
+ *   isAllowedUiModule: (text: string) => boolean,
+ *   isDisallowedBareUiModule: (text: string) => boolean,
+ * }} checks
+ * @returns {string | null}
+ */
+export function uiNonRelativeImportViolationMessage(specifierText, kind, checks) {
+  if (checks.isPlatformModule(specifierText)) {
+    return `${kind} platform module in ui: ${specifierText}`;
+  }
+  if (specifierText.includes("..")) {
+    return `${kind} ui import with parent segments: ${specifierText}`;
+  }
+  if (checks.isDisallowedBareUiModule(specifierText)) {
+    return `${kind} disallowed bare module in ui: ${specifierText}`;
+  }
+  if (checks.isAllowedUiModule(specifierText)) {
+    return null;
+  }
+  return `${kind} disallowed ui import: ${specifierText}`;
 }
 
 /**
@@ -227,22 +247,15 @@ export function findPortableViolations(repoRelativePath, source) {
       return;
     }
     if (isUiSourceFile(repoRelativePath)) {
-      if (isPlatformModuleSpecifier(text)) {
-        violations.push(`${kind} platform module in ui: ${text}`);
-        return;
+      const uiChecks = {
+        isPlatformModule: isPlatformModuleSpecifier,
+        isAllowedUiModule: isAllowedUiModuleSpecifier,
+        isDisallowedBareUiModule: isDisallowedBareUiModule,
+      };
+      const message = uiNonRelativeImportViolationMessage(text, kind, uiChecks);
+      if (message) {
+        violations.push(message);
       }
-      if (text.includes("..")) {
-        violations.push(`${kind} ui import with parent segments: ${text}`);
-        return;
-      }
-      if (isDisallowedBareUiModule(text)) {
-        violations.push(`${kind} disallowed bare module in ui: ${text}`);
-        return;
-      }
-      if (isAllowedUiModuleSpecifier(text)) {
-        return;
-      }
-      violations.push(`${kind} disallowed ui import: ${text}`);
       return;
     }
     violations.push(`${kind} non-relative import: ${text}`);
