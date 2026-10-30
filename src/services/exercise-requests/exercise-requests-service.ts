@@ -6,8 +6,8 @@ import {
 } from "../../domain/exercise-free-text.js";
 import { prescriptionTypesForCategory } from "../../domain/exercise-types.js";
 import {
-  OpaqueEntityIdError,
-  newOpaqueEntityId,
+  generateOpaqueEntityId,
+  OpaqueEntityIdValidationError,
   validateOpaqueEntityId,
 } from "../../domain/opaque-entity-id.js";
 import type { PhysioServerConfig } from "../../http/config.js";
@@ -25,6 +25,10 @@ import {
 } from "../../storage/repositories/exercise-requests-read.js";
 import { ExerciseLibraryReadRepository } from "../../storage/repositories/exercise-library-read.js";
 import type { ApprovedExerciseSummary } from "../exercise-library/types.js";
+import {
+  PractitionerNotFoundError,
+  requirePractitionerRecord,
+} from "../practitioner-access.js";
 import {
   appendMergeToDraftRequest,
   fakeExerciseDraftGenerator,
@@ -73,7 +77,7 @@ function mapFreeTextError(err: unknown): never {
   if (err instanceof FreeTextValidationError) {
     throw new ExerciseRequestsServiceError(err.message, "invalid_input");
   }
-  if (err instanceof OpaqueEntityIdError) {
+  if (err instanceof OpaqueEntityIdValidationError) {
     throw new ExerciseRequestsServiceError(err.message, "invalid_input");
   }
   throw err;
@@ -286,7 +290,7 @@ export class ExerciseRequestsService {
         }
       }
 
-      const requestId = newOpaqueEntityId();
+      const requestId = generateOpaqueEntityId();
       const timestamp = this.now();
       await this.requests.insert({
         id: requestId,
@@ -521,12 +525,16 @@ export class ExerciseRequestsService {
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {
-    const row = await this.practitioners.findById(practitionerId);
-    if (!row) {
-      throw new ExerciseRequestsServiceError(
-        "Practitioner not found",
-        "practitioner_not_found",
-      );
+    try {
+      await requirePractitionerRecord(this.practitioners, practitionerId);
+    } catch (err) {
+      if (err instanceof PractitionerNotFoundError) {
+        throw new ExerciseRequestsServiceError(
+          "Practitioner not found",
+          "practitioner_not_found",
+        );
+      }
+      throw err;
     }
   }
 }

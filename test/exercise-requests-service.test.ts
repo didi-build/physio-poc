@@ -274,4 +274,192 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       storage.close();
     }
   });
+
+  it("rejects calls when the path practitioner id is unknown", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
+      await expect(
+        service.listSimilar({ practitionerId: "pract-missing", query: "Heel slide" }),
+      ).rejects.toMatchObject({ code: "practitioner_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("allows another practitioner to review an in-progress request but not after approval", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        "pract-req-view",
+        "rv@example.com",
+      );
+      const reviewer = await seedPractitioner(
+        storage,
+        "pract-rev-view",
+        "vw@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "View draft move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const review = await service.getRequest({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+      });
+      expect(review.requested_by).toBe(requester);
+
+      await service.approveRequest({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+      });
+
+      await expect(
+        service.getRequest({
+          practitionerId: reviewer,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "request_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not conflict when a similar request was created exactly at form_opened_at", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        "pract-boundary",
+        "bd@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        "pract-boundary-other",
+        "bo@example.com",
+      );
+      const boundary = "2026-10-30T11:00:00.000Z";
+
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "44444444-4444-4444-8444-444444444444",
+          "Boundary plank",
+          null,
+          other,
+          "open",
+          null,
+          boundary,
+          boundary,
+        ],
+      );
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      const atBoundary = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Boundary plank variation",
+        formOpenedAt: boundary,
+      });
+      expect(atBoundary.outcome).toBe("created");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("conflicts when a similar request was created strictly after form_opened_at", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        "pract-after",
+        "af@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        "pract-after-other",
+        "ao@example.com",
+      );
+      const formOpened = "2026-10-30T11:00:00.000Z";
+
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "55555555-5555-4555-8555-555555555555",
+          "After boundary plank",
+          null,
+          other,
+          "open",
+          null,
+          "2026-10-30T11:00:00.001Z",
+          "2026-10-30T11:00:00.001Z",
+        ],
+      );
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
+      const conflict = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "After boundary plank variation",
+        formOpenedAt: formOpened,
+      });
+      expect(conflict.outcome).toBe("conflict");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps edited draft titles out of approved search", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(storage, "pract-edit", "ed@example.com");
+      const reviewer = await seedPractitioner(
+        storage,
+        "pract-edit-rev",
+        "er@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Editable draft move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const editedTitle = "Editable draft move edited unique";
+      await service.updateDraft({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+        patch: { title: editedTitle },
+      });
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const search = await library.searchApprovedExercises({
+        practitionerId: reviewer,
+        query: editedTitle,
+      });
+      expect(search.exercises).toHaveLength(0);
+    } finally {
+      storage.close();
+    }
+  });
 });

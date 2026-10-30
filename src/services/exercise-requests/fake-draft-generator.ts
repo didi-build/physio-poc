@@ -9,7 +9,7 @@ import {
   validateExerciseTitle,
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
-import { newOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 
 export type ExerciseDraftGeneratorResult = {
   exerciseId: string;
@@ -37,8 +37,8 @@ export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
-  const exerciseId = newOpaqueEntityId();
-  const versionId = newOpaqueEntityId();
+  const exerciseId = generateOpaqueEntityId();
+  const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);
 
   await deps.exercises.insert({
@@ -90,7 +90,7 @@ export async function appendMergeToDraftRequest(input: {
   }
   const contributorLine = `Also requested as: ${validateRequestedExerciseName(input.mergedName)}`;
   if (input.mergedNote) {
-    mergedParts.push(`${contributorLine}. Exercise note: ${input.mergedNote}`);
+    mergedParts.push(`${contributorLine}. ${input.mergedNote}`);
   } else {
     mergedParts.push(contributorLine);
   }
@@ -106,7 +106,7 @@ export async function appendMergeToDraftRequest(input: {
   if (draft && draft.title.toLowerCase() !== aliasName.toLowerCase()) {
     try {
       await aliases.insert({
-        id: newOpaqueEntityId(),
+        id: generateOpaqueEntityId(),
         exerciseId: row.exercise_id,
         alias: aliasName,
         createdAt: input.now,

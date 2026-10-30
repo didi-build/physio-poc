@@ -102,12 +102,42 @@ export function validateRequestedExerciseName(name: string): string {
   return trimmed;
 }
 
+/** Program name: optional while drafting; required to publish. No patient details. */
+export function validateProgramName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length < 1 || trimmed.length > MAX_LENGTH_PROGRAM_TITLE) {
+    throw new FreeTextValidationError(
+      `Program name must be between 1 and ${String(MAX_LENGTH_PROGRAM_TITLE)} characters after trimming`,
+    );
+  }
+  assertNoPatientDetails(trimmed, "Program name");
+  return trimmed;
+}
+
+export function validateOptionalProgramName(
+  name: string | null | undefined,
+): string | null {
+  if (name === null || name === undefined || name.trim() === "") {
+    return null;
+  }
+  return validateProgramName(name);
+}
+
+export function validateProgramRowNote(note: string | null | undefined): string | null {
+  if (note === null || note === undefined || note === "") {
+    return null;
+  }
+  assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Row note");
+  assertNoPatientDetails(note, "Row note");
+  return note;
+}
+
 export function validateRequestNote(note: string | null | undefined): string | null {
   if (note === null || note === undefined || note === "") {
     return null;
   }
-  assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Exercise note");
-  assertNoPatientDetails(note, "Exercise note");
+  assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Note");
+  assertNoPatientDetails(note, "Note");
   return note;
 }
 
