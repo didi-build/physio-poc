@@ -5,7 +5,7 @@ import { PhysioApp } from "./App.js";
 import "./styles/exercise-library.css";
 import "./styles/my-defaults.css";
 import "./styles/shell.css";
-import "./styles/sign-in.css";
+import "./styles/programs.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

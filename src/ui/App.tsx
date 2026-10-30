@@ -3,10 +3,15 @@ import type { ExerciseLibraryClient } from "./api/exercise-library-client.js";
 import { ExerciseLibraryApiProvider } from "./api/exercise-library-context.js";
 import type { MyDefaultsClient } from "./api/my-defaults-client.js";
 import { MyDefaultsApiProvider } from "./api/my-defaults-context.js";
+import type { ProgramsClient } from "./api/programs-client.js";
+import { ProgramsApiProvider } from "./api/programs-context.js";
 import { ExerciseDetailsPage } from "./exercise-library/ExerciseDetailsPage.js";
 import { ExerciseLibraryPage } from "./exercise-library/ExerciseLibraryPage.js";
 import { MyCopyEditorPage } from "./exercise-library/MyCopyEditorPage.js";
 import { MyDefaultsPage } from "./my-defaults/MyDefaultsPage.js";
+import { ProgramBuilderPage } from "./programs/ProgramBuilderPage.js";
+import { ProgramsListPage } from "./programs/ProgramsListPage.js";
+import { ProgramsNewPage } from "./programs/ProgramsNewPage.js";
 import { AppShell } from "./layout/AppShell.js";
 import { createPhysioAppRouteObjects } from "./physio-app-match-routes.js";
 
@@ -14,12 +19,14 @@ export type PhysioAppProps = {
   requestsReviewCount?: number;
   exerciseLibraryClient?: ExerciseLibraryClient;
   myDefaultsClient?: MyDefaultsClient;
+  programsClient?: ProgramsClient;
 };
 
 export function PhysioApp({
   requestsReviewCount = 0,
   exerciseLibraryClient,
   myDefaultsClient,
+  programsClient,
 }: PhysioAppProps) {
   const routeTree = createPhysioAppRouteObjects(
     <AppShell requestsReviewCount={requestsReviewCount} />,
@@ -29,13 +36,18 @@ export function PhysioApp({
       exerciseDetail: <ExerciseDetailsPage />,
       exerciseMyCopy: <MyCopyEditorPage />,
       defaults: <MyDefaultsPage />,
+      programs: <ProgramsListPage />,
+      programNew: <ProgramsNewPage />,
+      programBuilder: <ProgramBuilderPage />,
     },
   );
 
   return (
     <ExerciseLibraryApiProvider client={exerciseLibraryClient}>
       <MyDefaultsApiProvider client={myDefaultsClient}>
-        {useRoutes(routeTree)}
+        <ProgramsApiProvider client={programsClient}>
+          {useRoutes(routeTree)}
+        </ProgramsApiProvider>
       </MyDefaultsApiProvider>
     </ExerciseLibraryApiProvider>
   );

@@ -17,10 +17,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
 import * as authClient from "../../src/ui/api/auth-client.js";
 import { ARIA_CLOSE_MENU } from "../../src/ui/copy/a11y.js";
+import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import { SEARCH_BY_NAME_OR_CODE } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -52,12 +54,33 @@ function stubLibraryClient(): ExerciseLibraryClient {
   } as unknown as ExerciseLibraryClient;
 }
 
+function stubProgramsClient(): ProgramsClient {
+  return {
+    listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+    listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+    createProgram: vi.fn(),
+    getProgram: vi.fn(),
+    updateProgramName: vi.fn(),
+    deleteProgram: vi.fn(),
+    restoreProgram: vi.fn(),
+    addExerciseRow: vi.fn(),
+    addPlaceholderRow: vi.fn(),
+    updateRow: vi.fn(),
+    deleteRow: vi.fn(),
+    reorderRows: vi.fn(),
+    duplicateRow: vi.fn(),
+    applyLibraryUpdate: vi.fn(),
+    keepLibraryUpdate: vi.fn(),
+  } as unknown as ProgramsClient;
+}
+
 function renderApp(initialEntry: string, requestsReviewCount = 0) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         requestsReviewCount={requestsReviewCount}
         exerciseLibraryClient={stubLibraryClient()}
+        programsClient={stubProgramsClient()}
       />
       <LocationProbe />
     </MemoryRouter>,
@@ -429,7 +452,7 @@ describe("app shell nav (integration)", () => {
     expect(signOut.tagName).toBe("BUTTON");
   });
 
-  it.each(["/programs", "/routines", "/requests", "/defaults"] as const)(
+  it.each(["/routines", "/requests", "/defaults"] as const)(
     "does not render search UI anywhere on %s",
     (route) => {
       renderApp(route, 0);
@@ -437,6 +460,16 @@ describe("app shell nav (integration)", () => {
       expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
     },
   );
+
+  it("renders page-level program search on /programs without shell global search", () => {
+    renderApp("/programs", 0);
+    const header = document.querySelector(".shell-header");
+    expect(header).toBeTruthy();
+    expect(
+      within(header as HTMLElement).queryByRole("searchbox"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: SEARCH_PROGRAMS_LABEL })).toBeInTheDocument();
+  });
 
   it("does not render global search in the app shell header on library routes", () => {
     renderApp("/exercises", 0);
