@@ -20,6 +20,7 @@ import {
   ShareLinkDefaultsRepository,
   ShareLinksRepository,
 } from "../src/storage/repositories/programs.js";
+import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import {
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
@@ -363,6 +364,50 @@ describe("ProgramsRepository listForPractitioner", () => {
       expect(fromList?.source_routine_id).toBe(id("routine-list-eq"));
       expect(fromList?.source_routine_version_id).toBe(published.id);
       expect(fromList?.source_routine_origin).toBe("used_as_is");
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramsRepository listForPractitioner draft order (M20)", () => {
+  it("orders by draft_updated_at descending (most recent first)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      const service = new ProgramBuilderService(storage);
+
+      await programs.create({
+        id: id("prog-list-old"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      await programs.create({
+        id: id("prog-list-mid"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-02T00:00:00.000Z",
+      });
+      await programs.create({
+        id: id("prog-list-new"),
+        createdBy: practitionerId,
+        createdAt: "2026-01-03T00:00:00.000Z",
+      });
+      await programs.touchDraft(id("prog-list-old"), "2026-01-01T12:00:00.000Z");
+      await programs.touchDraft(id("prog-list-mid"), "2026-01-02T12:00:00.000Z");
+      await programs.touchDraft(id("prog-list-new"), "2026-01-03T12:00:00.000Z");
+
+      const expectedOrder = [
+        id("prog-list-new"),
+        id("prog-list-mid"),
+        id("prog-list-old"),
+      ];
+
+      const listed = await programs.listForPractitioner({ practitionerId });
+      expect(listed.map((row) => row.id)).toEqual(expectedOrder);
+
+      const fromService = await service.listPrograms(practitionerId);
+      expect(fromService.items.map((item) => item.program_id)).toEqual(expectedOrder);
     } finally {
       storage.close();
     }
