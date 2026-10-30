@@ -5,8 +5,14 @@ export function inspectValue(value: unknown): string {
   return inspect(value, { depth: null });
 }
 
-export function flattenConsoleCallArgs(call: unknown[]): string {
-  return call.map((arg) => inspectValue(arg)).join(" ");
+export function rawFormOfArg(arg: unknown): string {
+  if (typeof arg === "string") {
+    return arg;
+  }
+  if (arg instanceof Error) {
+    return `${arg.message} ${arg.stack ?? ""}`;
+  }
+  return String(arg);
 }
 
 /** Escaped form of note as it would appear inside a JSON string literal. */
@@ -36,11 +42,19 @@ export function assertLeakFreeText(
   }
 }
 
+export function assertArgLeakFree(
+  arg: unknown,
+  expectations: ConsoleLeakExpectations,
+): void {
+  assertLeakFreeText(rawFormOfArg(arg), expectations);
+  assertLeakFreeText(inspectValue(arg), expectations);
+}
+
 export function expectThrownErrorLeakFree(
   err: unknown,
   expectations: ConsoleLeakExpectations,
 ): void {
-  assertLeakFreeText(inspectValue(err), expectations);
+  assertArgLeakFree(err, expectations);
 }
 
 export function expectConsoleCallsLeakFree(
@@ -49,7 +63,9 @@ export function expectConsoleCallsLeakFree(
 ): void {
   for (const spy of spies) {
     for (const call of spy.mock.calls) {
-      assertLeakFreeText(flattenConsoleCallArgs(call as unknown[]), expectations);
+      for (const arg of call as unknown[]) {
+        assertArgLeakFree(arg, expectations);
+      }
     }
   }
 }
