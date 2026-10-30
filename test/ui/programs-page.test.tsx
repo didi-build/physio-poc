@@ -191,6 +191,65 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(document.querySelector("mark")?.textContent).toBe("PRG-TEST");
   });
 
+  it("shows list count for a single program", async () => {
+    render(
+      <MemoryRouter initialEntries={["/programs"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({
+            listPrograms: vi
+              .fn()
+              .mockResolvedValue({ items: [LIST_ITEM], matched_code: null }),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(listCountLabel(1)!)).toBeInTheDocument();
+  });
+
+  it("shows filtered list count for one match among many", async () => {
+    const items = [
+      LIST_ITEM,
+      { ...LIST_ITEM, program_id: "prog-2", code: "PRG-TWO", name: "Other program" },
+    ];
+    render(
+      <MemoryRouter initialEntries={["/programs?q=knee"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({
+            listPrograms: vi.fn().mockResolvedValue({ items, matched_code: null }),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(listCountLabel(2, 1)!)).toBeInTheDocument();
+  });
+
+  it("leaves builder without a leave dialog when there are no unsaved edits", async () => {
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({
+            listPrograms: vi.fn().mockResolvedValue({
+              items: [LIST_ITEM],
+              matched_code: "PRG-TEST",
+            }),
+            getProgram: vi
+              .fn()
+              .mockResolvedValue(builderView({ name: "Knee program A" })),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("textbox", { name: "Program name" });
+    await userEvent.click(screen.getByRole("button", { name: PROGRAMS_PAGE_TITLE }));
+    expect(
+      await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE, level: 1 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: LEAVE_TITLE })).not.toBeInTheDocument();
+  });
+
   it("shows list count for multiple programs", async () => {
     const items = [
       LIST_ITEM,
@@ -295,9 +354,7 @@ describe("Programs UI (integration, jsdom)", () => {
     await waitFor(() => {
       expect(screen.getAllByText(AUTO_SAVE_SAVED).length).toBeGreaterThan(0);
     });
-    await waitFor(() => {
-      expect(publish).not.toBeDisabled();
-    });
+    expect(screen.getByRole("button", { name: PUBLISH })).toBeDisabled();
   });
 
   it("shows save failure, Try again, and keeps Publish disabled", async () => {

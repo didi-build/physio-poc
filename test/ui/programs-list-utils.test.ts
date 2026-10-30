@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { libraryUpdatesToReviewFlag } from "../../src/ui/copy/programs.js";
+import {
+  libraryUpdatesToReviewFlag,
+  listCountLabel,
+} from "../../src/ui/copy/programs.js";
 import {
   filterProgramsClientSide,
   resolveProgramIdForBuilderCode,
@@ -9,6 +12,14 @@ describe("libraryUpdatesToReviewFlag (unit)", () => {
   it("returns null for zero and the States table line 23 pattern when count is positive", () => {
     expect(libraryUpdatesToReviewFlag(0)).toBeNull();
     expect(libraryUpdatesToReviewFlag(2)).toBe("2 library updates to review");
+  });
+});
+
+describe("listCountLabel (unit)", () => {
+  it("uses singular and filtered list count copy", () => {
+    expect(listCountLabel(1)).toBe("1 program");
+    expect(listCountLabel(5, 1)).toBe("1 of 5 programs");
+    expect(listCountLabel(5, 0)).toBe("0 of 5 programs");
   });
 });
 

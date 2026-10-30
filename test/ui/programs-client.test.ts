@@ -12,6 +12,16 @@ import {
 } from "../../src/programs-api-paths.js";
 import { ProgramsClient } from "../../src/ui/api/programs-client.js";
 
+function assertJsonWrite(
+  init: RequestInit | undefined,
+  method: string,
+  expectedBody: unknown,
+): void {
+  expect(init?.method).toBe(method);
+  expect(new Headers(init?.headers).get("content-type")).toBe("application/json");
+  expect(JSON.parse(String(init?.body))).toEqual(expectedBody);
+}
+
 describe("ProgramsClient (unit)", () => {
   it("GET list uses collection path with optional q", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
@@ -36,18 +46,26 @@ describe("ProgramsClient (unit)", () => {
     );
     const client = new ProgramsClient({ fetchFn });
     await client.createProgram({ program_id: "p1" });
-    const [url, init] = fetchFn.mock.calls[0]!;
-    expect(url).toBe(PROGRAMS_API_BASE);
-    expect((init as RequestInit).method).toBe("POST");
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
-      program_id: "p1",
-    });
-    expect(new Headers((init as RequestInit).headers).get("content-type")).toBe(
-      "application/json",
-    );
+    const [, init] = fetchFn.mock.calls[0]!;
+    expect(fetchFn.mock.calls[0]![0]).toBe(PROGRAMS_API_BASE);
+    assertJsonWrite(init as RequestInit, "POST", { program_id: "p1" });
   });
 
-  it("DELETE program sends empty JSON object body", async () => {
+  it("PATCH name sends JSON content-type and body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.updateProgramName("prog-1", "Knee program A");
+    const [, init] = fetchFn.mock.calls[0]!;
+    expect(fetchFn.mock.calls[0]![0]).toBe(programPath("prog-1"));
+    assertJsonWrite(init as RequestInit, "PATCH", { name: "Knee program A" });
+  });
+
+  it("DELETE program sends empty JSON object body and content-type", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ program: {} }), {
         status: 200,
@@ -58,19 +76,21 @@ describe("ProgramsClient (unit)", () => {
     await client.deleteProgram("prog-1");
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(programPath("prog-1"));
-    expect((init as RequestInit).method).toBe("DELETE");
-    expect((init as RequestInit).body).toBe("{}");
+    assertJsonWrite(init as RequestInit, "DELETE", {});
   });
 
-  it("POST restore uses restore path", async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ program: {} }), { status: 200 }),
-      );
+  it("POST restore sends JSON content-type and empty body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new ProgramsClient({ fetchFn });
     await client.restoreProgram("prog-1");
-    expect(fetchFn.mock.calls[0]![0]).toBe(programRestorePath("prog-1"));
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(programRestorePath("prog-1"));
+    assertJsonWrite(init as RequestInit, "POST", {});
   });
 
   it("GET deleted list path", async () => {
@@ -82,12 +102,13 @@ describe("ProgramsClient (unit)", () => {
     expect(fetchFn.mock.calls[0]![0]).toBe(programsDeletedListPath());
   });
 
-  it("POST row uses rows path and body", async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ program: {} }), { status: 200 }),
-      );
+  it("POST row uses rows path, content-type, and body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new ProgramsClient({ fetchFn });
     await client.addExerciseRow("prog-1", {
       row_id: "row-1",
@@ -95,50 +116,51 @@ describe("ProgramsClient (unit)", () => {
     });
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(programRowsPath("prog-1"));
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+    assertJsonWrite(init as RequestInit, "POST", {
       row_id: "row-1",
       exercise_id: "ex-1",
     });
   });
 
-  it("PATCH reorder sends ordered_row_ids", async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ program: {} }), { status: 200 }),
-      );
+  it("PATCH reorder sends content-type and ordered_row_ids", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new ProgramsClient({ fetchFn });
     await client.reorderRows("prog-1", ["a", "b"]);
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(programRowsReorderPath("prog-1"));
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
-      ordered_row_ids: ["a", "b"],
-    });
+    assertJsonWrite(init as RequestInit, "PATCH", { ordered_row_ids: ["a", "b"] });
   });
 
-  it("POST duplicate sends new_row_id", async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ program: {} }), { status: 200 }),
-      );
+  it("POST duplicate sends content-type and new_row_id", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new ProgramsClient({ fetchFn });
     await client.duplicateRow("prog-1", "row-1", "row-2");
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(programRowDuplicatePath("prog-1", "row-1"));
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
-      new_row_id: "row-2",
-    });
+    assertJsonWrite(init as RequestInit, "POST", { new_row_id: "row-2" });
   });
 
-  it("DELETE row uses row path", async () => {
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ program: {} }), { status: 200 }),
-      );
+  it("DELETE row sends content-type and empty JSON body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const client = new ProgramsClient({ fetchFn });
     await client.deleteRow("prog-1", "row-1");
-    expect(fetchFn.mock.calls[0]![0]).toBe(programRowPath("prog-1", "row-1"));
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(programRowPath("prog-1", "row-1"));
+    assertJsonWrite(init as RequestInit, "DELETE", {});
   });
 });

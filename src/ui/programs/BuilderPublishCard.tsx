@@ -1,10 +1,5 @@
 import type { ProgramAutoSaveStatus } from "../../services/programs/types.js";
-import {
-  AUTO_SAVE_NOTE,
-  NOT_PUBLISHED_YET,
-  PUBLISH,
-  formatAutoSaveStatus,
-} from "../copy/programs.js";
+import { AUTO_SAVE_NOTE, PUBLISH, formatAutoSaveStatus } from "../copy/programs.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
 import type { AutoSaveUiState } from "./use-program-auto-save.js";
 
@@ -28,7 +23,7 @@ export function BuilderPublishCard({
   const statusLine = formatAutoSaveStatus(autoSaveStatus, publishedAt);
 
   return (
-    <aside className="pg-publish-card" aria-label={NOT_PUBLISHED_YET}>
+    <aside className="pg-publish-card">
       <p className="pg-publish-card-status">{statusLine}</p>
       <AutoSaveStatus
         state={saveUiState}

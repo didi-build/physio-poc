@@ -391,7 +391,7 @@ export function ProgramBuilderPage() {
           publishedAt={publishedAt}
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
-          publishAllowed={autoSave.publishAllowed}
+          publishAllowed={false}
           onTryAgain={autoSave.tryAgain}
         />
       </div>
