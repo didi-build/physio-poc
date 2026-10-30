@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { FreeTextValidationError } from "../src/domain/exercise-free-text.js";
 import { OpaqueEntityIdValidationError } from "../src/domain/opaque-entity-id.js";
+import { MAX_LENGTH_PROGRAM_TITLE } from "../src/mcp-connector/text-limits.js";
 import { ParamValidationError } from "../src/domain/exercise-params.js";
 import { ProgramsRepository } from "../src/storage/repositories/programs.js";
+import type { SqlValue } from "../src/storage/ports/sql-storage.js";
 import {
   ConditionsRepository,
   loadPublishedRoutineVersionForRoutine,
@@ -29,6 +32,28 @@ const VALID_PARAMS = {
   days_per_week: 7,
 } as const;
 const INVALID_PARAMS = { hold_s: 9999 } as const;
+
+function expectOpaqueFieldRejection(
+  run: () => Promise<unknown>,
+  fieldLabel: string,
+  testLabel: string,
+): Promise<void> {
+  return expect(run(), testLabel).rejects.toSatisfy((error: unknown) => {
+    return (
+      error instanceof OpaqueEntityIdValidationError &&
+      error.message === `${fieldLabel} must be a UUID v4 opaque id`
+    );
+  });
+}
+
+async function countRows(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  sql: string,
+  bindings: readonly SqlValue[] = [],
+): Promise<number> {
+  const row = await storage.first<{ c: number }>(sql, bindings);
+  return row?.c ?? 0;
+}
 
 describe("routine repository guard coverage (QA mutation gaps)", () => {
   it("rejects empty body region on updateDraftMetadata", async () => {
@@ -408,9 +433,14 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         createdBy: author,
         createdAt: TS,
       });
-      const cases: { label: string; run: () => Promise<unknown> }[] = [
+      const cases: {
+        label: string;
+        fieldLabel: string;
+        run: () => Promise<unknown>;
+      }[] = [
         {
           label: "loadPublished routineId",
+          fieldLabel: "Routine id",
           run: () =>
             loadPublishedRoutineVersionForRoutine(
               storage,
@@ -421,6 +451,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "loadPublished routineVersionId",
+          fieldLabel: "Routine version id",
           run: () =>
             loadPublishedRoutineVersionForRoutine(
               storage,
@@ -431,10 +462,12 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "ConditionsRepository.insert id",
+          fieldLabel: "Condition id",
           run: () => conditions.insert({ id: BAD_OPAQUE, label: "Hip OA" }),
         },
         {
           label: "createDraft routine id",
+          fieldLabel: "Routine id",
           run: () =>
             routines.createDraft({
               id: BAD_OPAQUE,
@@ -446,6 +479,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "createDraft draftVersionId",
+          fieldLabel: "Routine version id",
           run: () =>
             routines.createDraft({
               id: id("opaque-new-routine-2"),
@@ -457,6 +491,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "createDraft conditionId",
+          fieldLabel: "Condition id",
           run: () =>
             routines.createDraft({
               id: id("opaque-new-routine-3"),
@@ -469,6 +504,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "updateDraftMetadata conditionId",
+          fieldLabel: "Condition id",
           run: () =>
             routines.updateDraftMetadata({
               routineId: id("opaque-draft-routine"),
@@ -479,6 +515,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "savePublishedVersion id",
+          fieldLabel: "Routine version id",
           run: () =>
             versions.savePublishedVersion({
               id: BAD_OPAQUE,
@@ -491,6 +528,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "savePublishedVersion restoredFromVersionId",
+          fieldLabel: "Restored from version id",
           run: () =>
             versions.savePublishedVersion({
               id: id("opaque-save-v3"),
@@ -504,6 +542,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "RoutineVersionRowsRepository.insertRow id",
+          fieldLabel: "Routine version row id",
           run: () =>
             rows.insertRow({
               id: BAD_OPAQUE,
@@ -517,6 +556,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "RoutineVersionRowsRepository.insertRow routineVersionId",
+          fieldLabel: "Routine version id",
           run: () =>
             rows.insertRow({
               id: id("opaque-insert-row"),
@@ -530,6 +570,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "RoutineVersionRowsRepository.insertRow exerciseId",
+          fieldLabel: "Exercise id",
           run: () =>
             rows.insertRow({
               id: id("opaque-insert-row-2"),
@@ -543,6 +584,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "RoutineVersionRowsRepository.insertRow exerciseVersionId",
+          fieldLabel: "Exercise version id",
           run: () =>
             rows.insertRow({
               id: id("opaque-insert-row-3"),
@@ -556,6 +598,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "replaceDraftRow id",
+          fieldLabel: "Routine version row id",
           run: () =>
             rows.replaceDraftRow({
               id: BAD_OPAQUE,
@@ -571,6 +614,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "replaceDraftRow exerciseId",
+          fieldLabel: "Exercise id",
           run: () =>
             rows.replaceDraftRow({
               id: id("opaque-replace-row"),
@@ -586,6 +630,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "replaceDraftRow exerciseVersionId",
+          fieldLabel: "Exercise version id",
           run: () =>
             rows.replaceDraftRow({
               id: id("opaque-replace-row-2"),
@@ -601,6 +646,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "saveFrozenCopy id",
+          fieldLabel: "Practitioner routine id",
           run: () =>
             my.saveFrozenCopy({
               id: BAD_OPAQUE,
@@ -622,6 +668,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "saveFrozenCopy routineId",
+          fieldLabel: "Routine id",
           run: () =>
             my.saveFrozenCopy({
               id: id("opaque-copy-bad-routine"),
@@ -643,6 +690,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.insertRow id",
+          fieldLabel: "Practitioner routine row id",
           run: () =>
             myRows.insertRow({
               id: BAD_OPAQUE,
@@ -656,6 +704,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.insertRow practitionerRoutineId",
+          fieldLabel: "Practitioner routine id",
           run: () =>
             myRows.insertRow({
               id: id("opaque-my-row"),
@@ -669,6 +718,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.insertRow exerciseId",
+          fieldLabel: "Exercise id",
           run: () =>
             myRows.insertRow({
               id: id("opaque-my-row-2"),
@@ -682,6 +732,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.insertRow exerciseVersionId",
+          fieldLabel: "Exercise version id",
           run: () =>
             myRows.insertRow({
               id: id("opaque-my-row-3"),
@@ -695,6 +746,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.replaceRow id",
+          fieldLabel: "Practitioner routine row id",
           run: () =>
             myRows.replaceRow({
               id: BAD_OPAQUE,
@@ -708,6 +760,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.replaceRow practitionerRoutineId",
+          fieldLabel: "Practitioner routine id",
           run: () =>
             myRows.replaceRow({
               id: id("opaque-my-replace"),
@@ -721,6 +774,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.replaceRow exerciseId",
+          fieldLabel: "Exercise id",
           run: () =>
             myRows.replaceRow({
               id: id("opaque-my-replace-2"),
@@ -734,6 +788,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "PractitionerRoutineRowsRepository.replaceRow exerciseVersionId",
+          fieldLabel: "Exercise version id",
           run: () =>
             myRows.replaceRow({
               id: id("opaque-my-replace-3"),
@@ -747,6 +802,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "ProgramsRepository.create source routine id",
+          fieldLabel: "Source routine id",
           run: () =>
             programs.create({
               id: id("opaque-prog-create"),
@@ -761,6 +817,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "ProgramsRepository.create source routine version id",
+          fieldLabel: "Source routine version id",
           run: () =>
             programs.create({
               id: id("opaque-prog-create-2"),
@@ -775,6 +832,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "ProgramsRepository.setRoutineOrigin routine id",
+          fieldLabel: "Source routine id",
           run: () =>
             programs.setRoutineOrigin(scratch.id, {
               routineId: BAD_OPAQUE,
@@ -784,6 +842,7 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
         {
           label: "ProgramsRepository.setRoutineOrigin routine version id",
+          fieldLabel: "Source routine version id",
           run: () =>
             programs.setRoutineOrigin(scratch.id, {
               routineId: id("opaque-base-routine"),
@@ -793,8 +852,8 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         },
       ];
 
-      for (const { label, run } of cases) {
-        await expect(run(), label).rejects.toThrow(OpaqueEntityIdValidationError);
+      for (const { label, fieldLabel, run } of cases) {
+        await expectOpaqueFieldRejection(run, fieldLabel, label);
       }
     } finally {
       storage.close();
@@ -833,16 +892,19 @@ describe("routine repository opaque entity id validation (table-driven)", () => 
         publishedAt: TS,
         name: "Copy from opaque",
       });
-      await expect(
-        versions.savePublishedVersion({
-          id: id("opaque-copyfrom-v2"),
-          routineId: id("opaque-copyfrom-routine"),
-          createdBy: author,
-          createdAt: TS,
-          name: "Next",
-          copyFromVersionId: BAD_OPAQUE,
-        }),
-      ).rejects.toThrow(OpaqueEntityIdValidationError);
+      await expectOpaqueFieldRejection(
+        () =>
+          versions.savePublishedVersion({
+            id: id("opaque-copyfrom-v2"),
+            routineId: id("opaque-copyfrom-routine"),
+            createdBy: author,
+            createdAt: TS,
+            name: "Next",
+            copyFromVersionId: BAD_OPAQUE,
+          }),
+        "Routine version id",
+        "copyFromVersionId malformed",
+      );
     } finally {
       storage.close();
     }
@@ -883,25 +945,267 @@ describe("routine repository opaque id on saveFrozenCopy source version", () => 
         publishedAt: TS,
         name: "Source opaque",
       });
+      await expectOpaqueFieldRejection(
+        () =>
+          my.saveFrozenCopy({
+            id: id("opaque-src-copy"),
+            practitionerId: author,
+            routineId: id("opaque-src-routine"),
+            sourceRoutineVersionId: BAD_OPAQUE,
+            savedAt: TS,
+            rows: [
+              {
+                id: id("opaque-src-copy-row"),
+                position: 0,
+                exerciseId: FIXTURE_EXERCISE_ID,
+                exerciseVersionId: FIXTURE_VERSION_ID,
+                prescriptionType: "stretching",
+                params: VALID_PARAMS,
+              },
+            ],
+          }),
+        "Routine version id",
+        "sourceRoutineVersionId malformed",
+      );
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("validateConditionLabel (unit via ConditionsRepository)", () => {
+  it("rejects empty and over-length labels with exact messages", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const conditions = new ConditionsRepository(storage);
       await expect(
-        my.saveFrozenCopy({
-          id: id("opaque-src-copy"),
-          practitionerId: author,
-          routineId: id("opaque-src-routine"),
-          sourceRoutineVersionId: BAD_OPAQUE,
-          savedAt: TS,
-          rows: [
-            {
-              id: id("opaque-src-copy-row"),
-              position: 0,
-              exerciseId: FIXTURE_EXERCISE_ID,
-              exerciseVersionId: FIXTURE_VERSION_ID,
-              prescriptionType: "stretching",
-              params: VALID_PARAMS,
-            },
-          ],
-        }),
-      ).rejects.toThrow(OpaqueEntityIdValidationError);
+        conditions.insert({ id: id("cond-empty-label"), label: "   " }),
+      ).rejects.toThrow(
+        new FreeTextValidationError("Condition label must not be empty"),
+      );
+      const tooLong = "A".repeat(MAX_LENGTH_PROGRAM_TITLE + 1);
+      await expect(
+        conditions.insert({ id: id("cond-long-label"), label: tooLong }),
+      ).rejects.toThrow(
+        new FreeTextValidationError(
+          `Condition label must be at most ${String(MAX_LENGTH_PROGRAM_TITLE)} characters`,
+        ),
+      );
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("opaque id validation prevents partial writes", () => {
+  it("leaves routine_versions and practitioner_routines unchanged when version or copy ids are malformed", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const my = new PractitionerRoutinesRepository(storage);
+      await routines.createDraft({
+        id: id("no-write-routine"),
+        draftVersionId: id("no-write-rv-draft"),
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await rows.replaceDraftRow({
+        id: id("no-write-row"),
+        routineId: id("no-write-routine"),
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: VALID_PARAMS,
+        draftUpdatedAt: TS,
+      });
+      const published = await versions.publishDraft({
+        routineId: id("no-write-routine"),
+        authorId: author,
+        publishedAt: TS,
+        name: "No write routine",
+      });
+      const versionCountBefore = await countRows(
+        storage,
+        "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ?",
+        [id("no-write-routine")],
+      );
+      await expectOpaqueFieldRejection(
+        () =>
+          versions.savePublishedVersion({
+            id: BAD_OPAQUE,
+            routineId: id("no-write-routine"),
+            createdBy: author,
+            createdAt: TS,
+            name: "Should not save",
+            copyFromVersionId: published.id,
+          }),
+        "Routine version id",
+        "savePublishedVersion malformed id",
+      );
+      expect(
+        await countRows(
+          storage,
+          "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ?",
+          [id("no-write-routine")],
+        ),
+      ).toBe(versionCountBefore);
+      expect(
+        await storage.first("SELECT id FROM routine_versions WHERE id = ? LIMIT 1", [
+          BAD_OPAQUE,
+        ]),
+      ).toBeNull();
+
+      const copyCountBefore = await countRows(
+        storage,
+        "SELECT COUNT(*) AS c FROM practitioner_routines WHERE practitioner_id = ?",
+        [author],
+      );
+      await expectOpaqueFieldRejection(
+        () =>
+          my.saveFrozenCopy({
+            id: BAD_OPAQUE,
+            practitionerId: author,
+            routineId: id("no-write-routine"),
+            sourceRoutineVersionId: published.id,
+            savedAt: TS,
+            rows: [
+              {
+                id: id("no-write-copy-row"),
+                position: 0,
+                exerciseId: FIXTURE_EXERCISE_ID,
+                exerciseVersionId: FIXTURE_VERSION_ID,
+                prescriptionType: "stretching",
+                params: VALID_PARAMS,
+              },
+            ],
+          }),
+        "Practitioner routine id",
+        "saveFrozenCopy malformed id",
+      );
+      expect(
+        await countRows(
+          storage,
+          "SELECT COUNT(*) AS c FROM practitioner_routines WHERE practitioner_id = ?",
+          [author],
+        ),
+      ).toBe(copyCountBefore);
+      expect(
+        await storage.first(
+          "SELECT id FROM practitioner_routines WHERE id = ? LIMIT 1",
+          [BAD_OPAQUE],
+        ),
+      ).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("opaque id normalization on write paths", () => {
+  it("stores lowercase UUIDs for program origin, restored-from, and frozen copy source version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const programs = new ProgramsRepository(storage);
+      const my = new PractitionerRoutinesRepository(storage);
+
+      await routines.createDraft({
+        id: id("norm-routine"),
+        draftVersionId: id("norm-rv-draft"),
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await rows.replaceDraftRow({
+        id: id("norm-row"),
+        routineId: id("norm-routine"),
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: VALID_PARAMS,
+        draftUpdatedAt: TS,
+      });
+      const published = await versions.publishDraft({
+        routineId: id("norm-routine"),
+        authorId: author,
+        publishedAt: TS,
+        name: "Norm routine",
+      });
+
+      const upperRoutineId = id("norm-routine").toUpperCase();
+      const upperVersionId = published.id.toUpperCase();
+      const upperNewVersionId = id("norm-rv-v2").toUpperCase();
+
+      const fromOrigin = await programs.create({
+        id: id("norm-prog-origin"),
+        createdBy: author,
+        createdAt: TS,
+        routineOrigin: {
+          routineId: upperRoutineId,
+          routineVersionId: upperVersionId,
+          origin: "used_as_is",
+        },
+      });
+      expect(fromOrigin.source_routine_id).toBe(id("norm-routine"));
+      expect(fromOrigin.source_routine_version_id).toBe(published.id);
+
+      const scratch = await programs.create({
+        id: id("norm-prog-set"),
+        createdBy: author,
+        createdAt: TS,
+      });
+      await programs.setRoutineOrigin(scratch.id, {
+        routineId: upperRoutineId,
+        routineVersionId: upperVersionId,
+        usedAs: "tweaked",
+      });
+      const updated = await programs.findById(scratch.id);
+      expect(updated?.source_routine_id).toBe(id("norm-routine"));
+      expect(updated?.source_routine_version_id).toBe(published.id);
+
+      const savedV2 = await versions.savePublishedVersion({
+        id: upperNewVersionId,
+        routineId: id("norm-routine"),
+        createdBy: author,
+        createdAt: TS,
+        name: "Norm v2",
+        copyFromVersionId: published.id,
+        restoredFromVersionId: upperVersionId,
+      });
+      expect(savedV2.id).toBe(id("norm-rv-v2"));
+      expect(savedV2.restored_from_version_id).toBe(published.id);
+
+      const savedCopy = await my.saveFrozenCopy({
+        id: id("norm-my-copy"),
+        practitionerId: author,
+        routineId: id("norm-routine"),
+        sourceRoutineVersionId: upperVersionId,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("norm-my-row"),
+            position: 0,
+            exerciseId: FIXTURE_EXERCISE_ID,
+            exerciseVersionId: FIXTURE_VERSION_ID,
+            prescriptionType: "stretching",
+            params: VALID_PARAMS,
+          },
+        ],
+      });
+      expect(savedCopy.source_routine_version_id).toBe(published.id);
     } finally {
       storage.close();
     }
