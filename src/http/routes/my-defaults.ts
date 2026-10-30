@@ -54,6 +54,19 @@ function rejectBodyPractitionerId(body: Record<string, unknown>): Response | nul
   return null;
 }
 
+function rejectQueryPractitionerId(url: URL): Response | null {
+  if (
+    url.searchParams.has("practitionerId") ||
+    url.searchParams.has("practitioner_id")
+  ) {
+    return Response.json(
+      { error: "invalid_input", message: "invalid_input" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  return null;
+}
+
 async function readJsonObjectBody(
   request: Request,
 ): Promise<Record<string, unknown> | Response> {
@@ -105,6 +118,11 @@ export async function handleMyDefaultsRequest(
   const match = MY_DEFAULTS_ME_PATH.exec(url.pathname);
   if (!match) {
     return null;
+  }
+
+  const queryRejected = rejectQueryPractitionerId(url);
+  if (queryRejected) {
+    return queryRejected;
   }
 
   const practitionerId = practitionerIdFromSession(options.sessionPractitioner);

@@ -52,6 +52,60 @@ function authedCrossOriginJsonRequest(
   return new Request(url, { ...init, headers });
 }
 
+function practitionerIdQuerySuffix(otherPractitionerId: string): string {
+  return `?practitionerId=${encodeURIComponent(otherPractitionerId)}`;
+}
+
+async function expectInvalidInput(response: Response): Promise<void> {
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({
+    error: "invalid_input",
+    message: "invalid_input",
+  });
+}
+
+async function shareLinkPractitionerRowSnapshot(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+): Promise<{
+  id: string;
+  expires_in: string;
+  custom_expires_on: string | null;
+} | null> {
+  return storage.first(
+    "SELECT id, expires_in, custom_expires_on FROM share_link_defaults WHERE scope = ? AND practitioner_id = ? LIMIT 1",
+    ["practitioner", practitionerId],
+  );
+}
+
+async function assertSessionANeverSeesPractitionerBData(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerA: string,
+): Promise<void> {
+  const { deps, cookie } = apiDeps(storage, practitionerA);
+  const getResponse = await handleRequest(
+    authedRequest(`http://127.0.0.1${MY_DEFAULTS_API_BASE}`, cookie),
+    deps,
+  );
+  expect(getResponse.status).toBe(200);
+  const page = (await getResponse.json()) as {
+    share_link_expiry: {
+      practitioner: { expiresIn: string } | null;
+      effective: { expiresIn: string };
+    };
+    exercise_types: Array<{
+      type: string;
+      practitioner_params: { hold_s?: number } | null;
+    }>;
+  };
+  expect(page.share_link_expiry.practitioner).toBeNull();
+  expect(page.share_link_expiry.effective.expiresIn).toBe(
+    SHARE_LINK_EXPIRES_IN.one_year,
+  );
+  const stretching = page.exercise_types.find((row) => row.type === "stretching");
+  expect(stretching?.practitioner_params).toBeNull();
+}
+
 function apiDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   practId: string,
@@ -219,6 +273,223 @@ describe("My defaults HTTP routes (integration)", () => {
       const stretching = page.exercise_types.find((row) => row.type === "stretching");
       expect(stretching?.practitioner_params?.hold_s).not.toBe(99);
       expect(stretching?.practitioner_params).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("session A PATCH to Never updates only A; B share-link row unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-share-never");
+      await seedPractitioner(storage, practitionerB, "b-share-never@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-30"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      expect(bShareBefore).not.toBeNull();
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const patchResponse = await handleRequest(
+        authedJsonRequest(myDefaultsShareLinkExpiryPath(), cookie, {
+          method: "PATCH",
+          body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.never }),
+        }),
+        deps,
+      );
+      expect(patchResponse.status).toBe(200);
+      const patched = (await patchResponse.json()) as {
+        practitioner: { expiresIn: string } | null;
+      };
+      expect(patched.practitioner?.expiresIn).toBe(SHARE_LINK_EXPIRES_IN.never);
+
+      const bShareAfter = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      expect(bShareAfter).toEqual(bShareBefore);
+
+      const aShareRow = await storage.first<{ expires_in: string }>(
+        "SELECT expires_in FROM share_link_defaults WHERE scope = ? AND practitioner_id = ? LIMIT 1",
+        ["practitioner", practitionerA],
+      );
+      expect(aShareRow?.expires_in).toBe(SHARE_LINK_EXPIRES_IN.never);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId query on GET with invalid_input; B rows unchanged; A never sees B data", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-get");
+      await seedPractitioner(storage, practitionerB, "b-query-get@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-get"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-get"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const getResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1${MY_DEFAULTS_API_BASE}${practitionerIdQuerySuffix(practitionerB)}`,
+          cookie,
+        ),
+        deps,
+      );
+      await expectInvalidInput(getResponse);
+
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
+
+      await assertSessionANeverSeesPractitionerBData(storage, practitionerA);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId query on PATCH with invalid_input; B rows unchanged; A never sees B data", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-patch");
+      await seedPractitioner(storage, practitionerB, "b-query-patch@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-patch"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-patch"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const patchResponse = await handleRequest(
+        authedJsonRequest(
+          `${myDefaultsShareLinkExpiryPath()}${practitionerIdQuerySuffix(practitionerB)}`,
+          cookie,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.never }),
+          },
+        ),
+        deps,
+      );
+      await expectInvalidInput(patchResponse);
+
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
+
+      await assertSessionANeverSeesPractitionerBData(storage, practitionerA);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId query on PUT with invalid_input; B rows unchanged; A never sees B data", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-put");
+      await seedPractitioner(storage, practitionerB, "b-query-put@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-put"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-put"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const putResponse = await handleRequest(
+        authedJsonRequest(
+          `${myDefaultsTypePath("isometric")}${practitionerIdQuerySuffix(practitionerB)}`,
+          cookie,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              params: { reps: 5, hold_s: 10, sets: 2, days_per_week: 3 },
+            }),
+          },
+        ),
+        deps,
+      );
+      await expectInvalidInput(putResponse);
+
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
+
+      await assertSessionANeverSeesPractitionerBData(storage, practitionerA);
     } finally {
       storage.close();
     }

@@ -18,6 +18,7 @@ import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry
 import {
   MY_DEFAULTS_PAGE_TITLE,
   RESET_TO_GLOBAL,
+  SAVE,
   SHARE_LINK_EXPIRY_SECTION,
   TYPE_LABELS,
   YOUR_DEFAULT_BADGE,
@@ -162,6 +163,35 @@ describe("My defaults page (integration, jsdom)", () => {
     const resetButton = within(card).getByRole("button", { name: RESET_TO_GLOBAL });
     await userEvent.click(resetButton);
     expect(resetTypeDefault).toHaveBeenCalledWith("concentric");
+  });
+
+  it("saves a type default through the card via upsertTypeDefault", async () => {
+    const savedParams = { hold_s: 50, per_day: 2, days_per_week: 4 };
+    const upsertTypeDefault = vi.fn().mockResolvedValue({
+      type: "stretching",
+      global_params: GLOBAL_TYPE_DEFAULTS_SEED.stretching,
+      practitioner_params: savedParams,
+    });
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient({ upsertTypeDefault })}
+        />
+      </MemoryRouter>,
+    );
+
+    const card = await screen.findByTestId("type-default-stretching");
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: editYourTypeDefaultLabel(TYPE_LABELS.stretching),
+      }),
+    );
+    const holdInput = within(card).getByDisplayValue("45");
+    await userEvent.clear(holdInput);
+    await userEvent.type(holdInput, "50");
+    await userEvent.click(within(card).getByRole("button", { name: SAVE }));
+    expect(upsertTypeDefault).toHaveBeenCalledWith("stretching", savedParams);
   });
 
   it("resolves every dose input name through its card heading on the page", async () => {
