@@ -24,9 +24,7 @@ On D1, wrangler applies migrations and tracks them in **`d1_migrations`**. The `
 
 Routines migration `0005` merged before `0003` (exercise media) and `0004` (Better Auth). The three files do not depend on each other, but production may already have `0005` in `d1_migrations` when `0003` and `0004` first appear in the repo.
 
-Local verification (never `--remote`): `test/d1-migrations-out-of-order.test.ts` materializes a phase1 migration set (`0001`, `0002`, `0005`), applies it with `wrangler d1 migrations apply --local`, then applies the full `migrations/` directory and asserts the final table set matches a fresh in-order apply. As of DIDI-1099, wrangler applies pending lower-numbered files correctly; no renumbering or SQL guard was required.
-
-Harness config: `wrangler.d1-migrations-test.jsonc` (local test database id only; not used in deploy).
+Local verification (never `--remote`): `test/d1-migrations-out-of-order.test.ts` materializes a phase1 migration set (`0001`, `0002`, `0005`), applies it with `wrangler d1 migrations apply --local`, then applies the full `migrations/` directory and compares the full application schema (columns, keys, indexes, and `CREATE TABLE` SQL including checks) to a fresh in-order apply. As of DIDI-1099, wrangler applies pending lower-numbered files correctly; no renumbering or SQL guard was required. The test writes a temporary wrangler config under TMPDIR only; there is no committed D1 binding config in the repo.
 
 ## In-memory SqlStoragePort
 

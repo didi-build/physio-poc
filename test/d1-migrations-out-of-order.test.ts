@@ -1,20 +1,22 @@
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  captureApplicationSchemaFromPath,
+  listAppliedMigrationNamesFromPath,
+  mutateSnapshotChangeColumnType,
+  mutateSnapshotDropColumn,
+  mutateSnapshotDropIndex,
+  resolveLocalD1SqlitePath,
+  schemasEqual,
+  type ApplicationSchemaSnapshot,
+} from "./helpers/d1-application-schema-snapshot.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const WRANGLER_BIN = join(REPO_ROOT, "node_modules/wrangler/bin/wrangler.js");
 const D1_DATABASE_NAME = "physio-poc-migrations-test";
-const D1_BINDING_CONFIG = join(REPO_ROOT, "wrangler.d1-migrations-test.jsonc");
 
 const PHASE1_MIGRATION_FILES = [
   "0001_exercise_data_model.sql",
@@ -94,36 +96,79 @@ function applyLocalMigrations(persistTo: string, configPath: string): void {
   expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 }
 
-function queryD1(persistTo: string, configPath: string, sql: string): unknown[] {
-  const result = runWrangler(
-    ["d1", "execute", D1_DATABASE_NAME, "--command", sql, "--json"],
-    { persistTo, configPath },
-  );
-  expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-  const parsed = JSON.parse(result.stdout) as Array<{ results: unknown[] }>;
-  return parsed[0]?.results ?? [];
+function listAppliedMigrationNames(persistTo: string): string[] {
+  return listAppliedMigrationNamesFromPath(resolveLocalD1SqlitePath(persistTo));
 }
 
-function listTableNames(persistTo: string, configPath: string): string[] {
-  const rows = queryD1(
-    persistTo,
-    configPath,
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-  ) as Array<{ name: string }>;
-  return rows.map((row) => row.name);
+function expectSchemasEqual(
+  actual: ApplicationSchemaSnapshot,
+  expected: ApplicationSchemaSnapshot,
+): void {
+  expect(schemasEqual(actual, expected)).toBe(true);
 }
 
-function listAppliedMigrationNames(persistTo: string, configPath: string): string[] {
-  const rows = queryD1(
-    persistTo,
-    configPath,
-    "SELECT name FROM d1_migrations ORDER BY id",
-  ) as Array<{ name: string }>;
-  return rows.map((row) => row.name);
-}
+describe("application schema snapshot comparison (unit)", () => {
+  const base: ApplicationSchemaSnapshot = {
+    exercises: {
+      createSql:
+        'CREATE TABLE "exercises" (id TEXT PRIMARY KEY, category TEXT NOT NULL)',
+      columns: [
+        {
+          name: "id",
+          type: "TEXT",
+          notNull: false,
+          defaultValue: null,
+          primaryKey: 1,
+        },
+        {
+          name: "category",
+          type: "TEXT",
+          notNull: true,
+          defaultValue: null,
+          primaryKey: 0,
+        },
+      ],
+      foreignKeys: [],
+      indexes: [
+        {
+          name: "idx_exercises_category",
+          unique: false,
+          origin: "c",
+          partial: false,
+          sql: "CREATE INDEX idx_exercises_category ON exercises (category)",
+          columns: [{ seqno: 0, cid: 1, name: "category" }],
+        },
+      ],
+    },
+  };
+
+  it("detects a dropped column", () => {
+    const mutated = mutateSnapshotDropColumn(base, "exercises", "category");
+    expect(schemasEqual(base, mutated)).toBe(false);
+  });
+
+  it("detects a changed column type", () => {
+    const mutated = mutateSnapshotChangeColumnType(
+      base,
+      "exercises",
+      "category",
+      "INTEGER",
+    );
+    expect(schemasEqual(base, mutated)).toBe(false);
+  });
+
+  it("detects a dropped index", () => {
+    const mutated = mutateSnapshotDropIndex(
+      base,
+      "exercises",
+      "idx_exercises_category",
+    );
+    expect(schemasEqual(base, mutated)).toBe(false);
+  });
+});
 
 describe("D1 wrangler migrations out-of-order landing (integration, local D1)", () => {
-  it("applies 0003 and 0004 after 0005 and matches in-order schema", () => {
+  it("applies 0003 and 0004 after 0005 and matches in-order full schema", () => {
     const persistRoot = mkdtempSync(join(tmpdir(), "physio-d1-mig-"));
     const configDir = mkdtempSync(join(tmpdir(), "physio-d1-wrangler-config-"));
     const phase1MigrationsDir = join(configDir, "phase1-migrations");
@@ -137,56 +182,32 @@ describe("D1 wrangler migrations out-of-order landing (integration, local D1)", 
     try {
       applyLocalMigrations(persistRoot, phase1Config);
 
-      const afterPhase1 = listAppliedMigrationNames(persistRoot, phase1Config);
+      const afterPhase1 = listAppliedMigrationNames(persistRoot);
       expect(afterPhase1).toEqual([...PHASE1_MIGRATION_FILES]);
 
       applyLocalMigrations(persistRoot, fullConfig);
 
-      const applied = listAppliedMigrationNames(persistRoot, fullConfig);
+      const applied = listAppliedMigrationNames(persistRoot);
       expect(applied).toHaveLength(EXPECTED_MIGRATION_FILES.length);
       expect([...applied].sort()).toEqual([...EXPECTED_MIGRATION_FILES].sort());
+
+      const outOfOrderSchema = captureApplicationSchemaFromPath(
+        resolveLocalD1SqlitePath(persistRoot),
+      );
 
       const goldenPersist = mkdtempSync(join(tmpdir(), "physio-d1-golden-"));
       try {
         applyLocalMigrations(goldenPersist, fullConfig);
-        const outOfOrderTables = listTableNames(persistRoot, fullConfig);
-        const goldenTables = listTableNames(goldenPersist, fullConfig);
-        expect(outOfOrderTables).toEqual(goldenTables);
+        const goldenSchema = captureApplicationSchemaFromPath(
+          resolveLocalD1SqlitePath(goldenPersist),
+        );
+        expectSchemasEqual(outOfOrderSchema, goldenSchema);
       } finally {
         rmSync(goldenPersist, { recursive: true, force: true });
       }
-
-      const mediaTables = queryD1(
-        persistRoot,
-        fullConfig,
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('exercise_media_sets', 'media_regenerations') ORDER BY name",
-      ) as Array<{ name: string }>;
-      expect(mediaTables.map((row) => row.name)).toEqual([
-        "exercise_media_sets",
-        "media_regenerations",
-      ]);
-
-      const authTables = queryD1(
-        persistRoot,
-        fullConfig,
-        'SELECT name FROM sqlite_master WHERE type = \'table\' AND name IN ("user", "session", "account", "verification") ORDER BY name',
-      ) as Array<{ name: string }>;
-      expect(authTables.map((row) => row.name)).toEqual([
-        "account",
-        "session",
-        "user",
-        "verification",
-      ]);
     } finally {
       rmSync(persistRoot, { recursive: true, force: true });
       rmSync(configDir, { recursive: true, force: true });
     }
-  }, 120_000);
-
-  it("documents the harness wrangler config used for local D1 only", () => {
-    const text = readFileSync(D1_BINDING_CONFIG, "utf8");
-    expect(text).toContain(D1_DATABASE_NAME);
-    expect(text).toContain('"migrations_dir"');
-    expect(text).not.toContain("--remote");
-  });
+  }, 180_000);
 });
