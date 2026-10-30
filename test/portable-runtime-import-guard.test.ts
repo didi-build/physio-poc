@@ -193,6 +193,68 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
   });
 
+  it("detects destructuring env from import.meta", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const { env } = import.meta;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects import.meta aliasing before env access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const meta = import.meta; meta.env;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects import.meta env access with a template literal key", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "const x = import.meta[`env`];",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects angle-bracket type assertion on import.meta", () => {
+    const messages = findPortableViolations("src/http/example.ts", "<any>import.meta;");
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects as-any cast before import.meta env property access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "(import.meta as any).env;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects angle-bracket cast before import.meta env property access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "(<any>import.meta).env;",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects as-any cast before import.meta env bracket access", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      '(import.meta as any)["env"];',
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("allows import.meta.url and import.meta bracket url reads", () => {
+    expect(
+      findPortableViolations("src/http/example.ts", "const u = import.meta.url;"),
+    ).toEqual([]);
+    expect(
+      findPortableViolations("src/http/example.ts", 'const u = import.meta["url"];'),
+    ).toEqual([]);
+  });
+
   it("does not flag unrelated config.env property access as import.meta.env", () => {
     const messages = findPortableViolations(
       "src/http/example.ts",
@@ -205,6 +267,14 @@ describe("portable runtime import guard (unit)", () => {
     const messages = findPortableViolations(
       "src/http/example.ts",
       "function F() { return new.target.env; }",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
+  });
+
+  it("does not flag new.target bracket env as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'function F() { return new.target["env"]; }',
     );
     expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
   });
