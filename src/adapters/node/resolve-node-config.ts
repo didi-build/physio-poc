@@ -37,20 +37,19 @@ export function resolveNodePhysioServerConfig(
 }
 
 export function resolveTestPhysioServerConfig(
+  betterAuthSecret: string,
   overrides: Partial<{
     webAppBaseUrl: string;
     authBaseUrl: string;
     allowedGoogleEmails: string;
     fakeGoogleProvider: boolean;
-    betterAuthSecret: string;
   }> = {},
 ): PhysioServerConfig {
   const authBaseUrl = overrides.authBaseUrl ?? "http://127.0.0.1:8787";
   return createPhysioServerConfig({
     webAppBaseUrl: overrides.webAppBaseUrl ?? "https://app.example.com",
     auth: {
-      betterAuthSecret:
-        overrides.betterAuthSecret ?? "test-better-auth-secret-min-32-chars",
+      betterAuthSecret,
       googleClientId: "fake-google-client-id",
       googleClientSecret: "fake-google-client-secret",
       allowedGoogleEmails: new Set(

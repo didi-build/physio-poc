@@ -1,35 +1,97 @@
 import { describe, expect, it } from "vitest";
+import { createBetterAuthInstance } from "../src/adapters/node/create-better-auth.js";
+import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import {
-  DEV_FAKE_GOOGLE_BETTER_AUTH_SECRET,
-  InvalidAuthConfigError,
   resolveBetterAuthSecretForRuntime,
+  InvalidAuthConfigError,
 } from "../src/http/config.js";
+import {
+  createPhysioServerConfig,
+  resolvePhysioAuthConfig,
+} from "../src/http/config.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 describe("resolveBetterAuthSecretForRuntime (BETTER_AUTH_SECRET)", () => {
-  it("requires BETTER_AUTH_SECRET when the fake Google provider is disabled", () => {
-    expect(() =>
-      resolveBetterAuthSecretForRuntime({
-        betterAuthSecret: "",
-        fakeGoogleProviderEnabled: false,
-        nodeEnv: "development",
-      }),
-    ).toThrow(InvalidAuthConfigError);
+  it("rejects a missing secret when NODE_ENV is unset", () => {
+    const prior = process.env.NODE_ENV;
+    delete process.env.NODE_ENV;
+    try {
+      expect(() => resolveBetterAuthSecretForRuntime("")).toThrow(
+        InvalidAuthConfigError,
+      );
+    } finally {
+      if (prior === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = prior;
+      }
+    }
   });
 
-  it("allows the dev-only placeholder when the fake Google provider is enabled in development", () => {
-    const secret = resolveBetterAuthSecretForRuntime({
-      betterAuthSecret: "",
-      fakeGoogleProviderEnabled: true,
+  it("rejects a missing secret when NODE_ENV is development", () => {
+    const prior = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      expect(() => resolveBetterAuthSecretForRuntime("")).toThrow(
+        InvalidAuthConfigError,
+      );
+    } finally {
+      if (prior === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = prior;
+      }
+    }
+  });
+
+  it("rejects a missing secret when NODE_ENV is production", () => {
+    const prior = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      expect(() => resolveBetterAuthSecretForRuntime("")).toThrow(
+        InvalidAuthConfigError,
+      );
+    } finally {
+      if (prior === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = prior;
+      }
+    }
+  });
+
+  it("rejects a missing secret when the fake Google provider is enabled in config", () => {
+    const auth = resolvePhysioAuthConfig({
+      fakeGoogleProvider: "true",
       nodeEnv: "development",
     });
-    expect(secret).toBe(DEV_FAKE_GOOGLE_BETTER_AUTH_SECRET);
+    expect(() => resolveBetterAuthSecretForRuntime(auth.betterAuthSecret)).toThrow(
+      InvalidAuthConfigError,
+    );
   });
 
   it("accepts an explicit secret of at least 32 characters", () => {
-    const secret = resolveBetterAuthSecretForRuntime({
-      betterAuthSecret: "explicit-secret-at-least-32-characters-long",
-      fakeGoogleProviderEnabled: false,
-    });
-    expect(secret).toBe("explicit-secret-at-least-32-characters-long");
+    expect(resolveBetterAuthSecretForRuntime(PHYSIO_TEST_BETTER_AUTH_SECRET)).toBe(
+      PHYSIO_TEST_BETTER_AUTH_SECRET,
+    );
+  });
+});
+
+describe("createBetterAuthInstance startup (integration)", () => {
+  it("fails closed when BETTER_AUTH_SECRET is missing", () => {
+    const storage = BetterSqliteStorage.openInMemory();
+    const config = createPhysioServerConfig({
+      auth: {
+        betterAuthSecret: "",
+        googleClientId: "fake",
+        googleClientSecret: "fake",
+        allowedGoogleEmails: new Set(["a@example.com"]),
+        fakeGoogleProviderEnabled: true,
+        authBaseUrl: "http://127.0.0.1:8787",
+      },
+    }).auth;
+    expect(() =>
+      createBetterAuthInstance(storage.nativeDatabase(), config, storage),
+    ).toThrow(InvalidAuthConfigError);
   });
 });

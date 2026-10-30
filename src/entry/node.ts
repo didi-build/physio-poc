@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createNodeAppDependencies } from "../adapters/node/create-node-app-dependencies.js";
+import { loadLocalDevEnv } from "../adapters/node/load-local-dev-env.js";
 import { handleRequest, type AppDependencies } from "../http/app.js";
 
 export type NodeServerOptions = {
@@ -60,6 +61,7 @@ export async function writeWebResponse(
 }
 
 export async function createDefaultNodeDependencies(): Promise<AppDependencies> {
+  loadLocalDevEnv();
   return createNodeAppDependencies({
     WEB_APP_BASE_URL: process.env.WEB_APP_BASE_URL,
     AUTH_BASE_URL: process.env.AUTH_BASE_URL,

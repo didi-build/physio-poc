@@ -7,6 +7,7 @@ import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-stor
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
 import { InvalidAuthConfigError, resolvePhysioAuthConfig } from "../src/http/config.js";
 import type { AppDependencies } from "../src/http/app.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 const BASE = "http://127.0.0.1:8787";
 
@@ -77,7 +78,7 @@ async function createAuthTestDeps(
     AUTH_BASE_URL: BASE,
     PHYSIO_ALLOWED_GOOGLE_EMAILS: allowedEmails,
     PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-    BETTER_AUTH_SECRET: "test-better-auth-secret-min-32-chars",
+    BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
   });
   await seedAllowedPractitioner(deps);
   return deps;

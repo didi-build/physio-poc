@@ -4,13 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import { MCP_TEST_BASE } from "./mcp-server-test-utils.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
 
 function testDeps() {
-  const config = resolveTestPhysioServerConfig({ fakeGoogleProvider: false });
+  const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET, {
+    fakeGoogleProvider: false,
+  });
   return {
     sql: new InMemorySqlStorage(),
     objects: new InMemoryObjectStorage(),

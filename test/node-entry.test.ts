@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createNodeServer } from "../src/entry/node.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 describe("Node entry server (integration)", () => {
   const priorEnv: Record<string, string | undefined> = {};
@@ -10,7 +11,7 @@ describe("Node entry server (integration)", () => {
     priorEnv.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
     priorEnv.PHYSIO_ALLOWED_GOOGLE_EMAILS = process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS;
     process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER = "true";
-    process.env.BETTER_AUTH_SECRET = "test-better-auth-secret-min-32-chars";
+    process.env.BETTER_AUTH_SECRET = PHYSIO_TEST_BETTER_AUTH_SECRET;
     process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS = "kojo.allowed@example.com";
   });
 

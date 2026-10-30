@@ -69,11 +69,7 @@ export function createBetterAuthInstance(
     installFakeGoogleFetch(config.authBaseUrl);
   }
 
-  const secret = resolveBetterAuthSecretForRuntime({
-    betterAuthSecret: config.betterAuthSecret,
-    fakeGoogleProviderEnabled: config.fakeGoogleProviderEnabled,
-    nodeEnv: process.env.NODE_ENV,
-  });
+  const secret = resolveBetterAuthSecretForRuntime(config.betterAuthSecret);
 
   const auth = betterAuth({
     secret,

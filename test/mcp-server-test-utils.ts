@@ -5,12 +5,16 @@ import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest, MCP_PATH, type AppDependencies } from "../src/http/app.js";
 import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
 
-export const MCP_TEST_CONFIG = resolveTestPhysioServerConfig({
-  fakeGoogleProvider: false,
-});
+export const MCP_TEST_CONFIG = resolveTestPhysioServerConfig(
+  PHYSIO_TEST_BETTER_AUTH_SECRET,
+  {
+    fakeGoogleProvider: false,
+  },
+);
 
 export const MCP_TEST_BASE = "https://physio-mcp.test.example";
 
