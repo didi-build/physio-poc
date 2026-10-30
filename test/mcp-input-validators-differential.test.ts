@@ -70,6 +70,7 @@ function expectAgreement(toolName: string, data: unknown) {
 }
 
 const emoji = "😀";
+const ninetyEightLetters = "a".repeat(98);
 const ninetyNineLetters = "a".repeat(99);
 const astralQuery = `${ninetyNineLetters}${emoji}`;
 
@@ -78,6 +79,14 @@ describe("generated MCP validators vs runtime Ajv", () => {
     const cases: { tool: string; data: unknown }[] = [
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "calf stretch" } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
+      },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
+      },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "x".repeat(101) } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "" } },
       {
@@ -86,6 +95,14 @@ describe("generated MCP validators vs runtime Ajv", () => {
       },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: "knee" } },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
+      },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
+      },
       {
         tool: SEARCH_ROUTINES_TOOL_NAME,
         data: { query: `${ninetyNineLetters}\uD800x` },

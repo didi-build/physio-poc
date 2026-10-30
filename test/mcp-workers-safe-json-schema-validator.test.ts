@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv-provider.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { createPhysioMcpServer } from "../src/adapters/workers/mcp/create-physio-mcp-server.js";
-import { PhysioMcpWorkersSafeJsonSchemaValidator } from "../src/adapters/workers/mcp/workers-safe-json-schema-validator.js";
+import {
+  PHYSIO_MCP_SDK_JSON_SCHEMA_VALIDATION_ERROR,
+  PhysioMcpWorkersSafeJsonSchemaValidator,
+} from "../src/adapters/workers/mcp/workers-safe-json-schema-validator.js";
 
 describe("Physio MCP Workers-safe jsonSchemaValidator", () => {
   it("wires PhysioMcpWorkersSafeJsonSchemaValidator instead of the SDK Ajv default", () => {
@@ -14,6 +17,17 @@ describe("Physio MCP Workers-safe jsonSchemaValidator", () => {
       PhysioMcpWorkersSafeJsonSchemaValidator,
     );
     expect(internal._jsonSchemaValidator).not.toBeInstanceOf(AjvJsonSchemaValidator);
+  });
+
+  it("throws when the returned validator is invoked (fail closed)", () => {
+    const provider = new PhysioMcpWorkersSafeJsonSchemaValidator();
+    const validate = provider.getValidator({
+      type: "object",
+      properties: { note: { type: "string" } },
+    });
+    expect(() => validate({ note: "sample" })).toThrow(
+      PHYSIO_MCP_SDK_JSON_SCHEMA_VALIDATION_ERROR,
+    );
   });
 
   it("getValidator never reaches new Function on the Workers-safe provider", () => {
@@ -29,7 +43,9 @@ describe("Physio MCP Workers-safe jsonSchemaValidator", () => {
         type: "object",
         properties: { note: { type: "string" } },
       });
-      validate({ note: "ok" });
+      expect(() => validate({ note: "ok" })).toThrow(
+        PHYSIO_MCP_SDK_JSON_SCHEMA_VALIDATION_ERROR,
+      );
       expect(sawDynamicFunction).toBe(false);
     } finally {
       globalThis.Function = originalFunction;
