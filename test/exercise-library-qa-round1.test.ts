@@ -22,6 +22,7 @@ import { PractitionerExercisesRepository } from "../src/storage/repositories/exe
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
@@ -154,7 +155,11 @@ describe("Exercise library QA round 1 (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
-      const pract2 = await seedPractitioner(storage, "pract-2", "coach2@example.com");
+      const pract2 = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("pract-2"),
+        "coach2@example.com",
+      );
       await seedApproved(storage, practId, {
         exerciseId: "ex-aaa",
         title: "AAA move",
@@ -333,7 +338,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const otherPract = await seedPractitioner(
         storage,
-        "pract-other",
+        testOpaqueEntityId("pract-other"),
         "other@example.com",
       );
       const { exerciseId } = await seedApproved(storage, practId);

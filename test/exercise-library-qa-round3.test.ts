@@ -18,6 +18,7 @@ import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
@@ -281,7 +282,11 @@ describe("Exercise library QA round 3 (tests only)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
-      const otherId = await seedPractitioner(storage, "pract-2", "other@example.com");
+      const otherId = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("pract-2"),
+        "other@example.com",
+      );
       await seedApproved(storage, practId, {
         exerciseId: "ex-unrelated",
         title: "Unrelated saved move",

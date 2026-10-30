@@ -4,6 +4,7 @@ import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-stor
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import { PHYSIO_GOOGLE_OAUTH_SCOPES } from "../src/auth/better-auth-minimal-storage.js";
+import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import { handleRequest } from "../src/http/app.js";
 import type { AppDependencies } from "../src/http/app.js";
@@ -102,9 +103,10 @@ describe("Better Auth minimal storage (integration)", () => {
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
       BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
     });
+    const allowedPractitionerId = generateOpaqueEntityId();
     await deps.sql.run(
       "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-      ["pract-kojo", FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+      [allowedPractitionerId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
     );
 
     await completeGoogleSignIn(deps);

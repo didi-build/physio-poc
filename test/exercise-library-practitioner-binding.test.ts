@@ -17,10 +17,11 @@ import {
   buildTextOverrideEntry,
   validateTextOverrides,
 } from "../src/domain/exercise-text-overrides.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
-const PRACT_A = "pract-a";
-const PRACT_B = "pract-b";
+const PRACT_A = testOpaqueEntityId("pract-a");
+const PRACT_B = testOpaqueEntityId("pract-b");
 const EX_B = "ex-b";
 
 type RouteCase = {

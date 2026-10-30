@@ -7,9 +7,15 @@ import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-stor
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
 import { InvalidAuthConfigError, resolvePhysioAuthConfig } from "../src/http/config.js";
 import type { AppDependencies } from "../src/http/app.js";
+import {
+  generateOpaqueEntityId,
+  validateOpaqueEntityId,
+} from "../src/domain/opaque-entity-id.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 const BASE = "http://127.0.0.1:8787";
+
+let seededAllowedPractitionerId = generateOpaqueEntityId();
 
 class CookieJar {
   private readonly values = new Map<string, string>();
@@ -64,11 +70,17 @@ async function requestWithJar(
   return response;
 }
 
-async function seedAllowedPractitioner(deps: AppDependencies): Promise<void> {
+async function seedAllowedPractitioner(deps: AppDependencies): Promise<string> {
+  seededAllowedPractitionerId = generateOpaqueEntityId();
   await deps.sql.run(
     "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-    ["pract-kojo", FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    [
+      seededAllowedPractitionerId,
+      FAKE_GOOGLE_ALLOWED_EMAIL,
+      "2026-01-01T00:00:00.000Z",
+    ],
   );
+  return seededAllowedPractitionerId;
 }
 
 async function createAuthTestDeps(
@@ -122,7 +134,20 @@ describe("Google sign-in (integration)", () => {
     const practitioner = await deps.auth.getPractitioner(
       new Request(`${BASE}/exercises`, { headers: { cookie: jar.header() } }),
     );
-    expect(practitioner?.practitionerId).toBe("pract-kojo");
+    expect(practitioner?.practitionerId).toBe(seededAllowedPractitionerId);
+    validateOpaqueEntityId(practitioner!.practitionerId, "practitionerId");
+  });
+
+  it("returns a session practitionerId that passes validateOpaqueEntityId", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    const practitioner = await deps.auth.getPractitioner(
+      new Request(`${BASE}/exercises`, { headers: { cookie: jar.header() } }),
+    );
+    expect(practitioner).not.toBeNull();
+    expect(validateOpaqueEntityId(practitioner!.practitionerId, "practitionerId")).toBe(
+      practitioner!.practitionerId.toLowerCase(),
+    );
   });
 
   it("refuses the fixture account with the refusal page and writes no auth rows", async () => {

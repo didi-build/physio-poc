@@ -13,51 +13,56 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
-const practitionerId = "pract-1";
 const exerciseId = "ex-1";
-const apiBase = `https://example.workers.dev/api/practitioners/${practitionerId}`;
+const WORKER_PRACTITIONER_ID = testOpaqueEntityId("worker-exercise-library");
 
-const EXERCISE_ROUTE_CASES: { method: string; path: string; body?: string }[] = [
-  { method: "GET", path: `${apiBase}/exercises/approved/search` },
-  { method: "GET", path: `${apiBase}/exercises/${exerciseId}` },
-  { method: "GET", path: `${apiBase}/my-exercises` },
-  {
-    method: "POST",
-    path: `${apiBase}/my-exercises/${exerciseId}`,
-    body: JSON.stringify({ action: "save" }),
-  },
-  {
-    method: "POST",
-    path: `${apiBase}/my-exercises/${exerciseId}`,
-    body: JSON.stringify({ action: "pin", pinned: true }),
-  },
-  {
-    method: "POST",
-    path: `${apiBase}/my-exercises/${exerciseId}`,
-    body: JSON.stringify({
-      action: "undo",
-      undo: {
-        practitioner_id: practitionerId,
-        exercise_id: exerciseId,
-        snapshot: {
-          had_row: false,
-          favourite: false,
-          saved_at: null,
-          last_used_at: null,
-          text_overrides_json: "{}",
-          param_overrides_json: "{}",
+function exerciseRouteCases(
+  practitionerId: string,
+): { method: string; path: string; body?: string }[] {
+  const apiBase = `https://example.workers.dev/api/practitioners/${practitionerId}`;
+  return [
+    { method: "GET", path: `${apiBase}/exercises/approved/search` },
+    { method: "GET", path: `${apiBase}/exercises/${exerciseId}` },
+    { method: "GET", path: `${apiBase}/my-exercises` },
+    {
+      method: "POST",
+      path: `${apiBase}/my-exercises/${exerciseId}`,
+      body: JSON.stringify({ action: "save" }),
+    },
+    {
+      method: "POST",
+      path: `${apiBase}/my-exercises/${exerciseId}`,
+      body: JSON.stringify({ action: "pin", pinned: true }),
+    },
+    {
+      method: "POST",
+      path: `${apiBase}/my-exercises/${exerciseId}`,
+      body: JSON.stringify({
+        action: "undo",
+        undo: {
+          practitioner_id: practitionerId,
+          exercise_id: exerciseId,
+          snapshot: {
+            had_row: false,
+            favourite: false,
+            saved_at: null,
+            last_used_at: null,
+            text_overrides_json: "{}",
+            param_overrides_json: "{}",
+          },
         },
-      },
-    }),
-  },
-  {
-    method: "PATCH",
-    path: `${apiBase}/my-exercises/${exerciseId}`,
-    body: JSON.stringify({ text_overrides: {} }),
-  },
-  { method: "DELETE", path: `${apiBase}/my-exercises/${exerciseId}` },
-];
+      }),
+    },
+    {
+      method: "PATCH",
+      path: `${apiBase}/my-exercises/${exerciseId}`,
+      body: JSON.stringify({ text_overrides: {} }),
+    },
+    { method: "DELETE", path: `${apiBase}/my-exercises/${exerciseId}` },
+  ];
+}
 
 describe("Worker exercise library routes (integration)", () => {
   it("does not enable unauthenticated exercise API on the Worker entry", () => {
@@ -68,7 +73,7 @@ describe("Worker exercise library routes (integration)", () => {
   });
 
   it("returns 401 for exercise API routes without a session on the Worker entry", async () => {
-    for (const testCase of EXERCISE_ROUTE_CASES) {
+    for (const testCase of exerciseRouteCases(WORKER_PRACTITIONER_ID)) {
       const response = await worker.fetch(
         new Request(testCase.path, {
           method: testCase.method,
@@ -84,7 +89,8 @@ describe("Worker exercise library routes (integration)", () => {
 
   it("serves exercise library routes with a valid session like dev or test", async () => {
     const storage = await openMigratedDatabase();
-    const practId = await seedPractitioner(storage, practitionerId);
+    const practId = await seedPractitioner(storage, WORKER_PRACTITIONER_ID);
+    const apiBase = `https://example.workers.dev/api/practitioners/${practId}`;
     await seedExercise(storage, practId, exerciseId);
     await storage.run(VERSION_INSERT_SQL, [
       ...versionInsertBindings({
