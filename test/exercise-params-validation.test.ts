@@ -287,7 +287,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const practId = await seedPractitioner(storage);
       const repo = new TypeDefaultsRepository(storage);
       await expect(
-        repo.upsertPractitionerDefaults("td-p1", practId, "isometric", {
+        repo.upsertPractitionerDefaults(id("td-p1"), practId, "isometric", {
           sets: 2.5,
         }),
       ).rejects.toThrow(ParamValidationError);
