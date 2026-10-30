@@ -199,6 +199,7 @@ function isImportMetaMetaProperty(node) {
 
 /**
  * True when expression is import.meta or only parenthesized wrappers around it.
+ * Defensive: parent.expression should already be metaProp or a paren chain in allowed url reads.
  *
  * @param {import("typescript").Expression} expression
  * @param {import("typescript").MetaProperty} metaProp
