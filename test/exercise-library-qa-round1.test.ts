@@ -21,6 +21,7 @@ import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-
 import { ExerciseBodyRegionsRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
+import { addProgramExerciseRow } from "./helpers/exercise-library-program-usage-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
@@ -173,35 +174,40 @@ describe("Exercise library QA round 1 (integration)", () => {
       );
       const exAaa = id("ex-aaa");
       const exZzz = id("ex-zzz");
-      await seedApproved(storage, practId, {
+      const { versionId: verAaa } = await seedApproved(storage, practId, {
         exerciseId: exAaa,
         title: "AAA move",
         approvedAt: "2026-01-01T00:00:00.000Z",
       });
-      await seedApproved(storage, practId, {
+      const { versionId: verZzz } = await seedApproved(storage, practId, {
         exerciseId: exZzz,
         title: "ZZZ move",
         approvedAt: "2026-02-01T00:00:00.000Z",
       });
 
-      const myRepo = new PractitionerExercisesRepository(storage);
-      await myRepo.upsert({
+      await addProgramExerciseRow(storage, {
         practitionerId: practId,
+        programId: id("prog-aaa-1"),
+        rowId: id("row-aaa-1"),
         exerciseId: exAaa,
-        savedAt: TS,
-        lastUsedAt: TS,
+        versionId: verAaa,
+        position: 0,
       });
-      await myRepo.upsert({
+      await addProgramExerciseRow(storage, {
         practitionerId: pract2,
+        programId: id("prog-aaa-2"),
+        rowId: id("row-aaa-2"),
         exerciseId: exAaa,
-        savedAt: TS,
-        lastUsedAt: TS,
+        versionId: verAaa,
+        position: 0,
       });
-      await myRepo.upsert({
+      await addProgramExerciseRow(storage, {
         practitionerId: practId,
+        programId: id("prog-zzz-1"),
+        rowId: id("row-zzz-1"),
         exerciseId: exZzz,
-        savedAt: TS,
-        lastUsedAt: TS,
+        versionId: verZzz,
+        position: 0,
       });
 
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
