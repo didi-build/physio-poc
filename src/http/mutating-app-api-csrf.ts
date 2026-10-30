@@ -1,21 +1,40 @@
-import { isPublicApiAuthPath } from "../auth/public-routes.js";
 import type { PhysioServerConfig } from "./config.js";
 import { jsonForbidden } from "./responses.js";
 
-const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+/** Only `/api/auth/**` is exempt from app API CSRF (exact prefix; `/api/authx` is not exempt). */
+export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = "/api/auth";
 
-export function isMutatingHttpMethod(method: string): boolean {
-  return MUTATING_METHODS.has(method.toUpperCase());
+const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+export function isNonSafeHttpMethod(method: string): boolean {
+  return !SAFE_HTTP_METHODS.has(method.toUpperCase());
 }
 
-export function isMutatingAppApiPath(pathname: string, method: string): boolean {
-  if (!isMutatingHttpMethod(method)) {
-    return false;
-  }
+/** @deprecated Use `requiresAppApiCsrfGuard`; kept for tests naming mutating paths. */
+export function isMutatingHttpMethod(method: string): boolean {
+  return isNonSafeHttpMethod(method);
+}
+
+export function isCsrfExemptAppApiAuthPath(pathname: string): boolean {
+  return (
+    pathname === CSRF_EXEMPT_APP_API_AUTH_PREFIX ||
+    pathname.startsWith(`${CSRF_EXEMPT_APP_API_AUTH_PREFIX}/`)
+  );
+}
+
+export function requiresAppApiCsrfGuard(pathname: string, method: string): boolean {
   if (!pathname.startsWith("/api/")) {
     return false;
   }
-  return !isPublicApiAuthPath(pathname);
+  if (!isNonSafeHttpMethod(method)) {
+    return false;
+  }
+  return !isCsrfExemptAppApiAuthPath(pathname);
+}
+
+/** True when `rejectMutatingAppApiCsrf` may run for this path and method. */
+export function isMutatingAppApiPath(pathname: string, method: string): boolean {
+  return requiresAppApiCsrfGuard(pathname, method);
 }
 
 export function allowedMutatingAppApiOrigins(
@@ -65,7 +84,7 @@ export function rejectMutatingAppApiCsrf(
   config: PhysioServerConfig,
 ): Response | null {
   const url = new URL(request.url);
-  if (!isMutatingAppApiPath(url.pathname, request.method)) {
+  if (!requiresAppApiCsrfGuard(url.pathname, request.method)) {
     return null;
   }
   if (!isApplicationJsonContentType(request.headers.get("Content-Type"))) {

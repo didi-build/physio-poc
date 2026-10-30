@@ -1,11 +1,29 @@
-import { FakeAuthPort } from "../auth/fake-auth-port.js";
-import type { AppDependencies } from "./app.js";
-import { handleRequest } from "./app.js";
-import { isMutatingAppApiPath } from "./mutating-app-api-csrf.js";
-import { uniqueMutatingAppApiProbePaths } from "./mutating-app-api-route-gate.js";
-import { mutatingAppApiRouteSampleKey } from "./mutating-app-api-route-registry.js";
+import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
+import type { AppDependencies } from "../../src/http/app.js";
+import { handleRequest } from "../../src/http/app.js";
+import { isMutatingAppApiPath } from "../../src/http/mutating-app-api-csrf.js";
+import {
+  buildMutatingAppApiRouteSamples,
+  mutatingAppApiRouteSampleKey,
+} from "./mutating-app-api-route-registry.js";
 
 const DISPATCH_PROBE_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
+
+function uniqueMutatingAppApiProbePaths(
+  practitionerId: string,
+  exerciseId: string,
+  versionId: string,
+): string[] {
+  const paths = new Set<string>();
+  for (const sample of buildMutatingAppApiRouteSamples(
+    practitionerId,
+    exerciseId,
+    versionId,
+  )) {
+    paths.add(sample.samplePath);
+  }
+  return [...paths].sort();
+}
 
 function probeRequestBody(path: string, method: string): string | undefined {
   if (method === "DELETE") {
@@ -31,10 +49,7 @@ function probeRequestHeaders(baseUrl: string, cookie: string): HeadersInit {
   };
 }
 
-/**
- * Mutating route keys where `handleRequest` (Worker entry) returns a non-404 response,
- * probing every mutating method on each registry path.
- */
+/** Test-only: keys where `handleRequest` returns non-404 on registry paths. */
 export async function probedMutatingAppApiRouteKeys(
   deps: AppDependencies,
   practitionerId: string,

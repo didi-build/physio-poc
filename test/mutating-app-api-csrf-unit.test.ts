@@ -1,24 +1,35 @@
 import { describe, expect, it } from "vitest";
 import {
   allowedMutatingAppApiOrigins,
+  CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isApplicationJsonContentType,
+  isCsrfExemptAppApiAuthPath,
   isMutatingAppApiPath,
+  isNonSafeHttpMethod,
   rejectMutatingAppApiCsrf,
   requestSourceOrigin,
+  requiresAppApiCsrfGuard,
 } from "../src/http/mutating-app-api-csrf.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 describe("mutating app API CSRF (unit)", () => {
-  it("recognizes mutating app API paths but not Better Auth or GET", () => {
-    expect(isMutatingAppApiPath("/api/practitioners/x/my-exercises/y", "POST")).toBe(
+  it("recognizes non-safe app API paths but not Better Auth or safe methods", () => {
+    expect(isNonSafeHttpMethod("GET")).toBe(false);
+    expect(isNonSafeHttpMethod("HEAD")).toBe(false);
+    expect(isNonSafeHttpMethod("OPTIONS")).toBe(false);
+    expect(isNonSafeHttpMethod("POST")).toBe(true);
+    expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises/y", "POST")).toBe(
       true,
     );
     expect(isMutatingAppApiPath("/api/auth/sign-out", "POST")).toBe(false);
+    expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
+    expect(requiresAppApiCsrfGuard("/api/authx/sign-out", "POST")).toBe(true);
     expect(isMutatingAppApiPath("/api/practitioners/x/my-exercises", "GET")).toBe(
       false,
     );
+    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth");
   });
 
   it("parses application/json content types case-insensitively", () => {

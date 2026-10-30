@@ -1,11 +1,11 @@
 import {
   exerciseLibraryMutatingHttpRouteCases,
   type ExerciseLibraryMutatingHttpRouteCase,
-} from "./routes/exercise-library.js";
+} from "../../src/http/routes/exercise-library.js";
 import {
   exerciseMediaHttpRouteCases,
   type ExerciseMediaHttpRouteCase,
-} from "./routes/exercise-media.js";
+} from "../../src/http/routes/exercise-media.js";
 
 const EXAMPLE_PRACTITIONER_ID = "11111111-1111-4111-8111-111111111111";
 const EXAMPLE_EXERCISE_ID = "ex-example";

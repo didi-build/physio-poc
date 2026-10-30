@@ -8,11 +8,9 @@ import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
 import {
-  isMutatingAppApiPath,
   rejectMutatingAppApiCsrf,
+  requiresAppApiCsrfGuard,
 } from "./mutating-app-api-csrf.js";
-import { isRegisteredMutatingAppApiRoute } from "./mutating-app-api-route-gate.js";
-import { MUTATING_APP_API_HANDLER_ROUTE_TABLES } from "./mutating-app-api-route-registry.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleHealthRequest } from "./routes/health.js";
@@ -45,10 +43,6 @@ export type AppDependencies = {
 };
 
 export const MCP_PATH = "/mcp";
-
-/** ruleIds wired from the `/api/` branch (must match `MUTATING_APP_API_HANDLER_ROUTE_TABLES`). */
-export const MUTATING_APP_API_HANDLE_REQUEST_RULE_IDS: readonly string[] =
-  MUTATING_APP_API_HANDLER_ROUTE_TABLES.map((table) => table.ruleId);
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -118,14 +112,11 @@ export async function handleRequest(
 
   if (pathname.startsWith("/api/")) {
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
-      if (
-        isMutatingAppApiPath(pathname, request.method) &&
-        !isRegisteredMutatingAppApiRoute(pathname, request.method)
-      ) {
-        return Response.json(
-          { error: "not_found" },
-          { status: 404, headers: JSON_HEADERS },
-        );
+      if (requiresAppApiCsrfGuard(pathname, request.method)) {
+        const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+        if (csrfRejection) {
+          return csrfRejection;
+        }
       }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
@@ -191,10 +182,6 @@ async function guardAndRun(
       return jsonUnauthorized();
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);
-  }
-  const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
-  if (csrfRejection) {
-    return csrfRejection;
   }
   return next();
 }
