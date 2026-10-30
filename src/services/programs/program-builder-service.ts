@@ -100,6 +100,9 @@ export class ProgramBuilderService {
   ): Promise<ProgramMutationResult> {
     await this.requirePractitioner(practitionerId);
     const programId = this.parseOpaqueId(input.programId, "Program id");
+    if (await this.programs.findById(programId)) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
     const createdAt = this.now();
     try {
       await this.programs.create({
@@ -109,6 +112,12 @@ export class ProgramBuilderService {
         name: input.name ?? null,
       });
     } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message.includes("UNIQUE constraint failed: programs.id")
+      ) {
+        throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+      }
       this.mapFreeTextError(err);
     }
     return { program: await this.buildProgramView(practitionerId, programId) };

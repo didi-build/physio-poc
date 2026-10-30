@@ -5,13 +5,21 @@ import { handleRequest } from "../src/http/app.js";
 import {
   programPath,
   programRestorePath,
+  programRowDuplicatePath,
   programRowPath,
   programRowsPath,
+  programRowsReorderPath,
+  programsCollectionPath,
+  programsDeletedListPath,
   PROGRAMS_API_BASE,
-  programRowDuplicatePath,
+  programRowLibraryUpdateApplyPath,
+  programRowLibraryUpdateKeepPath,
 } from "./helpers/program-builder-http-paths.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
-import { ProgramRowsRepository } from "../src/storage/repositories/programs.js";
+import {
+  ProgramRowsRepository,
+  ProgramsRepository,
+} from "../src/storage/repositories/programs.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   FIXTURE_EXERCISE_ID,
@@ -20,6 +28,8 @@ import {
   seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
+  versionInsertBindings,
+  VERSION_INSERT_SQL,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   programBuilderHttpJsonBody,
@@ -163,7 +173,119 @@ const PROGRAM_ROW_NOT_FOUND_BODY = {
 const MALFORMED_PERCENT_PROGRAM_SEGMENT = "%E0%A4%A";
 const MALFORMED_PERCENT_ROW_SEGMENT = "%E0%A4%A";
 
+async function rowIdsInOrder(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  programId: string,
+): Promise<string[]> {
+  const rows = await storage.all<{ id: string }>(
+    "SELECT id FROM program_rows WHERE program_id = ? ORDER BY position ASC",
+    [programId],
+  );
+  return rows.map((row) => row.id);
+}
+
+async function snapshotProgramDbState(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  programId: string,
+) {
+  const programs = new ProgramsRepository(storage);
+  const rows = new ProgramRowsRepository(storage);
+  return {
+    program: await programs.findById(programId),
+    rows: await rows.listForProgram(programId),
+  };
+}
+
+function expectDbStateUnchanged(
+  before: Awaited<ReturnType<typeof snapshotProgramDbState>>,
+  after: Awaited<ReturnType<typeof snapshotProgramDbState>>,
+): void {
+  expect(after.program).toEqual(before.program);
+  expect(after.rows).toEqual(before.rows);
+}
+
 describe("Program builder HTTP routes (integration)", () => {
+  it("returns 404 for POST link-approved-placeholders without changing storage", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const beforeCount = await programCount(storage, practitionerId);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const url = `${BASE}${PROGRAMS_API_BASE}/link-approved-placeholders`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      expect(await programCount(storage, practitionerId)).toBe(beforeCount);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns identical invalid_input for POST create when program_id already exists for self or another practitioner", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("prog-dup-b");
+      await seedPractitioner(storage, practitionerB, "b@example.com");
+      const sharedProgramId = id("prog-shared-id");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerA, {
+        programId: sharedProgramId,
+        name: "Owned",
+      });
+      const beforeA = await snapshotProgramDbState(storage, sharedProgramId);
+      const beforeCountB = await programCount(storage, practitionerB);
+
+      const { deps: depsA, cookie: cookieA } = apiDeps(storage, practitionerA);
+      const ownDuplicate = await handleRequest(
+        new Request(
+          `${BASE}${PROGRAMS_API_BASE}`,
+          mutatingAppApiRequestInit(`${BASE}${PROGRAMS_API_BASE}`, {
+            method: "POST",
+            headers: { cookie: cookieA },
+            body: JSON.stringify({ program_id: sharedProgramId }),
+          }),
+        ),
+        depsA,
+      );
+      const { deps: depsB, cookie: cookieB } = apiDeps(storage, practitionerB);
+      const foreignDuplicate = await handleRequest(
+        new Request(
+          `${BASE}${PROGRAMS_API_BASE}`,
+          mutatingAppApiRequestInit(`${BASE}${PROGRAMS_API_BASE}`, {
+            method: "POST",
+            headers: { cookie: cookieB },
+            body: JSON.stringify({ program_id: sharedProgramId }),
+          }),
+        ),
+        depsB,
+      );
+
+      expect(ownDuplicate.status).toBe(400);
+      expect(foreignDuplicate.status).toBe(400);
+      const ownBody = await ownDuplicate.json();
+      const foreignBody = await foreignDuplicate.json();
+      expect(foreignBody).toEqual(ownBody);
+      expect(ownBody).toEqual(INVALID_INPUT_BODY);
+      expectDbStateUnchanged(
+        beforeA,
+        await snapshotProgramDbState(storage, sharedProgramId),
+      );
+      expect(await programCount(storage, practitionerB)).toBe(beforeCountB);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns 401 without a session for every route in the program builder route table", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -200,6 +322,11 @@ describe("Program builder HTTP routes (integration)", () => {
 
       const beforeProgramsB = await programCount(storage, practitionerB);
       const beforeRowsOwned = await programRowCount(storage, ownedProgramId);
+      const beforeProgramA = await storage.first<{
+        name: string | null;
+        deleted_at: string | null;
+      }>("SELECT name, deleted_at FROM programs WHERE id = ?", [ownedProgramId]);
+      const beforeRowOrderA = await rowIdsInOrder(storage, ownedProgramId);
       const { deps, cookie } = apiDeps(storage, practitionerB);
 
       const probeCtx: ProgramBuilderHttpProbeContext = {
@@ -235,6 +362,12 @@ describe("Program builder HTTP routes (integration)", () => {
 
       expect(await programCount(storage, practitionerB)).toBe(beforeProgramsB);
       expect(await programRowCount(storage, ownedProgramId)).toBe(beforeRowsOwned);
+      const afterProgramA = await storage.first<{
+        name: string | null;
+        deleted_at: string | null;
+      }>("SELECT name, deleted_at FROM programs WHERE id = ?", [ownedProgramId]);
+      expect(afterProgramA).toEqual(beforeProgramA);
+      expect(await rowIdsInOrder(storage, ownedProgramId)).toEqual(beforeRowOrderA);
     } finally {
       storage.close();
     }
@@ -339,6 +472,23 @@ describe("Program builder HTTP routes (integration)", () => {
     }
   });
 
+  it("returns 400 invalid_input for a non-UUID program path segment", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const url = `${BASE}${PROGRAMS_API_BASE}/not-a-valid-opaque-id`;
+      const response = await handleRequest(authedRequest(url, cookie), deps);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+        message: "Program id must be a UUID v4 opaque id",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects practitionerId and practitioner_id at top level, nested, and in arrays on every mutating JSON body route", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -418,6 +568,10 @@ describe("Program builder HTTP routes (integration)", () => {
       const beforeName = (await service.getProgram(practitionerId, id("prog-csrf")))
         .name;
       const beforeRows = await programRowCount(storage, id("prog-csrf"));
+      const beforeDeletedAt = (
+        await new ProgramsRepository(storage).findById(id("prog-csrf"))
+      )?.deleted_at;
+      const beforeProgramCount = await programCount(storage, practitionerId);
       const { deps, cookie } = apiDeps(storage, practitionerId);
       const evilOrigin = "https://evil.example";
 
@@ -463,6 +617,10 @@ describe("Program builder HTTP routes (integration)", () => {
         .name;
       expect(afterName).toBe(beforeName);
       expect(await programRowCount(storage, id("prog-csrf"))).toBe(beforeRows);
+      expect(
+        (await new ProgramsRepository(storage).findById(id("prog-csrf")))?.deleted_at,
+      ).toBe(beforeDeletedAt);
+      expect(await programCount(storage, practitionerId)).toBe(beforeProgramCount);
     } finally {
       storage.close();
     }
@@ -555,6 +713,274 @@ describe("Program builder HTTP routes (integration)", () => {
         program: { deleted_at: string | null };
       };
       expect(restoredView.program.deleted_at).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns expected status and persists each program builder mutation over HTTP", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const emptyList = await handleRequest(
+        authedRequest(`${BASE}${programsCollectionPath()}`, cookie),
+        deps,
+      );
+      expect(emptyList.status).toBe(200);
+      await expect(emptyList.json()).resolves.toEqual({
+        items: [],
+        matched_code: null,
+      });
+
+      const programId = id("prog-http-success");
+      const programIdOther = id("prog-http-search");
+      const createUrl = `${BASE}${PROGRAMS_API_BASE}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({ program_id: programId, name: "Plan A" }),
+          }),
+        ),
+        deps,
+      );
+      expect(created.status).toBe(201);
+      expect(await programCount(storage, practitionerId)).toBe(1);
+
+      const createOtherUrl = `${BASE}${PROGRAMS_API_BASE}`;
+      await handleRequest(
+        new Request(
+          createOtherUrl,
+          mutatingAppApiRequestInit(createOtherUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({
+              program_id: programIdOther,
+              name: "UniqueBetaName",
+            }),
+          }),
+        ),
+        deps,
+      );
+
+      const list = await handleRequest(
+        authedRequest(`${BASE}${programsCollectionPath()}`, cookie),
+        deps,
+      );
+      expect(list.status).toBe(200);
+      const listBody = (await list.json()) as { items: { program_id: string }[] };
+      expect(listBody.items.map((item) => item.program_id).sort()).toEqual(
+        [programId, programIdOther].sort(),
+      );
+
+      const noMatch = await handleRequest(
+        authedRequest(`${BASE}${programsCollectionPath("zzzznomatch")}`, cookie),
+        deps,
+      );
+      expect(noMatch.status).toBe(200);
+      await expect(noMatch.json()).resolves.toEqual({ items: [], matched_code: null });
+
+      const matched = await handleRequest(
+        authedRequest(`${BASE}${programsCollectionPath("UniqueBeta")}`, cookie),
+        deps,
+      );
+      expect(matched.status).toBe(200);
+      const matchedBody = (await matched.json()) as { items: { program_id: string }[] };
+      expect(matchedBody.items.map((item) => item.program_id)).toEqual([
+        programIdOther,
+      ]);
+
+      const getOne = await handleRequest(
+        authedRequest(`${BASE}${programPath(programId)}`, cookie),
+        deps,
+      );
+      expect(getOne.status).toBe(200);
+
+      const patchUrl = `${BASE}${programPath(programId)}`;
+      const patched = await handleRequest(
+        new Request(
+          patchUrl,
+          mutatingAppApiRequestInit(patchUrl, {
+            method: "PATCH",
+            headers: { cookie },
+            body: JSON.stringify({ name: "Renamed plan" }),
+          }),
+        ),
+        deps,
+      );
+      expect(patched.status).toBe(200);
+      expect((await new ProgramsRepository(storage).findById(programId))?.name).toBe(
+        "Renamed plan",
+      );
+
+      const rowA = id("row-http-a");
+      const rowB = id("row-http-b");
+      const addRowUrl = `${BASE}${programRowsPath(programId)}`;
+      for (const rowId of [rowA, rowB]) {
+        const added = await handleRequest(
+          new Request(
+            addRowUrl,
+            mutatingAppApiRequestInit(addRowUrl, {
+              method: "POST",
+              headers: { cookie },
+              body: JSON.stringify({
+                row_id: rowId,
+                exercise_id: FIXTURE_EXERCISE_ID,
+              }),
+            }),
+          ),
+          deps,
+        );
+        expect(added.status).toBe(200);
+      }
+      expect(await rowIdsInOrder(storage, programId)).toEqual([rowA, rowB]);
+
+      const reorderUrl = `${BASE}${programRowsReorderPath(programId)}`;
+      const reordered = await handleRequest(
+        new Request(
+          reorderUrl,
+          mutatingAppApiRequestInit(reorderUrl, {
+            method: "PATCH",
+            headers: { cookie },
+            body: JSON.stringify({ ordered_row_ids: [rowB, rowA] }),
+          }),
+        ),
+        deps,
+      );
+      expect(reordered.status).toBe(200);
+      expect(await rowIdsInOrder(storage, programId)).toEqual([rowB, rowA]);
+
+      const dupNewId = id("row-http-dup");
+      const dupUrl = `${BASE}${programRowDuplicatePath(programId, rowA)}`;
+      const duplicated = await handleRequest(
+        new Request(
+          dupUrl,
+          mutatingAppApiRequestInit(dupUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({ new_row_id: dupNewId }),
+          }),
+        ),
+        deps,
+      );
+      expect(duplicated.status).toBe(200);
+      const sourceRow = await new ProgramRowsRepository(storage).findById(rowA);
+      const dupRow = await new ProgramRowsRepository(storage).findById(dupNewId);
+      expect(dupRow?.exercise_id).toBe(sourceRow?.exercise_id);
+      expect(dupRow?.id).toBe(dupNewId);
+
+      const keepProgramId = id("prog-http-keep");
+      const keepRowId = id("row-http-keep");
+      const createKeepUrl = `${BASE}${PROGRAMS_API_BASE}`;
+      await handleRequest(
+        new Request(
+          createKeepUrl,
+          mutatingAppApiRequestInit(createKeepUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({ program_id: keepProgramId }),
+          }),
+        ),
+        deps,
+      );
+      const addKeepRowUrl = `${BASE}${programRowsPath(keepProgramId)}`;
+      await handleRequest(
+        new Request(
+          addKeepRowUrl,
+          mutatingAppApiRequestInit(addKeepRowUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({
+              row_id: keepRowId,
+              exercise_id: FIXTURE_EXERCISE_ID,
+            }),
+          }),
+        ),
+        deps,
+      );
+
+      const version2Id = id("ver-lib-http");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: version2Id,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Heel slide v2",
+        }),
+      );
+
+      const keepUrl = `${BASE}${programRowLibraryUpdateKeepPath(keepProgramId, keepRowId)}`;
+      const kept = await handleRequest(
+        new Request(
+          keepUrl,
+          mutatingAppApiRequestInit(keepUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(kept.status).toBe(200);
+      expect(
+        (await new ProgramRowsRepository(storage).findById(keepRowId))
+          ?.exercise_version_id,
+      ).toBe(FIXTURE_VERSION_ID);
+
+      const applyRowId = rowB;
+      const applyUrl = `${BASE}${programRowLibraryUpdateApplyPath(programId, applyRowId)}`;
+      const applied = await handleRequest(
+        new Request(
+          applyUrl,
+          mutatingAppApiRequestInit(applyUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(applied.status).toBe(200);
+      expect(
+        (await new ProgramRowsRepository(storage).findById(applyRowId))
+          ?.exercise_version_id,
+      ).toBe(version2Id);
+
+      const deleteUrl = `${BASE}${programPath(programIdOther)}`;
+      const deleted = await handleRequest(
+        new Request(
+          deleteUrl,
+          mutatingAppApiRequestInit(deleteUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(deleted.status).toBe(200);
+      expect(
+        (await new ProgramsRepository(storage).findById(programIdOther))?.deleted_at,
+      ).not.toBeNull();
+
+      const deletedList = await handleRequest(
+        authedRequest(`${BASE}${programsDeletedListPath()}`, cookie),
+        deps,
+      );
+      expect(deletedList.status).toBe(200);
+      const deletedBody = (await deletedList.json()) as {
+        items: { program_id: string }[];
+      };
+      expect(deletedBody.items.map((item) => item.program_id)).toContain(
+        programIdOther,
+      );
     } finally {
       storage.close();
     }

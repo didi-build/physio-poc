@@ -562,7 +562,3 @@ export async function handleProgramBuilderRequest(
     { status: 404, headers: JSON_HEADERS },
   );
 }
-
-export function isProgramBuilderApiPath(pathname: string): boolean {
-  return pathname === "/api/me/programs" || pathname.startsWith("/api/me/programs/");
-}
