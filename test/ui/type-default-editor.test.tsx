@@ -8,6 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExerciseParams } from "../../src/domain/exercise-params.js";
 import type { PrescriptionType } from "../../src/domain/exercise-types.js";
 import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
+import {
+  TYPE_DEFAULT_ADDABLE_PARAMS,
+  addableTypeDefaultParams,
+} from "../../src/domain/type-default-param-layout.js";
 import { TypeDefaultEditor } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
 
 afterEach(() => {
@@ -40,12 +44,16 @@ describe("TypeDefaultEditor (jsdom)", () => {
       />,
     );
 
-    const setsField = screen.getByRole("textbox", { name: "3 sets" });
+    const inputs = screen.getAllByRole("textbox");
+    expect(inputs[0]).toHaveValue("10");
+    expect(inputs[1]).toHaveValue("2");
+    const setsField = inputs[2]!;
+    expect(setsField).toHaveValue("3");
     await userEvent.clear(setsField);
     await userEvent.type(setsField, "1");
-    const setsAtOne = screen.getByRole("textbox", { name: "3 sets" });
-    await userEvent.type(setsAtOne, "0");
-    expect(screen.getByRole("textbox", { name: "3 sets" })).toHaveValue("10");
+    expect(setsField).toHaveValue("1");
+    await userEvent.type(setsField, "0");
+    expect(setsField).toHaveValue("10");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -63,13 +71,36 @@ describe("TypeDefaultEditor (jsdom)", () => {
         onCancel={() => {}}
       />,
     );
-    expect(screen.getByRole("textbox", { name: "1 to 3 times a day" })).toHaveValue(
-      "2",
-    );
+    expect(screen.getByDisplayValue("2")).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "2" })).not.toBeInTheDocument();
   });
 
-  it("exhausts Add parameter without showing an Up field", async () => {
+  it("does not offer ascent_s (Up) in Add parameter for any type", () => {
+    expect(TYPE_DEFAULT_ADDABLE_PARAMS).not.toContain("ascent_s");
+    for (const type of PRESCRIPTION_TYPES) {
+      expect(addableTypeDefaultParams(type, {})).not.toContain("ascent_s");
+    }
+  });
+
+  it("does not render an input for stored ascent_s", () => {
+    const { container } = render(
+      <TypeDefaultEditor
+        type="concentric"
+        own={{
+          reps: 10,
+          hold_s: 2,
+          ascent_s: 3,
+          sets: 3,
+          days_per_week: 3,
+        }}
+        onSave={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll("input.md-param-input")).toHaveLength(4);
+  });
+
+  it("exhausts Add parameter with only approved addable params", async () => {
     render(
       <TypeDefaultEditor
         type="concentric"
@@ -84,8 +115,7 @@ describe("TypeDefaultEditor (jsdom)", () => {
     expect(
       screen.queryByRole("button", { name: "Add parameter" }),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText("2s up")).not.toBeInTheDocument();
-    expect(screen.queryByText("3s up")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("textbox")).toHaveLength(6);
   });
 
   it("includes hidden ascent_s in the saved payload", async () => {

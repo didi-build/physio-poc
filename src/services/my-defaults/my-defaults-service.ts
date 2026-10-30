@@ -1,7 +1,7 @@
 import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import {
   ParamValidationError,
-  validateExerciseParams,
+  validateExerciseParamsForPrescriptionType,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 import {
@@ -137,7 +137,7 @@ export class MyDefaultsService {
     }
     let validated: ExerciseParams;
     try {
-      validated = validateExerciseParams(params);
+      validated = validateExerciseParamsForPrescriptionType(params, type);
     } catch (error) {
       if (error instanceof ParamValidationError) {
         throw new MyDefaultsServiceError(error.message, "invalid_input");
