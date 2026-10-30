@@ -140,6 +140,22 @@ describe("Exercise library practitioner session binding (integration)", () => {
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     };
 
+    const before = await storage.first<{
+      practitioner_id: string;
+      exercise_id: string;
+      favourite: number;
+      saved_at: string;
+      last_used_at: string | null;
+      text_overrides_json: string;
+      param_overrides_json: string;
+    }>(
+      `SELECT practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+              text_overrides_json, param_overrides_json
+       FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
+      [practB, EX_B],
+    );
+    expect(before).not.toBeNull();
+
     for (const testCase of FORBIDDEN_ROUTE_CASES) {
       const body = testCase.body?.({ practA, exerciseId: EX_B });
       const response = await handleRequest(
@@ -154,11 +170,21 @@ describe("Exercise library practitioner session binding (integration)", () => {
       await expect(response.json()).resolves.toEqual({ error: "forbidden" });
     }
 
-    const row = await storage.first<{ favourite: number }>(
-      "SELECT favourite FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",
+    const after = await storage.first<{
+      practitioner_id: string;
+      exercise_id: string;
+      favourite: number;
+      saved_at: string;
+      last_used_at: string | null;
+      text_overrides_json: string;
+      param_overrides_json: string;
+    }>(
+      `SELECT practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+              text_overrides_json, param_overrides_json
+       FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
       [practB, EX_B],
     );
-    expect(row?.favourite).toBe(1);
+    expect(after).toEqual(before);
   });
 
   it("allows practitioner A to use routes under their own id", async () => {

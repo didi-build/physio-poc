@@ -10,7 +10,6 @@ export class BetterAuthPort implements AuthPort {
   constructor(
     private readonly auth: BetterAuthRuntime,
     private readonly sql: SqlStoragePort,
-    private readonly displayName: string,
   ) {}
 
   async getPractitioner(request: Request): Promise<PractitionerSession | null> {
@@ -25,10 +24,14 @@ export class BetterAuthPort implements AuthPort {
     if (!practitioner) {
       return null;
     }
+    const displayName =
+      typeof session?.user?.name === "string" && session.user.name.trim().length > 0
+        ? session.user.name.trim()
+        : practitioner.email;
     return {
       practitionerId: practitioner.id,
       email: practitioner.email,
-      displayName: this.displayName,
+      displayName,
     };
   }
 

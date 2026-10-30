@@ -65,11 +65,11 @@ function exerciseRouteCases(
 }
 
 describe("Worker exercise library routes (integration)", () => {
-  it("does not enable unauthenticated exercise API on the Worker entry", () => {
+  it("does not expose an unauthenticated exercise API bypass on the Worker entry", () => {
     const deps = createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
     });
-    expect(deps.enableUnauthenticatedApi).not.toBe(true);
+    expect("enableUnauthenticatedApi" in deps).toBe(false);
   });
 
   it("returns 401 for exercise API routes without a session on the Worker entry", async () => {

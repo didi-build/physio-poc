@@ -64,14 +64,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    auth: new FakeAuthPort({ practitioner: null }),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -81,13 +91,13 @@ function undoPost(
   exerciseId: string,
   undoBody: unknown,
 ) {
-  const deps = apiDeps(storage);
+  const { sessionCookie, ...deps } = apiDeps(storage, practId);
   return handleRequest(
     new Request(
       `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: undoBody }),
       },
     ),

@@ -75,6 +75,12 @@ describe("resolveBetterAuthSecretForRuntime (BETTER_AUTH_SECRET)", () => {
       PHYSIO_TEST_BETTER_AUTH_SECRET,
     );
   });
+
+  it("rejects the .dev.vars.example placeholder secret", () => {
+    expect(() =>
+      resolveBetterAuthSecretForRuntime("replace-me-with-at-least-32-characters-long"),
+    ).toThrow(InvalidAuthConfigError);
+  });
 });
 
 describe("createBetterAuthInstance startup (integration)", () => {

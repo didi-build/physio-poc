@@ -4,16 +4,18 @@
 export const FAKE_GOOGLE_ALLOWED_EMAIL = "kojo.allowed@example.com";
 export const FAKE_GOOGLE_REFUSED_EMAIL = "refused@example.com";
 
-export type FakeGoogleFixture = "allowed" | "refused";
+export type FakeGoogleFixture = "allowed" | "refused" | "unverified";
 
 const FIXTURE_BY_CODE = new Map<string, FakeGoogleFixture>([
   ["allowed-code", "allowed"],
   ["refused-code", "refused"],
+  ["unverified-code", "unverified"],
 ]);
 
 const TOKEN_BY_FIXTURE: Record<FakeGoogleFixture, string> = {
   allowed: "fake-access-allowed",
   refused: "fake-access-refused",
+  unverified: "fake-access-unverified",
 };
 
 export function fakeGoogleFixtureForCode(code: string): FakeGoogleFixture | null {
@@ -33,10 +35,22 @@ export function fakeGoogleFixtureForAccessToken(
   if (token === TOKEN_BY_FIXTURE.refused) {
     return "refused";
   }
+  if (token === TOKEN_BY_FIXTURE.unverified) {
+    return "unverified";
+  }
   return null;
 }
 
 export function fakeGoogleProfile(fixture: FakeGoogleFixture): Record<string, unknown> {
+  if (fixture === "unverified") {
+    return {
+      sub: "fake-google-sub-unverified",
+      email: FAKE_GOOGLE_ALLOWED_EMAIL,
+      email_verified: false,
+      name: "Unverified user",
+      picture: "",
+    };
+  }
   const email =
     fixture === "allowed" ? FAKE_GOOGLE_ALLOWED_EMAIL : FAKE_GOOGLE_REFUSED_EMAIL;
   return {
@@ -77,9 +91,18 @@ export async function handleFakeGoogleRequest(
     const redirectUri = url.searchParams.get("redirect_uri");
     const state = url.searchParams.get("state") ?? "";
     const fixture = (url.searchParams.get("fixture") ?? "allowed") as FakeGoogleFixture;
-    const code = fixture === "refused" ? "refused-code" : "allowed-code";
+    const code =
+      fixture === "refused"
+        ? "refused-code"
+        : fixture === "unverified"
+          ? "unverified-code"
+          : "allowed-code";
     if (!redirectUri) {
       return new Response("missing redirect_uri", { status: 400 });
+    }
+    const expectedRedirect = `${url.origin}/api/auth/callback/google`;
+    if (redirectUri !== expectedRedirect) {
+      return new Response("invalid redirect_uri", { status: 400 });
     }
     const target = new URL(redirectUri);
     target.searchParams.set("code", code);

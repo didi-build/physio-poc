@@ -74,11 +74,13 @@ export function createBetterAuthInstance(
   }
 
   const secret = resolveBetterAuthSecretForRuntime(config.betterAuthSecret);
+  const trustedOrigin = new URL(config.authBaseUrl).origin;
 
   const auth = betterAuth({
     secret,
     baseURL: config.authBaseUrl,
     basePath: "/api/auth",
+    trustedOrigins: [trustedOrigin],
     database,
     emailAndPassword: { enabled: false },
     rateLimit: { enabled: false },
@@ -116,6 +118,8 @@ export function createBetterAuthInstance(
       errorURL: "/api/auth/refused",
     },
     advanced: {
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
       useSecureCookies: true,
       ipAddress: {
         disableIpTracking: true,

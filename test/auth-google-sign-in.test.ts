@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
+import type { FakeGoogleFixture } from "../src/auth/fake-google-http.js";
 import { AUTH_REFUSAL_MESSAGE } from "../src/http/auth-pages.js";
 import { handleRequest } from "../src/http/app.js";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
@@ -21,22 +22,26 @@ class CookieJar {
   private readonly values = new Map<string, string>();
 
   absorb(response: Response): void {
-    const raw = response.headers.get("set-cookie");
-    if (!raw) {
-      return;
-    }
-    for (const part of raw.split(/,(?=\s*[^;]+=)/)) {
-      const [pair] = part.split(";");
-      const eq = pair.indexOf("=");
-      if (eq <= 0) {
-        continue;
-      }
-      const name = pair.slice(0, eq).trim();
-      const value = pair.slice(eq + 1).trim();
-      if (value.length === 0) {
-        this.values.delete(name);
-      } else {
-        this.values.set(name, value);
+    const parts =
+      typeof response.headers.getSetCookie === "function"
+        ? response.headers.getSetCookie()
+        : response.headers.get("set-cookie")
+          ? [response.headers.get("set-cookie")!]
+          : [];
+    for (const raw of parts) {
+      for (const segment of raw.split(/,(?=\s*[^;]+=)/)) {
+        const [pair] = segment.split(";");
+        const eq = pair.indexOf("=");
+        if (eq <= 0) {
+          continue;
+        }
+        const name = pair.slice(0, eq).trim();
+        const value = pair.slice(eq + 1).trim();
+        if (value.length === 0) {
+          this.values.delete(name);
+        } else {
+          this.values.set(name, value);
+        }
       }
     }
   }
@@ -58,6 +63,12 @@ async function requestWithJar(
   const cookie = jar.header();
   if (cookie) {
     headers.set("cookie", cookie);
+    if (
+      (init.method === "POST" || init.method === "PUT" || init.method === "PATCH") &&
+      !headers.has("origin")
+    ) {
+      headers.set("origin", new URL(BASE).origin);
+    }
   }
   const response = await handleRequest(
     new Request(url, {
@@ -85,6 +96,7 @@ async function seedAllowedPractitioner(deps: AppDependencies): Promise<string> {
 
 async function createAuthTestDeps(
   allowedEmails = FAKE_GOOGLE_ALLOWED_EMAIL,
+  options: { seedPractitioner?: boolean } = {},
 ): Promise<AppDependencies> {
   const deps = await createNodeAppDependencies({
     AUTH_BASE_URL: BASE,
@@ -92,20 +104,40 @@ async function createAuthTestDeps(
     PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
     BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
   });
-  await seedAllowedPractitioner(deps);
+  if (options.seedPractitioner !== false) {
+    await seedAllowedPractitioner(deps);
+  }
   return deps;
+}
+
+function expectZeroBetterAuthRows(storage: BetterSqliteStorage): void {
+  const db = storage.nativeDatabase();
+  for (const table of ["user", "session", "account", "verification"] as const) {
+    const row = db.prepare(`SELECT count(*) as c FROM "${table}"`).get() as {
+      c: number;
+    };
+    expect(row.c, table).toBe(0);
+  }
 }
 
 async function completeGoogleSignIn(
   deps: AppDependencies,
-  fixture: "allowed" | "refused",
-): Promise<{ jar: CookieJar; lastResponse: Response }> {
+  fixture: FakeGoogleFixture,
+): Promise<{ jar: CookieJar; lastResponse: Response; sessionSetCookies: string[] }> {
+  const sessionSetCookies: string[] = [];
+  const noteSessionCookie = (response: Response): void => {
+    const raw = response.headers.get("set-cookie");
+    if (raw?.includes("better-auth.session_token=")) {
+      sessionSetCookies.push(raw);
+    }
+  };
   const jar = new CookieJar();
   const signIn = await requestWithJar(`${BASE}/api/auth/sign-in/social`, deps, jar, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ provider: "google", callbackURL: "/exercises" }),
   });
+  noteSessionCookie(signIn);
   const payload = (await signIn.json()) as { url?: string };
   expect(payload.url).toBeTruthy();
   const authorizeUrl = new URL(payload.url ?? "");
@@ -122,8 +154,9 @@ async function completeGoogleSignIn(
     }
     const resolved = new URL(nextUrl, BASE);
     response = await requestWithJar(resolved.toString(), deps, jar);
+    noteSessionCookie(response);
   }
-  return { jar, lastResponse: response };
+  return { jar, lastResponse: response, sessionSetCookies };
 }
 
 describe("Google sign-in (integration)", () => {
@@ -150,19 +183,57 @@ describe("Google sign-in (integration)", () => {
     );
   });
 
+  it("uses practitioner displayName from the Better Auth session user name", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    const practitioner = await deps.auth.getPractitioner(
+      new Request(`${BASE}/exercises`, { headers: { cookie: jar.header() } }),
+    );
+    expect(practitioner?.displayName).toBe("Kojo");
+  });
+
   it("refuses the fixture account with the refusal page and writes no auth rows", async () => {
     const deps = await createAuthTestDeps();
     const { lastResponse } = await completeGoogleSignIn(deps, "refused");
+    const body = await lastResponse.text();
+    expect(body).toContain(AUTH_REFUSAL_MESSAGE);
+    expect(body).not.toContain("<title>Sign in</title>");
+    const storage = deps.sql;
+    if (!(storage instanceof BetterSqliteStorage)) {
+      throw new Error("expected BetterSqliteStorage");
+    }
+    expectZeroBetterAuthRows(storage);
+  });
+
+  it("accepts mixed-case and padded allowlist entries", async () => {
+    const padded = `  ${FAKE_GOOGLE_ALLOWED_EMAIL.toUpperCase()}  `;
+    const deps = await createAuthTestDeps(padded);
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    expect(jar.header()).toContain("better-auth.session_token=");
+  });
+
+  it("refuses unverified Google email with the allowlist refusal page and no auth rows", async () => {
+    const deps = await createAuthTestDeps();
+    const { lastResponse } = await completeGoogleSignIn(deps, "unverified");
     expect(await lastResponse.text()).toContain(AUTH_REFUSAL_MESSAGE);
     const storage = deps.sql;
     if (!(storage instanceof BetterSqliteStorage)) {
       throw new Error("expected BetterSqliteStorage");
     }
-    const count = storage
-      .nativeDatabase()
-      .prepare('SELECT count(*) as c FROM "user"')
-      .get() as { c: number };
-    expect(count.c).toBe(0);
+    expectZeroBetterAuthRows(storage);
+  });
+
+  it("refuses allowlisted email without a practitioner row and writes no auth rows", async () => {
+    const deps = await createAuthTestDeps(FAKE_GOOGLE_ALLOWED_EMAIL, {
+      seedPractitioner: false,
+    });
+    const { lastResponse } = await completeGoogleSignIn(deps, "allowed");
+    expect(await lastResponse.text()).toContain(AUTH_REFUSAL_MESSAGE);
+    const storage = deps.sql;
+    if (!(storage instanceof BetterSqliteStorage)) {
+      throw new Error("expected BetterSqliteStorage");
+    }
+    expectZeroBetterAuthRows(storage);
   });
 
   it("rejects an empty allowlist", async () => {
@@ -196,13 +267,79 @@ describe("Google sign-in (integration)", () => {
     expect(link.status).not.toBe(401);
   });
 
+  it("sets Better Auth session cookie with HttpOnly, Secure, and SameSite=Lax", async () => {
+    const deps = await createAuthTestDeps();
+    const { sessionSetCookies } = await completeGoogleSignIn(deps, "allowed");
+    expect(sessionSetCookies.length).toBeGreaterThan(0);
+    const combined = sessionSetCookies.join("\n");
+    expect(combined).toMatch(/better-auth\.session_token=/);
+    expect(combined).toContain("HttpOnly");
+    expect(combined).toContain("Secure");
+    expect(combined).toMatch(/SameSite=Lax\b/);
+  });
+
   it("clears the session cookie on sign out", async () => {
     const deps = await createAuthTestDeps();
     const { jar } = await completeGoogleSignIn(deps, "allowed");
     const signedOut = await requestWithJar(`${BASE}/api/auth/sign-out`, deps, jar, {
       method: "POST",
     });
-    expect(signedOut.headers.get("set-cookie")?.toLowerCase()).toMatch(/max-age=0/);
+    const setCookies =
+      typeof signedOut.headers.getSetCookie === "function"
+        ? signedOut.headers.getSetCookie()
+        : signedOut.headers.get("set-cookie")
+          ? [signedOut.headers.get("set-cookie")!]
+          : [];
+    expect(setCookies.length).toBeGreaterThan(0);
+    const combined = setCookies.join("\n");
+    expect(combined.toLowerCase()).toMatch(/max-age=0/);
+    expect(combined).toMatch(/SameSite=Lax\b/);
+    expect(jar.header()).not.toMatch(/session_token=/);
+  });
+
+  it("rejects cross-origin sign-in/social POST when a session cookie is present", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    const response = await requestWithJar(
+      `${BASE}/api/auth/sign-in/social`,
+      deps,
+      jar,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://evil.example",
+        },
+        body: JSON.stringify({ provider: "google", callbackURL: "/exercises" }),
+      },
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("rejects off-site callbackURL on sign-in/social", async () => {
+    const deps = await createAuthTestDeps();
+    const response = await handleRequest(
+      new Request(`${BASE}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          provider: "google",
+          callbackURL: "https://evil.example/steal",
+        }),
+      }),
+      deps,
+    );
+    expect(response.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("rejects cross-origin sign-out", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed");
+    const signedOut = await requestWithJar(`${BASE}/api/auth/sign-out`, deps, jar, {
+      method: "POST",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(signedOut.status).toBeGreaterThanOrEqual(400);
   });
 
   it("redirects signed-out deep links through sign-in and preserves returnTo", async () => {
@@ -212,12 +349,6 @@ describe("Google sign-in (integration)", () => {
     const location = response.headers.get("location") ?? "";
     expect(location).toContain("/sign-in");
     expect(location).toContain(encodeURIComponent("/programs"));
-  });
-
-  it("rejects off-site returnTo values", async () => {
-    const { normalizeReturnTo } = await import("../src/auth/return-to.js");
-    expect(normalizeReturnTo("//evil.example")).toBe("/");
-    expect(normalizeReturnTo("https://evil.example/x")).toBe("/");
   });
 });
 

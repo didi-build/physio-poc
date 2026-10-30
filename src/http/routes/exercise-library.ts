@@ -107,14 +107,9 @@ function parseTextOverridePatch(
 
 function bindPathPractitioner(
   pathPractitionerId: string,
-  deps: AppDependencies,
   sessionPractitioner: PractitionerSession | null | undefined,
 ): string | Response {
-  return resolveExerciseRoutePractitionerId(
-    pathPractitionerId,
-    sessionPractitioner,
-    deps.enableUnauthenticatedApi,
-  );
+  return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
 }
 
 export type HandleExerciseLibraryOptions = {
@@ -136,7 +131,6 @@ export async function handleExerciseLibraryRequest(
     const pathPractitionerId = approvedSearchMatch[1];
     const practitionerId = bindPathPractitioner(
       pathPractitionerId,
-      deps,
       sessionPractitioner,
     );
     if (practitionerId instanceof Response) {
@@ -190,7 +184,6 @@ export async function handleExerciseLibraryRequest(
     const [, pathPractitionerId, exerciseId] = detailsMatch;
     const practitionerId = bindPathPractitioner(
       pathPractitionerId,
-      deps,
       sessionPractitioner,
     );
     if (practitionerId instanceof Response) {
@@ -209,7 +202,6 @@ export async function handleExerciseLibraryRequest(
     const pathPractitionerId = myListMatch[1];
     const practitionerId = bindPathPractitioner(
       pathPractitionerId,
-      deps,
       sessionPractitioner,
     );
     if (practitionerId instanceof Response) {
@@ -243,7 +235,6 @@ export async function handleExerciseLibraryRequest(
     const [, pathPractitionerId, exerciseId] = myItemMatch;
     const practitionerId = bindPathPractitioner(
       pathPractitionerId,
-      deps,
       sessionPractitioner,
     );
     if (practitionerId instanceof Response) {

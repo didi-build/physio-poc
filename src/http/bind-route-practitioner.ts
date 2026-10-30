@@ -23,11 +23,7 @@ export function bindRoutePractitionerId(
 export function resolveExerciseRoutePractitionerId(
   pathPractitionerId: string,
   session: PractitionerSession | null | undefined,
-  enableUnauthenticatedApi: boolean | undefined,
 ): string | Response {
-  if (enableUnauthenticatedApi === true) {
-    return pathPractitionerId;
-  }
   const bound = bindRoutePractitionerId(pathPractitionerId, session ?? null);
   if (!bound.ok) {
     return bound.response;

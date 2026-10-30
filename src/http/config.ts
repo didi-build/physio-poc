@@ -36,9 +36,18 @@ export class InvalidAuthConfigError extends Error {
 
 const MIN_BETTER_AUTH_SECRET_LENGTH = 32;
 
+const PLACEHOLDER_BETTER_AUTH_SECRETS = new Set([
+  "replace-me-with-at-least-32-characters-long",
+]);
+
 /** Validates Better Auth startup secret (Node adapter only). No default or fallback secret. */
 export function resolveBetterAuthSecretForRuntime(betterAuthSecret: string): string {
   const trimmed = betterAuthSecret.trim();
+  if (PLACEHOLDER_BETTER_AUTH_SECRETS.has(trimmed)) {
+    throw new InvalidAuthConfigError(
+      "BETTER_AUTH_SECRET must be replaced with a local secret (not the .dev.vars.example placeholder).",
+    );
+  }
   if (trimmed.length >= MIN_BETTER_AUTH_SECRET_LENGTH) {
     return trimmed;
   }

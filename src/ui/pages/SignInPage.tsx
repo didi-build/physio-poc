@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SIGN_IN_WITH_GOOGLE_LABEL } from "../copy/sign-in.js";
 import "../styles/sign-in.css";
 
 export type SignInPageProps = {
@@ -41,7 +42,7 @@ export function SignInPage({ returnTo }: SignInPageProps) {
             void signInWithGoogle();
           }}
         >
-          Sign in with Google
+          {SIGN_IN_WITH_GOOGLE_LABEL}
         </button>
       </div>
     </div>

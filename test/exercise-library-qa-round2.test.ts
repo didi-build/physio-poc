@@ -68,14 +68,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    auth: new FakeAuthPort({ practitioner: null }),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -457,13 +467,13 @@ describe("Exercise library QA round 2 (integration)", () => {
     try {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
-      const deps = apiDeps(storage);
+      const { sessionCookie, ...deps } = apiDeps(storage, practId);
       const base = `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`;
 
       const missingSnapshot = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({ action: "undo", undo: { practitioner_id: practId } }),
         }),
         deps,
@@ -473,7 +483,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badJson = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -497,7 +507,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const looseDate = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -526,7 +536,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badParams = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
