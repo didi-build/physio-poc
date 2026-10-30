@@ -10,3 +10,8 @@ export {
   type ExerciseMediaSetView,
   type RegenerationQuota,
 } from "./exercise-media/index.js";
+export {
+  ProgramBuilderService,
+  ProgramBuilderServiceError,
+  validateExerciseParamsForPrescriptionType,
+} from "./programs/index.js";
