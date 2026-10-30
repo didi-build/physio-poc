@@ -90,7 +90,6 @@ export function MyCopyEditorPage() {
         <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
           {BACK_LIBRARY}
         </Link>
-        <p className="ex-detail-kicker">{MY_COPY}</p>
         <h1 id="ex-mycopy-heading" className="ex-page-title">
           {pageTitle}
         </h1>

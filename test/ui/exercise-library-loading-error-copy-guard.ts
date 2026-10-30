@@ -45,7 +45,6 @@ export const LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED: readonly strin
 const SHELL_TEXT_EXCLUSION_SELECTORS = [
   '[data-testid="shell-brand-mark"]',
   '[data-testid="shell-account-avatar"]',
-  ".sr-only",
 ] as const;
 
 function physioShellAllowlist(): readonly string[] {
@@ -170,7 +169,7 @@ export function exerciseLibraryDetailsErrorPageSegmentLimits(): Readonly<
 > {
   return mergeSegmentLimits({
     [BACK_LIBRARY]: 1,
-    [EXERCISE_DETAILS]: 2,
+    [EXERCISE_DETAILS]: 1,
   });
 }
 
@@ -184,7 +183,7 @@ export function exerciseLibraryMyCopyErrorPageSegmentLimits(): Readonly<
 > {
   return mergeSegmentLimits({
     [BACK_LIBRARY]: 1,
-    [MY_COPY]: 2,
+    [MY_COPY]: 1,
   });
 }
 

@@ -13,7 +13,16 @@ import {
   ExerciseLibraryDetailErrorSlot,
 } from "../../src/ui/exercise-library/ExerciseLibraryStates.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
-import { BACK_LIBRARY, EXERCISE_DETAILS } from "../../src/ui/copy/exercise-library.js";
+import {
+  BACK_LIBRARY,
+  EXERCISE_DETAILS,
+  PINNED_PREFIX,
+  editsOnTopOfLibraryLine,
+} from "../../src/ui/copy/exercise-library.js";
+import {
+  countMyCopyEdits,
+  myCopyStatusLine,
+} from "../../src/ui/exercise-library/my-copy-status.js";
 import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
   assertExerciseLibraryErrorPageCopy,
@@ -28,11 +37,9 @@ function minimalDetailsErrorPageShell(): HTMLElement {
   const page = document.createElement("div");
   const back = document.createElement("a");
   back.textContent = BACK_LIBRARY;
-  const kicker = document.createElement("p");
-  kicker.textContent = EXERCISE_DETAILS;
   const heading = document.createElement("h1");
   heading.textContent = EXERCISE_DETAILS;
-  page.append(back, kicker, heading);
+  page.append(back, heading);
   return page;
 }
 
@@ -165,6 +172,54 @@ describe("exercise library loading/error copy guard", () => {
     const page = minimalDetailsErrorPageShell();
     const stray = document.createElement("p");
     stray.textContent = BACK_LIBRARY;
+    page.append(stray);
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("counts param_overrides toward my copy edit count", () => {
+    const editCount = countMyCopyEdits({
+      resolved_text: [
+        {
+          key: "title",
+          resolved: "Calf stretch",
+          library_value: "Calf stretch",
+          library_updated: false,
+        },
+      ],
+      param_overrides: { stretching: { hold: "45" } },
+    } as unknown as Parameters<typeof countMyCopyEdits>[0]);
+    expect(editCount).toBe(1);
+  });
+
+  it("myCopyStatusLine uses params-only overrides like mock ex13", () => {
+    const line = myCopyStatusLine({
+      favourite: true,
+      resolved_text: [
+        {
+          key: "title",
+          resolved: "Calf stretch",
+          library_value: "Calf stretch",
+          library_updated: false,
+        },
+      ],
+      param_overrides: {
+        stretching: { hold: "45", perDay: "2", daysPerWeek: "7" },
+      },
+    } as unknown as Parameters<typeof myCopyStatusLine>[0]);
+    expect(line).toBe(`${PINNED_PREFIX}${editsOnTopOfLibraryLine(1)}`);
+  });
+
+  it("mutation: whole details error page rejects sr-only text injected beside the slot", () => {
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = "Oops";
     page.append(stray);
     expect(() =>
       assertExerciseLibraryErrorPageCopy(

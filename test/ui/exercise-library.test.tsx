@@ -15,6 +15,7 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import type { ExerciseDetailsResult } from "../../src/services/exercise-library/types.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
 import {
   BACK_LIBRARY,
@@ -53,6 +54,7 @@ import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetai
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
 import { DEFAULT_FILTERS } from "../../src/ui/exercise-library/library-filters.js";
 import { MyCopyEditorPage } from "../../src/ui/exercise-library/MyCopyEditorPage.js";
+import { myCopyStatusLine } from "../../src/ui/exercise-library/my-copy-status.js";
 import { ToastProvider } from "../../src/ui/components/Toast.js";
 
 afterEach(() => {
@@ -204,6 +206,8 @@ const baseDetails = {
       library_updated: false,
     },
   ],
+  param_overrides: {},
+  resolved_params_by_type: {},
 };
 
 describe("Exercise library UI", () => {
@@ -645,6 +649,48 @@ describe("Exercise library UI", () => {
     );
   });
 
+  it("renders a visual-only busy state while exercise details load", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn(
+        (): Promise<ExerciseDetailsResult> =>
+          new Promise(() => {
+            /* pending */
+          }),
+      ),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    const skeleton = await screen.findByTestId("exercise-library-busy-skeleton");
+    const section = skeleton.closest("section");
+    expect(section).toHaveAttribute("aria-busy", "true");
+    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders a visual-only busy state while My copy loads", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn(
+        (): Promise<ExerciseDetailsResult> =>
+          new Promise(() => {
+            /* pending */
+          }),
+      ),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    const skeleton = await screen.findByTestId("exercise-library-busy-skeleton");
+    const section = skeleton.closest("section");
+    expect(section).toHaveAttribute("aria-busy", "true");
+    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("does not show My exercises empty state copy when load fails", async () => {
     const client = mockClient({
       listMyExercises: vi.fn().mockRejectedValue(new Error("network")),
@@ -755,6 +801,94 @@ describe("Exercise library UI", () => {
     assertMyCopyLoadErrorCopy();
   });
 
+  it("mutation: whole list error page rejects sr-only text injected beside the slot", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockRejectedValue(new Error("network")),
+      searchApproved: vi.fn(),
+    });
+
+    renderPhysio(fillPhysioAppRoutePattern("exercises"), client);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-list-error-slot"),
+      ).toBeInTheDocument();
+    });
+
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = "Oops";
+    screen.getByTestId("exercise-library-list-error-slot").append(stray);
+
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        document.body,
+        exerciseLibraryListErrorPageAllowlistMine(),
+        exerciseLibraryListErrorPageSegmentLimitsMine(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects sr-only text injected beside the slot", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = "Oops";
+    screen.getByTestId("exercise-library-detail-error-slot").append(stray);
+
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        document.body,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole My copy error page rejects sr-only text injected beside the slot", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = "Oops";
+    screen.getByTestId("exercise-library-detail-error-slot").append(stray);
+
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        document.body,
+        exerciseLibraryMyCopyErrorPageAllowlist(),
+        exerciseLibraryMyCopyErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
   it("shows No edits yet when my copy has no overrides", async () => {
     const client = mockClient({
       getExerciseDetails: vi.fn().mockResolvedValue({
@@ -795,6 +929,7 @@ describe("Exercise library UI", () => {
           },
         ],
         library: { ...baseDetails.library, title: "Heel slide" },
+        param_overrides: {},
       }),
     });
 
@@ -803,6 +938,39 @@ describe("Exercise library UI", () => {
     await waitFor(() => {
       expect(screen.getByText(`${PINNED_PREFIX}${NO_EDITS_YET}`)).toBeInTheDocument();
     });
+  });
+
+  it("shows edits-on-top copy for params-only overrides like the mock ex13 sample", async () => {
+    const detailsPayload = {
+      ...baseDetails,
+      in_my_exercises: true,
+      favourite: true,
+      resolved_text: [
+        {
+          key: "title",
+          resolved: "Calf stretch",
+          library_value: "Calf stretch",
+          library_updated: false,
+        },
+      ],
+      library: { ...baseDetails.library, title: "Calf stretch" },
+      param_overrides: {
+        stretching: { hold: "45", perDay: "2", daysPerWeek: "7" },
+      },
+    } as unknown as ExerciseDetailsResult;
+    const expectedStatus = myCopyStatusLine(detailsPayload);
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue(detailsPayload),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByText(expectedStatus)).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(`${PINNED_PREFIX}${NO_EDITS_YET}`),
+    ).not.toBeInTheDocument();
   });
 
   it("shows edits-on-top copy instead of No edits yet when overrides exist", async () => {

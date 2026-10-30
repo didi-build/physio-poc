@@ -113,7 +113,6 @@ export function ExerciseDetailsPage() {
         <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
           {BACK_LIBRARY}
         </Link>
-        <p className="ex-detail-kicker">{EXERCISE_DETAILS}</p>
         <h1 id="ex-detail-heading" className="ex-page-title">
           {pageTitle}
         </h1>
