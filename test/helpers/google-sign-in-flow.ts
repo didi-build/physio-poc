@@ -49,10 +49,22 @@ export async function requestWithJar(
   if (cookie) {
     headers.set("cookie", cookie);
     if (
-      (init.method === "POST" || init.method === "PUT" || init.method === "PATCH") &&
+      (init.method === "POST" ||
+        init.method === "PUT" ||
+        init.method === "PATCH" ||
+        init.method === "DELETE") &&
       !headers.has("origin")
     ) {
       headers.set("origin", new URL(baseUrl).origin);
+    }
+    if (
+      (init.method === "POST" ||
+        init.method === "PUT" ||
+        init.method === "PATCH" ||
+        init.method === "DELETE") &&
+      !headers.has("content-type")
+    ) {
+      headers.set("content-type", "application/json");
     }
   }
   const response = await handleRequest(

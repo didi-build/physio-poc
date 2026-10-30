@@ -12,6 +12,7 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import {
   buildTextOverrideEntry,
@@ -201,12 +202,16 @@ describe("Exercise library practitioner session binding (integration)", () => {
 
     for (const testCase of FORBIDDEN_ROUTE_CASES) {
       const body = testCase.body?.({ practA, exerciseId: EX_B });
+      const url = testCase.path(PRACT_B);
       const response = await handleRequest(
-        new Request(testCase.path(PRACT_B), {
-          method: testCase.method,
-          headers: body ? { cookie, "content-type": "application/json" } : { cookie },
-          body: body ? JSON.stringify(body) : undefined,
-        }),
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: testCase.method,
+            headers: body ? { cookie, "content-type": "application/json" } : { cookie },
+            body: body ? JSON.stringify(body) : undefined,
+          }),
+        ),
         deps,
       );
       expect(response.status, testCase.label).toBe(403);
@@ -270,12 +275,16 @@ describe("Exercise library practitioner session binding (integration)", () => {
       ).status,
     ).toBe(200);
 
+    const saveUrl = `${apiA}/my-exercises/${EX_B}`;
     const save = await handleRequest(
-      new Request(`${apiA}/my-exercises/${EX_B}`, {
-        method: "POST",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ action: "save" }),
-      }),
+      new Request(
+        saveUrl,
+        mutatingAppApiRequestInit(saveUrl, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({ action: "save" }),
+        }),
+      ),
       deps,
     );
     expect(save.status).toBe(200);
@@ -335,26 +344,30 @@ describe("Exercise library practitioner session binding (integration)", () => {
     );
     expect(before).not.toBeNull();
 
+    const undoUrl = `${BASE}/api/practitioners/${PRACT_A}/my-exercises/${EX_B}`;
     const response = await handleRequest(
-      new Request(`${BASE}/api/practitioners/${PRACT_A}/my-exercises/${EX_B}`, {
-        method: "POST",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "undo",
-          undo: {
-            practitioner_id: PRACT_B,
-            exercise_id: EX_B,
-            snapshot: {
-              had_row: false,
-              favourite: false,
-              saved_at: null,
-              last_used_at: null,
-              text_overrides_json: "{}",
-              param_overrides_json: "{}",
+      new Request(
+        undoUrl,
+        mutatingAppApiRequestInit(undoUrl, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({
+            action: "undo",
+            undo: {
+              practitioner_id: PRACT_B,
+              exercise_id: EX_B,
+              snapshot: {
+                had_row: false,
+                favourite: false,
+                saved_at: null,
+                last_used_at: null,
+                text_overrides_json: "{}",
+                param_overrides_json: "{}",
+              },
             },
-          },
+          }),
         }),
-      }),
+      ),
       deps,
     );
     expect(response.status).toBe(400);
@@ -412,12 +425,16 @@ describe("Exercise library practitioner session binding (integration)", () => {
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     };
 
+    const patchUrl = `${BASE}/api/practitioners/${PRACT_B}/my-exercises/${EX_B}`;
     const response = await handleRequest(
-      new Request(`${BASE}/api/practitioners/${PRACT_B}/my-exercises/${EX_B}`, {
-        method: "PATCH",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ text_overrides: { title: "Attacker title" } }),
-      }),
+      new Request(
+        patchUrl,
+        mutatingAppApiRequestInit(patchUrl, {
+          method: "PATCH",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({ text_overrides: { title: "Attacker title" } }),
+        }),
+      ),
       deps,
     );
     expect(response.status).toBe(403);

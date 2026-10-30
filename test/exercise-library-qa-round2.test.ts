@@ -23,6 +23,7 @@ import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-
 import { ExerciseBodyRegionsRepository } from "../src/storage/repositories/exercise-data.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
+import { addProgramExerciseRow } from "./helpers/exercise-library-program-usage-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
@@ -157,45 +158,43 @@ describe("Exercise library QA round 2 (integration)", () => {
     }
   });
 
-  it("M17, M21, and M22: default sort is most used and usage requires last_used_at", async () => {
+  it("M17, M21, and M22: default sort is most used from program row counts", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
+      const exLow = id("ex-low");
+      const exHigh = id("ex-high");
       await seedApproved(storage, practId, {
-        exerciseId: id("ex-low"),
+        exerciseId: exLow,
         title: "AAA low usage",
         approvedAt: "2026-03-01T00:00:00.000Z",
       });
-      await seedApproved(storage, practId, {
-        exerciseId: id("ex-high"),
+      const { versionId: verHigh } = await seedApproved(storage, practId, {
+        exerciseId: exHigh,
         title: "ZZZ high usage",
         approvedAt: "2026-01-01T00:00:00.000Z",
       });
 
-      const myRepo = new PractitionerExercisesRepository(storage);
-      await myRepo.upsert({
+      await addProgramExerciseRow(storage, {
         practitionerId: practId,
-        exerciseId: id("ex-low"),
-        savedAt: TS,
-      });
-      await myRepo.upsert({
-        practitionerId: practId,
-        exerciseId: id("ex-high"),
-        savedAt: TS,
-        lastUsedAt: TS,
+        programId: id("prog-high"),
+        rowId: id("row-high"),
+        exerciseId: exHigh,
+        versionId: verHigh,
+        position: 0,
       });
 
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
       const defaultSort = await service.searchApprovedExercises({
         practitionerId: practId,
       });
-      expect(defaultSort.exercises[0]?.exercise_id).toBe(id("ex-high"));
+      expect(defaultSort.exercises[0]?.exercise_id).toBe(exHigh);
 
       const newest = await service.searchApprovedExercises({
         practitionerId: practId,
         sort: "newest",
       });
-      expect(newest.exercises[0]?.exercise_id).toBe(id("ex-low"));
+      expect(newest.exercises[0]?.exercise_id).toBe(exLow);
     } finally {
       storage.close();
     }
@@ -474,7 +473,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const missingSnapshot = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({ action: "undo", undo: { practitioner_id: practId } }),
         }),
         deps,
@@ -484,7 +487,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badJson = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -508,7 +515,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const looseDate = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {
@@ -537,7 +548,11 @@ describe("Exercise library QA round 2 (integration)", () => {
       const badParams = await handleRequest(
         new Request(base, {
           method: "POST",
-          headers: { cookie: sessionCookie, "content-type": "application/json" },
+          headers: {
+            cookie: sessionCookie,
+            origin: "https://example.test",
+            "content-type": "application/json",
+          },
           body: JSON.stringify({
             action: "undo",
             undo: {
