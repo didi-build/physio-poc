@@ -55,6 +55,38 @@ describe("routine data model migration (integration, SQLite)", () => {
     }
   });
 
+  it("insert rejects patient-detail labels and accepts a clinical label", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const conditions = new ConditionsRepository(storage);
+      await expect(
+        conditions.insert({
+          id: id("cond-bad-email"),
+          label: "After patient@example.com surgery",
+        }),
+      ).rejects.toThrow(FreeTextValidationError);
+      expect(await conditions.listAll()).toEqual([]);
+
+      await expect(
+        conditions.insert({
+          id: id("cond-bad-dob"),
+          label: `Post-op ${FAKE_DOB_SNIPPET}`,
+        }),
+      ).rejects.toThrow(FreeTextValidationError);
+      expect(await conditions.listAll()).toEqual([]);
+
+      await conditions.insert({
+        id: id("cond-ok"),
+        label: "Low back pain",
+      });
+      expect(await conditions.listAll()).toEqual([
+        { id: id("cond-ok"), label: "Low back pain", sort_order: 0 },
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("defines ON DELETE RESTRICT on routine model foreign keys", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -154,6 +186,87 @@ describe("routine version saves (repository, SQLite)", () => {
         copyFromVersionId: v1A.id,
       });
       expect(v2.version_number).toBe(2);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects restoredFromVersionId from a different routine", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+
+      async function publishRoutine(
+        routineSeed: string,
+        versionDraftSeed: string,
+        rowSeed: string,
+        name: string,
+      ) {
+        await routines.createDraft({
+          id: id(routineSeed),
+          draftVersionId: id(versionDraftSeed),
+          createdBy: author,
+          createdAt: TS,
+          bodyRegionId: BODY_REGION_KNEE,
+        });
+        await rows.replaceDraftRow({
+          id: id(rowSeed),
+          routineId: id(routineSeed),
+          authorId: author,
+          position: 0,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          prescriptionType: "stretching",
+          params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          draftUpdatedAt: TS,
+        });
+        return versions.publishDraft({
+          routineId: id(routineSeed),
+          authorId: author,
+          publishedAt: TS,
+          name,
+        });
+      }
+
+      const v1A = await publishRoutine(
+        "routine-restore-a",
+        "rv-restore-a-draft",
+        "rvr-restore-a",
+        "Routine restore A",
+      );
+      const v1B = await publishRoutine(
+        "routine-restore-b",
+        "rv-restore-b-draft",
+        "rvr-restore-b",
+        "Routine restore B",
+      );
+
+      await expect(
+        versions.savePublishedVersion({
+          id: id("rv-restore-a-v2-bad"),
+          routineId: id("routine-restore-a"),
+          createdBy: author,
+          createdAt: TS,
+          name: "Routine restore A v2",
+          copyFromVersionId: v1A.id,
+          restoredFromVersionId: v1B.id,
+        }),
+      ).rejects.toThrow("restoredFromVersionId belongs to a different routine");
+
+      const v2 = await versions.savePublishedVersion({
+        id: id("rv-restore-a-v2-ok"),
+        routineId: id("routine-restore-a"),
+        createdBy: author,
+        createdAt: TS,
+        name: "Routine restore A v2",
+        copyFromVersionId: v1A.id,
+        restoredFromVersionId: v1A.id,
+      });
+      expect(v2.restored_from_version_id).toBe(v1A.id);
     } finally {
       storage.close();
     }

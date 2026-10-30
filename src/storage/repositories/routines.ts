@@ -379,6 +379,17 @@ export class RoutineVersionsRepository {
     const restoredFrom = input.restoredFromVersionId
       ? validateOpaqueEntityId(input.restoredFromVersionId, "Restored from version id")
       : null;
+    if (restoredFrom) {
+      const restoredFromVersion = await this.findById(restoredFrom);
+      if (!restoredFromVersion) {
+        throw new RoutineRepositoryError("Restored from version not found");
+      }
+      if (restoredFromVersion.routine_id !== input.routineId) {
+        throw new RoutineRepositoryError(
+          "restoredFromVersionId belongs to a different routine",
+        );
+      }
+    }
     const copyFromVersion = await this.findById(input.copyFromVersionId);
     if (!copyFromVersion) {
       throw new RoutineRepositoryError("Source routine version not found");
