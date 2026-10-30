@@ -71,6 +71,7 @@ export class MyDefaultsClient {
   resetTypeDefault(type: PrescriptionType): Promise<MyDefaultsExerciseTypeView> {
     return this.fetchFn(`${practitionerBase(this.practitionerId)}/types/${type}`, {
       method: "DELETE",
+      headers: { "content-type": "application/json" },
     }).then((response) => readJson<MyDefaultsExerciseTypeView>(response));
   }
 }

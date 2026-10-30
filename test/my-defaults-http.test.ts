@@ -134,6 +134,66 @@ describe("My defaults HTTP routes (integration)", () => {
     }
   });
 
+  it("PUT on a type default upserts practitioner params", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const putResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/types/stretching`,
+          cookie,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              params: { hold_s: 45, sets: 2, days_per_week: 4 },
+            }),
+          },
+        ),
+        deps,
+      );
+      expect(putResponse.status).toBe(200);
+      const body = (await putResponse.json()) as {
+        practitioner_params: { hold_s: number; sets: number; days_per_week: number };
+      };
+      expect(body.practitioner_params).toEqual({
+        hold_s: 45,
+        sets: 2,
+        days_per_week: 4,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PUT on a type default returns 400 for invalid params", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const putResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/types/isometric`,
+          cookie,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              params: { reps: 0, hold_s: 10, sets: 3, days_per_week: 3 },
+            }),
+          },
+        ),
+        deps,
+      );
+      expect(putResponse.status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("DELETE on a type default resets to global", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -160,7 +220,10 @@ describe("My defaults HTTP routes (integration)", () => {
         authedRequest(
           `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/types/isometric`,
           cookie,
-          { method: "DELETE" },
+          {
+            method: "DELETE",
+            headers: { "content-type": "application/json" },
+          },
         ),
         deps,
       );

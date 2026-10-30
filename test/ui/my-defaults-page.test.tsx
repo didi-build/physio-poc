@@ -21,6 +21,8 @@ import {
   MY_DEFAULTS_PAGE_TITLE,
   RESET_TO_GLOBAL,
   SHARE_LINK_EXPIRY_SECTION,
+  YOUR_DEFAULT_BADGE,
+  newLinksExpireAfterLabel,
 } from "../../src/ui/copy/my-defaults.js";
 
 afterEach(() => {
@@ -114,6 +116,52 @@ describe("My defaults page (integration, jsdom)", () => {
     expect(screen.getByText(/Global default: 1 year\./)).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "1 year", pressed: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show Your default badge when share link expiry matches global", async () => {
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: SHARE_LINK_EXPIRY_SECTION });
+    const expiryPanel = screen.getByRole("heading", {
+      name: SHARE_LINK_EXPIRY_SECTION,
+    }).parentElement;
+    expect(expiryPanel).not.toBeNull();
+    expect(
+      within(expiryPanel!).queryByText(YOUR_DEFAULT_BADGE),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves share link expiry from a chip and shows the toast", async () => {
+    const updateShareLinkExpiry = vi.fn().mockResolvedValue({
+      global: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
+      practitioner: {
+        expiresIn: SHARE_LINK_EXPIRES_IN.one_week,
+        customExpiresOn: null,
+      },
+      effective: { expiresIn: SHARE_LINK_EXPIRES_IN.one_week, customExpiresOn: null },
+    });
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient({ updateShareLinkExpiry })}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: "1 year", pressed: true });
+    await userEvent.click(screen.getByRole("button", { name: "1 week" }));
+    expect(updateShareLinkExpiry).toHaveBeenCalledWith(SHARE_LINK_EXPIRES_IN.one_week);
+    expect(
+      await screen.findByText(newLinksExpireAfterLabel("1 week")),
     ).toBeInTheDocument();
   });
 
