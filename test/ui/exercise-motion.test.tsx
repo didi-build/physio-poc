@@ -51,7 +51,7 @@ describe("ExerciseMotion", () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn().mockImplementation((query: string) => ({
-        matches: query.includes("prefers-reduced-motion"),
+        matches: query === "(prefers-reduced-motion: reduce)",
         media: query,
         onchange: null,
         addListener: vi.fn(),
@@ -81,7 +81,7 @@ describe("ExerciseMotion", () => {
     );
   });
 
-  it("toggles pause state from the visible control and by keyboard", async () => {
+  it("toggles pause state from the visible control, image click, and keyboard", async () => {
     const user = userEvent.setup();
     render(
       <ExerciseMotion startSrc="/start.svg" endSrc="/end.svg" alt="Heel slides" />,
@@ -97,6 +97,16 @@ describe("ExerciseMotion", () => {
     expect(document.querySelector(".exercise-motion-paused")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: ARIA_PLAY_EXERCISE_VIDEO }));
+    expect(
+      screen.getByRole("button", { name: ARIA_PAUSE_EXERCISE_VIDEO }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("exercise-motion-start"));
+    expect(
+      screen.getByRole("button", { name: ARIA_PLAY_EXERCISE_VIDEO }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("exercise-motion-end"));
     expect(
       screen.getByRole("button", { name: ARIA_PAUSE_EXERCISE_VIDEO }),
     ).toBeInTheDocument();

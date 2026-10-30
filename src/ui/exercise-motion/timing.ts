@@ -3,8 +3,13 @@ export const EXERCISE_MOTION_LOOP_DURATION_SECONDS = 6;
 
 export const EXERCISE_MOTION_LOOP_DURATION_CSS = `${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s`;
 
-/** Merged spec figcaption: AI video, 6s loop */
-export function exerciseMotionAiVideoLoopCaption(): string {
+/** Library exercise details figcaption: Video, 6s loop */
+export function exerciseMotionLibraryVideoLoopCaption(): string {
+  return `Video, ${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s loop`;
+}
+
+/** Draft review screen figcaption: AI video, 6s loop */
+export function exerciseMotionDraftReviewVideoLoopCaption(): string {
   return `AI video, ${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s loop`;
 }
 

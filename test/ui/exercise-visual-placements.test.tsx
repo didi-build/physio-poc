@@ -6,8 +6,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  EXERCISE_MOTION_LOOP_DURATION_SECONDS,
-  exerciseMotionAiVideoLoopCaption,
   exerciseMotionEndAlt,
   exerciseMotionStartAlt,
 } from "../../src/ui/exercise-motion/timing.js";
@@ -18,22 +16,22 @@ import {
 } from "../../src/ui/exercise-visual/index.js";
 import { EXERCISE_VISUAL_PLACEHOLDER_ALT } from "../../src/ui/exercise-visual/placeholders.js";
 
+const LIBRARY_VIDEO_LOOP_CAPTION = "Video, 6s loop";
+const DRAFT_REVIEW_VIDEO_LOOP_CAPTION = "AI video, 6s loop";
+
 afterEach(() => {
   cleanup();
 });
 
 describe("exercise visual placements", () => {
-  it("renders the AI video loop caption from the shared loop duration constant", () => {
-    expect(exerciseMotionAiVideoLoopCaption()).toBe(
-      `AI video, ${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s loop`,
-    );
+  it("renders the library detail caption Video, 6s loop", () => {
     render(<LibraryDetailExerciseVideo />);
-    expect(screen.getByText(exerciseMotionAiVideoLoopCaption())).toBeInTheDocument();
+    expect(screen.getByText(LIBRARY_VIDEO_LOOP_CAPTION)).toBeInTheDocument();
   });
 
-  it("renders DraftReviewExerciseVideo with ExerciseMotion", () => {
+  it("renders the draft review caption AI video, 6s loop", () => {
     render(<DraftReviewExerciseVideo />);
-    expect(screen.getByText(exerciseMotionAiVideoLoopCaption())).toBeInTheDocument();
+    expect(screen.getByText(DRAFT_REVIEW_VIDEO_LOOP_CAPTION)).toBeInTheDocument();
   });
 
   it("renders PublicLinkExerciseVideo with Play video toggle and consistent image alts", async () => {

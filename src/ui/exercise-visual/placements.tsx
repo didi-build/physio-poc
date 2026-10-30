@@ -1,5 +1,8 @@
 import { ExerciseMotion } from "../components/ExerciseMotion.js";
-import { exerciseMotionAiVideoLoopCaption } from "../exercise-motion/timing.js";
+import {
+  exerciseMotionDraftReviewVideoLoopCaption,
+  exerciseMotionLibraryVideoLoopCaption,
+} from "../exercise-motion/timing.js";
 import {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
@@ -9,27 +12,55 @@ export type ExerciseVideoFigureProps = Partial<ExerciseVisualSources> & {
   className?: string;
 };
 
+function resolveVisualSources(sources: Partial<ExerciseVisualSources>) {
+  const defaults = exerciseVisualPlaceholders(sources.alt);
+  return {
+    startSrc: sources.startSrc ?? defaults.startSrc,
+    endSrc: sources.endSrc ?? defaults.endSrc,
+    alt: sources.alt ?? defaults.alt,
+  };
+}
+
 /** Library exercise details: merged spec video placeholder (figure under start/end stills). */
 export function LibraryDetailExerciseVideo({
   className,
   ...sources
 }: ExerciseVideoFigureProps) {
-  const { startSrc, endSrc, alt } = exerciseVisualPlaceholders(sources.alt);
-  const start = sources.startSrc ?? startSrc;
-  const end = sources.endSrc ?? endSrc;
-  const label = sources.alt ?? alt;
+  const { startSrc, endSrc, alt } = resolveVisualSources(sources);
 
   return (
     <figure className="exercise-motion-video-figure">
-      <ExerciseMotion startSrc={start} endSrc={end} alt={label} className={className} />
+      <ExerciseMotion
+        startSrc={startSrc}
+        endSrc={endSrc}
+        alt={alt}
+        className={className}
+      />
       <figcaption className="exercise-motion-video-caption">
-        {exerciseMotionAiVideoLoopCaption()}
+        {exerciseMotionLibraryVideoLoopCaption()}
       </figcaption>
     </figure>
   );
 }
 
-/** Draft review screen: same video placement as library details. */
-export function DraftReviewExerciseVideo(props: ExerciseVideoFigureProps) {
-  return <LibraryDetailExerciseVideo {...props} />;
+/** Draft review screen: video figure with draft review caption. */
+export function DraftReviewExerciseVideo({
+  className,
+  ...sources
+}: ExerciseVideoFigureProps) {
+  const { startSrc, endSrc, alt } = resolveVisualSources(sources);
+
+  return (
+    <figure className="exercise-motion-video-figure">
+      <ExerciseMotion
+        startSrc={startSrc}
+        endSrc={endSrc}
+        alt={alt}
+        className={className}
+      />
+      <figcaption className="exercise-motion-video-caption">
+        {exerciseMotionDraftReviewVideoLoopCaption()}
+      </figcaption>
+    </figure>
+  );
 }

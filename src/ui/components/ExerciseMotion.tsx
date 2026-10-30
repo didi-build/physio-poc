@@ -53,14 +53,9 @@ export function ExerciseMotion({
     setPlaying((current) => !current);
   }, []);
 
-  const onRootClick = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      if (event.target === event.currentTarget) {
-        togglePlaying();
-      }
-    },
-    [togglePlaying],
-  );
+  const onRootClick = useCallback(() => {
+    togglePlaying();
+  }, [togglePlaying]);
 
   const onRootKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
