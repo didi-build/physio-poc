@@ -39,10 +39,15 @@ import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
   assertExerciseLibraryErrorPageCopy,
   assertLoadingErrorRegionsOnlyAllowlisted,
+  assertShellBrandAndAvatarCopy,
   exerciseLibraryDetailsErrorPageAllowlist,
+  exerciseLibraryDetailsErrorPageSegmentLimits,
   exerciseLibraryListErrorPageAllowlistAll,
   exerciseLibraryListErrorPageAllowlistMine,
+  exerciseLibraryListErrorPageSegmentLimitsAll,
+  exerciseLibraryListErrorPageSegmentLimitsMine,
   exerciseLibraryMyCopyErrorPageAllowlist,
+  exerciseLibraryMyCopyErrorPageSegmentLimits,
 } from "./exercise-library-loading-error-copy-guard.js";
 import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
@@ -74,6 +79,60 @@ function expectLibraryErrorChrome(pageHeading: string) {
   expect(
     screen.getAllByRole("link", { name: NAV_TAB_EXERCISES }).length,
   ).toBeGreaterThan(0);
+  expect(screen.getByTestId("shell-brand-mark")).toHaveTextContent("D");
+  expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("K");
+}
+
+function assertListLoadErrorCopyMine(): void {
+  assertLoadingErrorRegionsOnlyAllowlisted(
+    document.body,
+    LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  );
+  assertExerciseLibraryErrorPageCopy(
+    document.body,
+    exerciseLibraryListErrorPageAllowlistMine(),
+    exerciseLibraryListErrorPageSegmentLimitsMine(),
+  );
+  assertShellBrandAndAvatarCopy(document.body);
+}
+
+function assertListLoadErrorCopyAll(): void {
+  assertLoadingErrorRegionsOnlyAllowlisted(
+    document.body,
+    LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  );
+  assertExerciseLibraryErrorPageCopy(
+    document.body,
+    exerciseLibraryListErrorPageAllowlistAll(),
+    exerciseLibraryListErrorPageSegmentLimitsAll(),
+  );
+  assertShellBrandAndAvatarCopy(document.body);
+}
+
+function assertDetailLoadErrorCopy(): void {
+  assertLoadingErrorRegionsOnlyAllowlisted(
+    document.body,
+    LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  );
+  assertExerciseLibraryErrorPageCopy(
+    document.body,
+    exerciseLibraryDetailsErrorPageAllowlist(),
+    exerciseLibraryDetailsErrorPageSegmentLimits(),
+  );
+  assertShellBrandAndAvatarCopy(document.body);
+}
+
+function assertMyCopyLoadErrorCopy(): void {
+  assertLoadingErrorRegionsOnlyAllowlisted(
+    document.body,
+    LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
+  );
+  assertExerciseLibraryErrorPageCopy(
+    document.body,
+    exerciseLibraryMyCopyErrorPageAllowlist(),
+    exerciseLibraryMyCopyErrorPageSegmentLimits(),
+  );
+  assertShellBrandAndAvatarCopy(document.body);
 }
 
 function renderMyCopy(client: ExerciseLibraryClient) {
@@ -601,10 +660,7 @@ describe("Exercise library UI", () => {
     });
     expect(screen.queryByText(NO_SAVED_WITH_FILTERS)).not.toBeInTheDocument();
     expectLibraryErrorChrome(LIB_HEADING);
-    assertExerciseLibraryErrorPageCopy(
-      document.body,
-      exerciseLibraryListErrorPageAllowlistMine(),
-    );
+    assertListLoadErrorCopyMine();
   });
 
   it("does not show All exercises no-match or request form when load fails", async () => {
@@ -635,10 +691,7 @@ describe("Exercise library UI", () => {
       screen.queryByRole("heading", { name: noExactMatchHeading("Missing") }),
     ).not.toBeInTheDocument();
     expectLibraryErrorChrome(LIB_HEADING);
-    assertExerciseLibraryErrorPageCopy(
-      document.body,
-      exerciseLibraryListErrorPageAllowlistAll(),
-    );
+    assertListLoadErrorCopyAll();
   });
 
   it("renders the list error slot without unsourced copy when load fails", async () => {
@@ -661,10 +714,7 @@ describe("Exercise library UI", () => {
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
-    assertExerciseLibraryErrorPageCopy(
-      document.body,
-      exerciseLibraryListErrorPageAllowlistMine(),
-    );
+    assertListLoadErrorCopyMine();
   });
 
   it("keeps Library back link, heading and app nav on details load error", async () => {
@@ -683,10 +733,7 @@ describe("Exercise library UI", () => {
       ).toBeInTheDocument();
     });
     expectLibraryErrorChrome(EXERCISE_DETAILS);
-    assertExerciseLibraryErrorPageCopy(
-      document.body,
-      exerciseLibraryDetailsErrorPageAllowlist(),
-    );
+    assertDetailLoadErrorCopy();
   });
 
   it("keeps Library back link, heading and app nav on My copy load error", async () => {
@@ -705,10 +752,7 @@ describe("Exercise library UI", () => {
       ).toBeInTheDocument();
     });
     expectLibraryErrorChrome(MY_COPY);
-    assertExerciseLibraryErrorPageCopy(
-      document.body,
-      exerciseLibraryMyCopyErrorPageAllowlist(),
-    );
+    assertMyCopyLoadErrorCopy();
   });
 
   it("shows No edits yet when my copy has no overrides", async () => {

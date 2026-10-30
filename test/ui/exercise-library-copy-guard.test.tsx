@@ -13,6 +13,7 @@ import {
   ExerciseLibraryDetailErrorSlot,
 } from "../../src/ui/exercise-library/ExerciseLibraryStates.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
+import { BACK_LIBRARY, EXERCISE_DETAILS } from "../../src/ui/copy/exercise-library.js";
 import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
   assertExerciseLibraryErrorPageCopy,
@@ -20,7 +21,20 @@ import {
   assertPageTextOnlyFromAllowlist,
   assertUnsourcedGuardListNonEmpty,
   exerciseLibraryDetailsErrorPageAllowlist,
+  exerciseLibraryDetailsErrorPageSegmentLimits,
 } from "./exercise-library-loading-error-copy-guard.js";
+
+function minimalDetailsErrorPageShell(): HTMLElement {
+  const page = document.createElement("div");
+  const back = document.createElement("a");
+  back.textContent = BACK_LIBRARY;
+  const kicker = document.createElement("p");
+  kicker.textContent = EXERCISE_DETAILS;
+  const heading = document.createElement("h1");
+  heading.textContent = EXERCISE_DETAILS;
+  page.append(back, kicker, heading);
+  return page;
+}
 
 afterEach(() => {
   cleanup();
@@ -106,23 +120,57 @@ describe("exercise library loading/error copy guard", () => {
   });
 
   it("mutation: whole details error page rejects literal undefined beside the slot", () => {
-    const page = document.createElement("div");
-    page.textContent = "Library Exercise details Exercise details undefined";
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("p");
+    stray.textContent = "undefined";
+    page.append(stray);
     expect(() =>
       assertExerciseLibraryErrorPageCopy(
         page,
         exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
       ),
     ).toThrow();
   });
 
   it("mutation: whole details error page rejects Something went wrong beside the slot", () => {
-    const page = document.createElement("div");
-    page.textContent = "Library Exercise details Exercise details Something went wrong";
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("p");
+    stray.textContent = "Something went wrong";
+    page.append(stray);
     expect(() =>
       assertExerciseLibraryErrorPageCopy(
         page,
         exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects DK injected beside the slot", () => {
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("p");
+    stray.textContent = "DK";
+    page.append(stray);
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects extra Library injected beside the slot", () => {
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("p");
+    stray.textContent = BACK_LIBRARY;
+    page.append(stray);
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
       ),
     ).toThrow();
   });
@@ -131,7 +179,13 @@ describe("exercise library loading/error copy guard", () => {
 describe("whole-page allowlist helper", () => {
   it("mutation: assertPageTextOnlyFromAllowlist fails on stray copy", () => {
     const page = document.createElement("div");
-    page.textContent = "Allowed only stray";
-    expect(() => assertPageTextOnlyFromAllowlist(page, ["Allowed only"])).toThrow();
+    const allowed = document.createElement("p");
+    allowed.textContent = "Allowed only";
+    const stray = document.createElement("p");
+    stray.textContent = "stray";
+    page.append(allowed, stray);
+    expect(() =>
+      assertPageTextOnlyFromAllowlist(page, ["Allowed only"], { "Allowed only": 1 }),
+    ).toThrow();
   });
 });
