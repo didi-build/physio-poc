@@ -20,17 +20,23 @@ CREATE TABLE IF NOT EXISTS routines (
 CREATE TABLE IF NOT EXISTS routine_versions (
   id TEXT PRIMARY KEY,
   routine_id TEXT NOT NULL REFERENCES routines (id) ON DELETE RESTRICT,
-  version_number INTEGER NOT NULL CHECK (
-    (status = 'draft' AND version_number = 0)
-    OR (status = 'published' AND version_number >= 1)
-  ),
+  version_number INTEGER NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
   name TEXT,
   change_summary TEXT,
   restored_from_version_id TEXT REFERENCES routine_versions (id) ON DELETE RESTRICT,
   created_by TEXT NOT NULL REFERENCES practitioners (id) ON DELETE RESTRICT,
   created_at TEXT NOT NULL,
-  UNIQUE (routine_id, version_number)
+  UNIQUE (routine_id, version_number),
+  CHECK (
+    (status = 'draft' AND version_number = 0)
+    OR (
+      status = 'published'
+      AND version_number >= 1
+      AND name IS NOT NULL
+      AND length(trim(name)) >= 1
+    )
+  )
 );
 
 CREATE TABLE IF NOT EXISTS routine_version_rows (

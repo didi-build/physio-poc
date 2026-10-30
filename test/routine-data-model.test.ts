@@ -453,7 +453,6 @@ describe("practitioner frozen copies (repository, SQLite)", () => {
         practitionerId: saver,
         routineId: id("routine-community"),
         sourceRoutineVersionId: v1.id,
-        sourceVersionNumber: 1,
         savedAt: TS,
         rows: [
           {

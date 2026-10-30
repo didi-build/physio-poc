@@ -452,7 +452,7 @@ d1_tables:
       who_can_see: all_practitioners
       source: migrations/0005_routine_data_model.sql
       verified: true
-      notes: Community routine metadata; draft-only rows visible to author via repository.
+      notes: Community routine metadata. Unpublished drafts are author-only at the repository layer; published routines are visible to all practitioners.
     columns:
       id:
         whose: operational
@@ -485,6 +485,7 @@ d1_tables:
       who_can_see: all_practitioners
       source: migrations/0005_routine_data_model.sql
       verified: true
+      notes: Draft status rows are author-only via repository; published versions are community visible.
     columns:
       id:
         whose: operational

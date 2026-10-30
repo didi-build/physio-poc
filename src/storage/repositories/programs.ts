@@ -31,6 +31,7 @@ import {
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import {
+  loadPublishedRoutineVersionForRoutine,
   validateProgramRoutineOriginTrio,
   type ProgramRoutineOrigin,
 } from "./routines.js";
@@ -161,6 +162,12 @@ export class ProgramsRepository {
         sourceRoutineVersionId,
         sourceRoutineOrigin,
       });
+      await loadPublishedRoutineVersionForRoutine(
+        this.sql,
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        "routineVersionId",
+      );
     }
     let code = input.code
       ? programCodeDomain.normalizeProgramCode(input.code)
@@ -263,6 +270,12 @@ export class ProgramsRepository {
       sourceRoutineVersionId,
       sourceRoutineOrigin: origin.usedAs,
     });
+    await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      sourceRoutineId,
+      sourceRoutineVersionId,
+      "routineVersionId",
+    );
     await this.sql.run(
       `UPDATE programs SET
         source_routine_id = ?,

@@ -86,6 +86,30 @@ export type PractitionerRoutineRow = {
 
 export type ProgramRoutineOrigin = "used_as_is" | "tweaked";
 
+export async function loadPublishedRoutineVersionForRoutine(
+  sql: SqlStoragePort,
+  routineId: string,
+  routineVersionId: string,
+  fieldLabel = "routineVersionId",
+): Promise<RoutineVersionRecord> {
+  const normalizedRoutineId = validateOpaqueEntityId(routineId, "Routine id");
+  const versionId = validateOpaqueEntityId(routineVersionId, "Routine version id");
+  const versions = new RoutineVersionsRepository(sql);
+  const version = await versions.findById(versionId);
+  if (!version) {
+    throw new RoutineRepositoryError("Source routine version not found");
+  }
+  if (version.routine_id !== normalizedRoutineId) {
+    throw new RoutineRepositoryError(`${fieldLabel} belongs to a different routine`);
+  }
+  if (version.status !== "published") {
+    throw new RoutineRepositoryError(
+      `${fieldLabel} must be a published routine version`,
+    );
+  }
+  return version;
+}
+
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
     return value as PrescriptionType;
@@ -380,25 +404,19 @@ export class RoutineVersionsRepository {
       ? validateOpaqueEntityId(input.restoredFromVersionId, "Restored from version id")
       : null;
     if (restoredFrom) {
-      const restoredFromVersion = await this.findById(restoredFrom);
-      if (!restoredFromVersion) {
-        throw new RoutineRepositoryError("Restored from version not found");
-      }
-      if (restoredFromVersion.routine_id !== input.routineId) {
-        throw new RoutineRepositoryError(
-          "restoredFromVersionId belongs to a different routine",
-        );
-      }
-    }
-    const copyFromVersion = await this.findById(input.copyFromVersionId);
-    if (!copyFromVersion) {
-      throw new RoutineRepositoryError("Source routine version not found");
-    }
-    if (copyFromVersion.routine_id !== input.routineId) {
-      throw new RoutineRepositoryError(
-        "copyFromVersionId belongs to a different routine",
+      await loadPublishedRoutineVersionForRoutine(
+        this.sql,
+        input.routineId,
+        restoredFrom,
+        "restoredFromVersionId",
       );
     }
+    await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      input.routineId,
+      input.copyFromVersionId,
+      "copyFromVersionId",
+    );
     const sourceRows = await new RoutineVersionRowsRepository(this.sql).listForVersion(
       input.copyFromVersionId,
     );
@@ -586,7 +604,6 @@ export class PractitionerRoutinesRepository {
     practitionerId: string;
     routineId: string;
     sourceRoutineVersionId: string;
-    sourceVersionNumber: number;
     savedAt: string;
     rows: {
       id: string;
@@ -598,9 +615,12 @@ export class PractitionerRoutinesRepository {
     }[];
   }): Promise<PractitionerRoutineRecord> {
     const copyId = validateOpaqueEntityId(input.id, "Practitioner routine id");
-    const sourceVersionId = validateOpaqueEntityId(
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const sourceVersion = await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      routineId,
       input.sourceRoutineVersionId,
-      "Source routine version id",
+      "sourceRoutineVersionId",
     );
     if (input.rows.length === 0) {
       throw new RoutineRepositoryError("Cannot save an empty routine copy");
@@ -614,9 +634,9 @@ export class PractitionerRoutinesRepository {
       [
         copyId,
         input.practitionerId,
-        input.routineId,
-        sourceVersionId,
-        input.sourceVersionNumber,
+        routineId,
+        sourceVersion.id,
+        sourceVersion.version_number,
         input.savedAt,
       ],
     );
