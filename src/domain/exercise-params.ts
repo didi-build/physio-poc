@@ -201,6 +201,87 @@ export function mergeExerciseParams(
   return { ...base, ...overlay };
 }
 
+/**
+ * Allowed dose keys per prescription type, aligned to CORE and ADDABLE in
+ * design/reference/web-app/generated/programModel.ts.
+ */
+const ADDABLE_PARAM_KEYS: readonly ParamKey[] = ["ascent_s", "descent_s", "rest_s"];
+
+const CORE_PARAM_KEYS_BY_PRESCRIPTION_TYPE: Record<
+  PrescriptionType,
+  readonly ParamKey[]
+> = {
+  stretching: ["hold_s", "per_day", "days_per_week"],
+  isometric: ["reps", "sets", "hold_s", "days_per_week"],
+  concentric: ["reps", "sets", "hold_s", "days_per_week"],
+  eccentric: ["reps", "sets", "descent_s", "days_per_week"],
+};
+
+export function paramKeysAllowedForPrescriptionType(
+  prescriptionType: PrescriptionType,
+): ReadonlySet<ParamKey> {
+  return new Set([
+    ...CORE_PARAM_KEYS_BY_PRESCRIPTION_TYPE[prescriptionType],
+    ...ADDABLE_PARAM_KEYS,
+  ]);
+}
+
+/** CORE keys then ADDABLE keys, omitting duplicates (stable PARAM_META order for tests). */
+export function orderedParamKeysAllowedForPrescriptionType(
+  prescriptionType: PrescriptionType,
+): ParamKey[] {
+  const allowed = paramKeysAllowedForPrescriptionType(prescriptionType);
+  const ordered: ParamKey[] = [];
+  for (const key of [
+    ...CORE_PARAM_KEYS_BY_PRESCRIPTION_TYPE[prescriptionType],
+    ...ADDABLE_PARAM_KEYS,
+  ]) {
+    if (allowed.has(key) && !ordered.includes(key)) {
+      ordered.push(key);
+    }
+  }
+  return ordered;
+}
+
+export function validateExerciseParamsForPrescriptionType(
+  params: ExerciseParams,
+  prescriptionType: PrescriptionType,
+): ExerciseParams {
+  assertExerciseParamKeysAllowedForPrescriptionType(params, prescriptionType);
+  return validateExerciseParams(params);
+}
+
+export function filterExerciseParamsForPrescriptionType(
+  params: ExerciseParams,
+  prescriptionType: PrescriptionType,
+): ExerciseParams {
+  const allowed = paramKeysAllowedForPrescriptionType(prescriptionType);
+  const filtered: ExerciseParams = {};
+  for (const key of PARAM_KEYS) {
+    if (allowed.has(key) && params[key] !== undefined) {
+      filtered[key] = params[key];
+    }
+  }
+  return filtered;
+}
+
+export function assertExerciseParamKeysAllowedForPrescriptionType(
+  params: ExerciseParams,
+  prescriptionType: PrescriptionType,
+): void {
+  const allowed = paramKeysAllowedForPrescriptionType(prescriptionType);
+  for (const key of Object.keys(params)) {
+    if (!PARAM_KEY_SET.has(key)) {
+      throw new ParamValidationError(`Unknown param key: ${key}`);
+    }
+    if (!allowed.has(key as ParamKey)) {
+      throw new ParamValidationError(
+        `${key} is not allowed for prescription type ${prescriptionType}`,
+      );
+    }
+  }
+}
+
 export function exerciseParamsToJson(params: ExerciseParams): string {
   return JSON.stringify(params);
 }
