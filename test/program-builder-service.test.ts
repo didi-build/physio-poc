@@ -490,6 +490,64 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
       }
     });
 
+    it("addExerciseRow rejects reps for a stretching exercise using the row prescription type", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedApprovedExerciseForBuilder(storage, practitionerId);
+        await service.createProgram(practitionerId, {
+          programId: id("prog-stretch-reps"),
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-stretch-reps"));
+        await expect(
+          service.addExerciseRow(practitionerId, id("prog-stretch-reps"), {
+            rowId: id("row-stretch-reps"),
+            exerciseId: FIXTURE_EXERCISE_ID,
+            params: { reps: 5 },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "reps is not allowed for prescription type stretching",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-stretch-reps"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("addPlaceholderRow rejects hold_s for an eccentric placeholder using the row prescription type", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-ecc-ph"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-ecc-ph"),
+        });
+        const before = await snapshotProgramDbState(storage, id("prog-ecc-ph"));
+        await expect(
+          service.addPlaceholderRow(practitionerId, id("prog-ecc-ph"), {
+            rowId: id("row-ecc-ph"),
+            exerciseRequestId: id("req-ecc-ph"),
+            prescriptionType: "eccentric",
+            params: { hold_s: 10 },
+          }),
+        ).rejects.toMatchObject({
+          code: "invalid_input",
+          message: "hold_s is not allowed for prescription type eccentric",
+        });
+        const after = await snapshotProgramDbState(storage, id("prog-ecc-ph"));
+        expectDbStateUnchanged(before, after);
+      } finally {
+        storage.close();
+      }
+    });
+
     it("same-type updateRow rejects a disallowed param key and leaves the row unchanged", async () => {
       const { storage, service } = await openService();
       try {
@@ -547,6 +605,121 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         });
         const view = await service.getProgram(practitionerId, id("prog-same-ok"));
         expect(view.rows[0]?.params).toEqual({ hold_s: 20 });
+      } finally {
+        storage.close();
+      }
+    });
+  });
+
+  describe("ProgramBuilderService filters resolved doses on add without params (CTO DIDI-1005)", () => {
+    it("addExerciseRow drops hold_s from eccentric My type defaults", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        const exerciseId = id("ex-ecc-defaults");
+        const versionId = id("ver-ecc-defaults");
+        await seedStrengtheningApprovedExercise(
+          storage,
+          practitionerId,
+          exerciseId,
+          versionId,
+        );
+        const typeDefaults = new TypeDefaultsRepository(storage);
+        await typeDefaults.upsertPractitionerDefaults(
+          id("td-ecc-defaults"),
+          practitionerId,
+          "eccentric",
+          { hold_s: 99 },
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-ecc-defaults"),
+        });
+        const added = await service.addExerciseRow(
+          practitionerId,
+          id("prog-ecc-defaults"),
+          {
+            rowId: id("row-ecc-defaults"),
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "eccentric",
+          },
+        );
+        expect(added.program.rows[0]?.params).not.toHaveProperty("hold_s");
+        expect(added.program.rows[0]?.params.reps).toBe(10);
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("addExerciseRow drops hold_s from eccentric My exercise override when params are omitted", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        const exerciseId = id("ex-ecc-override");
+        const versionId = id("ver-ecc-override");
+        await seedStrengtheningApprovedExercise(
+          storage,
+          practitionerId,
+          exerciseId,
+          versionId,
+        );
+        const pe = new PractitionerExercisesRepository(storage);
+        await pe.upsert({
+          practitionerId,
+          exerciseId,
+          savedAt: TS,
+          paramOverrides: { eccentric: { hold_s: 7 } },
+        });
+        await service.createProgram(practitionerId, {
+          programId: id("prog-ecc-override"),
+        });
+        const added = await service.addExerciseRow(
+          practitionerId,
+          id("prog-ecc-override"),
+          {
+            rowId: id("row-ecc-override"),
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "eccentric",
+          },
+        );
+        expect(added.program.rows[0]?.params).not.toHaveProperty("hold_s");
+        expect(added.program.rows[0]?.params_source).toBe("exercise_override");
+      } finally {
+        storage.close();
+      }
+    });
+
+    it("addPlaceholderRow drops hold_s from eccentric My type defaults", async () => {
+      const { storage, service } = await openService();
+      try {
+        const practitionerId = await seedPractitioner(storage);
+        const typeDefaults = new TypeDefaultsRepository(storage);
+        await typeDefaults.upsertPractitionerDefaults(
+          id("td-ecc-ph-defaults"),
+          practitionerId,
+          "eccentric",
+          { hold_s: 88 },
+        );
+        await seedOpenExerciseRequest(
+          storage,
+          practitionerId,
+          id("req-ecc-ph-defaults"),
+          "Move",
+        );
+        await service.createProgram(practitionerId, {
+          programId: id("prog-ecc-ph-defaults"),
+        });
+        const added = await service.addPlaceholderRow(
+          practitionerId,
+          id("prog-ecc-ph-defaults"),
+          {
+            rowId: id("row-ecc-ph-defaults"),
+            exerciseRequestId: id("req-ecc-ph-defaults"),
+            prescriptionType: "eccentric",
+          },
+        );
+        expect(added.program.rows[0]?.params).not.toHaveProperty("hold_s");
       } finally {
         storage.close();
       }

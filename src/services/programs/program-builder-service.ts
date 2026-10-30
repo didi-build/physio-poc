@@ -295,32 +295,35 @@ export class ProgramBuilderService {
     if (!version || version.exercise_id !== exerciseId) {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
-    const prescriptionType = this.resolvePrescriptionType(
+    const rowPrescriptionType = this.resolvePrescriptionType(
       version,
       input.prescriptionType,
     );
     const resolved = await this.resolveRowDefaults(
       practitionerId,
       version,
-      prescriptionType,
+      rowPrescriptionType,
     );
     let params: ExerciseParams;
     if (input.params) {
       try {
         params = validateExerciseParamsForPrescriptionType(
           input.params,
-          prescriptionType,
+          rowPrescriptionType,
         );
       } catch (err) {
         this.mapParamError(err);
       }
     } else {
-      params = resolved.params;
+      params = filterExerciseParamsForPrescriptionType(
+        resolved.params,
+        rowPrescriptionType,
+      );
     }
     const textSnapshot = buildProgramRowTextSnapshot({
       version,
       overrides: resolved.overrides,
-      prescriptionType,
+      prescriptionType: rowPrescriptionType,
     });
     const existingRows = await this.rows.listForProgram(validatedProgramId);
     try {
@@ -330,7 +333,7 @@ export class ProgramBuilderService {
         position: existingRows.length,
         exerciseId: version.exercise_id,
         exerciseVersionId: version.id,
-        prescriptionType,
+        prescriptionType: rowPrescriptionType,
         params,
         textSnapshot,
         note: input.note ?? null,
@@ -363,7 +366,7 @@ export class ProgramBuilderService {
     const request = await this.exerciseRequests.findById(requestId);
     this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
     this.assertExerciseRequestOpenForPlaceholder(request);
-    const prescriptionType = this.parsePlaceholderPrescriptionType(
+    const rowPrescriptionType = this.parsePlaceholderPrescriptionType(
       input.prescriptionType,
     );
     let params: ExerciseParams;
@@ -371,13 +374,20 @@ export class ProgramBuilderService {
       try {
         params = validateExerciseParamsForPrescriptionType(
           input.params,
-          prescriptionType,
+          rowPrescriptionType,
         );
       } catch (err) {
         this.mapParamError(err);
       }
     } else {
-      params = await this.resolvePlaceholderParams(practitionerId, prescriptionType);
+      const resolvedParams = await this.resolvePlaceholderParams(
+        practitionerId,
+        rowPrescriptionType,
+      );
+      params = filterExerciseParamsForPrescriptionType(
+        resolvedParams,
+        rowPrescriptionType,
+      );
     }
     const textSnapshot = { title: request.requested_name.trim() };
     const existingRows = await this.rows.listForProgram(validatedProgramId);
@@ -387,7 +397,7 @@ export class ProgramBuilderService {
         programId: validatedProgramId,
         position: existingRows.length,
         exerciseRequestId: requestId,
-        prescriptionType,
+        prescriptionType: rowPrescriptionType,
         params,
         textSnapshot,
         note: input.note ?? null,
