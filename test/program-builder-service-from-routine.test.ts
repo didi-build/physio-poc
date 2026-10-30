@@ -14,7 +14,6 @@ import {
   RoutinesRepository,
 } from "../src/storage/repositories/routines.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
-import { isValidProgramCodeFormat } from "../src/domain/program-code.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -506,7 +505,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         routine: "search-routine",
         draftVersion: "search-rv-draft",
         row: "search-rvr",
-        name: "Mobility alpha unique",
+        name: "Zeta routine search token only",
       });
       await service.createProgram(practitionerA, {
         programId: id("prog-scratch"),
@@ -521,7 +520,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       await service.updateProgramName(
         practitionerA,
         id("prog-from-routine"),
-        "Renamed away from routine title",
+        "Program title with no zeta token",
       );
       await service.createProgramFromRoutine(practitionerB, {
         programId: id("prog-b-same-routine"),
@@ -541,8 +540,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       expect(fromScratch.items.map((item) => item.program_id)).toEqual([
         id("prog-scratch"),
       ]);
-      const routineNameQuery = "Mobility alpha unique";
-      expect(isValidProgramCodeFormat(routineNameQuery)).toBe(false);
+      const routineNameQuery = "Zeta routine search token only";
       const byRoutineName = await service.listPrograms(practitionerA, {
         searchQuery: routineNameQuery,
       });

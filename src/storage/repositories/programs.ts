@@ -265,9 +265,7 @@ export class ProgramsRepository {
 
     const trimmed = input.searchQuery?.trim();
     if (trimmed) {
-      const codeKeys = programCodeDomain.isValidProgramCodeFormat(trimmed)
-        ? programCodeDomain.programCodeSearchKeys(trimmed)
-        : [];
+      const codeKeys = programCodeDomain.programCodeSearchKeys(trimmed);
       const nameLike = likeContainsPattern(trimmed);
       if (codeKeys.length > 0) {
         where.push(
@@ -275,8 +273,10 @@ export class ProgramsRepository {
         );
         bindings.push(nameLike, ...codeKeys, nameLike);
       } else {
-        where.push(`(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`);
-        bindings.push(nameLike);
+        where.push(
+          `(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR rv.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
+        );
+        bindings.push(nameLike, nameLike);
       }
     }
 

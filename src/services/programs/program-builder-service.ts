@@ -1126,8 +1126,29 @@ export class ProgramBuilderService {
     await this.requirePractitioner(practitionerId);
     const programId = this.parseOpaqueId(input.programId, "Program id");
     const routineId = this.parseOpaqueId(input.routineId, "Routine id");
+    const parsedRowIds: string[] = [];
     for (const rowId of input.rowIds) {
-      this.parseOpaqueId(rowId, "Program row id");
+      parsedRowIds.push(this.parseOpaqueId(rowId, "Program row id"));
+    }
+    if (new Set(parsedRowIds).size !== parsedRowIds.length) {
+      throw new ProgramBuilderServiceError(
+        "rowIds must not contain duplicates",
+        "invalid_input",
+      );
+    }
+    for (const rowId of parsedRowIds) {
+      if (await this.rows.findById(rowId)) {
+        throw new ProgramBuilderServiceError(
+          "Program row id is already in use",
+          "invalid_input",
+        );
+      }
+    }
+    if (await this.programs.findById(programId)) {
+      throw new ProgramBuilderServiceError(
+        "Program id is already in use",
+        "invalid_input",
+      );
     }
     const routine = await this.requireVisiblePublishedRoutine(
       practitionerId,
@@ -1169,6 +1190,14 @@ export class ProgramBuilderService {
         approved,
         sourceRow.prescriptionType,
       );
+      try {
+        validateExerciseParamsForPrescriptionType(
+          sourceRow.params,
+          sourceRow.prescriptionType,
+        );
+      } catch (err) {
+        this.mapParamError(err);
+      }
       const textSnapshot = buildProgramRowTextSnapshot({
         version: approved,
         overrides: resolved.overrides,
