@@ -14,6 +14,10 @@ export const SCHEMA_WALK_KEYS = [
   "$defs",
   "definitions",
   "dependentSchemas",
+  "contains",
+  "propertyNames",
+  "unevaluatedProperties",
+  "unevaluatedItems",
 ] as const;
 
 const URL_LIKE_FORMATS = new Set([
@@ -26,6 +30,41 @@ const URL_LIKE_FORMATS = new Set([
 
 const URL_LIKE_INPUT_PROPERTY = /url|uri|link|href|base/i;
 
+const SCHEMA_MAP_VALUE_KEYS = new Set<string>([
+  "properties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+]);
+
+function walkSchemaChildBranches(
+  node: JsonSchema,
+  pathPrefix: readonly string[],
+  visitChild: (child: unknown, childPath: readonly string[]) => void,
+): void {
+  for (const key of SCHEMA_WALK_KEYS) {
+    const branch = node[key];
+    if (Array.isArray(branch)) {
+      for (let index = 0; index < branch.length; index += 1) {
+        visitChild(branch[index], [...pathPrefix, key, String(index)]);
+      }
+    } else if (branch && typeof branch === "object") {
+      if (SCHEMA_MAP_VALUE_KEYS.has(key)) {
+        for (const [name, sub] of Object.entries(branch as Record<string, unknown>)) {
+          visitChild(sub, [...pathPrefix, key, name]);
+        }
+      } else {
+        visitChild(branch, [...pathPrefix, key]);
+      }
+    }
+  }
+
+  const additional = node.additionalProperties;
+  if (additional && typeof additional === "object") {
+    visitChild(additional, [...pathPrefix, "additionalProperties"]);
+  }
+}
+
 export function visitSchemaNodes(
   schema: unknown,
   visit: (node: JsonSchema) => void,
@@ -33,25 +72,63 @@ export function visitSchemaNodes(
   if (!schema || typeof schema !== "object") return;
   const node = schema as JsonSchema;
   visit(node);
+  walkSchemaChildBranches(node, [], (child) => {
+    visitSchemaNodes(child, visit);
+  });
+}
 
-  for (const key of SCHEMA_WALK_KEYS) {
-    const branch = node[key];
-    if (Array.isArray(branch)) {
-      for (const sub of branch) visitSchemaNodes(sub, visit);
-    } else if (branch && typeof branch === "object") {
-      if (key === "properties" || key === "dependentSchemas") {
-        for (const sub of Object.values(branch as Record<string, unknown>)) {
-          visitSchemaNodes(sub, visit);
-        }
-      } else {
-        visitSchemaNodes(branch, visit);
+function formatSchemaWalkPath(segments: readonly string[]): string {
+  return segments.length === 0 ? "root" : segments.join(".");
+}
+
+export function visitSchemaNodesWithPath(
+  schema: unknown,
+  path: readonly string[],
+  visit: (node: JsonSchema, path: readonly string[]) => void,
+): void {
+  if (!schema || typeof schema !== "object") return;
+  const node = schema as JsonSchema;
+  visit(node, path);
+  walkSchemaChildBranches(node, path, (child, childPath) => {
+    visitSchemaNodesWithPath(child, childPath, visit);
+  });
+}
+
+export type McpToolOutputSchemaSource = {
+  readonly name: string;
+  readonly outputSchema: JsonSchema;
+};
+
+export type OutputPatternPropertiesViolation = {
+  readonly tool: string;
+  readonly path: string;
+};
+
+export function collectOutputPatternPropertiesViolations(
+  tools: readonly McpToolOutputSchemaSource[],
+): OutputPatternPropertiesViolation[] {
+  const violations: OutputPatternPropertiesViolation[] = [];
+  for (const tool of tools) {
+    visitSchemaNodesWithPath(tool.outputSchema, [], (node, path) => {
+      if (node.patternProperties) {
+        violations.push({
+          tool: tool.name,
+          path: formatSchemaWalkPath(path),
+        });
       }
-    }
+    });
   }
+  return violations;
+}
 
-  const additional = node.additionalProperties;
-  if (additional && typeof additional === "object") {
-    visitSchemaNodes(additional, visit);
+export function assertNoOutputPatternProperties(
+  tools: readonly McpToolOutputSchemaSource[],
+): void {
+  const violations = collectOutputPatternPropertiesViolations(tools);
+  if (violations.length > 0) {
+    throw new Error(
+      `output patternProperties violations: ${JSON.stringify(violations)}`,
+    );
   }
 }
 
@@ -102,6 +179,7 @@ const SURNAME_LIKE = new Set([
   "Butler",
   "Campbell",
   "Carter",
+  "Chen",
   "Clark",
   "Collins",
   "Cook",
@@ -131,6 +209,8 @@ const SURNAME_LIKE = new Set([
   "Johnson",
   "Jones",
   "Kelly",
+  "Khan",
+  "Kim",
   "King",
   "Lee",
   "Lewis",
@@ -149,6 +229,7 @@ const SURNAME_LIKE = new Set([
   "Nguyen",
   "Ortiz",
   "Parker",
+  "Patel",
   "Perry",
   "Peterson",
   "Phillips",
@@ -166,6 +247,7 @@ const SURNAME_LIKE = new Set([
   "Russell",
   "Sanders",
   "Scott",
+  "Singh",
   "Smith",
   "Stewart",
   "Sullivan",
@@ -175,6 +257,7 @@ const SURNAME_LIKE = new Set([
   "Torres",
   "Turner",
   "Walker",
+  "Wang",
   "Ward",
   "Watson",
   "White",
@@ -201,6 +284,16 @@ export function collectSchemaPropertyNames(schema: JsonSchema): Set<string> {
     }
   });
   return names;
+}
+
+export function collectPatternPropertiesViolations(schema: JsonSchema): string[] {
+  const hits: string[] = [];
+  visitSchemaNodesWithPath(schema, [], (node, path) => {
+    if (node.patternProperties) {
+      hits.push(formatSchemaWalkPath(path));
+    }
+  });
+  return hits;
 }
 
 export function collectForbiddenLegacySchemaFields(schema: JsonSchema): string[] {
