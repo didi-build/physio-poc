@@ -1,8 +1,9 @@
+import { AUTH_APP_API_PREFIX, isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
 import type { PhysioServerConfig } from "./config.js";
 import { jsonForbidden } from "./responses.js";
 
-/** Only `/api/auth/**` is exempt from app API CSRF (exact prefix; `/api/authx` is not exempt). */
-export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = "/api/auth";
+/** Only `/api/auth/**` is exempt from app API CSRF (`/api/auth/` prefix; bare `/api/auth` is not exempt). */
+export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = AUTH_APP_API_PREFIX;
 
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -11,10 +12,7 @@ export function isNonSafeHttpMethod(method: string): boolean {
 }
 
 export function isCsrfExemptAppApiAuthPath(pathname: string): boolean {
-  return (
-    pathname === CSRF_EXEMPT_APP_API_AUTH_PREFIX ||
-    pathname.startsWith(`${CSRF_EXEMPT_APP_API_AUTH_PREFIX}/`)
-  );
+  return isAuthAppApiPath(pathname);
 }
 
 export function requiresAppApiCsrfGuard(pathname: string, method: string): boolean {

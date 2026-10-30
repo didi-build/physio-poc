@@ -10,8 +10,7 @@ import {
 import type { PhysioAuthConfig } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { BetterAuthRuntime } from "./better-auth-types.js";
-
-const AUTH_PREFIX = "/api/auth";
+import { AUTH_APP_API_PREFIX } from "../../auth/auth-app-api-prefix.js";
 
 export class BetterAuthPort implements AuthPort {
   constructor(
@@ -48,7 +47,7 @@ export class BetterAuthPort implements AuthPort {
     if (isAuthOAuthErrorPath(url.pathname)) {
       return handleAuthOAuthErrorRequest(url);
     }
-    if (!url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
+    if (!url.pathname.startsWith(AUTH_APP_API_PREFIX)) {
       return null;
     }
     return this.auth.handler(request);

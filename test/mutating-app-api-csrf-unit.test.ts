@@ -23,12 +23,13 @@ describe("mutating app API CSRF (unit)", () => {
       true,
     );
     expect(requiresAppApiCsrfGuard("/api/auth/sign-out", "POST")).toBe(false);
+    expect(requiresAppApiCsrfGuard("/api/auth", "POST")).toBe(true);
     expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
     expect(requiresAppApiCsrfGuard("/api/authx/sign-out", "POST")).toBe(true);
     expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises", "GET")).toBe(
       false,
     );
-    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth");
+    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth/");
   });
 
   it("parses application/json content types case-insensitively", () => {

@@ -1,3 +1,4 @@
+import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
 import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
@@ -95,6 +96,12 @@ export async function handleRequest(
   const authResponse = await deps.auth.handleAuthRequest(request);
   if (authResponse) {
     return authResponse;
+  }
+  if (isAuthAppApiPath(pathname)) {
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
   }
 
   const asset = ui.tryServeAsset(pathname);

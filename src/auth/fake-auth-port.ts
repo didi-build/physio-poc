@@ -1,4 +1,5 @@
 import type { AuthPort, PractitionerSession } from "./auth-port.js";
+import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 
 export type FakeAuthPortOptions = {
   practitioner: PractitionerSession | null;
@@ -6,6 +7,7 @@ export type FakeAuthPortOptions = {
 };
 
 const DEFAULT_COOKIE = "physio.fake_session";
+const JSON_HEADERS = { "content-type": "application/json" };
 
 export class FakeAuthPort implements AuthPort {
   private practitioner: PractitionerSession | null;
@@ -31,9 +33,18 @@ export class FakeAuthPort implements AuthPort {
     return this.practitioner;
   }
 
-  async handleAuthRequest(_request: Request): Promise<Response | null> {
-    void _request;
-    return null;
+  async handleAuthRequest(request: Request): Promise<Response | null> {
+    const pathname = new URL(request.url).pathname;
+    if (!isAuthAppApiPath(pathname)) {
+      return null;
+    }
+    if (pathname === "/api/auth/sign-out" && request.method === "POST") {
+      return this.signOut(request);
+    }
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
   }
 
   async signOut(_request: Request): Promise<Response> {

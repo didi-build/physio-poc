@@ -22,6 +22,12 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import type {
+  SqlBindings,
+  SqlRunResult,
+  SqlStoragePort,
+  SqlValue,
+} from "../src/storage/ports/sql-storage.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
@@ -82,17 +88,36 @@ function mutatingBody(path: string, method: string): string | undefined {
 
 async function sessionDeps(): Promise<{
   deps: {
-    sql: Awaited<ReturnType<typeof openMigratedDatabase>>;
+    sql: SqlStoragePort;
     objects: InMemoryObjectStorage;
     config: typeof MCP_TEST_CONFIG;
     auth: FakeAuthPort;
     mcp: ReturnType<typeof createPhysioMcpHttpHandler>;
   };
   cookie: string;
+  sqlCalls: { count: number };
 }> {
   const storage = await openMigratedDatabase();
   await seedPractitioner(storage, PRACTITIONER_ID);
   await seedApprovedExercise(storage, PRACTITIONER_ID, EXERCISE_ID);
+  const sqlCalls = { count: 0 };
+  const recordingSql: SqlStoragePort = {
+    async run(sql: string, bindings?: SqlBindings): Promise<SqlRunResult> {
+      sqlCalls.count += 1;
+      return storage.run(sql, bindings);
+    },
+    async all<T extends Record<string, SqlValue>>(sql: string, bindings?: SqlBindings) {
+      sqlCalls.count += 1;
+      return storage.all<T>(sql, bindings);
+    },
+    async first<T extends Record<string, SqlValue>>(
+      sql: string,
+      bindings?: SqlBindings,
+    ) {
+      sqlCalls.count += 1;
+      return storage.first<T>(sql, bindings);
+    },
+  };
   const auth = new FakeAuthPort({
     practitioner: {
       practitionerId: PRACTITIONER_ID,
@@ -102,13 +127,14 @@ async function sessionDeps(): Promise<{
   });
   return {
     deps: {
-      sql: storage,
+      sql: recordingSql,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     },
     cookie: auth.createSessionCookieHeader(),
+    sqlCalls,
   };
 }
 
@@ -207,9 +233,9 @@ describe("mutating app API CSRF guard", () => {
 
 describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
   it("pins the sole CSRF exemption prefix", () => {
-    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth");
+    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth/");
     expect(isCsrfExemptAppApiAuthPath("/api/auth/sign-out")).toBe(true);
-    expect(isCsrfExemptAppApiAuthPath("/api/auth")).toBe(true);
+    expect(isCsrfExemptAppApiAuthPath("/api/auth")).toBe(false);
     expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
     expect(isCsrfExemptAppApiAuthPath("/api/auth-like/sign-out")).toBe(false);
   });
@@ -286,6 +312,45 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
       );
       expect(response.status, method).toBe(403);
     }
+  });
+
+  it("applies CSRF to bare /api/auth and /api/auth with query", async () => {
+    const { deps, cookie } = await sessionDeps();
+    for (const url of [`${BASE}/api/auth`, `${BASE}/api/auth?x=1`]) {
+      const response = await handleRequest(
+        new Request(url, {
+          method: "POST",
+          headers: {
+            cookie,
+            origin: "https://evil.example.com",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      expect(response.status, url).toBe(403);
+    }
+  });
+
+  it("returns 404 for unknown mutating /api/auth/ paths without app dispatch or storage", async () => {
+    const { deps, cookie, sqlCalls } = await sessionDeps();
+    const callsBefore = sqlCalls.count;
+    const response = await handleRequest(
+      new Request(`${BASE}/api/auth/zzz`, {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "https://evil.example.com",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+      deps,
+    );
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    expect(sqlCalls.count).toBe(callsBefore);
   });
 
   it("does not apply CSRF to /api/auth/<sub> through handleRequest", async () => {

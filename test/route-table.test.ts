@@ -27,6 +27,21 @@ describe("HTTP route table (session guards)", () => {
     }
   });
 
+  it("routes /api/auth/ subpaths only through the better-auth-api branch, not guarded-api", () => {
+    for (const sample of handleRequestRouteSamples()) {
+      if (!sample.samplePath.startsWith("/api/auth/")) {
+        continue;
+      }
+      expect(sample.branchId, sample.samplePath).toBe("better-auth-api");
+    }
+    const guardedApiPaths = handleRequestRouteSamples()
+      .filter((sample) => sample.branchId === "guarded-api")
+      .map((sample) => sample.samplePath);
+    for (const path of guardedApiPaths) {
+      expect(path.startsWith("/api/auth/"), path).toBe(false);
+    }
+  });
+
   it("pins the canonical session-public route list", () => {
     const fromRegistry = listSessionUnguardedSamplesFromRegistry()
       .map((sample) => `${sample.method} ${sample.samplePath}`)
