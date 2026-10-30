@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmSheet } from "../../src/ui/components/ConfirmSheet.js";
-import { ARIA_CLOSE_SHEET } from "../../src/ui/copy/a11y.js";
+import { ARIA_CLOSE_SCRIM, ARIA_CLOSE_SHEET } from "../../src/ui/copy/a11y.js";
 
 afterEach(() => {
   cleanup();
@@ -207,6 +207,24 @@ describe("ConfirmSheet", () => {
     const dialog = screen.getByRole("dialog", { name: CONFIRM_TITLE });
     fireEvent.click(within(dialog).getByRole("button", { name: ARIA_CLOSE_SHEET }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("labels the scrim from the a11y copy module", () => {
+    expect(ARIA_CLOSE_SCRIM).toBe("Close");
+
+    render(
+      <ConfirmSheet
+        open
+        title={CONFIRM_TITLE}
+        titleId="confirm-scrim-label"
+        onClose={() => {}}
+        footer={<span />}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass(
+      "shell-sheet-scrim",
+    );
   });
 
   it("closes when the scrim is clicked", () => {
