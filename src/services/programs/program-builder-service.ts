@@ -96,11 +96,13 @@ export class ProgramBuilderService {
   private readonly routineVersionRows: RoutineVersionRowsRepository;
   private readonly practitionerRoutines: PractitionerRoutinesRepository;
   private readonly practitionerRoutineRows: PractitionerRoutineRowsRepository;
+  private readonly sql: SqlStoragePort;
 
   constructor(
     sql: SqlStoragePort,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {
+    this.sql = sql;
     this.programs = new ProgramsRepository(sql);
     this.rows = new ProgramRowsRepository(sql);
     this.links = new ShareLinksRepository(sql);
@@ -1144,59 +1146,66 @@ export class ProgramBuilderService {
     }
     const createdAt = this.now();
     const prefilledName = version.name?.trim() ?? null;
+    await this.sql.run("BEGIN");
     try {
-      await this.programs.create({
-        id: programId,
-        createdBy: practitionerId,
-        createdAt,
-        name: prefilledName,
-        routineOrigin: {
-          routineId,
-          routineVersionId: version.id,
-          origin: "used_as_is",
-        },
-      });
-    } catch (err) {
-      this.mapRoutineProgramCreateError(err);
-    }
-    for (let index = 0; index < rows.length; index += 1) {
-      const sourceRow = rows[index]!;
-      const rowId = input.rowIds[index]!;
-      const approved = await this.libraryRead.getApprovedVersionById(
-        sourceRow.exerciseVersionId,
-      );
-      if (!approved || approved.exercise_id !== sourceRow.exerciseId) {
-        throw new ProgramBuilderServiceError(
-          "Exercise not found",
-          "exercise_not_found",
-        );
-      }
-      const resolved = await this.resolveRowDefaults(
-        practitionerId,
-        approved,
-        sourceRow.prescriptionType,
-      );
-      const textSnapshot = buildProgramRowTextSnapshot({
-        version: approved,
-        overrides: resolved.overrides,
-        prescriptionType: sourceRow.prescriptionType,
-      });
       try {
-        await this.rows.replaceRow({
-          id: rowId,
-          programId,
-          position: sourceRow.position,
-          exerciseId: sourceRow.exerciseId,
-          exerciseVersionId: sourceRow.exerciseVersionId,
-          prescriptionType: sourceRow.prescriptionType,
-          params: sourceRow.params,
-          textSnapshot,
-          note: null,
-          draftUpdatedAt: this.now(),
+        await this.programs.create({
+          id: programId,
+          createdBy: practitionerId,
+          createdAt,
+          name: prefilledName,
+          routineOrigin: {
+            routineId,
+            routineVersionId: version.id,
+            origin: "used_as_is",
+          },
         });
       } catch (err) {
-        this.mapRowWriteError(err);
+        this.mapRoutineProgramCreateError(err);
       }
+      for (let index = 0; index < rows.length; index += 1) {
+        const sourceRow = rows[index]!;
+        const rowId = input.rowIds[index]!;
+        const approved = await this.libraryRead.getApprovedVersionById(
+          sourceRow.exerciseVersionId,
+        );
+        if (!approved || approved.exercise_id !== sourceRow.exerciseId) {
+          throw new ProgramBuilderServiceError(
+            "Exercise not found",
+            "exercise_not_found",
+          );
+        }
+        const resolved = await this.resolveRowDefaults(
+          practitionerId,
+          approved,
+          sourceRow.prescriptionType,
+        );
+        const textSnapshot = buildProgramRowTextSnapshot({
+          version: approved,
+          overrides: resolved.overrides,
+          prescriptionType: sourceRow.prescriptionType,
+        });
+        try {
+          await this.rows.replaceRow({
+            id: rowId,
+            programId,
+            position: sourceRow.position,
+            exerciseId: sourceRow.exerciseId,
+            exerciseVersionId: sourceRow.exerciseVersionId,
+            prescriptionType: sourceRow.prescriptionType,
+            params: sourceRow.params,
+            textSnapshot,
+            note: null,
+            draftUpdatedAt: this.now(),
+          });
+        } catch (err) {
+          this.mapRowWriteError(err);
+        }
+      }
+      await this.sql.run("COMMIT");
+    } catch (err) {
+      await this.sql.run("ROLLBACK");
+      throw err;
     }
     return { program: await this.buildProgramView(practitionerId, programId) };
   }
