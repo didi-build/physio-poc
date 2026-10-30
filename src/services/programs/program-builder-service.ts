@@ -130,11 +130,13 @@ export class ProgramBuilderService {
    * Links placeholder program rows to an approved exercise version.
    *
    * Uses the caller's `SqlStoragePort` (or active transaction on that port) only;
-   * does not begin, commit, or roll back a transaction.
+   * does not begin, commit, or roll back a transaction. When not called inside a
+   * caller transaction, each matching row is still written individually (accepted for
+   * this PR; DIDI-1101 tracks a stricter transactional caller shape).
    *
-   * The exercise request approval flow (for example DIDI-1004 `approveRequest`) must
-   * Replaces matching placeholder rows; returns how many placeholders were skipped because
-   * prescriptionType does not fit the approved exercise category (those rows stay placeholders).
+   * Replaces matching placeholder rows on programs that are not soft-deleted. Returns
+   * how many placeholders were skipped because prescriptionType does not fit the approved
+   * exercise category (those rows stay placeholders).
    */
   async linkApprovedPlaceholders(
     exerciseRequestId: string,
@@ -1109,8 +1111,10 @@ export function detectLibraryUpdate(
  * Links placeholder program rows when an exercise request is approved.
  *
  * Uses the caller's `sql` port (including an in-flight transaction on that port) only;
- * does not begin, commit, or roll back a transaction. DIDI-1004 `approveRequest` must
- * call this inside the same transaction as approval.
+ * does not begin, commit, or roll back a transaction. DIDI-1004 `approveRequest` should
+ * call this inside the same transaction as approval when that flow exists. When not called
+ * inside a caller transaction, each matching row is still written individually (accepted
+ * for this PR; DIDI-1101 tracks a stricter transactional caller shape).
  */
 export async function linkApprovedPlaceholders(
   sql: SqlStoragePort,

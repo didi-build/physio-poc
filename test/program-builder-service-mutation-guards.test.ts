@@ -1058,7 +1058,12 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
         id("req-del-prog"),
         FIXTURE_EXERCISE_ID,
       );
-      await linkApprovedPlaceholders(storage, id("req-del-prog"), FIXTURE_VERSION_ID);
+      const skipped = await linkApprovedPlaceholders(
+        storage,
+        id("req-del-prog"),
+        FIXTURE_VERSION_ID,
+      );
+      expect(skipped).toBe(0);
       const active = await service.getProgram(practitionerId, id("prog-active-link"));
       expect(active.rows[0]?.kind).toBe("exercise");
       const deletedView = await service.getProgram(

@@ -42,6 +42,29 @@ async function seedApprovedExerciseForBuilder(
   );
 }
 
+async function seedStrengtheningApprovedExercise(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  exerciseId: string,
+  versionId: string,
+) {
+  await storage.run(
+    "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+    [exerciseId, "strengthening", practitionerId, TS],
+  );
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      id: versionId,
+      exercise_id: exerciseId,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title: "Squat",
+    }),
+  );
+}
+
 async function openService(now: () => string = () => TS) {
   const storage = await openMigratedDatabase();
   const service = new ProgramBuilderService(storage, now);
@@ -212,6 +235,49 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
       await expect(
         service.reorderRows(practitionerId, id("prog-dup"), [id("row-a"), id("row-b")]),
       ).rejects.toMatchObject({ code: "invalid_input" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("deleteRow compacts positions so a later add does not overwrite a surviving row", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      await service.createProgram(practitionerId, { programId: id("prog-compact") });
+      await service.addExerciseRow(practitionerId, id("prog-compact"), {
+        rowId: id("row-compact-1"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        note: "first row note",
+        params: { hold_s: 11 },
+      });
+      await service.addExerciseRow(practitionerId, id("prog-compact"), {
+        rowId: id("row-compact-2"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        note: "second row note",
+        params: { hold_s: 22 },
+      });
+      await service.removeRow(practitionerId, id("prog-compact"), id("row-compact-1"));
+      await service.addExerciseRow(practitionerId, id("prog-compact"), {
+        rowId: id("row-compact-3"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        note: "third row note",
+        params: { hold_s: 33 },
+      });
+      const view = await service.getProgram(practitionerId, id("prog-compact"));
+      expect(view.rows).toHaveLength(2);
+      expect(view.rows.map((row) => row.id)).toEqual([
+        id("row-compact-2"),
+        id("row-compact-3"),
+      ]);
+      expect(view.rows.map((row) => row.position)).toEqual([0, 1]);
+      const rowTwo = view.rows[0];
+      const rowThree = view.rows[1];
+      expect(rowTwo?.note).toBe("second row note");
+      expect(rowTwo?.params.hold_s).toBe(22);
+      expect(rowThree?.note).toBe("third row note");
+      expect(rowThree?.params.hold_s).toBe(33);
     } finally {
       storage.close();
     }
@@ -848,6 +914,46 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
       expect(misfitAfter?.prescription_type).toBe("isometric");
       expect(misfitAfter?.note).toBe("misfit");
       expect(misfitAfter?.params_json).toBe(misfitBefore?.params_json);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps eccentric prescription_type when linking a strengthening placeholder", async () => {
+    const { storage, service } = await openService();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const exerciseId = id("ex-strength-link");
+      const versionId = id("ver-strength-link");
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerId,
+        exerciseId,
+        versionId,
+      );
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        id("req-strength-ecc"),
+        "Squat",
+      );
+      await service.createProgram(practitionerId, {
+        programId: id("prog-strength-ecc"),
+      });
+      await service.addPlaceholderRow(practitionerId, id("prog-strength-ecc"), {
+        rowId: id("row-strength-ecc"),
+        exerciseRequestId: id("req-strength-ecc"),
+        prescriptionType: "eccentric",
+      });
+      await markExerciseRequestApproved(storage, id("req-strength-ecc"), exerciseId);
+      await linkApprovedPlaceholders(storage, id("req-strength-ecc"), versionId);
+      const view = await service.getProgram(practitionerId, id("prog-strength-ecc"));
+      expect(view.rows[0]?.kind).toBe("exercise");
+      expect(view.rows[0]?.prescription_type).toBe("eccentric");
+      const row = await new ProgramRowsRepository(storage).findById(
+        id("row-strength-ecc"),
+      );
+      expect(row?.prescription_type).toBe("eccentric");
     } finally {
       storage.close();
     }
