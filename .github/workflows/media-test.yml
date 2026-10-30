@@ -1,0 +1,40 @@
+name: Media test (five exercises, FLUX.2 klein on fal)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: media-test-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  media-test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: media-generation
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: npm ci
+        run: npm ci --ignore-scripts
+      - name: Run five-exercise FLUX.2 klein media test
+        env:
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          MEDIA_TEST_OUTPUT_DIR: media-test-output
+        run: npx tsx scripts/media-test/cli.ts
+      - name: Upload media test artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: physio-five-exercise-media-test
+          path: media-test-output/
+          if-no-files-found: error
+          retention-days: 1
