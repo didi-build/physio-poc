@@ -1,0 +1,40 @@
+.sign-in-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #f8fafc;
+}
+
+.sign-in-card {
+  width: 100%;
+  max-width: 24rem;
+  padding: 2rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.sign-in-google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 9999px;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sign-in-google-button:hover {
+  background: #115e59;
+}
+
+.link-page-root {
+  min-height: 100vh;
+  padding: 1.5rem;
+  background: #ffffff;
+}

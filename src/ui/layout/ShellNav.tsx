@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
+import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
+import { postAuthSignOut } from "../api/auth-client.js";
 import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
@@ -20,25 +22,25 @@ export type MainNavProps = {
 
 const tabs = [
   {
-    to: "/exercises",
+    to: PHYSIO_APP_ROUTE_PATTERNS.exercises,
     desktopLabel: NAV_TAB_EXERCISES,
     phoneLabel: NAV_TAB_EXERCISES,
     showCount: false,
   },
   {
-    to: "/routines",
+    to: PHYSIO_APP_ROUTE_PATTERNS.routines,
     desktopLabel: NAV_TAB_ROUTINES,
     phoneLabel: NAV_TAB_ROUTINES,
     showCount: false,
   },
   {
-    to: "/programs",
+    to: PHYSIO_APP_ROUTE_PATTERNS.programs,
     desktopLabel: NAV_TAB_PROGRAMS,
     phoneLabel: NAV_TAB_PROGRAMS,
     showCount: false,
   },
   {
-    to: "/requests",
+    to: PHYSIO_APP_ROUTE_PATTERNS.requests,
     desktopLabel: NAV_TAB_REQUESTS_DESKTOP,
     phoneLabel: NAV_TAB_REQUESTS_PHONE,
     showCount: true,
@@ -162,7 +164,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
           aria-label="Account menu"
           onClick={onToggle}
         >
-          <span className="shell-account-avatar" aria-hidden>
+          <span
+            className="shell-account-avatar"
+            aria-hidden
+            data-testid="shell-account-avatar"
+          >
             K
           </span>
           <span className="shell-account-name">{ACCOUNT_DISPLAY_NAME}</span>
@@ -179,7 +185,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
             <div ref={menuRef} role="menu" className="shell-menu-panel">
               <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
               <NavLink
-                to="/defaults"
+                to={PHYSIO_APP_ROUTE_PATTERNS.defaults}
                 role="menuitem"
                 className="shell-menu-item"
                 onClick={closeMenu}
@@ -189,17 +195,20 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                   {ACCOUNT_MY_DEFAULTS_DETAIL}
                 </span>
               </NavLink>
-              <a
-                href="#"
+              <button
+                type="button"
                 role="menuitem"
                 className="shell-menu-item shell-menu-sign-out"
                 onClick={(event) => {
                   event.preventDefault();
                   closeMenu();
+                  void postAuthSignOut().then(() => {
+                    window.location.href = "/sign-in";
+                  });
                 }}
               >
                 {ACCOUNT_SIGN_OUT}
-              </a>
+              </button>
             </div>
           </>
         ) : null}

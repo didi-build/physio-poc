@@ -6,6 +6,7 @@ import {
   MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
   MAX_LENGTH_PROGRAM_TITLE,
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+  MAX_LENGTH_MEDIA_REGENERATION_NOTE,
   MAX_LENGTH_ROW_NOTES,
 } from "../mcp-connector/text-limits.js";
 
@@ -139,6 +140,56 @@ export function validateRequestNote(note: string | null | undefined): string | n
   assertMaxLength(note, MAX_LENGTH_ROW_NOTES, "Note");
   assertNoPatientDetails(note, "Note");
   return note;
+}
+
+/** Routine name: optional while drafting; required to publish. No patient details. */
+export function validateRoutineName(name: string): string {
+  return validateProgramName(name);
+}
+
+export function validateOptionalRoutineName(
+  name: string | null | undefined,
+): string | null {
+  return validateOptionalProgramName(name);
+}
+
+/** Who it is for: optional general audience line; must not hold patient details. */
+export function validateRoutineWhoItsFor(
+  text: string | null | undefined,
+): string | null {
+  if (text === null || text === undefined || text.trim() === "") {
+    return null;
+  }
+  return validateExerciseTemplateText(text.trim(), "Who it is for");
+}
+
+/** Condition label: team-seeded fixed list entries only; no patient details. */
+export function validateConditionLabel(label: string): string {
+  const trimmed = label.trim();
+  if (trimmed.length < 1) {
+    throw new FreeTextValidationError("Condition label must not be empty");
+  }
+  assertMaxLength(trimmed, MAX_LENGTH_PROGRAM_TITLE, "Condition label");
+  assertNoPatientDetails(trimmed, "Condition label");
+  return trimmed;
+}
+
+/**
+ * Regeneration note for exercise media: prompt-only, never persisted (CTO ruling).
+ */
+export function validateMediaRegenerationNote(
+  note: string | null | undefined,
+): string | null {
+  if (note === null || note === undefined || note === "") {
+    return null;
+  }
+  const trimmed = note.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  assertMaxLength(trimmed, MAX_LENGTH_MEDIA_REGENERATION_NOTE, "Regeneration note");
+  assertNoPatientDetails(trimmed, "Regeneration note");
+  return trimmed;
 }
 
 /** Text override description (partial field edits allowed, but not empty whitespace). */

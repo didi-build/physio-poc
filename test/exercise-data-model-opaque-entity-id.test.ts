@@ -70,14 +70,14 @@ describe("DIDI-1048 opaque caller-supplied exercise data entity ids", () => {
   it("rejects invalid exercise ids on insert and stores nothing", async () => {
     const storage = await openMigratedDatabase();
     try {
-      await seedPractitioner(storage);
+      const practId = await seedPractitioner(storage, FIXTURE_PRACTITIONER_ID);
       const repo = new ExercisesRepository(storage);
       for (const badId of REJECT_IDS) {
         await expect(
           repo.insert({
             id: badId,
             category: "stretch",
-            created_by: FIXTURE_PRACTITIONER_ID,
+            created_by: practId,
             created_at: TS,
           }),
         ).rejects.toThrow("Exercise id must be a UUID v4 opaque id");
@@ -92,7 +92,7 @@ describe("DIDI-1048 opaque caller-supplied exercise data entity ids", () => {
       await repo.insert({
         id: validId,
         category: "stretch",
-        created_by: FIXTURE_PRACTITIONER_ID,
+        created_by: practId,
         created_at: TS,
       });
       expect(

@@ -19,6 +19,8 @@ import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -63,13 +65,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -79,13 +92,13 @@ function undoPost(
   exerciseId: string,
   undoBody: unknown,
 ) {
-  const deps = apiDeps(storage);
+  const { sessionCookie, ...deps } = apiDeps(storage, practId);
   return handleRequest(
     new Request(
       `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { cookie: sessionCookie, "content-type": "application/json" },
         body: JSON.stringify({ action: "undo", undo: undoBody }),
       },
     ),
@@ -282,7 +295,7 @@ describe("Exercise library QA round 3 (tests only)", () => {
       const practId = await seedPractitioner(storage);
       const otherId = await seedPractitioner(
         storage,
-        id("pract-2"),
+        testOpaqueEntityId("pract-2"),
         "other@example.com",
       );
       await seedApproved(storage, practId, {

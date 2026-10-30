@@ -1,20 +1,24 @@
 import {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  validateFreeTextForPatientDetails,
   type PhysioMcpToolName,
 } from "../../mcp-connector/index.js";
 import { DATE_FORMAT_FIELD_PATHS } from "./generated/input-validator-meta.js";
 import type { StandaloneValidateFunction } from "./generated/input-validators.js";
 import {
-  build_or_edit_program,
+  get_program_builder_link,
   get_program_share_link_or_pdf,
   search_approved_exercises,
   search_routines,
 } from "./generated/input-validators.js";
+import { validateFreeTextForPatientDetails } from "../../mcp-connector/index.js";
+import {
+  OpaqueEntityIdValidationError,
+  validateOpaqueEntityId,
+} from "../../domain/opaque-entity-id.js";
 
 export class PhysioMcpToolInputError extends Error {
   constructor(message: string) {
@@ -26,7 +30,7 @@ export class PhysioMcpToolInputError extends Error {
 const validators: Record<PhysioMcpToolName, StandaloneValidateFunction> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
   [SEARCH_ROUTINES_TOOL_NAME]: search_routines,
-  [BUILD_OR_EDIT_PROGRAM_TOOL_NAME]: build_or_edit_program,
+  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: get_program_builder_link,
   [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: get_program_share_link_or_pdf,
 };
 
@@ -52,7 +56,9 @@ function assertGetProgramLookup(args: Record<string, unknown>): void {
 
 function validateAllStringValues(value: unknown, path = ""): void {
   if (typeof value === "string") {
-    const skipDateOfBirthHeuristic = DATE_FORMAT_FIELD_PATHS.has(path);
+    const skipDateOfBirthHeuristic = (
+      DATE_FORMAT_FIELD_PATHS as ReadonlySet<string>
+    ).has(path);
     const result = validateFreeTextForPatientDetails(value, {
       skipDateOfBirthHeuristic,
     });
@@ -92,9 +98,30 @@ export function validatePhysioMcpToolInput(
     assertGetProgramLookup(record);
   }
 
+  if (typeof record.from_routine_id === "string") {
+    record.from_routine_id = record.from_routine_id.trim();
+  }
+  if (typeof record.program_code === "string") {
+    record.program_code = record.program_code.trim();
+  }
+
   const validate = validators[name];
   if (!validate(record)) {
     throw new PhysioMcpToolInputError(formatStandaloneErrors(validate));
+  }
+
+  if (typeof record.from_routine_id === "string") {
+    try {
+      record.from_routine_id = validateOpaqueEntityId(
+        record.from_routine_id,
+        "from_routine_id",
+      );
+    } catch (error) {
+      if (error instanceof OpaqueEntityIdValidationError) {
+        throw new PhysioMcpToolInputError(error.message);
+      }
+      throw error;
+    }
   }
 
   validateAllStringValues(record);

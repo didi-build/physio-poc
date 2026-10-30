@@ -5,11 +5,16 @@ import "./setup.js";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
+import {
+  ExerciseLibraryClient,
+  setExerciseLibraryClientForTests,
+} from "../../src/ui/api/exercise-library-client.js";
 
 afterEach(() => {
   cleanup();
+  setExerciseLibraryClientForTests(null);
 });
 
 function LocationProbe() {
@@ -17,10 +22,32 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname}</div>;
 }
 
+function stubLibraryClient(): ExerciseLibraryClient {
+  return {
+    listMyExercises: vi.fn().mockResolvedValue({
+      list_state: "ok",
+      sections: {
+        new_from_requests: [],
+        pinned: [],
+        recently_used_and_saved: [],
+      },
+    }),
+    searchApproved: vi.fn().mockResolvedValue({
+      exercises: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+    }),
+  } as unknown as ExerciseLibraryClient;
+}
+
 function renderApp(initialEntry: string, requestsReviewCount = 0) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <PhysioApp requestsReviewCount={requestsReviewCount} />
+      <PhysioApp
+        requestsReviewCount={requestsReviewCount}
+        exerciseLibraryClient={stubLibraryClient()}
+      />
       <LocationProbe />
     </MemoryRouter>,
   );
@@ -162,12 +189,31 @@ describe("app shell nav (integration)", () => {
       "Types, links",
     );
     const signOut = screen.getByRole("menuitem", { name: "Sign out" });
-    expect(signOut.tagName).toBe("A");
+    expect(signOut.tagName).toBe("BUTTON");
   });
 
-  it("does not render global search", () => {
+  it.each(["/programs", "/routines", "/requests", "/defaults"] as const)(
+    "does not render search UI anywhere on %s",
+    (route) => {
+      renderApp(route, 0);
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not render global search in the app shell header on library routes", () => {
     renderApp("/exercises", 0);
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
+    const header = document.querySelector(".shell-header");
+    expect(header).toBeTruthy();
+    expect(
+      within(header as HTMLElement).queryByRole("searchbox"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders page-level exercise search on the library route", () => {
+    renderApp("/exercises", 0);
+    expect(
+      screen.getByRole("searchbox", { name: "Search exercises" }),
+    ).toBeInTheDocument();
   });
 });

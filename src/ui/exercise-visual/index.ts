@@ -5,7 +5,14 @@ export {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
 } from "./placeholders.js";
-export { DraftReviewExerciseVideo, LibraryDetailExerciseVideo } from "./placements.js";
-export type { ExerciseVideoFigureProps } from "./placements.js";
+export {
+  DraftReviewExerciseVideo,
+  LibraryDetailExerciseStill,
+  LibraryDetailExerciseVideo,
+} from "./placements.js";
+export type {
+  ExerciseVideoFigureProps,
+  LibraryDetailExerciseStillProps,
+} from "./placements.js";
 export { PublicLinkExerciseVideo } from "./PublicLinkExerciseVideo.js";
 export type { PublicLinkExerciseVideoProps } from "./PublicLinkExerciseVideo.js";

@@ -23,6 +23,8 @@ import { PractitionerExercisesRepository } from "../src/storage/repositories/exe
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
+import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -66,13 +68,24 @@ async function seedApproved(
   return { exerciseId, versionId };
 }
 
-function apiDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
+function apiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email: "qa@example.com",
+      displayName: "QA",
+    },
+  });
   return {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
     mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-    enableUnauthenticatedApi: true as const,
+    auth,
+    sessionCookie: auth.createSessionCookieHeader(),
   };
 }
 
@@ -155,7 +168,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const pract2 = await seedPractitioner(
         storage,
-        id("pract-2"),
+        testOpaqueEntityId("pract-2"),
         "coach2@example.com",
       );
       const exAaa = id("ex-aaa");
@@ -335,7 +348,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const otherPract = await seedPractitioner(
         storage,
-        "pract-other",
+        testOpaqueEntityId("pract-other"),
         "other@example.com",
       );
       const { exerciseId } = await seedApproved(storage, practId);
@@ -645,22 +658,27 @@ describe("Exercise library QA round 1 (integration)", () => {
     }
   });
 
-  it("handles exercise library HTTP routes when unauthenticated API is enabled", async () => {
+  it("handles exercise library HTTP routes with a session cookie", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
-      const deps = apiDeps(storage);
+      const { sessionCookie, ...deps } = apiDeps(storage, practId);
       const base = `https://example.test/api/practitioners/${practId}`;
+      const authHeaders = { cookie: sessionCookie };
 
       const badSort = await handleRequest(
-        new Request(`${base}/exercises/approved/search?sort=bad`),
+        new Request(`${base}/exercises/approved/search?sort=bad`, {
+          headers: authHeaders,
+        }),
         deps,
       );
       expect(badSort.status).toBe(400);
 
       const badType = await handleRequest(
-        new Request(`${base}/exercises/approved/search?prescription_type=nope`),
+        new Request(`${base}/exercises/approved/search?prescription_type=nope`, {
+          headers: authHeaders,
+        }),
         deps,
       );
       expect(badType.status).toBe(400);
@@ -668,7 +686,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const save = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "save",
             saved_at: "2020-01-01T00:00:00.000Z",
@@ -686,7 +704,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const patch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             text_overrides: {
               title: "Edited",
@@ -700,7 +718,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const objectPatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             text_overrides: {
               title: { value: "Edited", base: "wrong" },
@@ -714,7 +732,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const undoMismatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { cookie: sessionCookie, "content-type": "application/json" },
           body: JSON.stringify({
             action: "undo",
             undo: {
