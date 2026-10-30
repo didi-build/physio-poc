@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PHYSIO_BETTER_AUTH_ACCOUNT } from "../src/adapters/node/create-better-auth.js";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
@@ -90,6 +91,10 @@ async function completeGoogleSignIn(deps: AppDependencies): Promise<void> {
 }
 
 describe("Better Auth minimal storage (integration)", () => {
+  it("enables OAuth token encryption on the Better Auth account config", () => {
+    expect(PHYSIO_BETTER_AUTH_ACCOUNT.encryptOAuthTokens).toBe(true);
+  });
+
   it("stores only openid email profile in account.scope after sign-in", async () => {
     const deps = await createNodeAppDependencies({
       AUTH_BASE_URL: BASE,

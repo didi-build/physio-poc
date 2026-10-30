@@ -7,6 +7,10 @@ export function jsonUnauthorized(): Response {
   );
 }
 
+export function jsonForbidden(): Response {
+  return Response.json({ error: "forbidden" }, { status: 403, headers: JSON_HEADERS });
+}
+
 export function redirectResponse(location: string): Response {
   return new Response(null, {
     status: 302,

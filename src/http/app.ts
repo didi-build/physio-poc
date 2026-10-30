@@ -99,7 +99,10 @@ export async function handleRequest(
 
   if (pathname.startsWith("/api/")) {
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
-      const exerciseResponse = await handleExerciseLibraryRequest(request, deps);
+      const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
+        sessionPractitioner,
+      });
       if (exerciseResponse) {
         return exerciseResponse;
       }

@@ -17,6 +17,10 @@ import { findPractitionerByEmail } from "../../storage/repositories/practitioner
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
 
+export const PHYSIO_BETTER_AUTH_ACCOUNT = {
+  encryptOAuthTokens: true,
+} as const;
+
 function fakeGooglePlugin(config: PhysioAuthConfig) {
   const base = config.authBaseUrl.replace(/\/$/, "");
   return genericOAuth({
@@ -82,9 +86,7 @@ export function createBetterAuthInstance(
     socialProviders: config.fakeGoogleProviderEnabled
       ? {}
       : googleSocialProvider(config),
-    account: {
-      encryptOAuthTokens: true,
-    },
+    account: PHYSIO_BETTER_AUTH_ACCOUNT,
     databaseHooks: createPhysioBetterAuthDatabaseHooks(),
     plugins,
     user: {
