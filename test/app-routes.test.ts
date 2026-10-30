@@ -13,6 +13,7 @@ import {
   capRawExerciseSearchQueryForUrl,
   encodedExerciseSearchQueryLength,
   fillPhysioAppRoutePattern,
+  physioAppExerciseSearchPath,
   type ConnectorPhysioAppRouteName,
   type PhysioAppSpaRouteName,
 } from "../src/app-routes.js";
@@ -139,6 +140,58 @@ describe("shared Physio app route table", () => {
       .filter((route) => route.id !== undefined)
       .map((route) => route.id as string);
     expect(routeIds.sort()).toEqual([...PHYSIO_APP_SPA_ROUTE_NAMES].sort());
+  });
+
+  it("pins the exercise My copy path pattern", () => {
+    expect(PHYSIO_APP_ROUTE_PATTERNS.exerciseMyCopy).toBe(
+      "/exercises/:exerciseId/my-copy",
+    );
+  });
+
+  it("requires exerciseId for exercise detail routes", () => {
+    expect(() => fillPhysioAppRoutePattern("exerciseDetail")).toThrow(/exerciseId/);
+    expect(() => fillPhysioAppRoutePattern("exerciseMyCopy")).toThrow(/exerciseId/);
+  });
+
+  it("URL-encodes exercise ids in path segments", () => {
+    expect(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex/1" })).toBe(
+      "/exercises/ex%2F1",
+    );
+    expect(fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex/1" })).toBe(
+      "/exercises/ex%2F1/my-copy",
+    );
+  });
+
+  it("resolves My copy URLs to the exerciseMyCopy route id", () => {
+    const pathname = fillPhysioAppRoutePattern("exerciseMyCopy", {
+      exerciseId: "ex-1",
+    });
+    const leaf = leafMatch(pathname);
+    expect(leaf.route.id).toBe("exerciseMyCopy" satisfies PhysioAppSpaRouteName);
+  });
+});
+
+describe("physioAppExerciseSearchPath", () => {
+  it("returns the bare search path when the query is empty after trim", () => {
+    expect(physioAppExerciseSearchPath("")).toBe(
+      PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch,
+    );
+    expect(physioAppExerciseSearchPath("   ")).toBe(
+      PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch,
+    );
+  });
+
+  it("caps encoded q length when building an in-app search path", () => {
+    const raw = "a".repeat(250);
+    const path = physioAppExerciseSearchPath(raw);
+    expect(path.startsWith(`${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}?q=`)).toBe(
+      true,
+    );
+    const q = new URLSearchParams(path.split("?")[1] ?? "").get(
+      EXERCISE_SEARCH_QUERY_PARAM,
+    );
+    expect(q?.length).toBe(199);
+    expect(encodedExerciseSearchQueryLength(q ?? "")).toBeLessThanOrEqual(199);
   });
 });
 

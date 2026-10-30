@@ -5,6 +5,7 @@ import {
   PHYSIO_APP_ROUTE_PATTERNS,
   PHYSIO_APP_SPA_ROUTE_NAMES,
   physioAppSpaRoutePath,
+  type PhysioAppSpaRouteName,
 } from "../app-routes.js";
 import { PublicLinkPage } from "./pages/PublicLinkPage.js";
 import { SignInPage } from "./pages/SignInPage.js";
@@ -17,8 +18,15 @@ function SignInRoute() {
   return <SignInPage returnTo={returnTo} authError={authError} />;
 }
 
+export type PhysioAppRouteElements = Partial<
+  Record<PhysioAppSpaRouteName, ReactElement | null>
+>;
+
 /** Route tree used by PhysioApp and matchRoutes parity tests. */
-export function createPhysioAppRouteObjects(shellElement: ReactElement): RouteObject[] {
+export function createPhysioAppRouteObjects(
+  shellElement: ReactElement,
+  routeElements: PhysioAppRouteElements = {},
+): RouteObject[] {
   return [
     { path: "/sign-in", element: <SignInRoute /> },
     { path: "/l/:code", element: <PublicLinkPage /> },
@@ -32,7 +40,7 @@ export function createPhysioAppRouteObjects(shellElement: ReactElement): RouteOb
         ...PHYSIO_APP_SPA_ROUTE_NAMES.map((routeName) => ({
           id: routeName,
           path: physioAppSpaRoutePath(routeName),
-          element: null,
+          element: routeElements[routeName] ?? null,
         })),
       ],
     },
