@@ -29,6 +29,10 @@ import {
   requestWithJar,
 } from "./helpers/google-sign-in-flow.js";
 import { MIGRATION_0001_SQL } from "./helpers/exercise-sqlite-fixture.js";
+import {
+  handleTestNonGoogleOAuthAuthorizeRequest,
+  TEST_NON_GOOGLE_OAUTH_AUTH_PATH,
+} from "./helpers/test-non-google-oauth-authorize.js";
 import type { BetterAuthRuntime } from "../src/adapters/node/better-auth-types.js";
 import type { AppDependencies } from "../src/http/app.js";
 
@@ -162,7 +166,7 @@ describe("validateUserInfo provider gate (integration)", () => {
               providerId: "github",
               clientId: "fake-github-client",
               clientSecret: "fake-github-secret",
-              authorizationUrl: `${base}/__fake-google/o/oauth2/v2/auth`,
+              authorizationUrl: `${base}${TEST_NON_GOOGLE_OAUTH_AUTH_PATH}`,
               tokenUrl: `${base}/__fake-google/token`,
               userInfoUrl: `${base}/__fake-google/oauth2/v3/userinfo`,
               scopes: ["openid", "email", "profile"],
@@ -214,6 +218,8 @@ describe("validateUserInfo provider gate (integration)", () => {
         auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
         mcp: createPhysioMcpHttpHandler(serverConfig),
         enableFakeGoogleRoutes: true,
+        testOAuthAuthorizeHandler: (request, authBaseUrl) =>
+          handleTestNonGoogleOAuthAuthorizeRequest(request, authBaseUrl, "github"),
       };
 
       const cookieJar = new CookieJar();
