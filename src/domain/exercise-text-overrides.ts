@@ -48,6 +48,9 @@ function validateTextOverrideBase(key: TextOverrideKey, base: string): string {
   if (key.startsWith("cue_") && base === "") {
     return "";
   }
+  if ((key === "title" || key === "description") && base === "") {
+    throw new TextOverrideValidationError(`Override ${key} base must not be empty`);
+  }
   return validateTextOverrideValue(key, base);
 }
 

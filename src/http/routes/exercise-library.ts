@@ -2,16 +2,17 @@ import type { AppDependencies } from "../app.js";
 import { parseExerciseCategoryLabel } from "../../domain/exercise-category-labels.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
+import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
 import {
   TextOverrideLegacyShapeError,
   TextOverrideValidationError,
-  validateTextOverrides,
   TEXT_OVERRIDE_KEYS,
   type TextOverrideKey,
 } from "../../domain/exercise-text-overrides.js";
 import {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
+  parseExerciseMutationUndo,
   type ExerciseSearchSort,
 } from "../../services/exercise-library/index.js";
 
@@ -32,6 +33,12 @@ function errorResponse(error: unknown): Response {
     );
   }
   if (error instanceof TextOverrideValidationError) {
+    return Response.json(
+      { error: "invalid_input", message: error.message },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  if (error instanceof FreeTextValidationError) {
     return Response.json(
       { error: "invalid_input", message: error.message },
       { status: 400, headers: JSON_HEADERS },
@@ -70,6 +77,24 @@ function parsePrescriptionType(raw: string | null): PrescriptionType | undefined
   return PRESCRIPTION_TYPES.includes(raw as PrescriptionType)
     ? (raw as PrescriptionType)
     : undefined;
+}
+function parseTextOverridePatch(
+  raw: unknown,
+): Partial<Record<TextOverrideKey, string>> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new TextOverrideValidationError("Text overrides must be a JSON object");
+  }
+  const result: Partial<Record<TextOverrideKey, string>> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!TEXT_OVERRIDE_KEYS.includes(key as TextOverrideKey)) {
+      throw new TextOverrideValidationError(`Unknown text override key: ${key}`);
+    }
+    if (typeof value !== "string") {
+      throw new TextOverrideValidationError(`Override ${key} value must be a string`);
+    }
+    result[key as TextOverrideKey] = value;
+  }
+  return result;
 }
 
 export async function handleExerciseLibraryRequest(
@@ -218,14 +243,9 @@ export async function handleExerciseLibraryRequest(
         }
       }
       if (action === "undo") {
-        if (!body.undo || typeof body.undo !== "object") {
-          return Response.json(
-            { error: "invalid_input", message: "undo snapshot required" },
-            { status: 400, headers: JSON_HEADERS },
-          );
-        }
         try {
-          await service(deps).applyUndo(practitionerId, exerciseId, body.undo as never);
+          const undoPayload = parseExerciseMutationUndo(body.undo);
+          await service(deps).applyUndo(practitionerId, exerciseId, undoPayload);
           return Response.json({ ok: true }, { headers: JSON_HEADERS });
         } catch (error) {
           return errorResponse(error);
@@ -252,19 +272,10 @@ export async function handleExerciseLibraryRequest(
             TEXT_OVERRIDE_KEYS.includes(key as TextOverrideKey),
           )
         : undefined;
-      let textOverrides: ReturnType<typeof validateTextOverrides> | undefined;
+      let textOverrides: Partial<Record<TextOverrideKey, string>> | undefined;
       if (body.text_overrides !== undefined) {
         try {
-          if (
-            typeof body.text_overrides !== "object" ||
-            body.text_overrides === null ||
-            Array.isArray(body.text_overrides)
-          ) {
-            throw new TextOverrideValidationError(
-              "Text overrides must be a JSON object",
-            );
-          }
-          textOverrides = validateTextOverrides(body.text_overrides);
+          textOverrides = parseTextOverridePatch(body.text_overrides);
         } catch (error) {
           return errorResponse(error);
         }

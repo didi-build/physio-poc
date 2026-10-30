@@ -1,6 +1,7 @@
 export {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
+  parseExerciseMutationUndo,
 } from "./exercise-library-service.js";
 export type {
   ApprovedExerciseSummary,

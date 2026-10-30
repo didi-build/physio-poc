@@ -1,4 +1,5 @@
 import { categoryToLabel } from "../../domain/exercise-category-labels.js";
+import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
 import {
   prescriptionTypesForCategory,
   type PrescriptionType,
@@ -11,10 +12,10 @@ import {
 import {
   applyKeepMine,
   applyUseLibraryVersion,
+  buildTextOverrideEntry,
   parseTextOverridesJson,
   TextOverrideLegacyShapeError,
   TextOverrideValidationError,
-  validateTextOverrides,
   TEXT_OVERRIDE_KEYS,
   type LibraryVersionText,
   type TextOverrideKey,
@@ -104,10 +105,92 @@ function decodeCursor(cursor: string): number {
 }
 
 function isIsoDateTimeString(value: string): boolean {
-  if (Number.isNaN(Date.parse(value))) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value)) {
     return false;
   }
-  return /^\d{4}-\d{2}-\d{2}T/.test(value);
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return false;
+  }
+  return new Date(parsed).toISOString() === value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseExerciseMutationUndo(value: unknown): ExerciseMutationUndo {
+  if (!isPlainObject(value)) {
+    throw new ExerciseLibraryServiceError("Invalid undo payload", "invalid_input");
+  }
+  if (
+    typeof value.practitioner_id !== "string" ||
+    typeof value.exercise_id !== "string"
+  ) {
+    throw new ExerciseLibraryServiceError("Invalid undo payload", "invalid_input");
+  }
+  if (!isPlainObject(value.snapshot)) {
+    throw new ExerciseLibraryServiceError("Undo snapshot required", "invalid_input");
+  }
+  const snap = value.snapshot;
+  if (typeof snap.had_row !== "boolean") {
+    throw new ExerciseLibraryServiceError("Invalid had_row in undo", "invalid_input");
+  }
+  if (typeof snap.favourite !== "boolean") {
+    throw new ExerciseLibraryServiceError("Invalid favourite in undo", "invalid_input");
+  }
+  if (snap.saved_at !== null) {
+    if (typeof snap.saved_at !== "string" || !isIsoDateTimeString(snap.saved_at)) {
+      throw new ExerciseLibraryServiceError(
+        "Invalid saved_at in undo",
+        "invalid_input",
+      );
+    }
+  }
+  if (snap.last_used_at !== null) {
+    if (
+      typeof snap.last_used_at !== "string" ||
+      !isIsoDateTimeString(snap.last_used_at)
+    ) {
+      throw new ExerciseLibraryServiceError(
+        "Invalid last_used_at in undo",
+        "invalid_input",
+      );
+    }
+  }
+  if (typeof snap.text_overrides_json !== "string") {
+    throw new ExerciseLibraryServiceError(
+      "Invalid text_overrides_json in undo",
+      "invalid_input",
+    );
+  }
+  if (typeof snap.param_overrides_json !== "string") {
+    throw new ExerciseLibraryServiceError(
+      "Invalid param_overrides_json in undo",
+      "invalid_input",
+    );
+  }
+  try {
+    JSON.parse(snap.param_overrides_json) as unknown;
+  } catch {
+    throw new ExerciseLibraryServiceError(
+      "Invalid param_overrides_json in undo",
+      "invalid_input",
+    );
+  }
+
+  return {
+    practitioner_id: value.practitioner_id,
+    exercise_id: value.exercise_id,
+    snapshot: {
+      had_row: snap.had_row,
+      favourite: snap.favourite,
+      saved_at: snap.saved_at,
+      last_used_at: snap.last_used_at,
+      text_overrides_json: snap.text_overrides_json,
+      param_overrides_json: snap.param_overrides_json,
+    },
+  };
 }
 
 function mapTextOverrideReadError(err: unknown): never {
@@ -118,6 +201,9 @@ function mapTextOverrideReadError(err: unknown): never {
     );
   }
   if (err instanceof TextOverrideValidationError) {
+    throw new ExerciseLibraryServiceError(err.message, "invalid_input");
+  }
+  if (err instanceof FreeTextValidationError) {
     throw new ExerciseLibraryServiceError(err.message, "invalid_input");
   }
   throw err;
@@ -387,21 +473,13 @@ export class ExerciseLibraryService {
     const matchedAliasById = new Map<string, string | null>();
 
     if (hasFilters) {
-      const ids = rows.map((row) => row.exercise_id);
-      const searchRows = await this.libraryRead.searchApproved({
+      const matchCount = await this.libraryRead.countApprovedSearch({
         query: trimmedQuery || undefined,
         category: categoryDb,
         bodyRegionLabel: bodyRegion,
-        sort: "most_used",
-        limit: ids.length,
-        offset: 0,
-        exerciseIdsIn: ids,
+        savedByPractitionerId: input.practitionerId,
       });
-      allowedIds = new Set(searchRows.map((row) => row.exercise_id));
-      for (const row of searchRows) {
-        matchedAliasById.set(row.exercise_id, row.matched_alias);
-      }
-      if (allowedIds.size === 0) {
+      if (matchCount === 0) {
         if (trimmedQuery) {
           return {
             list_state: "nothing_in_my_exercises_matches",
@@ -413,6 +491,19 @@ export class ExerciseLibraryService {
           list_state: "no_saved_exercises_with_filters",
           sections: emptySections,
         };
+      }
+      const searchRows = await this.libraryRead.searchApproved({
+        query: trimmedQuery || undefined,
+        category: categoryDb,
+        bodyRegionLabel: bodyRegion,
+        sort: "most_used",
+        limit: matchCount,
+        offset: 0,
+        savedByPractitionerId: input.practitionerId,
+      });
+      allowedIds = new Set(searchRows.map((row) => row.exercise_id));
+      for (const row of searchRows) {
+        matchedAliasById.set(row.exercise_id, row.matched_alias);
       }
     }
 
@@ -570,9 +661,10 @@ export class ExerciseLibraryService {
     urlExerciseId: string,
     snapshot: ExerciseMutationUndo,
   ): Promise<void> {
+    const validated = parseExerciseMutationUndo(snapshot);
     if (
-      snapshot.practitioner_id !== urlPractitionerId ||
-      snapshot.exercise_id !== urlExerciseId
+      validated.practitioner_id !== urlPractitionerId ||
+      validated.exercise_id !== urlExerciseId
     ) {
       throw new ExerciseLibraryServiceError(
         "Undo snapshot does not match URL",
@@ -581,20 +673,7 @@ export class ExerciseLibraryService {
     }
 
     await this.requirePractitioner(urlPractitionerId);
-    const snap = snapshot.snapshot;
-
-    if (snap.saved_at !== null && !isIsoDateTimeString(snap.saved_at)) {
-      throw new ExerciseLibraryServiceError(
-        "Invalid saved_at in undo",
-        "invalid_input",
-      );
-    }
-    if (snap.last_used_at !== null && !isIsoDateTimeString(snap.last_used_at)) {
-      throw new ExerciseLibraryServiceError(
-        "Invalid last_used_at in undo",
-        "invalid_input",
-      );
-    }
+    const snap = validated.snapshot;
 
     if (!snap.had_row) {
       await this.myExercisesRead.delete(urlPractitionerId, urlExerciseId);
@@ -631,7 +710,7 @@ export class ExerciseLibraryService {
   async updateMyCopy(input: {
     practitionerId: string;
     exerciseId: string;
-    textOverrides?: TextOverrides;
+    textOverrides?: Partial<Record<TextOverrideKey, string>>;
     paramOverrides?: Record<string, unknown>;
     useLibraryVersion?: TextOverrideKey[];
     keepMine?: TextOverrideKey[];
@@ -666,16 +745,32 @@ export class ExerciseLibraryService {
     }
 
     if (input.textOverrides) {
-      try {
-        overrides = validateTextOverrides({ ...overrides, ...input.textOverrides });
-      } catch (err) {
-        if (err instanceof TextOverrideLegacyShapeError) {
+      for (const [rawKey, rawValue] of Object.entries(input.textOverrides)) {
+        if (!TEXT_OVERRIDE_KEYS.includes(rawKey as TextOverrideKey)) {
           throw new ExerciseLibraryServiceError(
-            "Text overrides use an invalid stored shape",
-            "text_overrides_invalid_shape",
+            `Unknown text override key: ${rawKey}`,
+            "invalid_input",
           );
         }
-        mapTextOverrideReadError(err);
+        if (typeof rawValue !== "string") {
+          throw new ExerciseLibraryServiceError(
+            `Override ${rawKey} value must be a string`,
+            "invalid_input",
+          );
+        }
+        const key = rawKey as TextOverrideKey;
+        try {
+          overrides = {
+            ...overrides,
+            [key]: buildTextOverrideEntry(
+              key,
+              rawValue,
+              libraryTextForKey(libraryVersion, key),
+            ),
+          };
+        } catch (err) {
+          mapTextOverrideReadError(err);
+        }
       }
     }
 

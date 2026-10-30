@@ -506,7 +506,7 @@ describe("Exercise library QA round 1 (integration)", () => {
         practitionerId: practId,
         exerciseId,
         textOverrides: {
-          title: { value: "Mine", base: "Lib title" },
+          title: "Mine",
         },
       });
 
@@ -603,7 +603,7 @@ describe("Exercise library QA round 1 (integration)", () => {
           practitionerId: practId,
           exerciseId,
           textOverrides: {
-            title: { value: "a".repeat(81), base: "Lib" },
+            title: "a".repeat(81),
           },
         }),
       ).rejects.toMatchObject({ code: "invalid_input" });
@@ -682,7 +682,7 @@ describe("Exercise library QA round 1 (integration)", () => {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             text_overrides: {
-              title: { value: "Edited", base: "Heel slide" },
+              title: "Edited",
             },
           }),
         }),
@@ -690,18 +690,19 @@ describe("Exercise library QA round 1 (integration)", () => {
       );
       expect(patch.status).toBe(200);
 
-      const legacyPatch = await handleRequest(
+      const objectPatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text_overrides: { title: "legacy" } }),
+          body: JSON.stringify({
+            text_overrides: {
+              title: { value: "Edited", base: "wrong" },
+            },
+          }),
         }),
         deps,
       );
-      expect(legacyPatch.status).toBe(400);
-      await expect(legacyPatch.json()).resolves.toMatchObject({
-        error: "text_overrides_invalid_shape",
-      });
+      expect(objectPatch.status).toBe(400);
 
       const undoMismatch = await handleRequest(
         new Request(`${base}/my-exercises/${exerciseId}`, {

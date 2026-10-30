@@ -80,13 +80,18 @@ export class ExerciseLibraryReadRepository {
     sort: ApprovedExerciseSearchSort;
     limit: number;
     offset: number;
-    exerciseIdsIn?: readonly string[];
+    savedByPractitionerId?: string;
   }): Promise<ApprovedExerciseSearchRow[]> {
-    if (input.exerciseIdsIn && input.exerciseIdsIn.length === 0) {
-      return [];
-    }
     const bindings: SqlValue[] = [];
     const whereParts: string[] = [];
+
+    if (input.savedByPractitionerId) {
+      whereParts.push(`EXISTS (
+        SELECT 1 FROM practitioner_exercises pe_scope
+        WHERE pe_scope.practitioner_id = ? AND pe_scope.exercise_id = e.id
+      )`);
+      bindings.push(input.savedByPractitionerId);
+    }
 
     if (input.category) {
       whereParts.push("e.category = ?");
@@ -134,12 +139,6 @@ export class ExerciseLibraryReadRepository {
         WHERE ebr.exercise_id = e.id AND br.label = ? COLLATE NOCASE
       )`);
       bindings.push(input.bodyRegionLabel.trim());
-    }
-
-    if (input.exerciseIdsIn && input.exerciseIdsIn.length > 0) {
-      const placeholders = input.exerciseIdsIn.map(() => "?").join(", ");
-      whereParts.push(`e.id IN (${placeholders})`);
-      bindings.push(...input.exerciseIdsIn);
     }
 
     const whereSql = whereParts.length > 0 ? `AND ${whereParts.join(" AND ")}` : "";
@@ -198,13 +197,18 @@ export class ExerciseLibraryReadRepository {
     category?: ExerciseCategory;
     bodyRegionLabel?: string;
     prescriptionType?: PrescriptionType;
-    exerciseIdsIn?: readonly string[];
+    savedByPractitionerId?: string;
   }): Promise<number> {
-    if (input.exerciseIdsIn && input.exerciseIdsIn.length === 0) {
-      return 0;
-    }
     const bindings: SqlValue[] = [];
     const whereParts: string[] = [];
+
+    if (input.savedByPractitionerId) {
+      whereParts.push(`EXISTS (
+        SELECT 1 FROM practitioner_exercises pe_scope
+        WHERE pe_scope.practitioner_id = ? AND pe_scope.exercise_id = e.id
+      )`);
+      bindings.push(input.savedByPractitionerId);
+    }
 
     if (input.category) {
       whereParts.push("e.category = ?");
@@ -252,12 +256,6 @@ export class ExerciseLibraryReadRepository {
         WHERE ebr.exercise_id = e.id AND br.label = ? COLLATE NOCASE
       )`);
       bindings.push(input.bodyRegionLabel.trim());
-    }
-
-    if (input.exerciseIdsIn && input.exerciseIdsIn.length > 0) {
-      const placeholders = input.exerciseIdsIn.map(() => "?").join(", ");
-      whereParts.push(`e.id IN (${placeholders})`);
-      bindings.push(...input.exerciseIdsIn);
     }
 
     const whereSql = whereParts.length > 0 ? `AND ${whereParts.join(" AND ")}` : "";
