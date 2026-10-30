@@ -47,13 +47,30 @@ const generatedValidators = {
 } as const;
 
 function expectAgreement(toolName: string, data: unknown) {
-  const runtimeOk = runtimeValidators[toolName](data);
-  const generatedOk =
-    generatedValidators[toolName as keyof typeof generatedValidators](data);
+  const runtimeValidate = runtimeValidators[toolName];
+  const generatedValidate =
+    generatedValidators[toolName as keyof typeof generatedValidators];
+  const runtimeOk = runtimeValidate(data);
+  const generatedOk = generatedValidate(data);
   expect(generatedOk).toBe(runtimeOk);
+  if (!runtimeOk && !generatedOk) {
+    type ErrorEntry = { keyword?: string };
+    const runtimeKeywords =
+      (runtimeValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    const generatedKeywords =
+      (generatedValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    expect(generatedKeywords).toEqual(runtimeKeywords);
+  }
 }
 
 const emoji = "😀";
+const ninetyEightLetters = "a".repeat(98);
 const ninetyNineLetters = "a".repeat(99);
 const astralQuery = `${ninetyNineLetters}${emoji}`;
 
@@ -62,10 +79,34 @@ describe("generated MCP validators vs runtime Ajv", () => {
     const cases: { tool: string; data: unknown }[] = [
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "calf stretch" } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
+      },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
+      },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "x".repeat(101) } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "" } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800x` },
+      },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: "knee" } },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
+      },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
+      },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800x` },
+      },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         data: { program_code: "PRG-STUB01" },
