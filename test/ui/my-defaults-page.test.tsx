@@ -11,10 +11,7 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
-import {
-  MyDefaultsClient,
-  setMyDefaultsClientForTests,
-} from "../../src/ui/api/my-defaults-client.js";
+import { MyDefaultsClient } from "../../src/ui/api/my-defaults-client.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../src/domain/global-type-defaults-seed.js";
 import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
@@ -22,7 +19,6 @@ import {
   MY_DEFAULTS_PAGE_TITLE,
   RESET_TO_GLOBAL,
   SHARE_LINK_EXPIRY_SECTION,
-  NEW_LINKS_EXPIRE_AFTER_ONE_WEEK,
   TYPE_LABELS,
   YOUR_DEFAULT_BADGE,
   editYourTypeDefaultLabel,
@@ -36,7 +32,6 @@ import {
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
-  setMyDefaultsClientForTests(null);
 });
 
 function stubLibraryClient(): ExerciseLibraryClient {
@@ -124,7 +119,7 @@ describe("My defaults page (integration, jsdom)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("saves share link expiry from a chip and shows the toast", async () => {
+  it("saves share link expiry from a chip without a toast when the slot is undefined", async () => {
     const updateShareLinkExpiry = vi.fn().mockResolvedValue({
       global: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
       practitioner: {
@@ -145,9 +140,7 @@ describe("My defaults page (integration, jsdom)", () => {
     await screen.findByRole("button", { name: "1 year", pressed: true });
     await userEvent.click(screen.getByRole("button", { name: "1 week" }));
     expect(updateShareLinkExpiry).toHaveBeenCalledWith(SHARE_LINK_EXPIRES_IN.one_week);
-    expect(
-      await screen.findByText(NEW_LINKS_EXPIRE_AFTER_ONE_WEEK),
-    ).toBeInTheDocument();
+    expect(document.querySelector(".shell-toast-message")).toBeNull();
   });
 
   it("calls reset to global for a practitioner type override", async () => {

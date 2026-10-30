@@ -16,7 +16,6 @@ import {
   MY_DEFAULTS_INTRO,
   MY_DEFAULTS_PAGE_TITLE,
   NEVER_EXPIRY_HINT,
-  NEW_LINKS_EXPIRE_AFTER_ONE_WEEK,
   NEW_LINKS_NEVER_EXPIRE,
   SHARE_LINK_EXPIRY_CHOICE_LABELS,
   SHARE_LINK_EXPIRY_HINT,
@@ -28,6 +27,7 @@ import {
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
 import { TypeDefaultsFootnote } from "./TypeDefaultsFootnote.js";
 import { MyDefaultsBusyState, MyDefaultsErrorSlot } from "./MyDefaultsStates.js";
+import { myDefaultsPendingCopySlots } from "../copy/my-defaults-pending-copy.js";
 
 const PRACTITIONER_EXPIRY_CHOICES = [
   SHARE_LINK_EXPIRES_IN.one_week,
@@ -85,9 +85,7 @@ export function MyDefaultsPage() {
         const toastMessage =
           expiresIn === SHARE_LINK_EXPIRES_IN.never
             ? NEW_LINKS_NEVER_EXPIRE
-            : expiresIn === SHARE_LINK_EXPIRES_IN.one_week
-              ? NEW_LINKS_EXPIRE_AFTER_ONE_WEEK
-              : undefined;
+            : myDefaultsPendingCopySlots.shareLinkExpiryChangedToast;
         if (toastMessage) {
           showToast({ message: toastMessage });
         }

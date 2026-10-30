@@ -16,9 +16,6 @@ export const EXISTING_LINKS_NOTE =
 
 export const YOUR_DEFAULT_BADGE = "Your default";
 export const NEW_LINKS_NEVER_EXPIRE = "New links will never expire";
-/** design/app/settings-link-expiry/spec.md States table, Changed default row (1 week example). */
-export const NEW_LINKS_EXPIRE_AFTER_ONE_WEEK = "New links will expire after 1 week";
-
 export const EXERCISE_TYPES_HEADING = "Exercise types";
 export const EXERCISE_TYPES_BANNER =
   "Changing your defaults only affects exercises you add from now on. Existing programs and share links stay the same.";

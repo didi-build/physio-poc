@@ -1,4 +1,8 @@
 import type { ParamKey, ExerciseParams, NumericOrRange } from "./exercise-params.js";
+import {
+  type MyDefaultsPendingCopySlots,
+  myDefaultsPendingCopySlots,
+} from "../ui/copy/my-defaults-pending-copy.js";
 
 const PARAM_DISPLAY_ORDER: ParamKey[] = [
   "reps",
@@ -15,37 +19,49 @@ function keysInDisplayOrder(params: ExerciseParams): ParamKey[] {
   return PARAM_DISPLAY_ORDER.filter((key) => params[key] !== undefined);
 }
 
-/** Range readout approved on mock 01 (stretching global default). */
-function perDayDisplay(value: NumericOrRange): string {
+function perDayDisplay(
+  value: NumericOrRange,
+  copy: MyDefaultsPendingCopySlots,
+): string {
   if (typeof value === "number") {
-    return "";
+    if (value === 1) {
+      return copy.readoutOnceADay ?? "";
+    }
+    if (value === 2) {
+      return copy.readoutTwiceADay ?? "";
+    }
+    return copy.readoutPerDayTimes?.(value) ?? "";
   }
   if (value.min === value.max) {
-    return perDayDisplay(value.min);
+    return perDayDisplay(value.min, copy);
   }
-  return `${value.min} to ${value.max} times a day`;
+  return copy.readoutPerDayRange?.(value.min, value.max) ?? "";
 }
 
-export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
+export function paramPhrase(
+  key: ParamKey,
+  value: NumericOrRange,
+  copy: MyDefaultsPendingCopySlots = myDefaultsPendingCopySlots,
+): string {
   const n = typeof value === "number" ? value : null;
   switch (key) {
     case "reps":
       return n === 1 ? "1 rep" : `${n} reps`;
     case "sets":
       if (n === null || n <= 1) {
-        return "";
+        return n === 1 ? (copy.readoutOneSet ?? "") : "";
       }
-      return `${n} sets`;
+      return copy.readoutNSets?.(n) ?? "";
     case "hold_s":
       return `${n}s hold`;
     case "ascent_s":
-      return "";
+      return n === null ? "" : (copy.readoutSecondsUp?.(n) ?? "");
     case "descent_s":
       return `${n}s down`;
     case "rest_s":
       return `${n}s rest between sets`;
     case "per_day":
-      return perDayDisplay(value);
+      return perDayDisplay(value, copy);
     case "days_per_week":
       return n === 7 ? "every day" : `${n}x a week`;
     default:
@@ -53,10 +69,13 @@ export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
   }
 }
 
-/** Human-readable prescription params (matches approved MagicPath readout). */
-export function formatExerciseParams(params: ExerciseParams): string {
+/** Human-readable prescription params (approved readout slots only). */
+export function formatExerciseParams(
+  params: ExerciseParams,
+  copy: MyDefaultsPendingCopySlots = myDefaultsPendingCopySlots,
+): string {
   return keysInDisplayOrder(params)
-    .map((key) => paramPhrase(key, params[key] as NumericOrRange))
+    .map((key) => paramPhrase(key, params[key] as NumericOrRange, copy))
     .filter((phrase) => phrase.length > 0)
     .join(", ");
 }

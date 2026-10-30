@@ -97,7 +97,3 @@ export function getMyDefaultsClient(): MyDefaultsClient {
   defaultClient ??= new MyDefaultsClient();
   return defaultClient;
 }
-
-export function setMyDefaultsClientForTests(client: MyDefaultsClient | null): void {
-  defaultClient = client;
-}

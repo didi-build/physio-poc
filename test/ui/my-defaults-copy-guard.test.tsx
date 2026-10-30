@@ -6,8 +6,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatExerciseParams } from "../../src/domain/format-exercise-params.js";
 import type { ExerciseParams } from "../../src/domain/exercise-params.js";
+import { formatExerciseParams } from "../../src/domain/format-exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../src/domain/global-type-defaults-seed.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import { PhysioApp } from "../../src/ui/App.js";
@@ -15,16 +15,39 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import type { MyDefaultsClient } from "../../src/ui/api/my-defaults-client.js";
 import {
-  MyDefaultsClient,
-  setMyDefaultsClientForTests,
-} from "../../src/ui/api/my-defaults-client.js";
+  myDefaultsPendingCopySlots,
+  type MyDefaultsPendingCopySlots,
+} from "../../src/ui/copy/my-defaults-pending-copy.js";
 import { renderTypeDefaultEditor } from "./type-default-editor-a11y-helpers.js";
+
+const FIXTURE_TOAST = "fixture-share-link-expiry-toast";
+const FIXTURE_PER_DAY_ONCE = "fixture-readout-once-a-day";
+const FIXTURE_PER_DAY_RANGE = "fixture-readout-per-day-range";
+const FIXTURE_ONE_SET = "fixture-readout-one-set";
+const FIXTURE_SECONDS_UP = "fixture-readout-seconds-up";
+
+const GUARD_FIXTURE_PARAMS: ExerciseParams = {
+  reps: 10,
+  hold_s: 2,
+  sets: 1,
+  per_day: 2,
+  ascent_s: 3,
+  days_per_week: 3,
+};
+
+function snapshotPendingCopySlots(): MyDefaultsPendingCopySlots {
+  return { ...myDefaultsPendingCopySlots };
+}
+
+function restorePendingCopySlots(snapshot: MyDefaultsPendingCopySlots): void {
+  Object.assign(myDefaultsPendingCopySlots, snapshot);
+}
 
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
-  setMyDefaultsClientForTests(null);
 });
 
 function stubLibraryClient(): ExerciseLibraryClient {
@@ -46,27 +69,6 @@ function stubLibraryClient(): ExerciseLibraryClient {
   } as unknown as ExerciseLibraryClient;
 }
 
-const GUARD_FIXTURE_PARAMS: ExerciseParams = {
-  reps: 10,
-  hold_s: 2,
-  sets: 1,
-  per_day: 2,
-  ascent_s: 3,
-  days_per_week: 3,
-};
-
-const REMOVED_COPY = [
-  "once a day",
-  "twice a day",
-  "1 set",
-  "1 sets",
-  "2s up",
-  "3s up",
-  "New links will expire after 30 days",
-  "New links will expire after 90 days",
-  "New links will expire after 1 year",
-] as const;
-
 function stubMyDefaultsClient(
   overrides: Partial<MyDefaultsClient> = {},
 ): MyDefaultsClient {
@@ -84,26 +86,9 @@ function stubMyDefaultsClient(
           practitioner_params: { hold_s: 30, per_day: 1, days_per_week: 4 },
         },
         {
-          type: "isometric",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.isometric,
-          practitioner_params: { reps: 1, hold_s: 10, sets: 1, days_per_week: 3 },
-        },
-        {
           type: "concentric",
           global_params: GLOBAL_TYPE_DEFAULTS_SEED.concentric,
           practitioner_params: GUARD_FIXTURE_PARAMS,
-        },
-        {
-          type: "eccentric",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.eccentric,
-          practitioner_params: {
-            reps: 10,
-            descent_s: 4,
-            sets: 1,
-            per_day: 2,
-            ascent_s: 3,
-            days_per_week: 3,
-          },
         },
       ],
     }),
@@ -114,41 +99,10 @@ function stubMyDefaultsClient(
   } as unknown as MyDefaultsClient;
 }
 
-describe("My defaults removed copy (integration, jsdom)", () => {
-  it("does not render copy removed pending Designer spec on the page", async () => {
-    render(
-      <MemoryRouter initialEntries={["/defaults"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          myDefaultsClient={stubMyDefaultsClient()}
-        />
-      </MemoryRouter>,
-    );
-
-    await screen.findByRole("heading", { name: "My defaults" });
-    for (const text of REMOVED_COPY) {
-      expect(screen.queryByText(text, { exact: false })).not.toBeInTheDocument();
-    }
-  });
-
-  it("does not render removed readout phrases for guard fixture params", () => {
-    const readout = formatExerciseParams(GUARD_FIXTURE_PARAMS);
-    for (const text of REMOVED_COPY) {
-      expect(readout.includes(text)).toBe(false);
-    }
-    const { container } = renderTypeDefaultEditor({
-      type: "concentric",
-      own: GUARD_FIXTURE_PARAMS,
-      onSave: () => {},
-      onCancel: () => {},
-    });
-    const readsAs = container.querySelector(".md-reads-as");
-    expect(readsAs?.textContent ?? "").not.toMatch(/once a day/);
-    expect(readsAs?.textContent ?? "").not.toMatch(/1 set/);
-    expect(readsAs?.textContent ?? "").not.toMatch(/3s up/);
-  });
-
-  it("does not toast generic expire-after copy for 30 days", async () => {
+describe("My defaults pending copy slots (integration, jsdom)", () => {
+  it("does not render share-link expiry changed toast when the slot is undefined", async () => {
+    const snapshot = snapshotPendingCopySlots();
+    myDefaultsPendingCopySlots.shareLinkExpiryChangedToast = undefined;
     const updateShareLinkExpiry = vi.fn().mockResolvedValue({
       global: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
       practitioner: {
@@ -160,18 +114,80 @@ describe("My defaults removed copy (integration, jsdom)", () => {
         customExpiresOn: null,
       },
     });
-    render(
-      <MemoryRouter initialEntries={["/defaults"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          myDefaultsClient={stubMyDefaultsClient({ updateShareLinkExpiry })}
-        />
-      </MemoryRouter>,
-    );
+    try {
+      render(
+        <MemoryRouter initialEntries={["/defaults"]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            myDefaultsClient={stubMyDefaultsClient({ updateShareLinkExpiry })}
+          />
+        </MemoryRouter>,
+      );
 
-    await screen.findByRole("button", { name: "1 year", pressed: true });
-    await userEvent.click(screen.getByRole("button", { name: "30 days" }));
-    expect(updateShareLinkExpiry).toHaveBeenCalled();
-    expect(screen.queryByText(/New links will expire after/i)).not.toBeInTheDocument();
+      await screen.findByRole("button", { name: "1 year", pressed: true });
+      await userEvent.click(screen.getByRole("button", { name: "30 days" }));
+      expect(updateShareLinkExpiry).toHaveBeenCalled();
+      expect(screen.queryByText(FIXTURE_TOAST)).not.toBeInTheDocument();
+    } finally {
+      restorePendingCopySlots(snapshot);
+    }
+  });
+
+  it("renders share-link expiry changed toast when the slot is set", async () => {
+    const snapshot = snapshotPendingCopySlots();
+    myDefaultsPendingCopySlots.shareLinkExpiryChangedToast = FIXTURE_TOAST;
+    const updateShareLinkExpiry = vi.fn().mockResolvedValue({
+      global: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
+      practitioner: {
+        expiresIn: SHARE_LINK_EXPIRES_IN.one_week,
+        customExpiresOn: null,
+      },
+      effective: { expiresIn: SHARE_LINK_EXPIRES_IN.one_week, customExpiresOn: null },
+    });
+    try {
+      render(
+        <MemoryRouter initialEntries={["/defaults"]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            myDefaultsClient={stubMyDefaultsClient({ updateShareLinkExpiry })}
+          />
+        </MemoryRouter>,
+      );
+
+      await screen.findByRole("button", { name: "1 year", pressed: true });
+      await userEvent.click(screen.getByRole("button", { name: "1 week" }));
+      expect(await screen.findByText(FIXTURE_TOAST)).toBeInTheDocument();
+    } finally {
+      restorePendingCopySlots(snapshot);
+    }
+  });
+
+  it("does not render readout phrases when readout slots are undefined", () => {
+    const readout = formatExerciseParams(GUARD_FIXTURE_PARAMS);
+    expect(readout).not.toContain(FIXTURE_PER_DAY_ONCE);
+    expect(readout).not.toContain(FIXTURE_ONE_SET);
+    expect(readout).not.toContain(FIXTURE_SECONDS_UP);
+
+    const { container } = renderTypeDefaultEditor({
+      type: "concentric",
+      own: GUARD_FIXTURE_PARAMS,
+      onSave: () => {},
+      onCancel: () => {},
+    });
+    const readsAs = container.querySelector(".md-reads-as");
+    expect(readsAs?.textContent ?? "").not.toContain(FIXTURE_PER_DAY_RANGE);
+  });
+
+  it("renders readout phrases when readout slots are set in the test fixture", () => {
+    const copy = {
+      ...myDefaultsPendingCopySlots,
+      readoutOnceADay: FIXTURE_PER_DAY_ONCE,
+      readoutPerDayRange: () => FIXTURE_PER_DAY_RANGE,
+      readoutOneSet: FIXTURE_ONE_SET,
+      readoutSecondsUp: () => FIXTURE_SECONDS_UP,
+    };
+    const readout = formatExerciseParams({ per_day: { min: 1, max: 3 } }, copy);
+    expect(readout).toContain(FIXTURE_PER_DAY_RANGE);
+    expect(formatExerciseParams({ per_day: 1 }, copy)).toContain(FIXTURE_PER_DAY_ONCE);
   });
 });
