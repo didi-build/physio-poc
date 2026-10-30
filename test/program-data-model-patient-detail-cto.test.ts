@@ -68,7 +68,7 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
     }
   });
 
-  it("rejects flagged published_name on publish and leaves published_name unchanged", async () => {
+  it("QA: replaceRow rejects patient details in program_rows.note and stores nothing", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -76,66 +76,114 @@ describe("DIDI-1000 CTO patient-detail enforcement", () => {
       const programs = new ProgramsRepository(storage);
       const rows = new ProgramRowsRepository(storage);
       await programs.create({
-        id: "prog-published-name",
-        createdBy: practitionerId,
-        createdAt: TS,
-        name: "Published clean",
-      });
-      await rows.replaceRow({
-        id: "row-1",
-        programId: "prog-published-name",
-        position: 0,
-        ...rowInput,
-      });
-      await programs.publish("prog-published-name", TS);
-      const before = await storage.first<{ published_name: string | null }>(
-        "SELECT published_name FROM programs WHERE id = ? LIMIT 1",
-        ["prog-published-name"],
-      );
-      expect(before?.published_name).toBe("Published clean");
-      await storage.run(`UPDATE programs SET name = ? WHERE id = ?`, [
-        FLAGGED,
-        "prog-published-name",
-      ]);
-      await expect(programs.publish("prog-published-name", TS)).rejects.toThrow(
-        FreeTextValidationError,
-      );
-      const after = await storage.first<{ published_name: string | null }>(
-        "SELECT published_name FROM programs WHERE id = ? LIMIT 1",
-        ["prog-published-name"],
-      );
-      expect(after?.published_name).toBe("Published clean");
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("rejects flagged program_rows.note on replaceRow and stores no note", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const practitionerId = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, practitionerId);
-      const programs = new ProgramsRepository(storage);
-      const rows = new ProgramRowsRepository(storage);
-      await programs.create({
-        id: "prog-row-note",
+        id: "prog-qa-note",
         createdBy: practitionerId,
         createdAt: TS,
       });
       await expect(
         rows.replaceRow({
-          id: "row-note",
-          programId: "prog-row-note",
+          id: "row-qa-note",
+          programId: "prog-qa-note",
           position: 0,
           ...rowInput,
           note: FLAGGED,
         }),
       ).rejects.toThrow(FreeTextValidationError);
-      const stored = await storage.first<{ note: string | null }>(
-        "SELECT note FROM program_rows WHERE id = ? LIMIT 1",
-        ["row-note"],
+      expect(
+        await storage.first<{ id: string }>(
+          "SELECT id FROM program_rows WHERE program_id = ? LIMIT 1",
+          ["prog-qa-note"],
+        ),
+      ).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("QA: published_name stays frozen after draft row edit and rename; publish rejects DB flagged name", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programs = new ProgramsRepository(storage);
+      const rows = new ProgramRowsRepository(storage);
+      await programs.create({
+        id: "prog-qa-published",
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Published name",
+      });
+      await rows.replaceRow({
+        id: "row-1",
+        programId: "prog-qa-published",
+        position: 0,
+        ...rowInput,
+      });
+      await programs.publish("prog-qa-published", TS);
+      await rows.replaceRow({
+        id: "row-1",
+        programId: "prog-qa-published",
+        position: 0,
+        ...rowInput,
+        textSnapshot: { title: "Updated heel slide" },
+        draftUpdatedAt: TS,
+      });
+      await programs.updateDraftName("prog-qa-published", "Renamed draft only");
+      const frozen = await storage.first<{
+        published_name: string | null;
+        name: string | null;
+      }>("SELECT published_name, name FROM programs WHERE id = ? LIMIT 1", [
+        "prog-qa-published",
+      ]);
+      expect(frozen?.published_name).toBe("Published name");
+      expect(frozen?.name).toBe("Renamed draft only");
+      await storage.run(`UPDATE programs SET name = ? WHERE id = ?`, [
+        FLAGGED,
+        "prog-qa-published",
+      ]);
+      await expect(programs.publish("prog-qa-published", TS)).rejects.toThrow(
+        FreeTextValidationError,
       );
-      expect(stored).toBeNull();
+      expect(
+        (
+          await storage.first<{ published_name: string | null }>(
+            "SELECT published_name FROM programs WHERE id = ? LIMIT 1",
+            ["prog-qa-published"],
+          )
+        )?.published_name,
+      ).toBe("Published name");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("QA: replaceRow rejects patient details in text snapshot cue and stores nothing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programs = new ProgramsRepository(storage);
+      const rows = new ProgramRowsRepository(storage);
+      await programs.create({
+        id: "prog-qa-cue",
+        createdBy: practitionerId,
+        createdAt: TS,
+      });
+      await expect(
+        rows.replaceRow({
+          id: "row-qa-cue",
+          programId: "prog-qa-cue",
+          position: 0,
+          ...rowInput,
+          textSnapshot: { title: "Heel slide", cue: FLAGGED },
+        }),
+      ).rejects.toThrow(FreeTextValidationError);
+      expect(
+        await storage.first<{ id: string }>(
+          "SELECT id FROM program_rows WHERE program_id = ? LIMIT 1",
+          ["prog-qa-cue"],
+        ),
+      ).toBeNull();
     } finally {
       storage.close();
     }
