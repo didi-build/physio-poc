@@ -1,3 +1,4 @@
+import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
 import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
@@ -7,6 +8,10 @@ import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
 import { handleOptionsPreflight } from "./cors-preflight.js";
+import {
+  rejectMutatingAppApiCsrf,
+  requiresAppApiCsrfGuard,
+} from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleHealthRequest } from "./routes/health.js";
@@ -99,6 +104,22 @@ export async function handleRequest(
   if (authResponse) {
     return authResponse;
   }
+  if (isAuthAppApiPath(pathname)) {
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
+  }
+
+  if (
+    requiresAppApiCsrfGuard(pathname, request.method) &&
+    !pathname.startsWith("/api/")
+  ) {
+    const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+    if (csrfRejection) {
+      return csrfRejection;
+    }
+  }
 
   const asset = ui.tryServeAsset(pathname);
   if (asset) {
@@ -118,6 +139,12 @@ export async function handleRequest(
 
   if (pathname.startsWith("/api/")) {
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
+      if (requiresAppApiCsrfGuard(pathname, request.method)) {
+        const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+        if (csrfRejection) {
+          return csrfRejection;
+        }
+      }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
         sessionPractitioner,

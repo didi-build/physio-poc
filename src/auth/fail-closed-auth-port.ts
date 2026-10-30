@@ -1,8 +1,5 @@
 import type { AuthPort } from "./auth-port.js";
-
-function isBetterAuthPath(pathname: string): boolean {
-  return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
-}
+import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 
 /**
  * Worker entry auth until Better Auth on Workers (DIDI-1044).
@@ -16,7 +13,7 @@ export class FailClosedAuthPort implements AuthPort {
 
   async handleAuthRequest(request: Request): Promise<Response | null> {
     const pathname = new URL(request.url).pathname;
-    if (isBetterAuthPath(pathname)) {
+    if (isAuthAppApiPath(pathname)) {
       return new Response(null, { status: 503 });
     }
     return null;

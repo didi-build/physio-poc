@@ -14,7 +14,7 @@ export type AuthPort = {
   getPractitioner(request: Request): Promise<PractitionerSession | null>;
 
   /**
-   * Handles Better Auth routes under /api/auth when the request matches; otherwise null.
+   * Handles Better Auth routes under `/api/auth/` when the request matches; otherwise null.
    */
   handleAuthRequest(request: Request): Promise<Response | null>;
 

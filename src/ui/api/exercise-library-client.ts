@@ -149,6 +149,7 @@ export class ExerciseLibraryClient {
   removeFromMyExercises(exerciseId: string): Promise<{ undo: ExerciseMutationUndo }> {
     return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
       method: "DELETE",
+      headers: { "content-type": "application/json" },
     }).then((response) => readJson<{ undo: ExerciseMutationUndo }>(response));
   }
 

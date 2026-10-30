@@ -3,6 +3,7 @@ import {
   verifyOAuthQueryParams,
 } from "@better-auth/oauth-provider";
 import type { AuthPort, PractitionerSession } from "../../auth/auth-port.js";
+import { AUTH_APP_API_PREFIX } from "../../auth/auth-app-api-prefix.js";
 import {
   deleteAuthSessionByToken,
   resolveBoundPractitionerSession,
@@ -25,8 +26,6 @@ import type { PhysioAuthConfig } from "../../http/config.js";
 import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { BetterAuthRuntime } from "./better-auth-types.js";
-
-const AUTH_PREFIX = "/api/auth";
 
 export class BetterAuthPort implements AuthPort {
   private readonly authSecret: string;
@@ -99,7 +98,7 @@ export class BetterAuthPort implements AuthPort {
       return this.auth.handler(request);
     }
 
-    if (url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
+    if (url.pathname.startsWith(AUTH_APP_API_PREFIX)) {
       if (
         url.pathname === PHYSIO_MCP_OAUTH_BETTER_AUTH_CONSENT_PATH &&
         request.method === "POST"
