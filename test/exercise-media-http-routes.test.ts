@@ -15,6 +15,11 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import {
+  expectConsoleCallsLeakFree,
+  restoreConsoleSpies,
+  spyAllConsoleLevels,
+} from "./helpers/console-log-leak-assertions.js";
 
 function mediaHttpDeps(storage: Awaited<ReturnType<typeof openMigratedDatabase>>) {
   return {
@@ -182,7 +187,7 @@ describe("Exercise media HTTP routes (integration)", () => {
     const apiKey = "fal-test-key-must-not-appear-in-errors";
     const fetchImpl = vi.fn(async () => new Response(jsonBody, { status: 401 }));
     const fal = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
-    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpies = spyAllConsoleLevels();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const response = await handleRequest(
@@ -205,12 +210,9 @@ describe("Exercise media HTTP routes (integration)", () => {
       expect(text).not.toContain(note);
       expect(text).not.toContain(jsonBody);
       expect(text).toContain("fal_api_request_failed");
-      for (const call of logSpy.mock.calls) {
-        expect(JSON.stringify(call)).not.toContain(note);
-        expect(JSON.stringify(call)).not.toContain(jsonBody);
-      }
+      expectConsoleCallsLeakFree(consoleSpies, { note, jsonBody, apiKey });
     } finally {
-      logSpy.mockRestore();
+      restoreConsoleSpies(consoleSpies);
       storage.close();
     }
   });

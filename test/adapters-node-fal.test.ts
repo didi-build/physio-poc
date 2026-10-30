@@ -12,6 +12,11 @@ import {
 } from "../src/adapters/node/fal-flux-klein-image-generation.js";
 import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import {
+  expectConsoleCallsLeakFree,
+  restoreConsoleSpies,
+  spyAllConsoleLevels,
+} from "./helpers/console-log-leak-assertions.js";
 
 function headerValue(
   headers: HeadersInit | undefined,
@@ -228,8 +233,7 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
         title: "Bridge",
         regenerationNote: note,
       });
-      const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+      const consoleSpies = spyAllConsoleLevels();
       try {
         await expect(
           generator.generateStartImage(prompt, { regenerationNote: note }),
@@ -238,17 +242,9 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
           message: "fal_api_request_failed",
           statusCode: 401,
         });
-        for (const spy of [logSpy, infoSpy]) {
-          for (const call of spy.mock.calls) {
-            const logged = JSON.stringify(call);
-            expect(logged).not.toContain(apiKey);
-            expect(logged).not.toContain(note);
-            expect(logged).not.toContain(jsonBody);
-          }
-        }
+        expectConsoleCallsLeakFree(consoleSpies, { note, jsonBody, apiKey });
       } finally {
-        logSpy.mockRestore();
-        infoSpy.mockRestore();
+        restoreConsoleSpies(consoleSpies);
       }
     }
   });

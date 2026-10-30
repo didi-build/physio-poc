@@ -12,6 +12,7 @@ describe("Node exercise media route registration (unit)", () => {
     expect(nodeExerciseMediaRouteHandlers("development")).toHaveLength(1);
     expect(nodeExerciseMediaRouteHandlers("test")).toHaveLength(1);
     expect(nodeExerciseMediaRouteHandlers(undefined)).toEqual([]);
+    expect(nodeExerciseMediaRouteHandlers("")).toEqual([]);
     expect(nodeExerciseMediaRouteHandlers("staging")).toEqual([]);
     expect(nodeExerciseMediaRouteHandlers("Development")).toEqual([]);
     expect(nodeExerciseMediaRouteHandlers("TEST")).toEqual([]);
