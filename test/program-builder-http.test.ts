@@ -161,6 +161,19 @@ const INVALID_INPUT_BODY = {
   message: "invalid_input",
 } as const;
 
+async function expectInvalidInputQueryGuardResponse(response: Response): Promise<void> {
+  expect(response.status).toBe(400);
+  expect(await response.text()).toBe(JSON.stringify(INVALID_INPUT_BODY));
+}
+
+function practitionerIdQuerySuffix(otherPractitionerId: string): string {
+  return `?practitionerId=${encodeURIComponent(otherPractitionerId)}`;
+}
+
+function practitionerUnderscoreIdQuerySuffix(otherPractitionerId: string): string {
+  return `?practitioner_id=${encodeURIComponent(otherPractitionerId)}`;
+}
+
 const PROGRAM_NOT_FOUND_BODY = {
   error: "program_not_found",
   message: "Program not found",
@@ -364,8 +377,8 @@ describe("Program builder HTTP routes (integration)", () => {
       });
 
       const querySuffixBuilders = [
-        (otherId: string) => `?practitionerId=${encodeURIComponent(otherId)}`,
-        (otherId: string) => `?practitioner_id=${encodeURIComponent(otherId)}`,
+        practitionerIdQuerySuffix,
+        practitionerUnderscoreIdQuerySuffix,
       ] as const;
 
       const { deps, cookie } = apiDeps(storage, practitionerA);
@@ -436,6 +449,256 @@ describe("Program builder HTTP routes (integration)", () => {
           ),
         ).toEqual({ name: "Program A" });
       }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId and practitioner_id query on POST create and POST rows without creating or changing storage for A or B", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("prog-post-query-b");
+      await seedPractitioner(storage, practitionerB, "b-post-query@example.com");
+      const programA = id("prog-post-query-a");
+      const wouldBeProgramId = id("prog-never-from-query");
+      const wouldBeRowId = id("row-never-from-query");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerA, {
+        programId: programA,
+        name: "Existing A",
+      });
+      await seedApprovedForBuilder(storage, practitionerA);
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerA,
+        id("req-post-query-ph"),
+        "Pending lunge",
+      );
+
+      const querySuffixes = [
+        practitionerIdQuerySuffix(practitionerB),
+        practitionerUnderscoreIdQuerySuffix(practitionerB),
+      ] as const;
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+
+      for (const querySuffix of querySuffixes) {
+        const beforeCountA = await programCount(storage, practitionerA);
+        const beforeCountB = await programCount(storage, practitionerB);
+        const beforeRowsA = await programRowCount(storage, programA);
+        const beforeNameA = await storage.first<{ name: string | null }>(
+          "SELECT name FROM programs WHERE id = ?",
+          [programA],
+        );
+
+        const createUrl = `${BASE}${PROGRAMS_API_BASE}${querySuffix}`;
+        const createResponse = await handleRequest(
+          new Request(
+            createUrl,
+            mutatingAppApiRequestInit(createUrl, {
+              method: "POST",
+              headers: { cookie },
+              body: JSON.stringify({
+                program_id: wouldBeProgramId,
+                name: "Created via query",
+              }),
+            }),
+          ),
+          deps,
+        );
+        await expectInvalidInputQueryGuardResponse(createResponse);
+
+        const addRowUrl = `${BASE}${programRowsPath(programA)}${querySuffix}`;
+        const addRowResponse = await handleRequest(
+          new Request(
+            addRowUrl,
+            mutatingAppApiRequestInit(addRowUrl, {
+              method: "POST",
+              headers: { cookie },
+              body: JSON.stringify({
+                row_id: wouldBeRowId,
+                exercise_id: FIXTURE_EXERCISE_ID,
+              }),
+            }),
+          ),
+          deps,
+        );
+        await expectInvalidInputQueryGuardResponse(addRowResponse);
+
+        expect(await programCount(storage, practitionerA)).toBe(beforeCountA);
+        expect(await programCount(storage, practitionerB)).toBe(beforeCountB);
+        expect(await programRowCount(storage, programA)).toBe(beforeRowsA);
+        expect(
+          await storage.first<{ name: string | null }>(
+            "SELECT name FROM programs WHERE id = ?",
+            [programA],
+          ),
+        ).toEqual(beforeNameA);
+        expect(
+          await new ProgramsRepository(storage).findById(wouldBeProgramId),
+        ).toBeNull();
+        expect(
+          await new ProgramRowsRepository(storage).findById(wouldBeRowId),
+        ).toBeNull();
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId and practitioner_id query on DELETE program without deleting", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("prog-del-query-b");
+      await seedPractitioner(storage, practitionerB, "b-del-query@example.com");
+      const programId = id("prog-del-query-a");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerA, {
+        programId,
+        name: "Not deleted",
+      });
+
+      const querySuffixes = [
+        practitionerIdQuerySuffix(practitionerB),
+        practitionerUnderscoreIdQuerySuffix(practitionerB),
+      ] as const;
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+
+      for (const querySuffix of querySuffixes) {
+        const beforeDeletedAt = (
+          await new ProgramsRepository(storage).findById(programId)
+        )?.deleted_at;
+
+        const deleteUrl = `${BASE}${programPath(programId)}${querySuffix}`;
+        const response = await handleRequest(
+          new Request(
+            deleteUrl,
+            mutatingAppApiRequestInit(deleteUrl, {
+              method: "DELETE",
+              headers: { cookie },
+            }),
+          ),
+          deps,
+        );
+        await expectInvalidInputQueryGuardResponse(response);
+
+        expect(
+          (await new ProgramsRepository(storage).findById(programId))?.deleted_at,
+        ).toBe(beforeDeletedAt);
+        expect(await programCount(storage, practitionerB)).toBe(0);
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not reject PractitionerId query spelling (case-sensitive guard keys)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("prog-case-query-b");
+      await seedPractitioner(storage, practitionerB, "b-case@example.com");
+      const programId = id("prog-case-query-a");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerA, {
+        programId,
+        name: "Visible to A only",
+      });
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const response = await handleRequest(
+        authedRequest(
+          `${BASE}${programsCollectionPath()}?PractitionerId=${encodeURIComponent(practitionerB)}`,
+          cookie,
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { items: { program_id: string }[] };
+      expect(body.items.map((item) => item.program_id)).toEqual([programId]);
+      expect(await programCount(storage, practitionerB)).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("persists row note on PATCH /api/me/programs/:programId/rows/:rowId over HTTP", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const programId = id("prog-patch-note");
+      const rowId = id("row-patch-note");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const patchUrl = `${BASE}${programRowPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          patchUrl,
+          mutatingAppApiRequestInit(patchUrl, {
+            method: "PATCH",
+            headers: { cookie },
+            body: JSON.stringify({ note: "Pinned via HTTP PATCH" }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      expect((await new ProgramRowsRepository(storage).findById(rowId))?.note).toBe(
+        "Pinned via HTTP PATCH",
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("persists placeholder row shape on POST /api/me/programs/:programId/rows with exercise_request_id over HTTP", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-post-ph-http");
+      const requestId = id("req-post-ph-http");
+      const rowId = id("row-post-ph-http");
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        requestId,
+        "Pending bridge",
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const addRowUrl = `${BASE}${programRowsPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          addRowUrl,
+          mutatingAppApiRequestInit(addRowUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({
+              row_id: rowId,
+              exercise_request_id: requestId,
+              prescription_type: "stretching",
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const row = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(row?.exercise_request_id).toBe(requestId);
+      expect(row?.exercise_id).toBeNull();
+      expect(row?.exercise_version_id).toBeNull();
     } finally {
       storage.close();
     }
