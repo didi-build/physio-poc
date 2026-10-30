@@ -40,6 +40,7 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { id } from "./helpers/opaque-test-ids.js";
 
 const MS_DAY = 24 * 60 * 60 * 1000;
@@ -499,6 +500,197 @@ describe("DIDI-1000 QA round 1 (mutation and boundary coverage)", () => {
       );
       expect(codeIdx?.name).toBe("idx_programs_code");
       expect(openIdx?.name).toBe("idx_share_links_one_open_per_program");
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramRowsRepository linkPlaceholderRowToApprovedVersion", () => {
+  async function seedPlaceholderRow(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    input: {
+      practitionerId: string;
+      programId: string;
+      rowId: string;
+      requestId: string;
+      note?: string | null;
+    },
+  ) {
+    const programs = new ProgramsRepository(storage);
+    const existing = await programs.findById(input.programId);
+    if (!existing) {
+      await programs.create({
+        id: input.programId,
+        createdBy: input.practitionerId,
+        createdAt: TS,
+      });
+    }
+    const requests = new ExerciseRequestsRepository(storage);
+    const found = await requests.findById(input.requestId);
+    if (!found) {
+      await requests.insert({
+        id: input.requestId,
+        requestedName: "Pending move",
+        requestedBy: input.practitionerId,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+    }
+    const rows = new ProgramRowsRepository(storage);
+    await rows.replaceRow({
+      id: input.rowId,
+      programId: input.programId,
+      position: 0,
+      exerciseRequestId: input.requestId,
+      prescriptionType: "stretching",
+      params: { hold_s: 30 },
+      textSnapshot: { title: "Heel slide" },
+      note: input.note ?? null,
+      draftUpdatedAt: TS,
+    });
+  }
+
+  it("links a matching placeholder row on a soft-deleted program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programId = id("prog-link-repo-del");
+      const requestId = id("req-link-repo-del");
+      await seedPlaceholderRow(storage, {
+        practitionerId,
+        programId,
+        rowId: id("row-link-repo-del"),
+        requestId,
+        note: "Keep this note",
+      });
+      const programs = new ProgramsRepository(storage);
+      await programs.softDelete(programId, TS);
+      const rows = new ProgramRowsRepository(storage);
+      const linked = await rows.linkPlaceholderRowToApprovedVersion({
+        programId,
+        rowId: id("row-link-repo-del"),
+        exerciseRequestId: requestId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        params: { hold_s: 30 },
+        textSnapshot: { title: "Heel slide" },
+        draftUpdatedAt: TS,
+      });
+      expect(linked).toBe(true);
+      const row = await rows.findById(id("row-link-repo-del"));
+      expect(row?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+      expect(row?.exercise_version_id).toBe(FIXTURE_VERSION_ID);
+      expect(row?.exercise_request_id).toBeNull();
+      expect(row?.note).toBe("Keep this note");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("leaves a placeholder row alone when exerciseRequestId does not match", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programId = id("prog-link-repo-mismatch");
+      await seedPlaceholderRow(storage, {
+        practitionerId,
+        programId,
+        rowId: id("row-link-repo-mismatch"),
+        requestId: id("req-link-repo-mismatch"),
+      });
+      const rows = new ProgramRowsRepository(storage);
+      const linked = await rows.linkPlaceholderRowToApprovedVersion({
+        programId,
+        rowId: id("row-link-repo-mismatch"),
+        exerciseRequestId: id("req-other"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        params: { hold_s: 30 },
+        textSnapshot: { title: "Heel slide" },
+        draftUpdatedAt: TS,
+      });
+      expect(linked).toBe(false);
+      const row = await rows.findById(id("row-link-repo-mismatch"));
+      expect(row?.exercise_request_id).toBe(id("req-link-repo-mismatch"));
+      expect(row?.exercise_id).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not change an exercise row that is not a placeholder", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programs = new ProgramsRepository(storage);
+      const programId = id("prog-link-repo-exercise");
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+      });
+      const rows = new ProgramRowsRepository(storage);
+      await rows.replaceRow({
+        id: id("row-link-repo-exercise"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: { title: "Heel slide" },
+        draftUpdatedAt: TS,
+      });
+      const before = await rows.findById(id("row-link-repo-exercise"));
+      const linked = await rows.linkPlaceholderRowToApprovedVersion({
+        programId,
+        rowId: id("row-link-repo-exercise"),
+        exerciseRequestId: id("req-wont-match"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        params: { hold_s: 99 },
+        textSnapshot: { title: "Changed title" },
+        draftUpdatedAt: TS,
+      });
+      expect(linked).toBe(false);
+      const after = await rows.findById(id("row-link-repo-exercise"));
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("replaceRow rejects writes to a soft-deleted program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: id("prog-replace-del"),
+        createdBy: practitionerId,
+        createdAt: TS,
+      });
+      await programs.softDelete(id("prog-replace-del"), TS);
+      const rows = new ProgramRowsRepository(storage);
+      await expect(
+        rows.replaceRow({
+          id: id("row-replace-del"),
+          programId: id("prog-replace-del"),
+          position: 0,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          prescriptionType: "stretching",
+          params: { hold_s: 30 },
+          textSnapshot: { title: "Heel slide" },
+          draftUpdatedAt: TS,
+        }),
+      ).rejects.toThrow(ProgramRepositoryError);
     } finally {
       storage.close();
     }

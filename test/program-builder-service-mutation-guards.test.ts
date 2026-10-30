@@ -1122,21 +1122,25 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       const before1 = await snapshotProgramDbState(storage, id("prog-write-fail"));
       const before2 = await snapshotProgramDbState(storage, id("prog-write-fail-2"));
       const rowsRepo = new ProgramRowsRepository(storage);
-      const original = ProgramRowsRepository.prototype.replaceRow;
+      const original =
+        ProgramRowsRepository.prototype.linkPlaceholderRowToApprovedVersion;
       let calls = 0;
-      vi.spyOn(ProgramRowsRepository.prototype, "replaceRow").mockImplementation(
-        async function (this: ProgramRowsRepository, input) {
-          calls += 1;
-          await original.call(this, input);
-          if (calls === 1) {
-            const linked = await rowsRepo.findById(input.id);
-            expect(linked?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
-          }
-          if (calls === 2) {
-            throw new Error("simulated mid-link write failure");
-          }
-        },
-      );
+      vi.spyOn(
+        ProgramRowsRepository.prototype,
+        "linkPlaceholderRowToApprovedVersion",
+      ).mockImplementation(async function (this: ProgramRowsRepository, input) {
+        calls += 1;
+        const linked = await original.call(this, input);
+        if (calls === 1) {
+          expect(linked).toBe(true);
+          const row = await rowsRepo.findById(input.rowId);
+          expect(row?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+        }
+        if (calls === 2) {
+          throw new Error("simulated mid-link write failure");
+        }
+        return linked;
+      });
       await storage.run("BEGIN");
       await expect(
         linkApprovedPlaceholders(storage, id("req-write-fail"), FIXTURE_VERSION_ID),

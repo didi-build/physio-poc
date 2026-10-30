@@ -160,6 +160,9 @@ export class ProgramBuilderService {
     const draftUpdatedAt = this.now();
     let skippedCount = 0;
     for (const row of rows) {
+      if (row.exercise_request_id !== requestId) {
+        continue;
+      }
       const program = await this.programs.findById(row.program_id);
       if (!program) {
         continue;
@@ -182,18 +185,15 @@ export class ProgramBuilderService {
         overrides: resolved.overrides,
         prescriptionType: row.prescription_type,
       });
-      await this.rows.replaceRow({
-        id: row.id,
+      await this.rows.linkPlaceholderRowToApprovedVersion({
         programId: row.program_id,
-        position: row.position,
+        rowId: row.id,
+        exerciseRequestId: requestId,
         exerciseId: version.exercise_id,
         exerciseVersionId: version.id,
-        prescriptionType: row.prescription_type,
         params,
         textSnapshot,
-        note: row.note,
         draftUpdatedAt,
-        allowSoftDeletedProgram: true,
       });
     }
     return skippedCount;
