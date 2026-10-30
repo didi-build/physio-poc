@@ -1,10 +1,10 @@
 # Mutating app API CSRF guard test coverage (DIDI-1092)
 
-Shared guard: `src/http/mutating-app-api-csrf.ts`. Auth-only paths: `AUTH_APP_API_PREFIX` (`/api/auth/` with trailing slash) in `src/auth/auth-app-api-prefix.ts`. Wired in `src/http/app.ts` (see [CTO ruling faa8d286](https://linear.app/didi-build/issue/DIDI-1092#comment-faa8d286) and [follow-up 47311a43](https://linear.app/didi-build/issue/DIDI-1092#comment-47311a43)).
+Shared guard: `src/http/mutating-app-api-csrf.ts`. Auth-only paths: `AUTH_APP_API_PREFIX` (`/api/auth/` with trailing slash) in `src/auth/auth-app-api-prefix.ts`. Wired in `src/http/app.ts` (see [CTO ruling 4662191a](https://linear.app/didi-build/issue/DIDI-1092#comment-4662191a), [faa8d286](https://linear.app/didi-build/issue/DIDI-1092#comment-faa8d286), and [47311a43](https://linear.app/didi-build/issue/DIDI-1092#comment-47311a43)).
 
 Production enforces only:
 
-- Non-safe methods (not GET, HEAD, or OPTIONS) under `/api/**` except paths under `CSRF_EXEMPT_APP_API_AUTH_PREFIX` (`/api/auth/`). Bare `/api/auth` is not exempt. Matching is case-sensitive on the prefix string.
+- Non-safe methods (not GET, HEAD, or OPTIONS) under `/api/**` except paths under `CSRF_EXEMPT_APP_API_AUTH_PREFIX` (imported from auth; sole `/api/auth/` literal lives in `auth-app-api-prefix.ts`). Bare `/api/auth` is not exempt. Matching is case-sensitive on the prefix string.
 - Requests under `/api/auth/` are handled only by the auth port; if the port does not serve the path, `handleRequest` returns 404 with no app dispatch.
 - JSON `Content-Type`, allowed `Origin` or `Referer`, 403 or 415 only.
 
@@ -12,31 +12,31 @@ Production enforces only:
 
 ## What `test/mutating-app-api-csrf.test.ts` and unit tests enforce
 
-| Behavior                                           | Test                                                                                       |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Cross-origin non-safe `/api/` requests return 403  | handleRequest on registry samples and `/api/__probe_new_route`                             |
-| Unregistered path gets 403 not 404 when CSRF fails | POST `/api/__probe_new_route` cross-origin with session; body `{ error: "forbidden" }`     |
-| CSRF before dispatch on unregistered path          | same-origin POST on probe path returns 404 `{ error: "not_found" }`                        |
-| Lowercase non-standard methods guarded             | handleRequest `patch` and `propfind` cross-origin on probe path                            |
-| POST, PUT, PATCH, DELETE, PROPFIND covered         | loop on `/api/__probe_new_route`                                                           |
-| `/api/auth/**` exempt (trailing slash prefix)      | handleRequest POST `/api/auth/sign-out` cross-origin; unit `rejectMutatingAppApiCsrf`      |
-| Bare `/api/auth` and `/api/auth?x` not exempt      | handleRequest POST cross-origin with session                                               |
-| Case-mismatched `/api/auth/` not exempt            | POST `/api/AUTH/x` and `/api/Auth/sign-out` cross-origin with session                      |
-| `/api/authx` and `/api/auth-like` not exempt       | handleRequest POST with cross-origin                                                       |
-| Auth fallthrough to app dispatch                   | POST `/api/auth/zzz` with auth null stub and catch-all `extraRouteHandlers`; probe not run |
-| Removing handleRequest 404 for `/api/auth/`        | same test (catch-all would return `{ error: "catch_all_ran" }`)                            |
-| FakeAuthPort null for unknown auth path            | unit: `FakeAuthPort.handleAuthRequest` on `/api/auth/zzz` returns 404 body, not null       |
-| GET, HEAD, OPTIONS not CSRF rejected               | `requiresAppApiCsrfGuard` false; handleRequest status not 403 or 415                       |
-| Sole exemption prefix pinned                       | `CSRF_EXEMPT_APP_API_AUTH_PREFIX === "/api/auth/"`                                         |
-| JSON content type and origin rules                 | unit and integration cases                                                                 |
-| Origin allow `startsWith` on parsed origin         | handleRequest Origin look-alikes (suffix and different port) per allowed origin            |
-| Origin allow `startsWith` on raw Origin header     | same Origin look-alike tests                                                               |
-| Referer look-alike without Origin                  | handleRequest Referer with allowed-host `.attacker.example` suffix; storage unchanged      |
-| Form content types 415 through handleRequest       | POST with urlencoded and multipart; practitioner_exercises row count unchanged             |
-| Known routes extra coverage                        | test-only `MUTATING_APP_API_ROUTE_SAMPLES`                                                 |
-| `/api/auth/` not in guarded-api route samples      | `test/route-table.test.ts`                                                                 |
+| Behavior                                           | Test                                                                                                                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cross-origin non-safe `/api/` requests return 403  | handleRequest on registry samples and `/api/__probe_new_route`                                                                                             |
+| Unregistered path gets 403 not 404 when CSRF fails | POST `/api/__probe_new_route` cross-origin with session; body `{ error: "forbidden" }`                                                                     |
+| CSRF before dispatch on unregistered path          | same-origin POST on probe path returns 404 `{ error: "not_found" }`                                                                                        |
+| Lowercase non-standard methods guarded             | handleRequest `patch` and `propfind` cross-origin on probe path                                                                                            |
+| POST, PUT, PATCH, DELETE, PROPFIND covered         | loop on `/api/__probe_new_route`                                                                                                                           |
+| `/api/auth/**` exempt (trailing slash prefix)      | handleRequest POST `/api/auth/sign-out` cross-origin; unit `rejectMutatingAppApiCsrf`                                                                      |
+| Bare `/api/auth` and `/api/auth?x` not exempt      | handleRequest POST cross-origin with session                                                                                                               |
+| Case-mismatched auth API paths not exempt          | POST `/API/AUTH/x` and `/Api/Auth/x` cross-origin with session; storage unchanged                                                                          |
+| `/api/authx` and `/api/auth-like` not exempt       | handleRequest POST with cross-origin                                                                                                                       |
+| Auth fallthrough to app dispatch                   | POST `/api/auth/zzz` with auth null stub and catch-all `extraRouteHandlers`; probe not run                                                                 |
+| Removing handleRequest 404 for `/api/auth/`        | same test (catch-all would return `{ error: "catch_all_ran" }`)                                                                                            |
+| FakeAuthPort null for unknown auth path            | unit: `FakeAuthPort.handleAuthRequest` on `/api/auth/zzz` returns 404 body, not null                                                                       |
+| GET, HEAD, OPTIONS not CSRF rejected               | `requiresAppApiCsrfGuard` false; handleRequest status not 403 or 415                                                                                       |
+| Sole exemption prefix pinned                       | `AUTH_APP_API_PREFIX === "/api/auth/"`; CSRF re-export equals auth constant                                                                                |
+| Each configured allowed Origin accepted            | handleRequest POST with fixture literals `https://physio.test.example`, `https://app.example.com`, `http://127.0.0.1:8787` (not read from production list) |
+| JSON content type and origin rules                 | unit and integration cases                                                                                                                                 |
+| Origin allow exact match (not `startsWith`)        | handleRequest Origin look-alikes (suffix and different port) per fixture origin                                                                            |
+| Referer look-alike without Origin                  | handleRequest Referer with allowed-host `.attacker.example` suffix; storage unchanged                                                                      |
+| Form content types 415 through handleRequest       | POST with urlencoded and multipart; practitioner_exercises row count unchanged                                                                             |
+| Known routes extra coverage                        | test-only `MUTATING_APP_API_ROUTE_SAMPLES`                                                                                                                 |
+| `/api/auth/` not in guarded-api route samples      | `test/route-table.test.ts`                                                                                                                                 |
 
-Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api/auth`, case-insensitive prefix matching, falling through from `/api/auth/` to app dispatch, or using `startsWith` instead of exact origin matching should fail the tests above.
+Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api/auth`, case-insensitive prefix matching, a second hardcoded exemption literal in the guard, falling through from `/api/auth/` to app dispatch, dropping an allowed origin from production config, or using `startsWith` instead of exact origin matching should fail the tests above.
 
 ## Honest mutation survivors
 
@@ -46,4 +46,14 @@ Removing the `/api/` CSRF call in `app.ts`, widening the exemption to bare `/api
 | Separate 403 returns for missing vs disallowed origin | Same status and JSON body if merged.                                               |
 | `extraRouteHandlers` outside `/api/`                  | Guard runs only in the `/api/` branch; see ADR 0007 consequences.                  |
 
-Removing the guard call in `app.ts` fails cross-origin and unregistered-path handleRequest cases (404 or 200 instead of 403). Treating bare `/api/auth` as exempt fails bare-path CSRF tests. Case-insensitive `isAuthAppApiPath` fails `/api/AUTH/x` and `/api/Auth/sign-out` tests. Auth fallthrough, dropping the `/api/auth/` 404 in `app.ts`, or `FakeAuthPort` returning null for unknown paths fails the catch-all probe test or the FakeAuthPort unit test. Replacing exact `Set.has` origin checks with `startsWith` fails Origin and Referer look-alike handleRequest tests.
+## Mutants killed by this suite (manual verification)
+
+| Mutant                                                                     | Killing test                                                                                 |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Case-insensitive `isAuthAppApiPath` (lowercased prefix match)              | POST `/API/AUTH/x` and `/Api/Auth/x` cross-origin with session                               |
+| Exemption prefix without trailing slash                                    | pin `AUTH_APP_API_PREFIX === "/api/auth/"`; bare `/api/auth` CSRF tests                      |
+| Second hardcoded `/api/auth/` literal in CSRF guard instead of auth import | unit: CSRF module source must assign `CSRF_EXEMPT_APP_API_AUTH_PREFIX = AUTH_APP_API_PREFIX` |
+| Drop one origin from `allowedMutatingAppApiOrigins`                        | fixture literal accept loop in Origin look-alike test                                        |
+| Replace exact origin `Set.has` with `startsWith`                           | Origin and Referer look-alike handleRequest tests                                            |
+
+Removing the guard call in `app.ts` fails cross-origin and unregistered-path handleRequest cases (404 or 200 instead of 403). Treating bare `/api/auth` as exempt fails bare-path CSRF tests. Auth fallthrough, dropping the `/api/auth/` 404 in `app.ts`, or `FakeAuthPort` returning null for unknown paths fails the catch-all probe test or the FakeAuthPort unit test.

@@ -6,14 +6,13 @@ import {
   type AppDependencies,
   type AppRouteHandler,
 } from "../src/http/app.js";
+import { AUTH_APP_API_PREFIX } from "../src/auth/auth-app-api-prefix.js";
 import {
-  allowedMutatingAppApiOrigins,
   CSRF_EXEMPT_APP_API_AUTH_PREFIX,
   isCsrfExemptAppApiAuthPath,
   rejectMutatingAppApiCsrf,
   requiresAppApiCsrfGuard,
 } from "../src/http/mutating-app-api-csrf.js";
-import type { PhysioServerConfig } from "../src/http/config.js";
 import {
   MUTATING_APP_API_ROUTE_SAMPLES,
   mutatingAppApiRouteSampleKey,
@@ -38,6 +37,12 @@ import type {
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
+/** Pinned to MCP_TEST_CONFIG / resolveTestPhysioServerConfig defaults; not read from production. */
+const ALLOWED_ORIGINS_CSRF_FIXTURE = [
+  "https://physio.test.example",
+  "https://app.example.com",
+  "http://127.0.0.1:8787",
+] as const;
 const PRACTITIONER_ID = testOpaqueEntityId("csrf-practitioner");
 const EXERCISE_ID = testOpaqueEntityId("csrf-exercise");
 const VERSION_ID = testOpaqueEntityId("csrf-version");
@@ -86,12 +91,24 @@ async function practitionerExerciseRowSnapshot(sql: SqlStoragePort): Promise<num
   return row?.count ?? 0;
 }
 
-function configuredAllowedOrigins(
-  config: PhysioServerConfig,
-  requestUrl: string,
-): string[] {
-  const request = new Request(requestUrl, { method: "POST" });
-  return [...allowedMutatingAppApiOrigins(request, config)];
+async function postMutatingWithOrigin(
+  deps: AppDependencies,
+  cookie: string,
+  path: string,
+  origin: string,
+): Promise<Response> {
+  return handleRequest(
+    new Request(`${BASE}${path}`, {
+      method: "POST",
+      headers: {
+        cookie,
+        origin,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ action: "save" }),
+    }),
+    deps,
+  );
 }
 
 function lookalikeOriginWithAttackerSuffix(allowedOrigin: string): string {
@@ -321,8 +338,9 @@ describe("mutating app API CSRF guard", () => {
 });
 
 describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
-  it("pins the sole CSRF exemption prefix", () => {
-    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe("/api/auth/");
+  it("pins the sole auth API prefix constant and CSRF import", () => {
+    expect(AUTH_APP_API_PREFIX).toBe("/api/auth/");
+    expect(CSRF_EXEMPT_APP_API_AUTH_PREFIX).toBe(AUTH_APP_API_PREFIX);
     expect(isCsrfExemptAppApiAuthPath("/api/auth/sign-out")).toBe(true);
     expect(isCsrfExemptAppApiAuthPath("/api/auth")).toBe(false);
     expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
@@ -422,9 +440,10 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
     }
   });
 
-  it("applies CSRF to case-mismatched /api/auth/ paths", async () => {
+  it("applies CSRF to case-mismatched auth API paths", async () => {
     const { deps, cookie } = await sessionDeps();
-    for (const path of ["/api/AUTH/x", "/api/Auth/sign-out"]) {
+    for (const path of ["/API/AUTH/x", "/Api/Auth/x"]) {
+      const before = await practitionerExerciseRowSnapshot(deps.sql);
       const response = await handleRequest(
         new Request(`${BASE}${path}`, {
           method: "POST",
@@ -438,31 +457,24 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
         deps,
       );
       expect(response.status, path).toBe(403);
+      expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
     }
   });
 
-  it("rejects Origin look-alikes of each allowed origin with 403 and changes nothing", async () => {
+  it("accepts each fixture allowed Origin and rejects look-alikes with 403", async () => {
     const { deps, cookie } = await sessionDeps();
     const path = MUTATING_POST_PATH();
-    const allowed = configuredAllowedOrigins(MCP_TEST_CONFIG, `${BASE}${path}`);
-    for (const allowedOrigin of allowed) {
+    for (const allowedOrigin of ALLOWED_ORIGINS_CSRF_FIXTURE) {
+      const accepted = await postMutatingWithOrigin(deps, cookie, path, allowedOrigin);
+      expect(accepted.status, `accept ${allowedOrigin}`).not.toBe(403);
+      expect(accepted.status, `accept ${allowedOrigin}`).not.toBe(415);
+
       for (const lookalike of [
         lookalikeOriginWithAttackerSuffix(allowedOrigin),
         lookalikeOriginWithDifferentPort(allowedOrigin),
       ]) {
         const before = await practitionerExerciseRowSnapshot(deps.sql);
-        const response = await handleRequest(
-          new Request(`${BASE}${path}`, {
-            method: "POST",
-            headers: {
-              cookie,
-              origin: lookalike,
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({ action: "save" }),
-          }),
-          deps,
-        );
+        const response = await postMutatingWithOrigin(deps, cookie, path, lookalike);
         expect(response.status, lookalike).toBe(403);
         expect(await practitionerExerciseRowSnapshot(deps.sql)).toBe(before);
       }
@@ -472,8 +484,7 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
   it("rejects Referer look-alike without Origin with 403 and changes nothing", async () => {
     const { deps, cookie } = await sessionDeps();
     const path = MUTATING_POST_PATH();
-    const allowed = configuredAllowedOrigins(MCP_TEST_CONFIG, `${BASE}${path}`);
-    const referer = lookalikeRefererForAllowedOrigin(allowed[0]!);
+    const referer = lookalikeRefererForAllowedOrigin(ALLOWED_ORIGINS_CSRF_FIXTURE[0]);
     const before = await practitionerExerciseRowSnapshot(deps.sql);
     const response = await handleRequest(
       new Request(`${BASE}${path}`, {

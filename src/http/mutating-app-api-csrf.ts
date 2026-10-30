@@ -6,6 +6,17 @@ import { jsonForbidden } from "./responses.js";
 export const CSRF_EXEMPT_APP_API_AUTH_PREFIX = AUTH_APP_API_PREFIX;
 
 const SAFE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const APP_API_PATH_PREFIX = "/api/";
+
+/** True when pathname is under `/api/**` (prefix match is case-insensitive). */
+export function isAppApiPath(pathname: string): boolean {
+  if (pathname.length < APP_API_PATH_PREFIX.length) {
+    return false;
+  }
+  return (
+    pathname.slice(0, APP_API_PATH_PREFIX.length).toLowerCase() === APP_API_PATH_PREFIX
+  );
+}
 
 export function isNonSafeHttpMethod(method: string): boolean {
   return !SAFE_HTTP_METHODS.has(method.toUpperCase());
@@ -16,7 +27,7 @@ export function isCsrfExemptAppApiAuthPath(pathname: string): boolean {
 }
 
 export function requiresAppApiCsrfGuard(pathname: string, method: string): boolean {
-  if (!pathname.startsWith("/api/")) {
+  if (!isAppApiPath(pathname)) {
     return false;
   }
   if (!isNonSafeHttpMethod(method)) {
