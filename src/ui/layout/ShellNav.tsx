@@ -163,7 +163,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
           aria-label="Account menu"
           onClick={onToggle}
         >
-          <span className="shell-account-avatar" aria-hidden>
+          <span
+            className="shell-account-avatar"
+            aria-hidden
+            data-testid="shell-account-avatar"
+          >
             K
           </span>
           <span className="shell-account-name">{ACCOUNT_DISPLAY_NAME}</span>

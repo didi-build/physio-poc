@@ -9,6 +9,8 @@ import { validateFreeTextForPatientDetails } from "./mcp-connector/patient-detai
 export const PHYSIO_APP_ROUTE_PATTERNS = {
   exercises: "/exercises",
   exerciseSearch: "/exercises/search",
+  exerciseDetail: "/exercises/:exerciseId",
+  exerciseMyCopy: "/exercises/:exerciseId/my-copy",
   routines: "/routines",
   programs: "/programs",
   requests: "/requests",
@@ -46,6 +48,7 @@ export const FROM_ROUTINE_ID_QUERY_PARAM = "from_routine_id";
 
 export type FillPhysioAppRouteParams = {
   readonly programCode?: string;
+  readonly exerciseId?: string;
 };
 
 export function fillPhysioAppRoutePattern(
@@ -59,6 +62,13 @@ export function fillPhysioAppRoutePattern(
       throw new Error(`Route ${routeName} requires programCode`);
     }
     path = path.replace(":programCode", encodeURIComponent(code));
+  }
+  if (path.includes(":exerciseId")) {
+    const exerciseId = params.exerciseId?.trim();
+    if (!exerciseId) {
+      throw new Error(`Route ${routeName} requires exerciseId`);
+    }
+    path = path.replace(":exerciseId", encodeURIComponent(exerciseId));
   }
   return path;
 }
@@ -80,6 +90,8 @@ export function physioAppSpaRoutePath(routeName: PhysioAppRouteName): string {
 export const PHYSIO_APP_SPA_ROUTE_NAMES = [
   "exercises",
   "exerciseSearch",
+  "exerciseDetail",
+  "exerciseMyCopy",
   "routines",
   "programs",
   "programNew",
@@ -137,6 +149,18 @@ export function capRawExerciseSearchQueryForUrl(raw: string): string {
     codePoints = codePoints.slice(0, -1);
   }
   return codePoints.join("");
+}
+
+/** In-app path for All exercises search (includes `q` when non-empty). */
+export function physioAppExerciseSearchPath(rawQuery: string): string {
+  const path = fillPhysioAppRoutePattern("exerciseSearch");
+  const capped = capRawExerciseSearchQueryForUrl(rawQuery.trim());
+  if (capped.length === 0) {
+    return path;
+  }
+  const params = new URLSearchParams();
+  params.set(EXERCISE_SEARCH_QUERY_PARAM, capped);
+  return `${path}?${params.toString()}`;
 }
 
 export function buildStubPublicShareLink(webAppBaseUrl: string): string {
