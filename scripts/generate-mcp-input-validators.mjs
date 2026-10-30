@@ -2,7 +2,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import {
   buildAllGeneratedOutputs,
-  dateVendorPath,
   generatedOutputsMatchCommitted,
   metaPath,
   outPath,
@@ -14,7 +13,6 @@ function writeAllGeneratedOutputs() {
   mkdirSync(runtimeDir, { recursive: true });
   const outputs = buildAllGeneratedOutputs();
   writeFileSync(ucs2VendorPath, outputs.ucs2Vendor, "utf8");
-  writeFileSync(dateVendorPath, outputs.dateVendor, "utf8");
   writeFileSync(metaPath, outputs.meta, "utf8");
   writeFileSync(outPath, outputs.validators, "utf8");
 }

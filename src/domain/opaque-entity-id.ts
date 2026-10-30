@@ -9,6 +9,16 @@ export class OpaqueEntityIdValidationError extends Error {
 export const OPAQUE_ENTITY_ID_FORMAT =
   "UUID v4: xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx (hex, case insensitive)";
 
+/**
+ * Practitioner ids on exercise data rows are `practitioners.id` values, not Better Auth
+ * `user.id`. DIDI-1001 (`BetterAuthPort.getPractitioner`) reads `user.practitionerId` from
+ * the Better Auth session, resolves the practitioner row with
+ * `resolveBoundPractitionerSession`, and checks the row email matches the session. Better
+ * Auth still generates its own opaque ids for auth tables (`user`, `session`, `account`);
+ * those stay in the auth schema and are not written through these repositories. New
+ * practitioner rows inserted via `PractitionersRepository` must use UUID v4 ids here.
+ */
+
 /** JSON Schema pattern matching {@link isValidOpaqueEntityId} (no /i flag). */
 export const OPAQUE_ENTITY_ID_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$";
