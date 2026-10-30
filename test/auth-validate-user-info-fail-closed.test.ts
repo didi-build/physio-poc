@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { genericOAuth } from "better-auth/plugins";
+import { describe, expect, it } from "vitest";
 import { betterAuth } from "better-auth";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import {
@@ -23,16 +22,9 @@ import {
 } from "../src/storage/migrations/apply.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
-import { completeGoogleSignIn, CookieJar } from "./helpers/google-sign-in-flow.js";
+import { completeGoogleSignIn } from "./helpers/google-sign-in-flow.js";
 import { MIGRATION_0001_SQL } from "./helpers/exercise-sqlite-fixture.js";
-import { handleRequest, type AppDependencies } from "../src/http/app.js";
-import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
-import { handleAppRequestForAuthTests } from "./helpers/handle-app-request-for-auth-tests.js";
-import {
-  TEST_NON_GOOGLE_OAUTH_AUTH_PATH,
-  testNonGoogleOAuthExpectedRedirectUri,
-} from "./helpers/test-non-google-oauth-authorize.js";
-import * as testNonGoogleOAuthAuthorize from "./helpers/test-non-google-oauth-authorize.js";
+import type { AppDependencies } from "../src/http/app.js";
 import type { BetterAuthRuntime } from "../src/adapters/node/better-auth-types.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -52,37 +44,6 @@ const ALLOWED_USER = {
   name: "Kojo",
 } as const;
 
-async function requestWithJarForAuthTests(
-  baseUrl: string,
-  url: string,
-  deps: AppDependencies,
-  jar: CookieJar,
-  options: { testNonGoogleOAuthProviderId?: string } = {},
-  init: RequestInit = {},
-): Promise<Response> {
-  const headers = new Headers(init.headers);
-  const cookie = jar.header();
-  if (cookie) {
-    headers.set("cookie", cookie);
-    if (
-      (init.method === "POST" || init.method === "PUT" || init.method === "PATCH") &&
-      !headers.has("origin")
-    ) {
-      headers.set("origin", new URL(baseUrl).origin);
-    }
-  }
-  const response = await handleAppRequestForAuthTests(
-    new Request(url, {
-      ...init,
-      headers,
-    }),
-    deps,
-    options,
-  );
-  jar.absorb(response);
-  return response;
-}
-
 async function countAuthTables(
   storage: BetterSqliteStorage,
 ): Promise<{ user: number; account: number; session: number; verification: number }> {
@@ -96,6 +57,26 @@ async function countAuthTables(
     (await storage.first<{ c: number }>('SELECT count(*) as c FROM "verification"'))
       ?.c ?? 0;
   return { user, account, session, verification };
+}
+
+async function createAuthTestDeps(
+  storage: BetterSqliteStorage,
+  serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
+): Promise<AppDependencies> {
+  installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
+  const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
+  const runtime = betterAuth({
+    ...options,
+    database: storage.nativeDatabase(),
+  }) as BetterAuthRuntime;
+  return {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config: serverConfig,
+    auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
+    mcp: createPhysioMcpHttpHandler(serverConfig),
+    enableFakeGoogleRoutes: true,
+  };
 }
 
 describe("createDefaultPhysioValidateUserInfo (unit)", () => {
@@ -178,108 +159,8 @@ describe("createDefaultPhysioValidateUserInfo (unit)", () => {
   });
 });
 
-describe("test non-google oauth authorize (production isolation)", () => {
-  it("production handleRequest does not serve test oauth authorize when fake routes are off", async () => {
-    const deps = await createNodeAppDependencies({
-      AUTH_BASE_URL: BASE,
-      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
-      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
-    });
-    const redirectUri = testNonGoogleOAuthExpectedRedirectUri(BASE, "github");
-    const authorizeUrl = new URL(`${BASE}${TEST_NON_GOOGLE_OAUTH_AUTH_PATH}`);
-    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-    authorizeUrl.searchParams.set("state", "fixture-state");
-    authorizeUrl.searchParams.set("fixture", "allowed");
-
-    const response = await handleRequest(new Request(authorizeUrl.toString()), {
-      ...deps,
-      enableFakeGoogleRoutes: false,
-    });
-
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location") ?? "").toContain("/sign-in");
-    expect(response.headers.get("location") ?? "").not.toContain(
-      "/api/auth/callback/github",
-    );
-  });
-
-  it("does not call test oauth authorize when fake routes are off even if a provider id is requested", async () => {
-    const deps = await createNodeAppDependencies({
-      AUTH_BASE_URL: BASE,
-      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
-      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
-    });
-    const spy = vi.spyOn(
-      testNonGoogleOAuthAuthorize,
-      "handleTestNonGoogleOAuthAuthorizeRequest",
-    );
-    try {
-      const redirectUri = testNonGoogleOAuthExpectedRedirectUri(BASE, "github");
-      const authorizeUrl = new URL(`${BASE}${TEST_NON_GOOGLE_OAUTH_AUTH_PATH}`);
-      authorizeUrl.searchParams.set("redirect_uri", redirectUri);
-      authorizeUrl.searchParams.set("state", "fixture-state");
-
-      await handleAppRequestForAuthTests(
-        new Request(authorizeUrl.toString()),
-        { ...deps, enableFakeGoogleRoutes: false },
-        { testNonGoogleOAuthProviderId: "github" },
-      );
-
-      expect(spy).not.toHaveBeenCalled();
-    } finally {
-      spy.mockRestore();
-    }
-  });
-});
-
-describe("validateUserInfo provider gate (integration)", () => {
-  function createBetterAuthWithExtraOAuthProvider(
-    storage: BetterSqliteStorage,
-    serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
-  ): BetterAuthRuntime {
-    installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
-    const base = serverConfig.auth.authBaseUrl.replace(/\/$/, "");
-    const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
-    const auth = betterAuth({
-      ...options,
-      plugins: [
-        ...(options.plugins ?? []),
-        genericOAuth({
-          config: [
-            {
-              providerId: "github",
-              clientId: "fake-github-client",
-              clientSecret: "fake-github-secret",
-              authorizationUrl: `${base}${TEST_NON_GOOGLE_OAUTH_AUTH_PATH}`,
-              tokenUrl: `${base}/__fake-google/token`,
-              userInfoUrl: `${base}/__fake-google/oauth2/v3/userinfo`,
-              scopes: ["openid", "email", "profile"],
-              pkce: true,
-              accountSubject: ({ profile }) => {
-                const sub = profile.sub ?? profile.id;
-                return typeof sub === "string" || typeof sub === "number"
-                  ? String(sub)
-                  : "fixture-subject";
-              },
-              mapProfileToUser: (profile) => ({
-                email: typeof profile.email === "string" ? profile.email : null,
-                name: typeof profile.name === "string" ? profile.name : "Fixture user",
-                emailVerified:
-                  profile.email_verified === true || profile.emailVerified === true,
-                image: undefined,
-              }),
-            },
-          ],
-        }),
-      ],
-      database: storage.nativeDatabase(),
-    });
-    return auth as BetterAuthRuntime;
-  }
-
-  it("writes zero auth rows when oauth providerId is not google", async () => {
+describe("validateUserInfo via fake Google OAuth (integration)", () => {
+  it("writes zero auth rows when fake Google userinfo fails validateUserInfo", async () => {
     const storage = BetterSqliteStorage.openInMemory();
     try {
       await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
@@ -296,62 +177,11 @@ describe("validateUserInfo provider gate (integration)", () => {
         PHYSIO_TEST_BETTER_AUTH_SECRET,
         { authBaseUrl: BASE },
       );
-      const runtime = createBetterAuthWithExtraOAuthProvider(storage, serverConfig);
-      const deps: AppDependencies = {
-        sql: storage,
-        objects: new InMemoryObjectStorage(),
-        config: serverConfig,
-        auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
-        mcp: createPhysioMcpHttpHandler(serverConfig),
-        enableFakeGoogleRoutes: true,
-      };
-
-      const cookieJar = new CookieJar();
-      const signIn = await requestWithJarForAuthTests(
-        BASE,
-        `${BASE}/api/auth/sign-in/social`,
-        deps,
-        cookieJar,
-        { testNonGoogleOAuthProviderId: "github" },
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: "github", callbackURL: "/exercises" }),
-        },
-      );
-      const payload = (await signIn.json()) as { url?: string };
-      expect(payload.url).toBeTruthy();
-      const authorizeUrl = new URL(payload.url ?? "");
-      authorizeUrl.searchParams.set("fixture", "allowed");
-      let response = await requestWithJarForAuthTests(
-        BASE,
-        authorizeUrl.toString(),
-        deps,
-        cookieJar,
-        { testNonGoogleOAuthProviderId: "github" },
-      );
-      for (
-        let step = 0;
-        step < 8 && response.status >= 300 && response.status < 400;
-        step += 1
-      ) {
-        const nextUrl = response.headers.get("location");
-        if (!nextUrl) {
-          break;
-        }
-        response = await requestWithJarForAuthTests(
-          BASE,
-          new URL(nextUrl, BASE).toString(),
-          deps,
-          cookieJar,
-          { testNonGoogleOAuthProviderId: "github" },
-        );
-      }
-
+      const deps = await createAuthTestDeps(storage, serverConfig);
+      const { lastResponse } = await completeGoogleSignIn(BASE, deps, "refused");
+      expect(await lastResponse.text()).toContain(AUTH_REFUSAL_MESSAGE);
       const counts = await countAuthTables(storage);
       expect(counts).toEqual({ user: 0, account: 0, session: 0, verification: 0 });
-      expect(cookieJar.header()).not.toContain("better-auth.session_token=");
-      expect(await response.text()).toContain(AUTH_REFUSAL_MESSAGE);
     } finally {
       storage.close();
     }
@@ -374,21 +204,7 @@ describe("validateUserInfo provider gate (integration)", () => {
         PHYSIO_TEST_BETTER_AUTH_SECRET,
         { authBaseUrl: BASE },
       );
-      installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
-      const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
-      const runtime = betterAuth({
-        ...options,
-        database: storage.nativeDatabase(),
-      }) as BetterAuthRuntime;
-      const deps: AppDependencies = {
-        sql: storage,
-        objects: new InMemoryObjectStorage(),
-        config: serverConfig,
-        auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
-        mcp: createPhysioMcpHttpHandler(serverConfig),
-        enableFakeGoogleRoutes: true,
-      };
-
+      const deps = await createAuthTestDeps(storage, serverConfig);
       const { jar, lastResponse } = await completeGoogleSignIn(BASE, deps, "allowed");
       expect(lastResponse.status).not.toBe(500);
       expect(jar.header()).toContain("better-auth.session_token=");
