@@ -3,6 +3,7 @@ export {
   ProgramBuilderServiceError,
   computeAutoSaveStatus,
   detectLibraryUpdate,
+  linkApprovedPlaceholders,
 } from "./program-builder-service.js";
 export type {
   ProgramAutoSaveStatus,

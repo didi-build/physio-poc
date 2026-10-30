@@ -396,6 +396,7 @@ export class ProgramRowsRepository {
     textSnapshot: ProgramRowTextSnapshot;
     note?: string | null;
     draftUpdatedAt: string;
+    touchDraft?: boolean;
   }): Promise<void> {
     const rowId = validateOpaqueEntityId(input.id, "Program row id");
     const program = await new ProgramsRepository(this.sql).findById(input.programId);
@@ -448,10 +449,12 @@ export class ProgramRowsRepository {
         note,
       ],
     );
-    await new ProgramsRepository(this.sql).touchDraft(
-      input.programId,
-      input.draftUpdatedAt,
-    );
+    if (input.touchDraft !== false) {
+      await new ProgramsRepository(this.sql).touchDraft(
+        input.programId,
+        input.draftUpdatedAt,
+      );
+    }
   }
 
   async listForProgram(programId: string): Promise<ProgramRow[]> {
@@ -460,6 +463,21 @@ export class ProgramRowsRepository {
               prescription_type, params_json, text_snapshot_json, note
        FROM program_rows WHERE program_id = ? ORDER BY position ASC`,
       [programId],
+    );
+    return rows.map((row) => ({
+      ...row,
+      prescription_type: assertPrescriptionType(row.prescription_type),
+    }));
+  }
+
+  async listForExerciseRequestId(exerciseRequestId: string): Promise<ProgramRow[]> {
+    const rows = await this.sql.all<ProgramRow>(
+      `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+              prescription_type, params_json, text_snapshot_json, note
+       FROM program_rows
+       WHERE exercise_request_id = ?
+       ORDER BY program_id ASC, position ASC`,
+      [exerciseRequestId],
     );
     return rows.map((row) => ({
       ...row,

@@ -300,6 +300,26 @@ export class ExerciseBodyRegionsRepository {
 export class ExerciseRequestsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
+  async findById(requestId: string): Promise<{
+    id: string;
+    requested_name: string;
+    requested_by: string;
+    status: ExerciseRequestStatus;
+    exercise_id: string | null;
+  } | null> {
+    return this.sql.first<{
+      id: string;
+      requested_name: string;
+      requested_by: string;
+      status: ExerciseRequestStatus;
+      exercise_id: string | null;
+    }>(
+      `SELECT id, requested_name, requested_by, status, exercise_id
+       FROM exercise_requests WHERE id = ? LIMIT 1`,
+      [requestId],
+    );
+  }
+
   async insert(input: {
     id: string;
     requestedName: string;

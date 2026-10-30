@@ -1,5 +1,8 @@
 import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
-import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  OpaqueEntityIdValidationError,
+  validateOpaqueEntityId,
+} from "../../domain/opaque-entity-id.js";
 import {
   prescriptionTypesForCategory,
   type PrescriptionType,
@@ -14,6 +17,7 @@ import { parseProgramRowTextSnapshotJson } from "../../domain/program-types.js";
 import * as programCodeDomain from "../../domain/program-code.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
+  ExerciseRequestsRepository,
   PractitionersRepository,
   PractitionerExercisesRepository,
 } from "../../storage/repositories/exercise-data.js";
@@ -64,25 +68,18 @@ export class ProgramBuilderServiceError extends Error {
   }
 }
 
-type ExerciseRequestRow = {
-  id: string;
-  requested_name: string;
-  requested_by: string;
-  status: string;
-  exercise_id: string | null;
-};
-
 export class ProgramBuilderService {
   private readonly programs: ProgramsRepository;
   private readonly rows: ProgramRowsRepository;
   private readonly links: ShareLinksRepository;
   private readonly practitioners: PractitionersRepository;
   private readonly practitionerExercises: PractitionerExercisesRepository;
+  private readonly exerciseRequests: ExerciseRequestsRepository;
   private readonly libraryRead: ExerciseLibraryReadRepository;
   private readonly typeDefaults: TypeDefaultsRepository;
 
   constructor(
-    private readonly sql: SqlStoragePort,
+    sql: SqlStoragePort,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {
     this.programs = new ProgramsRepository(sql);
@@ -90,6 +87,7 @@ export class ProgramBuilderService {
     this.links = new ShareLinksRepository(sql);
     this.practitioners = new PractitionersRepository(sql);
     this.practitionerExercises = new PractitionerExercisesRepository(sql);
+    this.exerciseRequests = new ExerciseRequestsRepository(sql);
     this.libraryRead = new ExerciseLibraryReadRepository(sql);
     this.typeDefaults = new TypeDefaultsRepository(sql);
   }
@@ -99,14 +97,18 @@ export class ProgramBuilderService {
     input: { programId: string; name?: string | null },
   ): Promise<ProgramMutationResult> {
     await this.requirePractitioner(practitionerId);
-    const programId = validateOpaqueEntityId(input.programId, "Program id");
+    const programId = this.parseOpaqueId(input.programId, "Program id");
     const createdAt = this.now();
-    await this.programs.create({
-      id: programId,
-      createdBy: practitionerId,
-      createdAt,
-      name: input.name ?? null,
-    });
+    try {
+      await this.programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt,
+        name: input.name ?? null,
+      });
+    } catch (err) {
+      this.mapFreeTextError(err);
+    }
     return { program: await this.buildProgramView(practitionerId, programId) };
   }
 
@@ -114,15 +116,70 @@ export class ProgramBuilderService {
     practitionerId: string,
     programId: string,
   ): Promise<ProgramBuilderView> {
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
     await this.requirePractitioner(practitionerId);
-    const program = await this.requireOwnedProgram(practitionerId, programId, {
+    const program = await this.requireOwnedProgram(practitionerId, validatedProgramId, {
       allowDeleted: true,
     });
-    if (program.deleted_at) {
-      return this.buildProgramView(practitionerId, programId, program);
+    return this.buildProgramView(practitionerId, validatedProgramId, program);
+  }
+
+  /**
+   * Called when an exercise request is approved (same DB transaction as approval).
+   * Replaces placeholder rows tied to the request with the approved exercise version.
+   */
+  async linkApprovedPlaceholders(
+    exerciseRequestId: string,
+    approvedVersionId: string,
+  ): Promise<void> {
+    const requestId = this.parseOpaqueId(exerciseRequestId, "Exercise request id");
+    const versionId = this.parseOpaqueId(approvedVersionId, "Exercise version id");
+    const rows = await this.rows.listForExerciseRequestId(requestId);
+    if (rows.length === 0) {
+      return;
     }
-    await this.syncApprovedPlaceholderRows(practitionerId, programId);
-    return this.buildProgramView(practitionerId, programId);
+    const version = await this.libraryRead.getApprovedVersionById(versionId);
+    if (!version) {
+      throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
+    }
+    const request = await this.exerciseRequests.findById(requestId);
+    if (!request?.exercise_id || request.exercise_id !== version.exercise_id) {
+      throw new ProgramBuilderServiceError(
+        "approvedVersionId does not match the exercise request",
+        "invalid_input",
+      );
+    }
+    const draftUpdatedAt = this.now();
+    for (const row of rows) {
+      const program = await this.programs.findById(row.program_id);
+      if (!program || program.deleted_at) {
+        continue;
+      }
+      this.assertPrescriptionAllowed(version, row.prescription_type);
+      const resolved = await this.resolveRowDefaults(
+        program.created_by,
+        version,
+        row.prescription_type,
+      );
+      const params = parseExerciseParamsJson(row.params_json);
+      const textSnapshot = buildProgramRowTextSnapshot({
+        version,
+        overrides: resolved.overrides,
+        prescriptionType: row.prescription_type,
+      });
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: row.program_id,
+        position: row.position,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        prescriptionType: row.prescription_type,
+        params,
+        textSnapshot,
+        note: row.note,
+        draftUpdatedAt,
+      });
+    }
   }
 
   async listPrograms(
@@ -183,14 +240,15 @@ export class ProgramBuilderService {
     programId: string,
     name: string | null,
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
     try {
-      await this.programs.updateDraftName(programId, name);
+      await this.programs.updateDraftName(validatedProgramId, name);
     } catch (err) {
       this.mapFreeTextError(err);
     }
-    await this.programs.touchDraft(programId, this.now());
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    await this.programs.touchDraft(validatedProgramId, this.now());
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async addExerciseRow(
@@ -205,12 +263,17 @@ export class ProgramBuilderService {
       note?: string | null;
     },
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
-    const version = input.exerciseVersionId
-      ? await this.libraryRead.getApprovedVersionById(input.exerciseVersionId)
-      : await this.libraryRead.getLatestApprovedByExerciseId(input.exerciseId);
-    if (!version || version.exercise_id !== input.exerciseId) {
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const rowId = this.parseOpaqueId(input.rowId, "Program row id");
+    const exerciseId = this.parseOpaqueId(input.exerciseId, "Exercise id");
+    const pinnedVersionId = input.exerciseVersionId
+      ? this.parseOpaqueId(input.exerciseVersionId, "Exercise version id")
+      : undefined;
+    const version = pinnedVersionId
+      ? await this.libraryRead.getApprovedVersionById(pinnedVersionId)
+      : await this.libraryRead.getLatestApprovedByExerciseId(exerciseId);
+    if (!version || version.exercise_id !== exerciseId) {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
     const prescriptionType = this.resolvePrescriptionType(
@@ -222,28 +285,39 @@ export class ProgramBuilderService {
       version,
       prescriptionType,
     );
-    const params = input.params
-      ? validateExerciseParams(input.params)
-      : resolved.params;
+    let params: ExerciseParams;
+    if (input.params) {
+      try {
+        params = validateExerciseParams(input.params);
+      } catch (err) {
+        this.mapParamError(err);
+      }
+    } else {
+      params = resolved.params;
+    }
     const textSnapshot = buildProgramRowTextSnapshot({
       version,
       overrides: resolved.overrides,
       prescriptionType,
     });
-    const existingRows = await this.rows.listForProgram(programId);
-    await this.rows.replaceRow({
-      id: rowId,
-      programId,
-      position: existingRows.length,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      prescriptionType,
-      params,
-      textSnapshot,
-      note: input.note ?? null,
-      draftUpdatedAt: this.now(),
-    });
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    const existingRows = await this.rows.listForProgram(validatedProgramId);
+    try {
+      await this.rows.replaceRow({
+        id: rowId,
+        programId: validatedProgramId,
+        position: existingRows.length,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        prescriptionType,
+        params,
+        textSnapshot,
+        note: input.note ?? null,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async addPlaceholderRow(
@@ -257,37 +331,50 @@ export class ProgramBuilderService {
       note?: string | null;
     },
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
-    const requestId = validateOpaqueEntityId(
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const rowId = this.parseOpaqueId(input.rowId, "Program row id");
+    const requestId = this.parseOpaqueId(
       input.exerciseRequestId,
       "Exercise request id",
     );
-    const request = await this.loadExerciseRequest(requestId);
-    if (!request) {
+    const request = await this.exerciseRequests.findById(requestId);
+    this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
+    if (!input.prescriptionType) {
       throw new ProgramBuilderServiceError(
-        "Exercise request not found",
-        "exercise_request_not_found",
+        "prescriptionType is required for placeholder rows",
+        "invalid_input",
       );
     }
-    const prescriptionType = input.prescriptionType ?? "stretching";
-    const params = input.params
-      ? validateExerciseParams(input.params)
-      : (await this.typeDefaults.listGlobalDefaults())[prescriptionType];
+    const prescriptionType = input.prescriptionType;
+    let params: ExerciseParams;
+    if (input.params) {
+      try {
+        params = validateExerciseParams(input.params);
+      } catch (err) {
+        this.mapParamError(err);
+      }
+    } else {
+      params = (await this.typeDefaults.listGlobalDefaults())[prescriptionType];
+    }
     const textSnapshot = { title: request.requested_name.trim() };
-    const existingRows = await this.rows.listForProgram(programId);
-    await this.rows.replaceRow({
-      id: rowId,
-      programId,
-      position: existingRows.length,
-      exerciseRequestId: requestId,
-      prescriptionType,
-      params,
-      textSnapshot,
-      note: input.note ?? null,
-      draftUpdatedAt: this.now(),
-    });
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    const existingRows = await this.rows.listForProgram(validatedProgramId);
+    try {
+      await this.rows.replaceRow({
+        id: rowId,
+        programId: validatedProgramId,
+        position: existingRows.length,
+        exerciseRequestId: requestId,
+        prescriptionType,
+        params,
+        textSnapshot,
+        note: input.note ?? null,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async updateRow(
@@ -300,8 +387,10 @@ export class ProgramBuilderService {
       note?: string | null;
     },
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const row = await this.requireOwnedRow(programId, rowId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
     let params = parseExerciseParamsJson(row.params_json);
     if (input.params) {
       try {
@@ -310,20 +399,26 @@ export class ProgramBuilderService {
         this.mapParamError(err);
       }
     }
-    const textSnapshot = parseProgramRowTextSnapshotJson(row.text_snapshot_json);
+    const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     if (row.exercise_request_id) {
-      await this.rows.replaceRow({
-        id: row.id,
-        programId,
-        position: row.position,
-        exerciseRequestId: row.exercise_request_id,
-        prescriptionType: input.prescriptionType ?? row.prescription_type,
-        params,
-        textSnapshot,
-        note: input.note !== undefined ? input.note : row.note,
-        draftUpdatedAt: this.now(),
-      });
-      return { program: await this.buildProgramView(practitionerId, programId) };
+      try {
+        await this.rows.replaceRow({
+          id: row.id,
+          programId: validatedProgramId,
+          position: row.position,
+          exerciseRequestId: row.exercise_request_id,
+          prescriptionType: input.prescriptionType ?? row.prescription_type,
+          params,
+          textSnapshot,
+          note: input.note !== undefined ? input.note : row.note,
+          draftUpdatedAt: this.now(),
+        });
+      } catch (err) {
+        this.mapRowWriteError(err);
+      }
+      return {
+        program: await this.buildProgramView(practitionerId, validatedProgramId),
+      };
     }
     const version = await this.libraryRead.getApprovedVersionById(
       row.exercise_version_id!,
@@ -333,19 +428,23 @@ export class ProgramBuilderService {
     }
     const prescriptionType = input.prescriptionType ?? row.prescription_type;
     this.assertPrescriptionAllowed(version, prescriptionType);
-    await this.rows.replaceRow({
-      id: row.id,
-      programId,
-      position: row.position,
-      exerciseId: row.exercise_id,
-      exerciseVersionId: row.exercise_version_id,
-      prescriptionType,
-      params,
-      textSnapshot,
-      note: input.note !== undefined ? input.note : row.note,
-      draftUpdatedAt: this.now(),
-    });
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    try {
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: validatedProgramId,
+        position: row.position,
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+        prescriptionType,
+        params,
+        textSnapshot,
+        note: input.note !== undefined ? input.note : row.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async duplicateRow(
@@ -353,29 +452,35 @@ export class ProgramBuilderService {
     programId: string,
     input: { sourceRowId: string; newRowId: string },
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const source = await this.requireOwnedRow(programId, input.sourceRowId);
-    const newRowId = validateOpaqueEntityId(input.newRowId, "Program row id");
-    const rows = await this.rows.listForProgram(programId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const sourceRowId = this.parseOpaqueId(input.sourceRowId, "Program row id");
+    const newRowId = this.parseOpaqueId(input.newRowId, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const source = await this.requireOwnedRow(validatedProgramId, sourceRowId);
+    const rows = await this.rows.listForProgram(validatedProgramId);
     const params = parseExerciseParamsJson(source.params_json);
-    const textSnapshot = parseProgramRowTextSnapshotJson(source.text_snapshot_json);
-    await this.rows.replaceRow({
-      id: newRowId,
-      programId,
-      position: rows.length,
-      exerciseId: source.exercise_id,
-      exerciseVersionId: source.exercise_version_id,
-      exerciseRequestId: source.exercise_request_id,
-      prescriptionType: source.prescription_type,
-      params,
-      textSnapshot,
-      note: source.note,
-      draftUpdatedAt: this.now(),
-    });
+    const textSnapshot = this.parseRowTextSnapshot(source.text_snapshot_json);
+    try {
+      await this.rows.replaceRow({
+        id: newRowId,
+        programId: validatedProgramId,
+        position: rows.length,
+        exerciseId: source.exercise_id,
+        exerciseVersionId: source.exercise_version_id,
+        exerciseRequestId: source.exercise_request_id,
+        prescriptionType: source.prescription_type,
+        params,
+        textSnapshot,
+        note: source.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
     const ordered = rows.map((row) => row.id);
     ordered.splice(source.position + 1, 0, newRowId);
-    await this.rows.reorderRows(programId, ordered, this.now());
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    await this.rows.reorderRows(validatedProgramId, ordered, this.now());
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async removeRow(
@@ -383,13 +488,15 @@ export class ProgramBuilderService {
     programId: string,
     rowId: string,
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
     try {
-      await this.rows.deleteRow(programId, rowId, this.now());
+      await this.rows.deleteRow(validatedProgramId, validatedRowId, this.now());
     } catch (err) {
       this.mapProgramRepoError(err);
     }
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async reorderRows(
@@ -397,13 +504,17 @@ export class ProgramBuilderService {
     programId: string,
     orderedRowIds: string[],
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    for (const orderedRowId of orderedRowIds) {
+      this.parseOpaqueId(orderedRowId, "Program row id");
+    }
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
     try {
-      await this.rows.reorderRows(programId, orderedRowIds, this.now());
+      await this.rows.reorderRows(validatedProgramId, orderedRowIds, this.now());
     } catch (err) {
       this.mapProgramRepoError(err);
     }
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async applyLibraryUpdateToRow(
@@ -411,8 +522,10 @@ export class ProgramBuilderService {
     programId: string,
     rowId: string,
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const row = await this.requireOwnedRow(programId, rowId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
     if (!row.exercise_id || !row.exercise_version_id) {
       throw new ProgramBuilderServiceError(
         "Program row not found",
@@ -438,19 +551,23 @@ export class ProgramBuilderService {
       prescriptionType: row.prescription_type,
     });
     const params = parseExerciseParamsJson(row.params_json);
-    await this.rows.replaceRow({
-      id: row.id,
-      programId,
-      position: row.position,
-      exerciseId: row.exercise_id,
-      exerciseVersionId: latest.id,
-      prescriptionType: row.prescription_type,
-      params,
-      textSnapshot,
-      note: row.note,
-      draftUpdatedAt: this.now(),
-    });
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    try {
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: validatedProgramId,
+        position: row.position,
+        exerciseId: row.exercise_id,
+        exerciseVersionId: latest.id,
+        prescriptionType: row.prescription_type,
+        params,
+        textSnapshot,
+        note: row.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async keepLibraryUpdateForRow(
@@ -458,8 +575,10 @@ export class ProgramBuilderService {
     programId: string,
     rowId: string,
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    const row = await this.requireOwnedRow(programId, rowId);
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
     if (!row.exercise_id) {
       throw new ProgramBuilderServiceError(
         "Program row not found",
@@ -481,33 +600,43 @@ export class ProgramBuilderService {
         "invalid_input",
       );
     }
-    const textSnapshot = parseProgramRowTextSnapshotJson(row.text_snapshot_json);
+    const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     textSnapshot.libraryUpdateDismissedVersionNumber = latest.version_number;
-    await this.rows.replaceRow({
-      id: row.id,
-      programId,
-      position: row.position,
-      exerciseId: row.exercise_id,
-      exerciseVersionId: row.exercise_version_id,
-      prescriptionType: row.prescription_type,
-      params: parseExerciseParamsJson(row.params_json),
-      textSnapshot,
-      note: row.note,
-      draftUpdatedAt: this.now(),
-    });
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    try {
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: validatedProgramId,
+        position: row.position,
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+        prescriptionType: row.prescription_type,
+        params: parseExerciseParamsJson(row.params_json),
+        textSnapshot,
+        note: row.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   async deleteProgram(
     practitionerId: string,
     programId: string,
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId);
-    await this.programs.softDelete(programId, this.now());
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    await this.programs.softDelete(validatedProgramId, this.now());
     return {
-      program: await this.buildProgramView(practitionerId, programId, undefined, {
-        allowDeleted: true,
-      }),
+      program: await this.buildProgramView(
+        practitionerId,
+        validatedProgramId,
+        undefined,
+        {
+          allowDeleted: true,
+        },
+      ),
     };
   }
 
@@ -516,9 +645,12 @@ export class ProgramBuilderService {
     programId: string,
     at: Date = new Date(this.now()),
   ): Promise<ProgramMutationResult> {
-    await this.requireOwnedProgram(practitionerId, programId, { allowDeleted: true });
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId, {
+      allowDeleted: true,
+    });
     try {
-      await this.programs.restore(programId, at);
+      await this.programs.restore(validatedProgramId, at);
     } catch (err) {
       if (
         err instanceof ProgramRepositoryError &&
@@ -531,7 +663,7 @@ export class ProgramBuilderService {
       }
       this.mapProgramRepoError(err);
     }
-    return { program: await this.buildProgramView(practitionerId, programId) };
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
   private async buildProgramView(
@@ -593,7 +725,7 @@ export class ProgramBuilderService {
     practitionerId: string,
     row: ProgramRow,
   ): Promise<ProgramBuilderRow> {
-    const textSnapshot = parseProgramRowTextSnapshotJson(row.text_snapshot_json);
+    const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     const params = parseExerciseParamsJson(row.params_json);
     if (row.exercise_request_id) {
       return {
@@ -646,51 +778,6 @@ export class ProgramBuilderService {
       note: row.note,
       library_update: libraryUpdate,
     };
-  }
-
-  private async syncApprovedPlaceholderRows(
-    practitionerId: string,
-    programId: string,
-  ): Promise<void> {
-    const rows = await this.rows.listForProgram(programId);
-    for (const row of rows) {
-      if (!row.exercise_request_id) {
-        continue;
-      }
-      const request = await this.loadExerciseRequest(row.exercise_request_id);
-      if (!request || request.status !== "approved" || !request.exercise_id) {
-        continue;
-      }
-      const version = await this.libraryRead.getLatestApprovedByExerciseId(
-        request.exercise_id,
-      );
-      if (!version) {
-        continue;
-      }
-      const resolved = await this.resolveRowDefaults(
-        practitionerId,
-        version,
-        row.prescription_type,
-      );
-      const params = parseExerciseParamsJson(row.params_json);
-      const textSnapshot = buildProgramRowTextSnapshot({
-        version,
-        overrides: resolved.overrides,
-        prescriptionType: row.prescription_type,
-      });
-      await this.rows.replaceRow({
-        id: row.id,
-        programId,
-        position: row.position,
-        exerciseId: version.exercise_id,
-        exerciseVersionId: version.id,
-        prescriptionType: row.prescription_type,
-        params,
-        textSnapshot,
-        note: row.note,
-        draftUpdatedAt: this.now(),
-      });
-    }
   }
 
   private async resolveRowDefaults(
@@ -753,14 +840,74 @@ export class ProgramBuilderService {
     }
   }
 
-  private async loadExerciseRequest(
-    requestId: string,
-  ): Promise<ExerciseRequestRow | null> {
-    return this.sql.first<ExerciseRequestRow>(
-      `SELECT id, requested_name, requested_by, status, exercise_id
-       FROM exercise_requests WHERE id = ? LIMIT 1`,
-      [requestId],
-    );
+  private assertExerciseRequestOwnedByPractitioner(
+    practitionerId: string,
+    request: {
+      requested_by: string;
+    } | null,
+  ): asserts request is { requested_by: string } {
+    if (!request) {
+      throw new ProgramBuilderServiceError(
+        "Exercise request not found",
+        "exercise_request_not_found",
+      );
+    }
+    if (request.requested_by !== practitionerId) {
+      throw new ProgramBuilderServiceError(
+        "Exercise request not found",
+        "exercise_request_not_found",
+      );
+    }
+  }
+
+  private parseRowTextSnapshot(
+    raw: string,
+  ): import("../../domain/program-types.js").ProgramRowTextSnapshot {
+    try {
+      return parseProgramRowTextSnapshotJson(raw);
+    } catch (err) {
+      if (err instanceof Error) {
+        throw new ProgramBuilderServiceError(err.message, "invalid_input");
+      }
+      throw err;
+    }
+  }
+
+  private parseOpaqueId(value: string, fieldLabel: string): string {
+    try {
+      return validateOpaqueEntityId(value, fieldLabel);
+    } catch (err) {
+      this.mapOpaqueEntityIdError(err);
+    }
+    throw new ProgramBuilderServiceError("Invalid opaque id", "invalid_input");
+  }
+
+  private mapOpaqueEntityIdError(err: unknown): never {
+    if (err instanceof OpaqueEntityIdValidationError) {
+      throw new ProgramBuilderServiceError(err.message, "invalid_input");
+    }
+    throw err;
+  }
+
+  private mapRowWriteError(err: unknown): never {
+    if (err instanceof FreeTextValidationError) {
+      this.mapFreeTextError(err);
+    }
+    if (err instanceof ParamValidationError) {
+      this.mapParamError(err);
+    }
+    if (err instanceof ProgramRepositoryError) {
+      if (err.message.includes("text_snapshot_json")) {
+        throw new ProgramBuilderServiceError(err.message, "invalid_input");
+      }
+    }
+    if (
+      err instanceof Error &&
+      err.message.includes("libraryUpdateDismissedVersionNumber")
+    ) {
+      throw new ProgramBuilderServiceError(err.message, "invalid_input");
+    }
+    this.mapProgramRepoError(err);
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {
@@ -869,4 +1016,17 @@ export function detectLibraryUpdate(
     pinned_version_number: pinned.version_number,
     latest_version_number: latest.version_number,
   };
+}
+
+/** Entry point for exercise request approval (same DB transaction). */
+export async function linkApprovedPlaceholders(
+  sql: SqlStoragePort,
+  exerciseRequestId: string,
+  approvedVersionId: string,
+  now: () => string = () => new Date().toISOString(),
+): Promise<void> {
+  await new ProgramBuilderService(sql, now).linkApprovedPlaceholders(
+    exerciseRequestId,
+    approvedVersionId,
+  );
 }
