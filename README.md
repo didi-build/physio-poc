@@ -54,4 +54,4 @@ Copy [`.env.example`](./.env.example) to `.env` for local use. Document each nam
 
 ## License
 
-Proprietary — see [LICENSE](./LICENSE). [LICENSES/launchpad-MIT.txt](./LICENSES/launchpad-MIT.txt) preserves the MIT notice for the Launchpad template components.
+Proprietary — see [LICENSE](./LICENSE). [LICENSES/launchpad-MIT.txt](./LICENSES/launchpad-MIT.txt) preserves the MIT notice for the Launchpad template components. Vendored MCP validator runtime snippets are under [LICENSES/ajv-MIT.txt](./LICENSES/ajv-MIT.txt) and [LICENSES/ajv-formats-MIT.txt](./LICENSES/ajv-formats-MIT.txt).

@@ -47,11 +47,30 @@ const generatedValidators = {
 } as const;
 
 function expectAgreement(toolName: string, data: unknown) {
-  const runtimeOk = runtimeValidators[toolName](data);
-  const generatedOk =
-    generatedValidators[toolName as keyof typeof generatedValidators](data);
+  const runtimeValidate = runtimeValidators[toolName];
+  const generatedValidate =
+    generatedValidators[toolName as keyof typeof generatedValidators];
+  const runtimeOk = runtimeValidate(data);
+  const generatedOk = generatedValidate(data);
   expect(generatedOk).toBe(runtimeOk);
+  if (!runtimeOk && !generatedOk) {
+    type ErrorEntry = { keyword?: string };
+    const runtimeKeywords =
+      (runtimeValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    const generatedKeywords =
+      (generatedValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    expect(generatedKeywords).toEqual(runtimeKeywords);
+  }
 }
+
+const loneHighSurrogate = "\uD800";
+const loneLowSurrogate = "\uDC00";
 
 const emoji = "😀";
 const ninetyNineLetters = "a".repeat(99);
@@ -64,6 +83,14 @@ describe("generated MCP validators vs runtime Ajv", () => {
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: astralQuery } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "x".repeat(101) } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "" } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `stretch${loneHighSurrogate}` },
+      },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${loneLowSurrogate}stretch` },
+      },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: "knee" } },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: astralQuery } },
       {

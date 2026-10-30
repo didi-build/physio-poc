@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import AjvModule from "ajv";
 import addFormatsModule from "ajv-formats";
-import { parse as parseJsonc } from "jsonc-parser";
+import {
+  parse as parseJsonc,
+  printParseErrorCode,
+  type ParseError,
+} from "jsonc-parser";
 import { describe, expect, it } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -66,7 +70,20 @@ const minimalArgsByTool: Record<string, Record<string, unknown>> = {
 };
 
 function parseWranglerJsonc(text: string): Record<string, unknown> {
-  return parseJsonc(text) as Record<string, unknown>;
+  const errors: ParseError[] = [];
+  const parsed = parseJsonc(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
+    throw new Error(errors.map((entry) => printParseErrorCode(entry.error)).join(", "));
+  }
+  if (
+    parsed === undefined ||
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error("Expected wrangler.jsonc root object");
+  }
+  return parsed as Record<string, unknown>;
 }
 
 const EXPECTED_WRANGLER_TOP_LEVEL_KEYS = [
@@ -475,6 +492,12 @@ describe("Physio MCP HTTP validation", () => {
 });
 
 describe("wrangler worker name pin", () => {
+  it("rejects jsonc with parse errors", () => {
+    expect(() => parseWranglerJsonc('{"name": "physio-poc",')).toThrow(
+      /CloseBraceExpected/,
+    );
+  });
+
   it("uses the physio-poc worker name", () => {
     const wranglerPath = join(process.cwd(), "wrangler.jsonc");
     const text = readFileSync(wranglerPath, "utf8");
