@@ -16,7 +16,7 @@ On D1, wrangler applies migrations and tracks them in **`d1_migrations`**. The `
 
 ## Migration 0005 (routines data model)
 
-Migration `0005_routine_data_model.sql` is registered in `apply.ts` for Node test fixtures only. If a checkout already applied 0005, do not edit and re-run that file locally; record a new migration id in the tracker and add a follow-up SQL file instead.
+Migration `0005_routine_data_model.sql` is registered in `apply.ts` for Node test fixtures only. If a checkout already applied 0005, do not edit and re-run that file locally; record a new migration id in the tracker and add a follow-up SQL file instead. A raw second run of 0005 against an already migrated database fails on its `ALTER TABLE programs` statements.
 
 ## Nested transactions
 

@@ -521,6 +521,7 @@ d1_tables:
       who_can_see: all_practitioners
       source: migrations/0005_routine_data_model.sql
       verified: true
+      notes: Draft version rows are author-only via repository; published version rows are community visible.
     columns:
       id:
         whose: operational
