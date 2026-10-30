@@ -44,6 +44,71 @@ const qaFixturePatternPropertiesTool = {
   } satisfies JsonSchema,
 };
 
+const qaPatternPropertiesObjectSchema = {
+  type: "object",
+  patternProperties: {
+    "^qa$": { type: "string" },
+  },
+} satisfies JsonSchema;
+
+const schemaWalkerBranchFixtures: Array<{
+  branch: string;
+  schema: JsonSchema;
+  expectedPath: string;
+}> = [
+  {
+    branch: "anyOf",
+    schema: { anyOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "anyOf.0",
+  },
+  {
+    branch: "oneOf",
+    schema: { oneOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "oneOf.0",
+  },
+  {
+    branch: "allOf",
+    schema: { allOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "allOf.0",
+  },
+  {
+    branch: "items",
+    schema: { items: qaPatternPropertiesObjectSchema },
+    expectedPath: "items",
+  },
+  {
+    branch: "prefixItems",
+    schema: { prefixItems: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "prefixItems.0",
+  },
+  {
+    branch: "additionalProperties",
+    schema: {
+      type: "object",
+      additionalProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "additionalProperties",
+  },
+  {
+    branch: "$defs",
+    schema: {
+      $defs: {
+        qa_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "$defs.qa_def_pattern_properties",
+  },
+  {
+    branch: "definitions",
+    schema: {
+      definitions: {
+        qa_legacy_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "definitions.qa_legacy_def_pattern_properties",
+  },
+];
+
 describe("collectForbiddenLegacySchemaFields", () => {
   it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
     const topLevel: JsonSchema = {
@@ -136,6 +201,13 @@ describe("collectPatternPropertiesViolations", () => {
     };
     expect(collectPatternPropertiesViolations(clean)).toEqual([]);
   });
+
+  it.each(schemaWalkerBranchFixtures)(
+    "detects patternProperties under $branch at $expectedPath",
+    ({ schema, expectedPath }) => {
+      expect(collectPatternPropertiesViolations(schema)).toEqual([expectedPath]);
+    },
+  );
 });
 
 describe("collectOutputPatternPropertiesViolations", () => {

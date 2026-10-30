@@ -26,6 +26,41 @@ const URL_LIKE_FORMATS = new Set([
 
 const URL_LIKE_INPUT_PROPERTY = /url|uri|link|href|base/i;
 
+const SCHEMA_MAP_VALUE_KEYS = new Set<string>([
+  "properties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+]);
+
+function walkSchemaChildBranches(
+  node: JsonSchema,
+  pathPrefix: readonly string[],
+  visitChild: (child: unknown, childPath: readonly string[]) => void,
+): void {
+  for (const key of SCHEMA_WALK_KEYS) {
+    const branch = node[key];
+    if (Array.isArray(branch)) {
+      for (let index = 0; index < branch.length; index += 1) {
+        visitChild(branch[index], [...pathPrefix, key, String(index)]);
+      }
+    } else if (branch && typeof branch === "object") {
+      if (SCHEMA_MAP_VALUE_KEYS.has(key)) {
+        for (const [name, sub] of Object.entries(branch as Record<string, unknown>)) {
+          visitChild(sub, [...pathPrefix, key, name]);
+        }
+      } else {
+        visitChild(branch, [...pathPrefix, key]);
+      }
+    }
+  }
+
+  const additional = node.additionalProperties;
+  if (additional && typeof additional === "object") {
+    visitChild(additional, [...pathPrefix, "additionalProperties"]);
+  }
+}
+
 export function visitSchemaNodes(
   schema: unknown,
   visit: (node: JsonSchema) => void,
@@ -33,26 +68,9 @@ export function visitSchemaNodes(
   if (!schema || typeof schema !== "object") return;
   const node = schema as JsonSchema;
   visit(node);
-
-  for (const key of SCHEMA_WALK_KEYS) {
-    const branch = node[key];
-    if (Array.isArray(branch)) {
-      for (const sub of branch) visitSchemaNodes(sub, visit);
-    } else if (branch && typeof branch === "object") {
-      if (key === "properties" || key === "dependentSchemas") {
-        for (const sub of Object.values(branch as Record<string, unknown>)) {
-          visitSchemaNodes(sub, visit);
-        }
-      } else {
-        visitSchemaNodes(branch, visit);
-      }
-    }
-  }
-
-  const additional = node.additionalProperties;
-  if (additional && typeof additional === "object") {
-    visitSchemaNodes(additional, visit);
-  }
+  walkSchemaChildBranches(node, [], (child) => {
+    visitSchemaNodes(child, visit);
+  });
 }
 
 function formatSchemaWalkPath(segments: readonly string[]): string {
@@ -67,30 +85,9 @@ export function visitSchemaNodesWithPath(
   if (!schema || typeof schema !== "object") return;
   const node = schema as JsonSchema;
   visit(node, path);
-
-  for (const key of SCHEMA_WALK_KEYS) {
-    const branch = node[key];
-    if (Array.isArray(branch)) {
-      for (let index = 0; index < branch.length; index += 1) {
-        visitSchemaNodesWithPath(branch[index], [...path, key, String(index)], visit);
-      }
-    } else if (branch && typeof branch === "object") {
-      if (key === "properties" || key === "dependentSchemas") {
-        for (const [propName, sub] of Object.entries(
-          branch as Record<string, unknown>,
-        )) {
-          visitSchemaNodesWithPath(sub, [...path, key, propName], visit);
-        }
-      } else {
-        visitSchemaNodesWithPath(branch, [...path, key], visit);
-      }
-    }
-  }
-
-  const additional = node.additionalProperties;
-  if (additional && typeof additional === "object") {
-    visitSchemaNodesWithPath(additional, [...path, "additionalProperties"], visit);
-  }
+  walkSchemaChildBranches(node, path, (child, childPath) => {
+    visitSchemaNodesWithPath(child, childPath, visit);
+  });
 }
 
 export type McpToolOutputSchemaSource = {
