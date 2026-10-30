@@ -100,6 +100,9 @@ export const PHYSIO_BETTER_AUTH_ACCOUNT = {
   encryptOAuthTokens: true,
 } as const;
 
+/** Session cookie and DB row lifetime in seconds (7 days). Pinned explicitly for DIDI-1091. */
+export const PHYSIO_BETTER_AUTH_SESSION_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 7;
+
 function fakeGooglePlugin(config: PhysioAuthConfig) {
   const base = config.authBaseUrl.replace(/\/$/, "");
   return genericOAuth({
@@ -155,6 +158,9 @@ export function buildPhysioBetterAuthOptions(
     basePath: "/api/auth",
     trustedOrigins: [trustedOrigin],
     emailAndPassword: { enabled: false },
+    session: {
+      expiresIn: PHYSIO_BETTER_AUTH_SESSION_EXPIRES_IN_SECONDS,
+    },
     rateLimit: { enabled: false },
     telemetry: { enabled: false },
     socialProviders: config.fakeGoogleProviderEnabled
