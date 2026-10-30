@@ -1,62 +1,78 @@
 import { MCP_PATH } from "../http/app.js";
-import { requiresPractitionerSession } from "./public-routes.js";
+import {
+  requiresPractitionerSession,
+  SESSION_PUBLIC_ROUTE_SAMPLES,
+  sessionPublicRouteSampleKey,
+  type SessionPublicRouteSample,
+} from "./public-routes.js";
 
 /**
- * Routes explicitly wired in handleRequest (not SPA client routes).
- * Session guard exceptions are fixed for DIDI-1001; Better Auth on Workers is DIDI-1044.
+ * One sample request per branch in `handleRequest` (see src/http/app.ts).
  */
-export type RegisteredRoute = {
-  readonly id: string;
-  readonly sessionGuarded: boolean;
-  readonly samplePath: string;
-  readonly method: string;
-};
-
-export const SESSION_GUARD_EXCEPTION_IDS = [
-  "health",
-  "public-link",
+export const HANDLE_REQUEST_BRANCHES = [
+  "health-read",
+  "health-post",
+  "fake-google-oauth",
   "better-auth-api",
+  "ui-static-asset",
+  "mcp",
+  "guarded-api",
+  "app-shell",
 ] as const;
 
-export const REGISTERED_ROUTES: readonly RegisteredRoute[] = [
+export type HandleRequestBranchId = (typeof HANDLE_REQUEST_BRANCHES)[number];
+
+export type HandleRequestRouteSample = {
+  readonly branchId: HandleRequestBranchId;
+  readonly samplePath: string;
+  readonly method: string;
+  readonly fakeGoogleRoutesEnabled?: boolean;
+};
+
+const HANDLE_REQUEST_ROUTE_SAMPLES: readonly HandleRequestRouteSample[] = [
+  { branchId: "health-read", samplePath: "/health", method: "GET" },
+  { branchId: "health-read", samplePath: "/health", method: "HEAD" },
+  { branchId: "health-post", samplePath: "/health", method: "POST" },
   {
-    id: "health",
-    sessionGuarded: false,
-    samplePath: "/health",
+    branchId: "fake-google-oauth",
+    samplePath: "/__fake-google/o/oauth2/v2/auth",
     method: "GET",
+    fakeGoogleRoutesEnabled: true,
   },
   {
-    id: "public-link",
-    sessionGuarded: false,
-    samplePath: "/l/demo-code",
-    method: "GET",
-  },
-  {
-    id: "better-auth-api",
-    sessionGuarded: false,
+    branchId: "better-auth-api",
     samplePath: "/api/auth/sign-in/social",
     method: "POST",
   },
-  {
-    id: "mcp",
-    sessionGuarded: true,
-    samplePath: MCP_PATH,
-    method: "POST",
-  },
-  {
-    id: "guarded-api",
-    sessionGuarded: true,
-    samplePath: "/api/unknown",
-    method: "GET",
-  },
-  {
-    id: "guarded-app-shell",
-    sessionGuarded: true,
-    samplePath: "/programs",
-    method: "GET",
-  },
-] as const;
+  { branchId: "ui-static-asset", samplePath: "/assets/index.js", method: "GET" },
+  { branchId: "mcp", samplePath: MCP_PATH, method: "POST" },
+  { branchId: "guarded-api", samplePath: "/api/unknown", method: "GET" },
+  { branchId: "app-shell", samplePath: "/sign-in", method: "GET" },
+  { branchId: "app-shell", samplePath: "/l/demo-code", method: "GET" },
+  { branchId: "app-shell", samplePath: "/favicon.ico", method: "GET" },
+  { branchId: "app-shell", samplePath: "/vite.svg", method: "GET" },
+  { branchId: "app-shell", samplePath: "/programs", method: "GET" },
+  { branchId: "app-shell", samplePath: "/programs", method: "OPTIONS" },
+];
 
-export function registeredRouteRequiresSession(route: RegisteredRoute): boolean {
-  return requiresPractitionerSession(route.samplePath, route.method);
+export function handleRequestRouteSamples(): readonly HandleRequestRouteSample[] {
+  return HANDLE_REQUEST_ROUTE_SAMPLES;
 }
+
+export function sessionGuardedForSample(sample: HandleRequestRouteSample): boolean {
+  return requiresPractitionerSession(sample.samplePath, sample.method, {
+    fakeGoogleRoutesEnabled: sample.fakeGoogleRoutesEnabled === true,
+  });
+}
+
+export function canonicalSessionPublicRouteSamples(): readonly SessionPublicRouteSample[] {
+  return SESSION_PUBLIC_ROUTE_SAMPLES;
+}
+
+export function listSessionUnguardedSamplesFromRegistry(): HandleRequestRouteSample[] {
+  return HANDLE_REQUEST_ROUTE_SAMPLES.filter(
+    (sample) => !sessionGuardedForSample(sample),
+  );
+}
+
+export { sessionPublicRouteSampleKey };

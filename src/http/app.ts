@@ -5,6 +5,7 @@ import type { AuthPort } from "../auth/auth-port.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
+import { handleOptionsPreflight } from "./cors-preflight.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
@@ -33,11 +34,20 @@ export async function handleRequest(
   request: Request,
   deps: AppDependencies,
 ): Promise<Response> {
-  void deps.sql;
-  void deps.objects;
   const url = new URL(request.url);
   const pathname = url.pathname;
   const ui = deps.uiStatic ?? noopUiStaticPort;
+
+  if (request.method === "OPTIONS") {
+    return handleOptionsPreflight(request);
+  }
+
+  void deps.sql;
+  void deps.objects;
+
+  const sessionGuardOptions = {
+    fakeGoogleRoutesEnabled: deps.enableFakeGoogleRoutes === true,
+  };
 
   if (
     (request.method === "GET" || request.method === "HEAD") &&
@@ -82,12 +92,12 @@ export async function handleRequest(
   }
 
   if (pathname.startsWith("/api/")) {
-    return guardAndRun(request, deps, async () =>
+    return guardAndRun(request, deps, sessionGuardOptions, async () =>
       Response.json({ error: "not_found" }, { status: 404, headers: JSON_HEADERS }),
     );
   }
 
-  if (requiresPractitionerSession(pathname, request.method)) {
+  if (requiresPractitionerSession(pathname, request.method, sessionGuardOptions)) {
     const practitioner = await deps.auth.getPractitioner(request);
     if (!practitioner) {
       return unauthenticatedAppResponse(request, deps, pathname, url.search);
@@ -107,10 +117,11 @@ export async function handleRequest(
 async function guardAndRun(
   request: Request,
   deps: AppDependencies,
+  sessionGuardOptions: { fakeGoogleRoutesEnabled: boolean },
   next: () => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
-  if (!requiresPractitionerSession(url.pathname, request.method)) {
+  if (!requiresPractitionerSession(url.pathname, request.method, sessionGuardOptions)) {
     return next();
   }
   const practitioner = await deps.auth.getPractitioner(request);

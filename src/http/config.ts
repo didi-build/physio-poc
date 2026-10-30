@@ -34,6 +34,41 @@ export class InvalidAuthConfigError extends Error {
   }
 }
 
+const MIN_BETTER_AUTH_SECRET_LENGTH = 32;
+
+/** Local dev/tests only when PHYSIO_USE_FAKE_GOOGLE_PROVIDER is enabled (non-production). */
+export const DEV_FAKE_GOOGLE_BETTER_AUTH_SECRET =
+  "dev-only-placeholder-secret-min-32-chars";
+
+function resolveBetterAuthSecret(input: {
+  trimmedSecret: string;
+  fakeGoogleProviderEnabled: boolean;
+  nodeEnv: string;
+}): string {
+  if (input.trimmedSecret.length >= MIN_BETTER_AUTH_SECRET_LENGTH) {
+    return input.trimmedSecret;
+  }
+  if (input.fakeGoogleProviderEnabled && input.nodeEnv !== "production") {
+    return DEV_FAKE_GOOGLE_BETTER_AUTH_SECRET;
+  }
+  throw new InvalidAuthConfigError(
+    "BETTER_AUTH_SECRET is required (at least 32 characters) when Better Auth runs without PHYSIO_USE_FAKE_GOOGLE_PROVIDER.",
+  );
+}
+
+/** Validates Better Auth startup secret (Node adapter only). */
+export function resolveBetterAuthSecretForRuntime(input: {
+  betterAuthSecret: string;
+  fakeGoogleProviderEnabled: boolean;
+  nodeEnv?: string;
+}): string {
+  return resolveBetterAuthSecret({
+    trimmedSecret: input.betterAuthSecret.trim(),
+    fakeGoogleProviderEnabled: input.fakeGoogleProviderEnabled,
+    nodeEnv: input.nodeEnv?.trim() || "development",
+  });
+}
+
 export function resolveWebAppBaseUrl(raw: string | undefined): string {
   const trimmed = raw?.trim();
   const candidate = trimmed && trimmed.length > 0 ? trimmed : DEFAULT_WEB_APP_BASE_URL;
@@ -88,8 +123,10 @@ export function resolvePhysioAuthConfig(input: {
     );
   }
 
+  const trimmedSecret = input.betterAuthSecret?.trim() ?? "";
+
   return {
-    betterAuthSecret: input.betterAuthSecret?.trim() ?? "",
+    betterAuthSecret: trimmedSecret,
     googleClientId: input.googleClientId?.trim() ?? "",
     googleClientSecret: input.googleClientSecret?.trim() ?? "",
     allowedGoogleEmails: parseAllowedGoogleEmails(input.allowedGoogleEmails),

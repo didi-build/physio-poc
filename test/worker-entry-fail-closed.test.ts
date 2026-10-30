@@ -23,7 +23,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
       new Request("https://example.workers.dev/__fake-google/start"),
       deps,
     );
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(503);
   });
 
   it("returns 401 for MCP and 503 for guarded app pages without a session", async () => {

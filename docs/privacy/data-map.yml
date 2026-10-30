@@ -294,6 +294,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0004_better_auth.sql
       verified: true
+      notes: image URL is not stored (CTO DIDI-1001 minimal auth storage)
     columns:
       id:
         whose: practitioner
@@ -315,16 +316,13 @@ d1_tables:
         retention: until account deletion
       emailVerified:
         whose: operational
-      image:
-        whose: practitioner
-        data: Profile image URL from Google
-        purpose: account profile
-        processors: [Cloudflare]
-        retention: until account deletion
       createdAt:
         whose: operational
       updatedAt:
         whose: operational
+      image:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
 
   session:
     defaults:
@@ -333,6 +331,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0004_better_auth.sql
       verified: true
+      notes: ipAddress and userAgent are not stored (CTO DIDI-1001 minimal auth storage)
     columns:
       id:
         whose: operational
@@ -348,24 +347,18 @@ d1_tables:
         whose: operational
       updatedAt:
         whose: operational
-      ipAddress:
-        whose: practitioner
-        data: Client IP at sign-in
-        purpose: security audit
-        processors: [Cloudflare]
-        retention: until session expiry or sign-out
-      userAgent:
-        whose: practitioner
-        data: Client user agent at sign-in
-        purpose: security audit
-        processors: [Cloudflare]
-        retention: until session expiry or sign-out
       userId:
         whose: practitioner
         data: Linked Better Auth user id
         purpose: authentication
         processors: [Cloudflare]
         retention: until session expiry or sign-out
+      ipAddress:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
+      userAgent:
+        whose: operational
+        notes: column required by Better Auth; always null (not stored)
 
   account:
     defaults:
@@ -387,33 +380,27 @@ d1_tables:
         purpose: authentication
         processors: [Cloudflare]
         retention: until account deletion
-      accessToken:
-        whose: practitioner
-        data: Google OAuth access token
-        purpose: authentication
-        processors: [Cloudflare, Google]
-        retention: until account deletion or token rotation
-      refreshToken:
-        whose: practitioner
-        data: Google OAuth refresh token
-        purpose: authentication
-        processors: [Cloudflare, Google]
-        retention: until account deletion or token rotation
-      idToken:
-        whose: practitioner
-        data: Google OIDC id token
-        purpose: authentication
-        processors: [Cloudflare, Google]
-        retention: until account deletion or token rotation
-      accessTokenExpiresAt:
-        whose: operational
-      refreshTokenExpiresAt:
-        whose: operational
       scope:
         whose: operational
+        notes: openid email profile only; OAuth tokens are not stored
+      accessToken:
+        whose: operational
+        notes: column required by Better Auth; always null (encryptOAuthTokens enabled as defense in depth)
+      refreshToken:
+        whose: operational
+        notes: column required by Better Auth; always null
+      idToken:
+        whose: operational
+        notes: column required by Better Auth; always null
+      accessTokenExpiresAt:
+        whose: operational
+        notes: always null
+      refreshTokenExpiresAt:
+        whose: operational
+        notes: always null
       password:
         whose: operational
-        notes: unused; Google OAuth only
+        notes: always null; Google OAuth only
       createdAt:
         whose: operational
       updatedAt:

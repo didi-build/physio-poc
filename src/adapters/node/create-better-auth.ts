@@ -5,8 +5,13 @@ import {
   ALLOWLIST_REFUSAL_ERROR,
   isEmailAllowlisted,
 } from "../../auth/allowed-emails.js";
+import {
+  createPhysioBetterAuthDatabaseHooks,
+  PHYSIO_GOOGLE_OAUTH_SCOPES,
+} from "../../auth/better-auth-minimal-storage.js";
 import { installFakeGoogleFetch } from "../../auth/fake-google-http.js";
 import type { PhysioAuthConfig } from "../../http/config.js";
+import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { findPractitionerByEmail } from "../../storage/repositories/practitioner-auth.js";
 
@@ -23,7 +28,7 @@ function fakeGooglePlugin(config: PhysioAuthConfig) {
         authorizationUrl: `${base}/__fake-google/o/oauth2/v2/auth`,
         tokenUrl: `${base}/__fake-google/token`,
         userInfoUrl: `${base}/__fake-google/oauth2/v3/userinfo`,
-        scopes: ["openid", "email", "profile"],
+        scopes: [...PHYSIO_GOOGLE_OAUTH_SCOPES],
         pkce: true,
         accountSubject: ({ profile }) => {
           const sub = profile.sub ?? profile.id;
@@ -36,11 +41,22 @@ function fakeGooglePlugin(config: PhysioAuthConfig) {
           name: typeof profile.name === "string" ? profile.name : "Fixture user",
           emailVerified:
             profile.email_verified === true || profile.emailVerified === true,
-          image: typeof profile.picture === "string" ? profile.picture : undefined,
+          image: undefined,
         }),
       },
     ],
   });
+}
+
+function googleSocialProvider(config: PhysioAuthConfig) {
+  return {
+    google: {
+      clientId: config.googleClientId,
+      clientSecret: config.googleClientSecret,
+      accessType: "online" as const,
+      scope: [] as string[],
+    },
+  };
 }
 
 export function createBetterAuthInstance(
@@ -53,8 +69,14 @@ export function createBetterAuthInstance(
     installFakeGoogleFetch(config.authBaseUrl);
   }
 
+  const secret = resolveBetterAuthSecretForRuntime({
+    betterAuthSecret: config.betterAuthSecret,
+    fakeGoogleProviderEnabled: config.fakeGoogleProviderEnabled,
+    nodeEnv: process.env.NODE_ENV,
+  });
+
   const auth = betterAuth({
-    secret: config.betterAuthSecret || "dev-only-placeholder-secret-min-32-chars",
+    secret,
     baseURL: config.authBaseUrl,
     basePath: "/api/auth",
     database,
@@ -63,12 +85,11 @@ export function createBetterAuthInstance(
     telemetry: { enabled: false },
     socialProviders: config.fakeGoogleProviderEnabled
       ? {}
-      : {
-          google: {
-            clientId: config.googleClientId,
-            clientSecret: config.googleClientSecret,
-          },
-        },
+      : googleSocialProvider(config),
+    account: {
+      encryptOAuthTokens: true,
+    },
+    databaseHooks: createPhysioBetterAuthDatabaseHooks(),
     plugins,
     user: {
       validateUserInfo: async ({ user, source }) => {
@@ -98,6 +119,9 @@ export function createBetterAuthInstance(
     },
     advanced: {
       useSecureCookies: true,
+      ipAddress: {
+        disableIpTracking: true,
+      },
       defaultCookieAttributes: {
         httpOnly: true,
         secure: true,

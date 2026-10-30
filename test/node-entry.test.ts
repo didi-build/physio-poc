@@ -1,7 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createNodeServer } from "../src/entry/node.js";
 
 describe("Node entry server (integration)", () => {
+  const priorEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    priorEnv.PHYSIO_USE_FAKE_GOOGLE_PROVIDER =
+      process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER;
+    priorEnv.BETTER_AUTH_SECRET = process.env.BETTER_AUTH_SECRET;
+    priorEnv.PHYSIO_ALLOWED_GOOGLE_EMAILS = process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS;
+    process.env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER = "true";
+    process.env.BETTER_AUTH_SECRET = "test-better-auth-secret-min-32-chars";
+    process.env.PHYSIO_ALLOWED_GOOGLE_EMAILS = "kojo.allowed@example.com";
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(priorEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
   it("serves GET /health on an ephemeral port", async () => {
     const server = createNodeServer({ port: 0, host: "127.0.0.1" });
     await new Promise<void>((resolve) => server.once("listening", resolve));
