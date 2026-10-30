@@ -68,6 +68,12 @@ describe("PARAM_META allowed keys per prescription type", () => {
     expect(() =>
       validateExerciseParamsForPrescriptionType({ hold_s: 0 }, "stretching"),
     ).toThrow(/hold_s must be between 1 and 120/);
+    expect(() =>
+      validateExerciseParamsForPrescriptionType({ hold_s: 999 }, "isometric"),
+    ).toThrow(ParamValidationError);
+    expect(() =>
+      validateExerciseParamsForPrescriptionType({ hold_s: 999 }, "isometric"),
+    ).toThrow(/hold_s must be between 1 and 120/);
   });
 
   it("validateExerciseParamsForPrescriptionType rejects disallowed keys before bounds", () => {

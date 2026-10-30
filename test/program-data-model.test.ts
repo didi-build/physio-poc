@@ -368,6 +368,33 @@ describe("ProgramsRepository listForPractitioner", () => {
       storage.close();
     }
   });
+
+  it("returns each listed program deep-equal to findById for the same id", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: id("prog-list-parity-a"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Alpha",
+      });
+      await programs.create({
+        id: id("prog-list-parity-b"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Beta",
+      });
+      const listed = await programs.listForPractitioner({ practitionerId });
+      expect(listed.length).toBeGreaterThanOrEqual(2);
+      for (const record of listed) {
+        expect(record).toEqual(await programs.findById(record.id));
+      }
+    } finally {
+      storage.close();
+    }
+  });
 });
 
 describe("ProgramsRepository listForPractitioner draft order (M20)", () => {
