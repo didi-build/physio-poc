@@ -77,6 +77,7 @@ describe("MCP stub handler (placeholder-only until DIDI-1043)", () => {
   it("returns the same fixed output regardless of app storage wiring", async () => {
     const config: PhysioServerConfig = {
       webAppBaseUrl: "https://stub-isolated.example",
+      auth: MCP_TEST_CONFIG.auth,
     };
     const args = { query: "calf stretch" };
     const first = await invokePhysioMcpStubTool(

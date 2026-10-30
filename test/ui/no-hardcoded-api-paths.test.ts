@@ -3,7 +3,10 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const UI_ROOT = join(import.meta.dirname, "../../src/ui");
-const ALLOWED_RELATIVE = "api/exercise-library-client.ts";
+const ALLOWED_API_CLIENT_MODULES = new Set([
+  "api/exercise-library-client.ts",
+  "api/auth-client.ts",
+]);
 
 function listSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -45,7 +48,7 @@ describe("UI API path guard", () => {
     const violations: string[] = [];
     for (const file of listSourceFiles(UI_ROOT)) {
       const rel = relative(UI_ROOT, file);
-      if (rel === ALLOWED_RELATIVE) {
+      if (ALLOWED_API_CLIENT_MODULES.has(rel)) {
         continue;
       }
       const content = readFileSync(file, "utf8");

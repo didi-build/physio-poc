@@ -35,9 +35,10 @@ export class PractitionersRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(row: PractitionerRow): Promise<void> {
+    const id = validateOpaqueEntityId(row.id, "Practitioner id");
     await this.sql.run(
       "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-      [row.id, row.email, row.created_at],
+      [id, row.email, row.created_at],
     );
   }
 
