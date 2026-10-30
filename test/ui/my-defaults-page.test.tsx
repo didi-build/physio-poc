@@ -16,14 +16,22 @@ import {
   setMyDefaultsClientForTests,
 } from "../../src/ui/api/my-defaults-client.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../src/domain/global-type-defaults-seed.js";
+import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import {
   MY_DEFAULTS_PAGE_TITLE,
   RESET_TO_GLOBAL,
   SHARE_LINK_EXPIRY_SECTION,
   NEW_LINKS_EXPIRE_AFTER_ONE_WEEK,
+  TYPE_LABELS,
   YOUR_DEFAULT_BADGE,
+  editYourTypeDefaultLabel,
 } from "../../src/ui/copy/my-defaults.js";
+import { typeDefaultEditorTypeTitleId } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
+import {
+  EDGE_CASE_OWN,
+  resolveAriaLabelledByName,
+} from "./type-default-editor-a11y-helpers.js";
 
 afterEach(() => {
   cleanup();
@@ -60,34 +68,11 @@ function stubMyDefaultsClient(
         practitioner: null,
         effective: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
       },
-      exercise_types: [
-        {
-          type: "stretching",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.stretching,
-          practitioner_params: null,
-        },
-        {
-          type: "isometric",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.isometric,
-          practitioner_params: null,
-        },
-        {
-          type: "concentric",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.concentric,
-          practitioner_params: {
-            reps: 12,
-            hold_s: 2,
-            sets: 3,
-            rest_s: 60,
-            days_per_week: 3,
-          },
-        },
-        {
-          type: "eccentric",
-          global_params: GLOBAL_TYPE_DEFAULTS_SEED.eccentric,
-          practitioner_params: null,
-        },
-      ],
+      exercise_types: PRESCRIPTION_TYPES.map((type) => ({
+        type,
+        global_params: GLOBAL_TYPE_DEFAULTS_SEED[type],
+        practitioner_params: EDGE_CASE_OWN[type],
+      })),
     }),
     updateShareLinkExpiry: vi.fn(),
     upsertTypeDefault: vi.fn(),
@@ -184,5 +169,66 @@ describe("My defaults page (integration, jsdom)", () => {
     const resetButton = within(card).getByRole("button", { name: RESET_TO_GLOBAL });
     await userEvent.click(resetButton);
     expect(resetTypeDefault).toHaveBeenCalledWith("concentric");
+  });
+
+  it("resolves every dose input name through its card heading on the page", async () => {
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE });
+
+    for (const type of PRESCRIPTION_TYPES) {
+      const card = screen.getByTestId(`type-default-${type}`);
+      await userEvent.click(
+        within(card).getByRole("button", {
+          name: editYourTypeDefaultLabel(TYPE_LABELS[type]),
+        }),
+      );
+      const heading = within(card).getByRole("heading", { level: 2 });
+      expect(heading.id).toBe(typeDefaultEditorTypeTitleId(type));
+      const fields = card.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      );
+      expect(fields.length).toBeGreaterThan(0);
+      for (const field of fields) {
+        const labelledBy = field.getAttribute("aria-labelledby") ?? "";
+        expect(labelledBy.split(/\s+/)).toContain(heading.id);
+        expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
+        expect(document.getElementById(heading.id)).toBe(heading);
+      }
+    }
+  });
+
+  it("loses dose input names when the card heading id no longer matches aria-labelledby", async () => {
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE });
+    const card = screen.getByTestId("type-default-stretching");
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: editYourTypeDefaultLabel(TYPE_LABELS.stretching),
+      }),
+    );
+    const heading = within(card).getByRole("heading", { level: 2 });
+    const field = card.querySelector("input.md-param-input") as HTMLInputElement;
+    expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
+    heading.id = "md-type-title-stretching-broken";
+    expect(resolveAriaLabelledByName(field)).toBe("");
+    expect(() => {
+      expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
+    }).toThrow();
   });
 });
