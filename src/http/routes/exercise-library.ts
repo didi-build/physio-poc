@@ -15,8 +15,16 @@ import {
   parseExerciseMutationUndo,
   type ExerciseSearchSort,
 } from "../../services/exercise-library/index.js";
+import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
+import type { PractitionerSession } from "../../auth/auth-port.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
+
+export function isExerciseLibraryApiPath(pathname: string): boolean {
+  return /^\/api\/practitioners\/[^/]+\/(exercises\/approved\/search|exercises\/[^/]+|my-exercises(?:\/[^/]+)?)$/.test(
+    pathname,
+  );
+}
 
 function service(deps: AppDependencies): ExerciseLibraryService {
   return new ExerciseLibraryService(deps.sql, deps.config);
@@ -97,17 +105,37 @@ function parseTextOverridePatch(
   return result;
 }
 
+function bindPathPractitioner(
+  pathPractitionerId: string,
+  sessionPractitioner: PractitionerSession | null | undefined,
+): string | Response {
+  return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
+}
+
+export type HandleExerciseLibraryOptions = {
+  sessionPractitioner?: PractitionerSession | null;
+};
+
 export async function handleExerciseLibraryRequest(
   request: Request,
   deps: AppDependencies,
+  options: HandleExerciseLibraryOptions = {},
 ): Promise<Response | null> {
+  const sessionPractitioner = options.sessionPractitioner;
   const url = new URL(request.url);
   const path = url.pathname;
 
   const approvedSearchMatch =
     /^\/api\/practitioners\/([^/]+)\/exercises\/approved\/search$/.exec(path);
   if (approvedSearchMatch && request.method === "GET") {
-    const practitionerId = approvedSearchMatch[1];
+    const pathPractitionerId = approvedSearchMatch[1];
+    const practitionerId = bindPathPractitioner(
+      pathPractitionerId,
+      sessionPractitioner,
+    );
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
     const categoryRaw = url.searchParams.get("category");
     const category = categoryRaw ? parseExerciseCategoryLabel(categoryRaw) : undefined;
     if (categoryRaw && !category) {
@@ -153,7 +181,14 @@ export async function handleExerciseLibraryRequest(
 
   const detailsMatch = /^\/api\/practitioners\/([^/]+)\/exercises\/([^/]+)$/.exec(path);
   if (detailsMatch && request.method === "GET") {
-    const [, practitionerId, exerciseId] = detailsMatch;
+    const [, pathPractitionerId, exerciseId] = detailsMatch;
+    const practitionerId = bindPathPractitioner(
+      pathPractitionerId,
+      sessionPractitioner,
+    );
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
     try {
       const result = await service(deps).getExerciseDetails(practitionerId, exerciseId);
       return Response.json(result, { headers: JSON_HEADERS });
@@ -164,7 +199,14 @@ export async function handleExerciseLibraryRequest(
 
   const myListMatch = /^\/api\/practitioners\/([^/]+)\/my-exercises$/.exec(path);
   if (myListMatch && request.method === "GET") {
-    const practitionerId = myListMatch[1];
+    const pathPractitionerId = myListMatch[1];
+    const practitionerId = bindPathPractitioner(
+      pathPractitionerId,
+      sessionPractitioner,
+    );
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
     const categoryRaw = url.searchParams.get("category");
     const category = categoryRaw ? parseExerciseCategoryLabel(categoryRaw) : undefined;
     if (categoryRaw && !category) {
@@ -190,7 +232,14 @@ export async function handleExerciseLibraryRequest(
     path,
   );
   if (myItemMatch) {
-    const [, practitionerId, exerciseId] = myItemMatch;
+    const [, pathPractitionerId, exerciseId] = myItemMatch;
+    const practitionerId = bindPathPractitioner(
+      pathPractitionerId,
+      sessionPractitioner,
+    );
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
     if (request.method === "DELETE") {
       try {
         const result = await service(deps).removeFromMyExercises(
