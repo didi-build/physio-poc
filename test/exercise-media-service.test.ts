@@ -225,9 +225,24 @@ describe("ExerciseMediaService (integration)", () => {
     const storage = await openMigratedDatabase();
     await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
     const secretNote = "UNPERSISTED_REGEN_NOTE_xyzzy";
+    const objects = new InMemoryObjectStorage();
+    const objectPutSpy = vi.spyOn(objects, "put");
+    const media = new PrefixMediaStorage(objects);
+    const mediaPutSpy = vi.spyOn(media, "putImage");
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
-      const { service } = await createService(storage);
+      let tick = 0;
+      const service = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        media,
+        () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
+        () => `id-${tick}`,
+      );
       await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
       await service.regenerateMedia({
         practitionerId,
@@ -244,12 +259,36 @@ describe("ExerciseMediaService (integration)", () => {
         await storage.all("SELECT * FROM media_regenerations"),
       );
       expect(tableDump).not.toContain(secretNote);
+      const versionDump = JSON.stringify(
+        await storage.all("SELECT * FROM exercise_versions"),
+      );
+      expect(versionDump).not.toContain(secretNote);
       const columnNames = (
         await storage.all<{ name: string }>("PRAGMA table_info(media_regenerations)")
       ).map((row) => row.name);
       expect(columnNames).not.toContain("note");
       expect(columnNames).toContain("had_note");
+
+      for (const call of objectPutSpy.mock.calls) {
+        const [key, body] = call;
+        expect(String(key)).not.toContain(secretNote);
+        expect(new TextDecoder().decode(body)).not.toContain(secretNote);
+      }
+      for (const call of mediaPutSpy.mock.calls) {
+        const [key, body] = call;
+        expect(String(key)).not.toContain(secretNote);
+        expect(new TextDecoder().decode(body)).not.toContain(secretNote);
+      }
+      for (const spy of [logSpy, infoSpy, warnSpy, errorSpy]) {
+        for (const call of spy.mock.calls) {
+          expect(JSON.stringify(call)).not.toContain(secretNote);
+        }
+      }
     } finally {
+      logSpy.mockRestore();
+      infoSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
       storage.close();
     }
   });

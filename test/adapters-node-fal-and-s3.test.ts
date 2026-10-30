@@ -35,7 +35,7 @@ function headerValue(
 describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
   const apiKey = "fal-test-key-must-not-appear-in-errors";
 
-  it("POSTs to the fal.run model endpoint with X-Fal-Store-IO: 0 and downloads the image with the same header", async () => {
+  it("POSTs to fal.run with Authorization and X-Fal-Store-IO: 0; download has X-Fal-Store-IO only", async () => {
     const seen: Array<{ url: string; init?: RequestInit }> = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -44,6 +44,7 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
         expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe(
           FAL_STORE_IO_DISABLED,
         );
+        expect(headerValue(init?.headers, "Authorization")).toMatch(/^Key /);
         return new Response(
           JSON.stringify({ images: [{ url: "https://cdn.example/out.png" }] }),
           {
@@ -55,6 +56,7 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
       expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe(
         FAL_STORE_IO_DISABLED,
       );
+      expect(headerValue(init?.headers, "Authorization")).toBeUndefined();
       return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
         status: 200,
         headers: { "content-type": "image/png" },

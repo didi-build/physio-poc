@@ -74,7 +74,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     return this.generateFromPrompt(endPrompt, redactStringsFromPrompt(endPrompt));
   }
 
-  private falRequestHeaders(contentType?: string): Record<string, string> {
+  private falApiRequestHeaders(contentType?: string): Record<string, string> {
     const headers: Record<string, string> = {
       Authorization: `Key ${this.config.apiKey}`,
       [FAL_STORE_IO_HEADER]: FAL_STORE_IO_DISABLED,
@@ -83,6 +83,12 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
       headers["Content-Type"] = contentType;
     }
     return headers;
+  }
+
+  private falImageDownloadHeaders(): Record<string, string> {
+    return {
+      [FAL_STORE_IO_HEADER]: FAL_STORE_IO_DISABLED,
+    };
   }
 
   private sanitizeErrorDetail(detail: string, extraRedact: string[] = []): string {
@@ -103,7 +109,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     const endpoint = `https://fal.run/${this.modelId}`;
     const response = await this.fetchImpl(endpoint, {
       method: "POST",
-      headers: this.falRequestHeaders("application/json"),
+      headers: this.falApiRequestHeaders("application/json"),
       body: JSON.stringify({
         prompt,
         output_format: "png",
@@ -121,7 +127,7 @@ export class FalFluxKleinImageGeneration implements ImageGenerationPort {
     }
     const imageResponse = await this.fetchImpl(imageUrl, {
       method: "GET",
-      headers: this.falRequestHeaders(),
+      headers: this.falImageDownloadHeaders(),
     });
     if (!imageResponse.ok) {
       const detail = this.sanitizeErrorDetail(
