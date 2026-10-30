@@ -60,6 +60,21 @@ describe("PARAM_META allowed keys per prescription type", () => {
       ),
     ).toThrow(/Unknown param key: bogus/);
   });
+
+  it("validateExerciseParamsForPrescriptionType rejects out-of-range values", () => {
+    expect(() =>
+      validateExerciseParamsForPrescriptionType({ hold_s: 0 }, "stretching"),
+    ).toThrow(ParamValidationError);
+    expect(() =>
+      validateExerciseParamsForPrescriptionType({ hold_s: 0 }, "stretching"),
+    ).toThrow(/hold_s must be between 1 and 120/);
+  });
+
+  it("validateExerciseParamsForPrescriptionType rejects disallowed keys before bounds", () => {
+    expect(() =>
+      validateExerciseParamsForPrescriptionType({ per_day: 0 }, "isometric"),
+    ).toThrow(/per_day is not allowed for prescription type isometric/);
+  });
 });
 
 describe("exercise params validation (unit)", () => {

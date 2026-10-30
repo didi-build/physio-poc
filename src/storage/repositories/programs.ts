@@ -272,9 +272,7 @@ export class ProgramsRepository {
     }
 
     return this.sql.all<ProgramRecord>(
-      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-              published_version, published_name, published_at, published_snapshot_json,
-              deleted_at, link_expires_in, link_expires_on
+      `SELECT ${PROGRAM_SELECT}
        FROM programs
        WHERE ${where.join(" AND ")}
        ORDER BY draft_updated_at DESC`,
