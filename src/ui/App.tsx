@@ -11,7 +11,8 @@ export type PhysioAppProps = {
 function SignInRoute() {
   const [params] = useSearchParams();
   const returnTo = normalizeReturnTo(params.get("returnTo"));
-  return <SignInPage returnTo={returnTo} />;
+  const authError = params.get("error");
+  return <SignInPage returnTo={returnTo} authError={authError} />;
 }
 
 export function PhysioApp({ requestsReviewCount = 0 }: PhysioAppProps) {

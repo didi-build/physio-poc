@@ -115,7 +115,7 @@ export function createBetterAuthInstance(
       },
     },
     onAPIError: {
-      errorURL: "/api/auth/refused",
+      errorURL: "/api/auth/oauth-error",
     },
     advanced: {
       disableOriginCheck: false,

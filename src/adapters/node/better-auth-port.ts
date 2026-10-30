@@ -1,5 +1,8 @@
 import type { AuthPort, PractitionerSession } from "../../auth/auth-port.js";
-import { authRefusalResponse } from "../../http/auth-pages.js";
+import {
+  handleAuthOAuthErrorRequest,
+  isAuthOAuthErrorPath,
+} from "../../http/auth-oauth-error.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { findPractitionerByEmail } from "../../storage/repositories/practitioner-auth.js";
 import type { BetterAuthRuntime } from "./better-auth-types.js";
@@ -37,8 +40,8 @@ export class BetterAuthPort implements AuthPort {
 
   async handleAuthRequest(request: Request): Promise<Response | null> {
     const url = new URL(request.url);
-    if (url.pathname === `${AUTH_PREFIX}/refused`) {
-      return authRefusalResponse();
+    if (isAuthOAuthErrorPath(url.pathname)) {
+      return handleAuthOAuthErrorRequest(url);
     }
     if (!url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
       return null;

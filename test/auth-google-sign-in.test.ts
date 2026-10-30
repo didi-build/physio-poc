@@ -16,6 +16,27 @@ import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secre
 
 const BASE = "http://127.0.0.1:8787";
 
+const INVALID_CALLBACK_URL_BODY = {
+  code: "INVALID_CALLBACK_URL",
+  message: "Invalid callbackURL",
+} as const;
+
+async function expectInvalidCallbackUrlRejection(
+  deps: AppDependencies,
+  callbackURL: string,
+): Promise<void> {
+  const response = await handleRequest(
+    new Request(`${BASE}/api/auth/sign-in/social`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "google", callbackURL }),
+    }),
+    deps,
+  );
+  expect(response.status).toBe(403);
+  await expect(response.json()).resolves.toEqual(INVALID_CALLBACK_URL_BODY);
+}
+
 let seededAllowedPractitionerId = generateOpaqueEntityId();
 
 class CookieJar {
@@ -212,6 +233,39 @@ describe("Google sign-in (integration)", () => {
     expect(jar.header()).toContain("better-auth.session_token=");
   });
 
+  it("allows sign-in when Google returns an upper-case email for an allowlisted practitioner", async () => {
+    const deps = await createAuthTestDeps();
+    const { jar } = await completeGoogleSignIn(deps, "allowed-upper-email");
+    expect(jar.header()).toContain("better-auth.session_token=");
+    const practitioner = await deps.auth.getPractitioner(
+      new Request(`${BASE}/exercises`, { headers: { cookie: jar.header() } }),
+    );
+    expect(practitioner?.practitionerId).toBe(seededAllowedPractitionerId);
+  });
+
+  it("shows allowlist refusal copy only for not_allowed OAuth errors", async () => {
+    const deps = await createAuthTestDeps();
+    const allowlist = await handleRequest(
+      new Request(`${BASE}/api/auth/oauth-error?error=not_allowed`),
+      deps,
+    );
+    expect(await allowlist.text()).toContain(AUTH_REFUSAL_MESSAGE);
+
+    const stateMismatch = await handleRequest(
+      new Request(`${BASE}/api/auth/callback/google?code=fake-code&state=bogus-state`, {
+        redirect: "manual",
+      }),
+      deps,
+    );
+    expect(stateMismatch.status).toBe(302);
+    const oauthErrorUrl = new URL(stateMismatch.headers.get("location") ?? "", BASE);
+    expect(oauthErrorUrl.pathname).toBe("/api/auth/oauth-error");
+    const routed = await handleRequest(new Request(oauthErrorUrl.toString()), deps);
+    expect(routed.status).toBe(302);
+    expect(routed.headers.get("location")).toContain("/sign-in");
+    expect(await routed.text()).not.toContain(AUTH_REFUSAL_MESSAGE);
+  });
+
   it("refuses unverified Google email with the allowlist refusal page and no auth rows", async () => {
     const deps = await createAuthTestDeps();
     const { lastResponse } = await completeGoogleSignIn(deps, "unverified");
@@ -316,20 +370,12 @@ describe("Google sign-in (integration)", () => {
     expect(response.status).toBeGreaterThanOrEqual(400);
   });
 
-  it("rejects off-site callbackURL on sign-in/social", async () => {
+  it("rejects invalid callbackURL values with INVALID_CALLBACK_URL", async () => {
     const deps = await createAuthTestDeps();
-    const response = await handleRequest(
-      new Request(`${BASE}/api/auth/sign-in/social`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          provider: "google",
-          callbackURL: "https://evil.example/steal",
-        }),
-      }),
-      deps,
-    );
-    expect(response.status).toBeGreaterThanOrEqual(400);
+    await expectInvalidCallbackUrlRejection(deps, "https://evil.example/steal");
+    await expectInvalidCallbackUrlRejection(deps, "//evil.example");
+    await expectInvalidCallbackUrlRejection(deps, "/\\evil.example");
+    await expectInvalidCallbackUrlRejection(deps, "/\t/evil.example");
   });
 
   it("rejects cross-origin sign-out", async () => {

@@ -17,6 +17,10 @@ describe("normalizeReturnTo", () => {
     expect(normalizeReturnTo("/programs\\@evil.example")).toBe("/");
   });
 
+  it("rejects tab characters in the path", () => {
+    expect(normalizeReturnTo("/\t/evil.example")).toBe("/");
+  });
+
   it("rejects control characters", () => {
     expect(normalizeReturnTo("/programs\u0000/evil")).toBe("/");
     expect(normalizeReturnTo("/\u007f")).toBe("/");
