@@ -1191,7 +1191,7 @@ describe("opaque id normalization on write paths", () => {
       const savedCopy = await my.saveFrozenCopy({
         id: id("norm-my-copy"),
         practitionerId: author,
-        routineId: id("norm-routine"),
+        routineId: upperRoutineId,
         sourceRoutineVersionId: upperVersionId,
         savedAt: TS,
         rows: [
@@ -1205,7 +1205,86 @@ describe("opaque id normalization on write paths", () => {
           },
         ],
       });
+      expect(savedCopy.routine_id).toBe(id("norm-routine"));
       expect(savedCopy.source_routine_version_id).toBe(published.id);
+      const readBack = await my.findForPractitioner(author, id("norm-routine"));
+      expect(readBack).toMatchObject({
+        id: savedCopy.id,
+        routine_id: id("norm-routine"),
+      });
+      const row = await storage.first<{ routine_id: string }>(
+        "SELECT routine_id FROM practitioner_routines WHERE id = ? LIMIT 1",
+        [savedCopy.id],
+      );
+      expect(row?.routine_id).toBe(id("norm-routine"));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("normalizes saveFrozenCopy routineId when uppercase or whitespace padded", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const my = new PractitionerRoutinesRepository(storage);
+      const canonicalRoutineId = id("norm-frozen-routine-id");
+      await routines.createDraft({
+        id: canonicalRoutineId,
+        draftVersionId: id("norm-frozen-rv-draft"),
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await rows.replaceDraftRow({
+        id: id("norm-frozen-row"),
+        routineId: canonicalRoutineId,
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: VALID_PARAMS,
+        draftUpdatedAt: TS,
+      });
+      const published = await versions.publishDraft({
+        routineId: canonicalRoutineId,
+        authorId: author,
+        publishedAt: TS,
+        name: "Frozen routine id norm",
+      });
+      const paddedUpperRoutineId = `  ${canonicalRoutineId.toUpperCase()}  `;
+      const savedCopy = await my.saveFrozenCopy({
+        id: id("norm-frozen-copy"),
+        practitionerId: author,
+        routineId: paddedUpperRoutineId,
+        sourceRoutineVersionId: published.id,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("norm-frozen-copy-row"),
+            position: 0,
+            exerciseId: FIXTURE_EXERCISE_ID,
+            exerciseVersionId: FIXTURE_VERSION_ID,
+            prescriptionType: "stretching",
+            params: VALID_PARAMS,
+          },
+        ],
+      });
+      expect(savedCopy.routine_id).toBe(canonicalRoutineId);
+      const readBack = await my.findForPractitioner(author, canonicalRoutineId);
+      expect(readBack).toMatchObject({
+        id: savedCopy.id,
+        routine_id: canonicalRoutineId,
+      });
+      const stored = await storage.first<{ routine_id: string }>(
+        "SELECT routine_id FROM practitioner_routines WHERE id = ? LIMIT 1",
+        [savedCopy.id],
+      );
+      expect(stored?.routine_id).toBe(canonicalRoutineId);
     } finally {
       storage.close();
     }

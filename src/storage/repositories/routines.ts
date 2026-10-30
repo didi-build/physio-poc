@@ -652,7 +652,7 @@ export class PractitionerRoutinesRepository {
         params: row.params,
       });
     }
-    const saved = await this.findForPractitioner(input.practitionerId, input.routineId);
+    const saved = await this.findForPractitioner(input.practitionerId, routineId);
     if (!saved) {
       throw new RoutineRepositoryError("Save frozen copy failed");
     }
