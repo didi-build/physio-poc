@@ -140,14 +140,15 @@ export function encodedExerciseSearchQueryLength(raw: string): number {
 
 /** Truncate raw search text so URL-encoded `q` is at most 199 characters. */
 export function capRawExerciseSearchQueryForUrl(raw: string): string {
-  let text = raw;
+  let codePoints = [...raw];
   while (
-    text.length > 0 &&
-    encodedExerciseSearchQueryLength(text) > MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH
+    codePoints.length > 0 &&
+    encodedExerciseSearchQueryLength(codePoints.join("")) >
+      MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH
   ) {
-    text = text.slice(0, -1);
+    codePoints = codePoints.slice(0, -1);
   }
-  return text;
+  return codePoints.join("");
 }
 
 /** In-app path for All exercises search (includes `q` when non-empty). */

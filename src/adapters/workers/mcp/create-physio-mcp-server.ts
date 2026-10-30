@@ -19,6 +19,7 @@ export function createPhysioMcpServer(config: PhysioServerConfig): Server {
       description: tool.description,
       inputSchema: tool.inputSchema,
       outputSchema: tool.outputSchema,
+      annotations: tool.annotations,
     })),
   }));
 

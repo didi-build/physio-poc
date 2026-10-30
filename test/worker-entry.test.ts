@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import worker from "../src/entry/worker.js";
+import { exerciseMediaHttpRouteCases } from "../src/http/routes/exercise-media.js";
 
 describe("Worker entry (integration)", () => {
   const practitionerId = "pract-1";
@@ -18,7 +19,7 @@ describe("Worker entry (integration)", () => {
     });
   });
 
-  it("returns 404 for unauthenticated exercise API routes", async () => {
+  it("returns 404 for unauthenticated exercise library API routes", async () => {
     const cases: { method: string; path: string; body?: string }[] = [
       { method: "GET", path: `${apiBase}/exercises/approved/search` },
       { method: "GET", path: `${apiBase}/exercises/${exerciseId}` },
@@ -66,6 +67,25 @@ describe("Worker entry (integration)", () => {
           method: testCase.method,
           headers: testCase.body ? { "content-type": "application/json" } : undefined,
           body: testCase.body,
+        }),
+        {},
+      );
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    }
+  });
+
+  it("returns 404 for exercise media API routes", async () => {
+    for (const testCase of exerciseMediaHttpRouteCases()) {
+      const response = await worker.fetch(
+        new Request(`https://example.workers.dev${testCase.path}`, {
+          method: testCase.method,
+          headers:
+            testCase.method === "POST"
+              ? { "content-type": "application/json" }
+              : undefined,
+          body:
+            testCase.method === "POST" ? JSON.stringify({ scope: "start" }) : undefined,
         }),
         {},
       );
