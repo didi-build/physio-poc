@@ -1,7 +1,30 @@
 export type { JsonSchema } from "./json-schema.js";
 export {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+  CONNECTOR_PHYSIO_APP_ROUTE_NAMES,
+  EXERCISE_SEARCH_QUERY_PARAM,
+  FROM_ROUTINE_ID_QUERY_PARAM,
+  MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH,
+  MAX_EXERCISE_SEARCH_QUERY_LENGTH,
+  PHYSIO_APP_ROUTE_PATTERNS,
+  WEB_APP_EXERCISE_SEARCH_PATH,
+  WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
+  buildPhysioAppUrl,
+  buildProgramBuilderLink,
+  buildStubPublicShareLink,
+  buildWebAppExerciseSearchUrl,
+  capRawExerciseSearchQueryForUrl,
+  encodedExerciseSearchQueryLength,
+  fillPhysioAppRoutePattern,
+  normalizeWebAppBaseUrl,
+  type ConnectorPhysioAppRouteName,
+  type FillPhysioAppRouteParams,
+  type PhysioAppRouteName,
+} from "../app-routes.js";
+
+export {
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+  MCP_TOOL_ANNOTATIONS,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
   getPhysioMcpTool,
@@ -9,12 +32,13 @@ export {
   PHYSIO_MCP_TOOLS,
   type PhysioMcpToolDefinition,
   type PhysioMcpToolName,
+  type PhysioMcpToolAnnotations,
 } from "./contract.js";
 
 export {
-  buildOrEditProgramDescription,
-  buildOrEditProgramInputSchema,
-  buildOrEditProgramOutputSchema,
+  getProgramBuilderLinkDescription,
+  getProgramBuilderLinkInputSchema,
+  getProgramBuilderLinkOutputSchema,
   getProgramShareLinkOrPdfDescription,
   getProgramShareLinkOrPdfInputSchema,
   getProgramShareLinkOrPdfOutputSchema,
@@ -27,8 +51,6 @@ export {
 } from "./tools.js";
 
 export {
-  GET_PROGRAM_NEVER_AUTO_PUBLISH,
-  GET_PROGRAM_REPUBLISH_KEEPS_SHARE_LINK,
   inferGetProgramDisplayState,
   publishedLinkFieldsPresent,
   type GetProgramDisplayState,
@@ -59,26 +81,27 @@ export {
 } from "./text-limits.js";
 
 export {
-  WEB_APP_EXERCISE_SEARCH_PATH,
-  WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
-  buildWebAppExerciseSearchUrl,
-  normalizeWebAppBaseUrl,
-} from "./urls.js";
+  OPAQUE_ENTITY_ID_FORMAT,
+  OPAQUE_ENTITY_ID_LENGTH,
+  OPAQUE_ENTITY_ID_PATTERN,
+  OpaqueEntityIdValidationError,
+  generateOpaqueEntityId,
+  isValidOpaqueEntityId,
+  validateOpaqueEntityId,
+} from "../domain/opaque-entity-id.js";
 
 export {
   ambiguousProgramMatchSchema,
   approvedExerciseSummarySchema,
   exerciseCategorySchema,
-  exerciseNotFoundSchema,
   nullableProgramVersionRefSchema,
   prescriptionTypeSchema,
   programCodeProperty,
-  programRowInputSchema,
-  programRowOutputSchema,
   programTitleProperty,
   programVersionRefSchema,
   publishOverridesInputSchema,
   rowParamsSchema,
+  routineIdProperty,
   routineSummarySchema,
   searchLinkOutputProperty,
   shareLinkOutputProperty,
