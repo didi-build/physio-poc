@@ -19,6 +19,7 @@ import {
   PINNED_PREFIX,
   editsOnTopOfLibraryLine,
 } from "../../src/ui/copy/exercise-library.js";
+import { TOAST_UNDO } from "../../src/ui/copy/nav.js";
 import {
   countMyCopyEdits,
   myCopyStatusLine,
@@ -220,6 +221,21 @@ describe("exercise library loading/error copy guard", () => {
     const stray = document.createElement("span");
     stray.className = "sr-only";
     stray.textContent = "Oops";
+    page.append(stray);
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        page,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects Undo injected beside the slot", () => {
+    const page = minimalDetailsErrorPageShell();
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = TOAST_UNDO;
     page.append(stray);
     expect(() =>
       assertExerciseLibraryErrorPageCopy(

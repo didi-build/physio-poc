@@ -34,7 +34,7 @@ import {
   nothingInMyMatches,
 } from "../../src/ui/copy/exercise-library.js";
 import { MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX } from "../../src/ui/copy/exercise-media.js";
-import { NAV_TAB_EXERCISES } from "../../src/ui/copy/nav.js";
+import { NAV_TAB_EXERCISES, TOAST_UNDO } from "../../src/ui/copy/nav.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
 import {
   LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED,
@@ -531,6 +531,40 @@ describe("Exercise library UI", () => {
     });
   });
 
+  it("shows the Exercise details kicker on loaded exercise details", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        library: { ...baseDetails.library, title: "Heel slide", description: "Desc" },
+      }),
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      const kicker = document.querySelector(".ex-detail-kicker");
+      expect(kicker).toBeTruthy();
+      expect(kicker).toHaveTextContent(EXERCISE_DETAILS);
+    });
+  });
+
+  it("shows the My copy kicker on loaded My copy editor", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        in_my_exercises: true,
+      }),
+    });
+
+    renderMyCopy(client);
+
+    await waitFor(() => {
+      const kicker = document.querySelector(".ex-detail-kicker");
+      expect(kicker).toBeTruthy();
+      expect(kicker).toHaveTextContent(MY_COPY);
+    });
+  });
+
   it("shows spec empty state when My exercises search matches nothing", async () => {
     const client = mockClient({
       listMyExercises: vi.fn().mockResolvedValue({
@@ -878,6 +912,65 @@ describe("Exercise library UI", () => {
     const stray = document.createElement("span");
     stray.className = "sr-only";
     stray.textContent = "Oops";
+    screen.getByTestId("exercise-library-detail-error-slot").append(stray);
+
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        document.body,
+        exerciseLibraryMyCopyErrorPageAllowlist(),
+        exerciseLibraryMyCopyErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole details error page rejects Undo injected beside the slot", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+
+    const stray = document.createElement("span");
+    stray.textContent = TOAST_UNDO;
+    screen.getByTestId("exercise-library-detail-error-slot").append(stray);
+
+    expect(() =>
+      assertExerciseLibraryErrorPageCopy(
+        document.body,
+        exerciseLibraryDetailsErrorPageAllowlist(),
+        exerciseLibraryDetailsErrorPageSegmentLimits(),
+      ),
+    ).toThrow();
+  });
+
+  it("mutation: whole My copy error page rejects Undo injected beside the slot", async () => {
+    const client = mockClient({
+      getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+    });
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+      client,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+
+    const stray = document.createElement("span");
+    stray.className = "sr-only";
+    stray.textContent = TOAST_UNDO;
     screen.getByTestId("exercise-library-detail-error-slot").append(stray);
 
     expect(() =>

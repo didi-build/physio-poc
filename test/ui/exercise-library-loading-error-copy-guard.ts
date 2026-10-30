@@ -59,7 +59,6 @@ function physioShellAllowlist(): readonly string[] {
     ACCOUNT_MY_DEFAULTS,
     ACCOUNT_MY_DEFAULTS_DETAIL,
     ACCOUNT_SIGN_OUT,
-    TOAST_UNDO,
   ];
 }
 
@@ -75,7 +74,6 @@ function shellSegmentLimits(): Readonly<Record<string, number>> {
     [ACCOUNT_MY_DEFAULTS]: 1,
     [ACCOUNT_MY_DEFAULTS_DETAIL]: 1,
     [ACCOUNT_SIGN_OUT]: 1,
-    [TOAST_UNDO]: 1,
   };
 }
 
@@ -105,6 +103,7 @@ export function exerciseLibraryListErrorPageAllowlistMine(): readonly string[] {
     CLEAR,
     FILTERS_HEADER,
     filterSummary(DEFAULT_FILTERS),
+    TOAST_UNDO,
   ];
 }
 
@@ -122,6 +121,7 @@ export function exerciseLibraryListErrorPageSegmentLimitsMine(): Readonly<
     [CLEAR]: 1,
     [FILTERS_HEADER]: 1,
     [filterSummary(DEFAULT_FILTERS)]: 1,
+    [TOAST_UNDO]: 1,
   });
 }
 
@@ -139,6 +139,7 @@ export function exerciseLibraryListErrorPageAllowlistAll(): readonly string[] {
     CLEAR,
     FILTERS_HEADER,
     filterSummary(DEFAULT_FILTERS),
+    TOAST_UNDO,
   ];
 }
 
@@ -156,12 +157,13 @@ export function exerciseLibraryListErrorPageSegmentLimitsAll(): Readonly<
     [CLEAR]: 1,
     [FILTERS_HEADER]: 1,
     [filterSummary(DEFAULT_FILTERS)]: 1,
+    [TOAST_UNDO]: 1,
   });
 }
 
 /** Sourced strings that may appear on exercise details after a load error. */
 export function exerciseLibraryDetailsErrorPageAllowlist(): readonly string[] {
-  return [...physioShellAllowlist(), BACK_LIBRARY, EXERCISE_DETAILS, TOAST_UNDO];
+  return [...physioShellAllowlist(), BACK_LIBRARY, EXERCISE_DETAILS];
 }
 
 export function exerciseLibraryDetailsErrorPageSegmentLimits(): Readonly<
@@ -175,7 +177,7 @@ export function exerciseLibraryDetailsErrorPageSegmentLimits(): Readonly<
 
 /** Sourced strings that may appear on My copy editor after a load error. */
 export function exerciseLibraryMyCopyErrorPageAllowlist(): readonly string[] {
-  return [...physioShellAllowlist(), BACK_LIBRARY, MY_COPY, TOAST_UNDO];
+  return [...physioShellAllowlist(), BACK_LIBRARY, MY_COPY];
 }
 
 export function exerciseLibraryMyCopyErrorPageSegmentLimits(): Readonly<

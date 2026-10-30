@@ -192,7 +192,16 @@ describe("app shell nav (integration)", () => {
     expect(signOut.tagName).toBe("A");
   });
 
-  it("does not render global search in the app shell header", () => {
+  it.each(["/programs", "/routines", "/requests", "/defaults"] as const)(
+    "does not render search UI anywhere on %s",
+    (route) => {
+      renderApp(route, 0);
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not render global search in the app shell header on library routes", () => {
     renderApp("/exercises", 0);
     const header = document.querySelector(".shell-header");
     expect(header).toBeTruthy();
