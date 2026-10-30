@@ -275,6 +275,36 @@ describe("app shell nav (integration)", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("closes after Tab keydown once focus moves (Chrome focus order)", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    const outsideLink = within(topNav).getByRole("link", { name: "Routines" });
+
+    await user.click(trigger);
+    const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    signOutItem.focus();
+    fireEvent.keyDown(signOutItem, { key: "Tab", code: "Tab" });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.focusOut(signOutItem, { relatedTarget: outsideLink });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the account menu when the window loses focus", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    fireEvent.blur(window);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("closes the account menu when the backdrop or an outside control is clicked", async () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
@@ -299,13 +329,17 @@ describe("app shell nav (integration)", () => {
     );
     expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
     expect(source).toContain('wrap.addEventListener("keydown", onKeyDown)');
+    expect(source).toContain('window.addEventListener("blur", onWindowBlur)');
     expect(source).toContain(
       'document.addEventListener("pointerdown", onPointerDown, true)',
     );
-    expect(source).toContain('event.key === "Tab"');
+    expect(source).toMatch(
+      /onFocusOut[\s\S]*wrap\.contains\(related\)[\s\S]*onCloseRef\.current\(\)/,
+    );
     expect(source).toContain("related === null");
     expect(source).toContain("menu.contains(related)");
     expect(source).toContain("wrap.contains(related)");
+    expect(source).not.toContain("queueMicrotask");
     expect(source).toMatch(/shell-menu-backdrop[\s\S]*onClick=\{closeMenu\}/);
     expect(source).not.toContain("menu.contains(event.target as Node)");
   });

@@ -127,15 +127,6 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
         closeMenu();
         return;
       }
-      if (event.key === "Tab") {
-        queueMicrotask(() => {
-          const active = document.activeElement;
-          if (!active || !wrap.contains(active)) {
-            onCloseRef.current();
-          }
-        });
-        return;
-      }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
         return;
       }
@@ -168,6 +159,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       if (wrap.contains(related)) {
         return;
       }
+      onCloseRef.current();
+    };
+
+    const onWindowBlur = () => {
+      onCloseRef.current();
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -180,10 +176,12 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
 
     wrap.addEventListener("keydown", onKeyDown);
     wrap.addEventListener("focusout", onFocusOut);
+    window.addEventListener("blur", onWindowBlur);
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => {
       wrap.removeEventListener("keydown", onKeyDown);
       wrap.removeEventListener("focusout", onFocusOut);
+      window.removeEventListener("blur", onWindowBlur);
       document.removeEventListener("pointerdown", onPointerDown, true);
     };
   }, [open]);
