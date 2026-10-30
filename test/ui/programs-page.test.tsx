@@ -516,6 +516,23 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(await screen.findByText(libraryUpdatesToReviewFlag(2)!)).toBeInTheDocument();
   });
 
+  it("shows singular library update flag for count 1 (mockups 01 and 29)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/programs"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({
+            listPrograms: vi.fn().mockResolvedValue({
+              items: [{ ...LIST_ITEM, library_updates_to_review: 1 }],
+              matched_code: null,
+            }),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(libraryUpdatesToReviewFlag(1)!)).toBeInTheDocument();
+  });
+
   it("shows zero exercise card copy", async () => {
     render(
       <MemoryRouter initialEntries={["/programs"]}>

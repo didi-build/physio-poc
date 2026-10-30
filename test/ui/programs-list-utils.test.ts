@@ -9,9 +9,9 @@ import {
 } from "../../src/ui/programs/programs-list-utils.js";
 
 describe("libraryUpdatesToReviewFlag (unit)", () => {
-  it("returns null for zero and the States table line 23 template with N replaced by the count", () => {
+  it("returns null for zero; singular for 1; plural for 2+", () => {
     expect(libraryUpdatesToReviewFlag(0)).toBeNull();
-    expect(libraryUpdatesToReviewFlag(1)).toBe("1 library updates to review");
+    expect(libraryUpdatesToReviewFlag(1)).toBe("1 library update to review");
     expect(libraryUpdatesToReviewFlag(2)).toBe("2 library updates to review");
   });
 });

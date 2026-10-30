@@ -173,12 +173,41 @@ export function listCountLabel(total: number, visible?: number): string | null {
   return `${visible} of ${total} programs`;
 }
 
-/** design/app/programs/spec.md States table line 23 (N replaced with the count). */
+/** mockups/01 and 29 (approved copy, CTO 12c15756). */
+export const LIBRARY_UPDATES_TO_REVIEW_SINGULAR = "1 library update to review";
+
+/** design/app/programs/spec.md States table line 23 for counts 2+. */
 export function libraryUpdatesToReviewFlag(count: number): string | null {
   if (count <= 0) {
     return null;
   }
+  if (count === 1) {
+    return LIBRARY_UPDATES_TO_REVIEW_SINGULAR;
+  }
   return `${count} library updates to review`;
+}
+
+export const CARD_LINK_NO_LINK_YET = "No link yet";
+
+export const ROW_VERSION_LABEL = "Version";
+export const ROW_VERSION_PICKER_HINT =
+  "Pick a version. You can switch it on the row later.";
+
+export function programCardOriginLineText(
+  origin: import("../../services/programs/types.js").ProgramRoutineOriginView | null,
+): string {
+  if (origin === null) {
+    return BUILT_FROM_SCRATCH;
+  }
+  const base = `From routine ${origin.routine_name}, v${origin.routine_version_number}`;
+  if (origin.used_as === "used_as_is") {
+    return `${base}, used as is`;
+  }
+  return `${base}, then tweaked`;
+}
+
+export function versionOfRowLabel(rowName: string): string {
+  return `Version of ${rowName}`;
 }
 
 /** States table line 24; mockup 04 search no match. */
