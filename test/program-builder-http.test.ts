@@ -15,6 +15,7 @@ import {
   programRowLibraryUpdateApplyPath,
   programRowLibraryUpdateKeepPath,
 } from "./helpers/program-builder-http-paths.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import {
   ProgramRowsRepository,
@@ -204,12 +205,55 @@ function expectDbStateUnchanged(
   expect(after.rows).toEqual(before.rows);
 }
 
+async function seedOpenExerciseRequest(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  requestId: string,
+  requestedName: string,
+): Promise<void> {
+  const requests = new ExerciseRequestsRepository(storage);
+  await requests.insert({
+    id: requestId,
+    requestedName,
+    requestedBy: practitionerId,
+    status: "open",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+}
+
+function sortedHeaderEntries(response: Response): [string, string][] {
+  return [...response.headers.entries()].sort((left, right) =>
+    left[0].localeCompare(right[0]),
+  );
+}
+
 describe("Program builder HTTP routes (integration)", () => {
-  it("returns 404 for POST link-approved-placeholders without changing storage", async () => {
+  it("returns 404 for POST link-approved-placeholders without linking placeholder rows", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
-      const beforeCount = await programCount(storage, practitionerId);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const programId = id("prog-no-link-route");
+      const requestId = id("req-link-http");
+      const rowId = id("row-ph-unlinked");
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        requestId,
+        "Pending squat",
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addPlaceholderRow(practitionerId, programId, {
+        rowId,
+        exerciseRequestId: requestId,
+        prescriptionType: "stretching",
+      });
+      const beforeRow = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(beforeRow?.exercise_request_id).toBe(requestId);
+      expect(beforeRow?.exercise_id).toBeNull();
+
       const { deps, cookie } = apiDeps(storage, practitionerId);
       const url = `${BASE}${PROGRAMS_API_BASE}/link-approved-placeholders`;
       const response = await handleRequest(
@@ -218,13 +262,19 @@ describe("Program builder HTTP routes (integration)", () => {
           mutatingAppApiRequestInit(url, {
             method: "POST",
             headers: { cookie },
-            body: JSON.stringify({}),
+            body: JSON.stringify({
+              exercise_request_id: requestId,
+              approved_version_id: FIXTURE_VERSION_ID,
+            }),
           }),
         ),
         deps,
       );
       expect(response.status).toBe(404);
-      expect(await programCount(storage, practitionerId)).toBe(beforeCount);
+      const afterRow = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(afterRow?.exercise_request_id).toBe(requestId);
+      expect(afterRow?.exercise_id).toBeNull();
+      expect(afterRow?.exercise_version_id).toBeNull();
     } finally {
       storage.close();
     }
@@ -272,6 +322,12 @@ describe("Program builder HTTP routes (integration)", () => {
 
       expect(ownDuplicate.status).toBe(400);
       expect(foreignDuplicate.status).toBe(400);
+      expect(await foreignDuplicate.clone().text()).toBe(
+        await ownDuplicate.clone().text(),
+      );
+      expect(sortedHeaderEntries(foreignDuplicate)).toEqual(
+        sortedHeaderEntries(ownDuplicate),
+      );
       const ownBody = await ownDuplicate.json();
       const foreignBody = await foreignDuplicate.json();
       expect(foreignBody).toEqual(ownBody);
