@@ -15,7 +15,7 @@ import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
-const exerciseId = "ex-1";
+const exerciseId = testOpaqueEntityId("ex-1");
 const WORKER_PRACTITIONER_ID = testOpaqueEntityId("worker-exercise-library");
 
 function exerciseRouteCases(
@@ -94,7 +94,7 @@ describe("Worker exercise library routes (integration)", () => {
     await seedExercise(storage, practId, exerciseId);
     await storage.run(VERSION_INSERT_SQL, [
       ...versionInsertBindings({
-        id: "ver-1",
+        id: testOpaqueEntityId("ver-ex-1"),
         exercise_id: exerciseId,
         status: "approved",
         approved_by: practId,

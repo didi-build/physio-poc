@@ -98,7 +98,7 @@ flowchart LR
 - **Services** implement use cases as tickets land; domain types arrive in DIDI-997 / DIDI-1000.
 - **MCP handlers** validate IO with `src/mcp-connector/` schemas, call services, and shape responses.
 - **PDF** is browser print from the link page (DIDI-1015). **Media generation** runs only in the gated main-branch workflow (DIDI-999), never in the app request path.
-- **`practitioner_id`:** server-generated UUID from bootstrap or migration seed; never derived from email or name.
+- **`practitioner_id`:** server-generated UUID v4 from bootstrap or migration seed; never derived from email or name. Signed-in API routes use `practitioners.id` from the auth session (DIDI-1001 maps Google sign-in email to that row), not the Better Auth `user.id`.
 
 ## UI
 
