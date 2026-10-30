@@ -301,18 +301,49 @@ describe("Exercise library QA round 3 (tests only)", () => {
       });
 
       const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
-      const list = await service.listMyExercises({
+      const noMatchForPractitioner = await service.listMyExercises({
         practitionerId: practId,
         query: "Practitioner scope",
       });
-      expect(list.list_state).toBe("nothing_in_my_exercises_matches");
-      const items = [
-        ...list.sections.new_from_requests,
-        ...list.sections.pinned,
-        ...list.sections.recently_used_and_saved,
+      expect(noMatchForPractitioner.list_state).toBe("nothing_in_my_exercises_matches");
+      const emptyItems = [
+        ...noMatchForPractitioner.sections.new_from_requests,
+        ...noMatchForPractitioner.sections.pinned,
+        ...noMatchForPractitioner.sections.recently_used_and_saved,
       ];
-      expect(items).toHaveLength(0);
-      expect(items.some((item) => item.exercise_id === "ex-match")).toBe(false);
+      expect(emptyItems).toHaveLength(0);
+      expect(emptyItems.some((item) => item.exercise_id === "ex-match")).toBe(false);
+
+      await seedApproved(storage, practId, {
+        exerciseId: "ex-alpha",
+        title: "Scope token alpha",
+      });
+      await seedApproved(storage, practId, {
+        exerciseId: "ex-z",
+        title: "Scope token zulu",
+      });
+      await myRepo.upsert({
+        practitionerId: otherId,
+        exerciseId: "ex-alpha",
+        savedAt: TS,
+      });
+      await myRepo.upsert({
+        practitionerId: practId,
+        exerciseId: "ex-z",
+        savedAt: TS,
+      });
+
+      const scopedList = await service.listMyExercises({
+        practitionerId: practId,
+        query: "Scope token",
+      });
+      expect(scopedList.list_state).toBe("ok");
+      const scopedItems = [
+        ...scopedList.sections.new_from_requests,
+        ...scopedList.sections.pinned,
+        ...scopedList.sections.recently_used_and_saved,
+      ];
+      expect(scopedItems.map((item) => item.exercise_id)).toEqual(["ex-z"]);
     } finally {
       storage.close();
     }
