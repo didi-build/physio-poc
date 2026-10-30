@@ -110,6 +110,30 @@ describe("My defaults HTTP routes (integration)", () => {
     }
   });
 
+  it("rejects custom_date for practitioner share link default", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const patchResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1/api/practitioners/${practitionerId}/my-defaults/share-link-expiry`,
+          cookie,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.custom_date }),
+          },
+        ),
+        deps,
+      );
+      expect(patchResponse.status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("DELETE on a type default resets to global", async () => {
     const storage = await openMigratedDatabase();
     try {

@@ -7,7 +7,7 @@ import type { MyDefaultsPageView } from "../../services/my-defaults/types.js";
 import { useMyDefaultsApi } from "../api/my-defaults-context.js";
 import { useToast } from "../components/Toast.js";
 import {
-  BACK_PROGRAMS,
+  PROGRAMS,
   DEFAULT_SHARE_LINK_EXPIRY_LABEL,
   EXERCISE_TYPES_BANNER,
   EXERCISE_TYPES_HEADING,
@@ -26,8 +26,8 @@ import {
   newLinksExpireAfterLabel,
   savedYourTypeDefaultToast,
 } from "../copy/my-defaults.js";
-import { MY_DEFAULTS_PAGE_ERROR_MESSAGE } from "../copy/my-defaults-states.js";
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
+import { MyDefaultsBusyState, MyDefaultsErrorSlot } from "./MyDefaultsStates.js";
 
 const PRACTITIONER_EXPIRY_CHOICES = [
   SHARE_LINK_EXPIRES_IN.one_week,
@@ -36,27 +36,6 @@ const PRACTITIONER_EXPIRY_CHOICES = [
   SHARE_LINK_EXPIRES_IN.one_year,
   SHARE_LINK_EXPIRES_IN.never,
 ] as const;
-
-function MyDefaultsBusyState() {
-  return (
-    <div className="md-busy" data-testid="my-defaults-busy" aria-hidden="true">
-      <div className="md-busy-skeleton md-busy-skeleton--title" />
-      <div className="md-busy-skeleton md-busy-skeleton--line" />
-      <div className="md-busy-skeleton md-busy-skeleton--line md-busy-skeleton--short" />
-    </div>
-  );
-}
-
-function MyDefaultsErrorSlot() {
-  if (typeof MY_DEFAULTS_PAGE_ERROR_MESSAGE !== "string") {
-    return <div data-testid="my-defaults-error-slot" className="md-error-slot" />;
-  }
-  return (
-    <p className="md-error" role="alert" data-testid="my-defaults-error-slot">
-      {MY_DEFAULTS_PAGE_ERROR_MESSAGE}
-    </p>
-  );
-}
 
 export function MyDefaultsPage() {
   const client = useMyDefaultsApi();
@@ -125,17 +104,20 @@ export function MyDefaultsPage() {
 
   return (
     <section
-      className="md-page"
+      className="ex-page md-page"
       aria-labelledby="my-defaults-heading"
       aria-busy={loading || savingExpiry ? true : undefined}
     >
-      <Link to={fillPhysioAppRoutePattern("programs")} className="md-back-link">
-        {BACK_PROGRAMS}
+      <Link
+        to={fillPhysioAppRoutePattern("programs")}
+        className="ex-back-link md-back-link"
+      >
+        {PROGRAMS}
       </Link>
-      <h1 id="my-defaults-heading" className="md-page-title">
+      <h1 id="my-defaults-heading" className="ex-page-title md-page-title">
         {MY_DEFAULTS_PAGE_TITLE}
       </h1>
-      <p className="md-page-intro">{MY_DEFAULTS_INTRO}</p>
+      <p className="ex-page-intro md-page-intro">{MY_DEFAULTS_INTRO}</p>
 
       {loading ? <MyDefaultsBusyState /> : null}
       {loadFailed ? <MyDefaultsErrorSlot /> : null}

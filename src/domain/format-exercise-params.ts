@@ -31,7 +31,7 @@ function perDayDisplay(value: NumericOrRange): string {
   return `${value.min} to ${value.max} times a day`;
 }
 
-function paramPhrase(key: ParamKey, value: NumericOrRange): string {
+export function paramPhrase(key: ParamKey, value: NumericOrRange): string {
   const n = typeof value === "number" ? value : null;
   switch (key) {
     case "reps":

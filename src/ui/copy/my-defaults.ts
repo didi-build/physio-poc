@@ -1,5 +1,6 @@
 /** Verbatim strings from design/app/settings-link-expiry/spec.md (Copy inventory). */
 
+export const PROGRAMS = "Programs";
 export const MY_DEFAULTS_PAGE_TITLE = "My defaults";
 export const MY_DEFAULTS_INTRO =
   "Your defaults fill in new program rows and new share links. Where you haven't set one, the global default is used. Edits on a single exercise in My exercises win over both.";
@@ -34,13 +35,11 @@ export const ADD_PARAMETER = "Add parameter";
 export const TYPE_DEFAULTS_FOOTNOTE =
   'Global defaults are set for all practitioners. Up, down and rest can be added with "Add parameter".';
 
-export const BACK_PROGRAMS = "Programs";
-
-export function editYourTypeDefaultAria(typeLabel: string): string {
+export function editYourTypeDefaultLabel(typeLabel: string): string {
   return `Edit your ${typeLabel} default`;
 }
 
-export function setYourOwnTypeDefaultAria(typeLabel: string): string {
+export function setYourOwnTypeDefaultLabel(typeLabel: string): string {
   return `Set your own ${typeLabel} default`;
 }
 
@@ -48,18 +47,12 @@ export function savedYourTypeDefaultToast(typeLabel: string): string {
   return `Saved your ${typeLabel} default`;
 }
 
+/** Prescription type titles shown on mockups 01 and 02 (not parameterized in spec copy). */
 export const TYPE_LABELS = {
   stretching: "Stretching",
   isometric: "Isometric",
   concentric: "Concentric",
   eccentric: "Eccentric",
-} as const;
-
-export const TYPE_HINTS = {
-  stretching: "Hold a stretch",
-  isometric: "Hold still under load",
-  concentric: "Lift or push with control",
-  eccentric: "Lower slowly",
 } as const;
 
 export const SHARE_LINK_EXPIRY_CHOICE_LABELS = {
@@ -69,6 +62,3 @@ export const SHARE_LINK_EXPIRY_CHOICE_LABELS = {
   "1_year": "1 year",
   never: "Never",
 } as const;
-
-export const EDIT_TYPE_DEFAULT = "Edit";
-export const SET_MY_OWN_TYPE_DEFAULT = "Set my own";

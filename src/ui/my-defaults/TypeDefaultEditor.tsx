@@ -11,7 +11,10 @@ import {
   TYPE_DEFAULT_CORE_PARAMS,
   addableTypeDefaultParams,
 } from "../../domain/type-default-param-layout.js";
-import { formatExerciseParams } from "../../domain/format-exercise-params.js";
+import {
+  formatExerciseParams,
+  paramPhrase,
+} from "../../domain/format-exercise-params.js";
 import { mergeExerciseParams } from "../../domain/exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../domain/global-type-defaults-seed.js";
 import {
@@ -22,25 +25,14 @@ import {
   SAVE,
 } from "../copy/my-defaults.js";
 
-const PER_DAY_SELECT_OPTIONS: { label: string; value: NumericOrRange }[] = [
-  { label: "1", value: 1 },
-  { label: "2", value: 2 },
-  { label: "3", value: 3 },
-  { label: "1 to 2", value: { min: 1, max: 2 } },
-  { label: "1 to 3", value: { min: 1, max: 3 } },
-  { label: "2 to 3", value: { min: 2, max: 3 } },
+const PER_DAY_SELECT_OPTIONS: NumericOrRange[] = [
+  1,
+  2,
+  3,
+  { min: 1, max: 2 },
+  { min: 1, max: 3 },
+  { min: 2, max: 3 },
 ];
-
-const PARAM_FIELD_LABEL: Record<ParamKey, string> = {
-  reps: "Reps",
-  sets: "Sets",
-  hold_s: "Hold (s)",
-  ascent_s: "Up (s)",
-  descent_s: "Down (s)",
-  rest_s: "Rest between sets (s)",
-  per_day: "Times per day",
-  days_per_week: "Days per week",
-};
 
 function perDayOptionValue(value: NumericOrRange): string {
   if (typeof value === "number") {
@@ -55,9 +47,9 @@ function matchPerDayValue(value: NumericOrRange | undefined): string {
   }
   const target = perDayOptionValue(value);
   const match = PER_DAY_SELECT_OPTIONS.find(
-    (option) => perDayOptionValue(option.value) === target,
+    (option) => perDayOptionValue(option) === target,
   );
-  return match ? perDayOptionValue(match.value) : "1-3";
+  return match ? perDayOptionValue(match) : "1-3";
 }
 
 function numericFieldValue(value: NumericOrRange | undefined): string {
@@ -140,12 +132,12 @@ export function TypeDefaultEditor({
 
   const updatePerDay = (raw: string) => {
     const option = PER_DAY_SELECT_OPTIONS.find(
-      (entry) => perDayOptionValue(entry.value) === raw,
+      (entry) => perDayOptionValue(entry) === raw,
     );
     if (!option) {
       return;
     }
-    setDraft((current) => ({ ...current, per_day: option.value }));
+    setDraft((current) => ({ ...current, per_day: option }));
   };
 
   const addParam = (key: ParamKey) => {
@@ -165,9 +157,12 @@ export function TypeDefaultEditor({
         {visibleKeys.map((key) =>
           key === "per_day" ? (
             <label key={key} className="md-param-field">
-              <span className="md-param-label">{PARAM_FIELD_LABEL[key]}</span>
               <select
                 className="md-param-input"
+                aria-label={paramPhrase(
+                  key,
+                  draft.per_day ?? globalParams.per_day ?? { min: 1, max: 3 },
+                )}
                 value={matchPerDayValue(draft.per_day)}
                 onChange={(event) => {
                   updatePerDay(event.target.value);
@@ -175,20 +170,23 @@ export function TypeDefaultEditor({
               >
                 {PER_DAY_SELECT_OPTIONS.map((option) => (
                   <option
-                    key={perDayOptionValue(option.value)}
-                    value={perDayOptionValue(option.value)}
+                    key={perDayOptionValue(option)}
+                    value={perDayOptionValue(option)}
                   >
-                    {option.label}
+                    {formatExerciseParams({ per_day: option })}
                   </option>
                 ))}
               </select>
             </label>
           ) : (
             <label key={key} className="md-param-field">
-              <span className="md-param-label">{PARAM_FIELD_LABEL[key]}</span>
               <input
                 className="md-param-input"
                 inputMode="numeric"
+                aria-label={paramPhrase(
+                  key,
+                  draft[key] ?? globalParams[key] ?? PARAM_VALUE_BOUNDS[key].min,
+                )}
                 value={numericFieldValue(draft[key])}
                 onChange={(event) => {
                   updateNumber(key, event.target.value);
