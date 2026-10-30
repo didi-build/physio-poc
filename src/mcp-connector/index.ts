@@ -82,8 +82,12 @@ export {
 } from "./text-limits.js";
 
 export {
+  OPAQUE_ENTITY_ID_FORMAT,
   OPAQUE_ENTITY_ID_LENGTH,
   OPAQUE_ENTITY_ID_PATTERN,
+  OpaqueEntityIdValidationError,
+  generateOpaqueEntityId,
+  isValidOpaqueEntityId,
   validateOpaqueEntityId,
 } from "../domain/opaque-entity-id.js";
 

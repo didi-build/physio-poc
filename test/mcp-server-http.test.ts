@@ -15,6 +15,8 @@ import {
   buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   getPhysioMcpTool,
+  getProgramBuilderLinkInputSchema,
+  isValidOpaqueEntityId,
   validateOpaqueEntityId,
 } from "../src/mcp-connector/index.js";
 import {
@@ -394,7 +396,7 @@ describe("Physio MCP HTTP validation", () => {
 
   it("accepts a generated UUID v4 for from_routine_id", async () => {
     const generatedId = crypto.randomUUID();
-    expect(validateOpaqueEntityId(generatedId)).toBe(true);
+    expect(isValidOpaqueEntityId(generatedId)).toBe(true);
     await withMcpClient(async (client) => {
       const result = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -402,7 +404,32 @@ describe("Physio MCP HTTP validation", () => {
       });
       expect(result.isError).not.toBe(true);
       const body = result.structuredContent as { from_routine_id?: string };
-      expect(body.from_routine_id).toBe(generatedId);
+      expect(body.from_routine_id).toBe(generatedId.toLowerCase());
+    });
+  });
+
+  it("accepts uppercase UUID v4 in schema and normalizes via validateOpaqueEntityId", async () => {
+    const upper = "550E8400-E29B-41D4-A716-446655440000";
+    const lower = upper.toLowerCase();
+    expect(isValidOpaqueEntityId(upper)).toBe(true);
+    expect(validateOpaqueEntityId(upper, "from_routine_id")).toBe(lower);
+    const schemaValidate = ajv.compile(getProgramBuilderLinkInputSchema);
+    expect(schemaValidate({ from_routine_id: upper })).toBe(true);
+
+    await withMcpClient(async (client) => {
+      const result = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { from_routine_id: upper },
+      });
+      expect(result.isError).not.toBe(true);
+      const body = result.structuredContent as {
+        from_routine_id?: string;
+        builder_link?: string;
+      };
+      expect(body.from_routine_id).toBe(lower);
+      expect(body.builder_link).toBe(
+        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${lower}`,
+      );
     });
   });
 

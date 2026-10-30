@@ -15,6 +15,10 @@ import {
   search_routines,
 } from "./generated/input-validators.js";
 import { validateFreeTextForPatientDetails } from "../../mcp-connector/index.js";
+import {
+  OpaqueEntityIdValidationError,
+  validateOpaqueEntityId,
+} from "../../domain/opaque-entity-id.js";
 
 export class PhysioMcpToolInputError extends Error {
   constructor(message: string) {
@@ -104,6 +108,20 @@ export function validatePhysioMcpToolInput(
   const validate = validators[name];
   if (!validate(record)) {
     throw new PhysioMcpToolInputError(formatStandaloneErrors(validate));
+  }
+
+  if (typeof record.from_routine_id === "string") {
+    try {
+      record.from_routine_id = validateOpaqueEntityId(
+        record.from_routine_id,
+        "from_routine_id",
+      );
+    } catch (error) {
+      if (error instanceof OpaqueEntityIdValidationError) {
+        throw new PhysioMcpToolInputError(error.message);
+      }
+      throw error;
+    }
   }
 
   validateAllStringValues(record);

@@ -223,7 +223,7 @@ export const routineIdProperty: JsonSchema = {
   pattern: OPAQUE_ENTITY_ID_PATTERN,
   maxLength: OPAQUE_ENTITY_ID_LENGTH,
   description:
-    "Opaque routine id assigned by the system (UUID v4, for example 550e8400-e29b-41d4-a716-446655440000).",
+    "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000).",
 };
 
 const programRowSharedProperties: Record<string, JsonSchema> = {
