@@ -2,8 +2,6 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   cleanup,
   fireEvent,
@@ -322,26 +320,21 @@ describe("app shell nav (integration)", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("pins account menu focus-out wiring in ShellNav (structural)", () => {
-    const source = readFileSync(
-      join(import.meta.dirname, "../../src/ui/layout/ShellNav.tsx"),
-      "utf8",
-    );
-    expect(source).toContain('wrap.addEventListener("focusout", onFocusOut)');
-    expect(source).toContain('wrap.addEventListener("keydown", onKeyDown)');
-    expect(source).toContain('window.addEventListener("blur", onWindowBlur)');
-    expect(source).toContain(
-      'document.addEventListener("pointerdown", onPointerDown, true)',
-    );
-    expect(source).toMatch(
-      /onFocusOut[\s\S]*wrap\.contains\(related\)[\s\S]*onCloseRef\.current\(\)/,
-    );
-    expect(source).toContain("related === null");
-    expect(source).toContain("menu.contains(related)");
-    expect(source).toContain("wrap.contains(related)");
-    expect(source).not.toContain("queueMicrotask");
-    expect(source).toMatch(/shell-menu-backdrop[\s\S]*onClick=\{closeMenu\}/);
-    expect(source).not.toContain("menu.contains(event.target as Node)");
+  it("closes the account menu on outside pointerdown without moving focus", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+    const tabLink = within(tabNav).getByRole("link", { name: "Routines" });
+
+    await user.click(trigger);
+    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
+    expect(document.activeElement).toBe(defaultsItem);
+
+    fireEvent.pointerDown(tabLink);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(document.activeElement).not.toBe(tabLink);
   });
 
   it("keeps the account menu open when arrow keys move focus between items", async () => {
