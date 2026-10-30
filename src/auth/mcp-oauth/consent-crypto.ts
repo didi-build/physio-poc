@@ -12,3 +12,4 @@ export function generateOpaqueToken(byteLength = 32): string {
 }
 
 export const PHYSIO_MCP_CONSENT_CSRF_COOKIE = "physio_mcp_consent_csrf";
+export const PHYSIO_MCP_CONSENT_CSRF_HEADER = "X-Physio-Mcp-Consent-Csrf";

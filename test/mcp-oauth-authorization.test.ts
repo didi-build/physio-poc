@@ -253,16 +253,14 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
     it("rejects expired JWT access tokens", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const { tokens } = await runChatGptOAuthCodeFlow(deps);
-      const [header, payloadPart, signature] = String(tokens.access_token).split(".");
-      const body = JSON.parse(
-        Buffer.from(payloadPart!, "base64url").toString("utf8"),
-      ) as {
-        exp?: number;
-      };
-      body.exp = Math.floor(Date.now() / 1000) - 3600;
-      const forgedPayload = Buffer.from(JSON.stringify(body)).toString("base64url");
-      const forged = `${header}.${forgedPayload}.${signature}`;
-      const response = await callMcpInitialize(deps, forged);
+      const payload = JSON.parse(
+        Buffer.from(String(tokens.access_token).split(".")[1]!, "base64url").toString(
+          "utf8",
+        ),
+      ) as Record<string, unknown>;
+      payload.exp = Math.floor(Date.now() / 1000) - 3600;
+      const token = await signTestMcpAccessToken(deps, payload);
+      const response = await callMcpInitialize(deps, token);
       expect(response.status).toBe(401);
       expect(response.headers.get("www-authenticate")).toBeTruthy();
     });
@@ -270,16 +268,14 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
     it("rejects wrong-audience JWT access tokens", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const { tokens } = await runChatGptOAuthCodeFlow(deps);
-      const [header, payloadPart, signature] = String(tokens.access_token).split(".");
-      const body = JSON.parse(
-        Buffer.from(payloadPart!, "base64url").toString("utf8"),
-      ) as {
-        aud?: string | string[];
-      };
-      body.aud = ["https://wrong.example/mcp"];
-      const forgedPayload = Buffer.from(JSON.stringify(body)).toString("base64url");
-      const forged = `${header}.${forgedPayload}.${signature}`;
-      const response = await callMcpInitialize(deps, forged);
+      const payload = JSON.parse(
+        Buffer.from(String(tokens.access_token).split(".")[1]!, "base64url").toString(
+          "utf8",
+        ),
+      ) as Record<string, unknown>;
+      payload.aud = ["https://wrong.example/mcp"];
+      const token = await signTestMcpAccessToken(deps, payload);
+      const response = await callMcpInitialize(deps, token);
       expect(response.status).toBe(401);
       expect(response.headers.get("www-authenticate")).toBeTruthy();
     });

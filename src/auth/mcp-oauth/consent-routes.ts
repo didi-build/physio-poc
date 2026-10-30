@@ -3,6 +3,7 @@ import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { PractitionerSession } from "../auth-port.js";
 import {
   PHYSIO_MCP_CONSENT_CSRF_COOKIE,
+  PHYSIO_MCP_CONSENT_CSRF_HEADER,
   generateOpaqueToken,
   sha256Hex,
 } from "./consent-crypto.js";
@@ -174,11 +175,30 @@ async function loadPendingForRequest(
   if (pending.practitioner_id !== practitioner.practitionerId) {
     return { ok: false, response: plainStatus(403) };
   }
+  const csrfHeader = request.headers.get(PHYSIO_MCP_CONSENT_CSRF_HEADER);
+  if (!csrfHeader || csrfHeader !== csrfToken) {
+    return { ok: false, response: plainStatus(403) };
+  }
   const csrfHash = await sha256Hex(csrfToken);
   if (csrfHash !== pending.csrf_token_hash) {
     return { ok: false, response: plainStatus(403) };
   }
   return { ok: true, pendingId, csrfToken };
+}
+
+function refuseCrossOriginConsentPost(
+  request: Request,
+  authBaseUrl: string,
+): Response | null {
+  const origin = request.headers.get("origin");
+  if (origin === null) {
+    return plainStatus(403);
+  }
+  const expected = new URL(authBaseUrl).origin;
+  if (origin !== expected) {
+    return plainStatus(403);
+  }
+  return null;
 }
 
 async function postOAuthConsent(
@@ -204,6 +224,10 @@ async function postOAuthConsent(
 async function handleConsentAllow(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<Response> {
+  const crossOrigin = refuseCrossOriginConsentPost(input.request, input.authBaseUrl);
+  if (crossOrigin) {
+    return crossOrigin;
+  }
   const loaded = await loadPendingForRequest(input);
   if (!loaded.ok) {
     return loaded.response;
@@ -257,6 +281,10 @@ async function handleConsentAllow(
 async function handleConsentDeny(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<Response> {
+  const crossOrigin = refuseCrossOriginConsentPost(input.request, input.authBaseUrl);
+  if (crossOrigin) {
+    return crossOrigin;
+  }
   const loaded = await loadPendingForRequest(input);
   if (!loaded.ok) {
     return loaded.response;

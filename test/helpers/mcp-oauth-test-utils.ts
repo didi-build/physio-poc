@@ -10,6 +10,10 @@ import { PHYSIO_MCP_OAUTH_SCOPES } from "../../src/adapters/node/physio-mcp-oaut
 import { createNodeAppDependencies } from "../../src/adapters/node/create-node-app-dependencies.js";
 import { BetterAuthPort } from "../../src/adapters/node/better-auth-port.js";
 import type { PhysioMcpConsentClock } from "../../src/auth/mcp-oauth/consent-routes.js";
+import {
+  PHYSIO_MCP_CONSENT_CSRF_COOKIE,
+  PHYSIO_MCP_CONSENT_CSRF_HEADER,
+} from "../../src/auth/mcp-oauth/consent-crypto.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./physio-test-auth-secret.js";
 
 export const MCP_OAUTH_TEST_BASE = "http://127.0.0.1:8787";
@@ -104,6 +108,10 @@ export class CookieJar {
       .map(([name, value]) => `${name}=${value}`)
       .join("; ");
   }
+
+  get(name: string): string | undefined {
+    return this.values.get(name);
+  }
 }
 
 export async function requestWithJar(
@@ -121,6 +129,19 @@ export async function requestWithJar(
       !headers.has("origin")
     ) {
       headers.set("origin", new URL(MCP_OAUTH_TEST_BASE).origin);
+    }
+  }
+  const method = init.method ?? "GET";
+  if (method === "POST") {
+    const path = new URL(url, MCP_OAUTH_TEST_BASE).pathname;
+    if (
+      (path === "/oauth/consent/allow" || path === "/oauth/consent/deny") &&
+      !headers.has(PHYSIO_MCP_CONSENT_CSRF_HEADER)
+    ) {
+      const csrf = jar.get(PHYSIO_MCP_CONSENT_CSRF_COOKIE);
+      if (csrf) {
+        headers.set(PHYSIO_MCP_CONSENT_CSRF_HEADER, csrf);
+      }
     }
   }
   const response = await handleRequest(

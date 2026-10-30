@@ -13,6 +13,7 @@ import {
 } from "../../auth/mcp-oauth/consent-routes.js";
 import {
   PHYSIO_MCP_OAUTH_AUTH_SERVER_METADATA_PATH,
+  PHYSIO_MCP_OAUTH_BETTER_AUTH_CONSENT_PATH,
   isPhysioForwardedWellKnownPath,
   isPhysioMcpOAuthConsentPath,
 } from "../../auth/mcp-oauth/paths.js";
@@ -99,6 +100,12 @@ export class BetterAuthPort implements AuthPort {
     }
 
     if (url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
+      if (
+        url.pathname === PHYSIO_MCP_OAUTH_BETTER_AUTH_CONSENT_PATH &&
+        request.method === "POST"
+      ) {
+        return new Response(null, { status: 403 });
+      }
       return this.auth.handler(request);
     }
 

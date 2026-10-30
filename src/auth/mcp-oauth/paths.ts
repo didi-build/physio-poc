@@ -2,6 +2,8 @@ export const PHYSIO_MCP_OAUTH_CONSENT_PATH = "/oauth/consent";
 export const PHYSIO_MCP_OAUTH_CONSENT_ALLOW_PATH = "/oauth/consent/allow";
 export const PHYSIO_MCP_OAUTH_CONSENT_DENY_PATH = "/oauth/consent/deny";
 
+export const PHYSIO_MCP_OAUTH_BETTER_AUTH_CONSENT_PATH = "/api/auth/oauth2/consent";
+
 export const PHYSIO_MCP_OAUTH_AUTH_SERVER_METADATA_PATH =
   "/.well-known/oauth-authorization-server";
 

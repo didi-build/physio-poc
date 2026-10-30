@@ -2,13 +2,15 @@
  * In-process fake Google OAuth endpoints for tests and local dev (DIDI-1001).
  */
 export const FAKE_GOOGLE_ALLOWED_EMAIL = "kojo.allowed@example.com";
+export const FAKE_GOOGLE_ALLOWED_B_EMAIL = "practitioner.b@example.com";
 export const FAKE_GOOGLE_REFUSED_EMAIL = "refused@example.com";
 
 export type FakeGoogleFixture =
-  "allowed" | "refused" | "unverified" | "allowed-upper-email";
+  "allowed" | "allowed-b" | "refused" | "unverified" | "allowed-upper-email";
 
 const FIXTURE_BY_CODE = new Map<string, FakeGoogleFixture>([
   ["allowed-code", "allowed"],
+  ["allowed-b-code", "allowed-b"],
   ["refused-code", "refused"],
   ["unverified-code", "unverified"],
   ["allowed-upper-code", "allowed-upper-email"],
@@ -16,6 +18,7 @@ const FIXTURE_BY_CODE = new Map<string, FakeGoogleFixture>([
 
 const TOKEN_BY_FIXTURE: Record<FakeGoogleFixture, string> = {
   allowed: "fake-access-allowed",
+  "allowed-b": "fake-access-allowed-b",
   refused: "fake-access-refused",
   unverified: "fake-access-unverified",
   "allowed-upper-email": "fake-access-allowed-upper",
@@ -44,6 +47,9 @@ export function fakeGoogleFixtureForAccessToken(
   if (token === TOKEN_BY_FIXTURE["allowed-upper-email"]) {
     return "allowed-upper-email";
   }
+  if (token === TOKEN_BY_FIXTURE["allowed-b"]) {
+    return "allowed-b";
+  }
   return null;
 }
 
@@ -63,6 +69,15 @@ export function fakeGoogleProfile(fixture: FakeGoogleFixture): Record<string, un
       email: FAKE_GOOGLE_ALLOWED_EMAIL.toUpperCase(),
       email_verified: true,
       name: "Kojo",
+      picture: "",
+    };
+  }
+  if (fixture === "allowed-b") {
+    return {
+      sub: "fake-google-sub-allowed-b",
+      email: FAKE_GOOGLE_ALLOWED_B_EMAIL,
+      email_verified: true,
+      name: "Practitioner B",
       picture: "",
     };
   }
@@ -119,7 +134,9 @@ export async function handleFakeGoogleRequest(
           ? "unverified-code"
           : fixture === "allowed-upper-email"
             ? "allowed-upper-code"
-            : "allowed-code";
+            : fixture === "allowed-b"
+              ? "allowed-b-code"
+              : "allowed-code";
     if (!redirectUri) {
       return new Response("missing redirect_uri", { status: 400 });
     }
