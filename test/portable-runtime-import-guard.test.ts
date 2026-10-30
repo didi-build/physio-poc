@@ -145,6 +145,14 @@ describe("portable runtime import guard (unit)", () => {
     expect(messages.some((m) => m.includes("platform tree"))).toBe(true);
   });
 
+  it("does not treat entrypoint.js as the entry platform directory", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "export * from '../entrypoint.js';",
+    );
+    expect(messages.some((m) => m.includes("platform tree"))).toBe(false);
+  });
+
   it("detects type-only import() specifiers for platform modules", () => {
     const messages = findPortableViolations(
       "src/http/example.ts",
@@ -175,6 +183,30 @@ describe("portable runtime import guard (unit)", () => {
       "const x = import.meta.env;",
     );
     expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("detects import.meta bracket env reads under src/ui/", () => {
+    const messages = findPortableViolations(
+      "src/ui/App.tsx",
+      'const m = import.meta["env"].MODE;',
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(true);
+  });
+
+  it("does not flag unrelated config.env property access as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      'const config = { env: 1 }; const x = config.env; const y = config["env"];',
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
+  });
+
+  it("does not flag new.target.env as import.meta.env", () => {
+    const messages = findPortableViolations(
+      "src/http/example.ts",
+      "function F() { return new.target.env; }",
+    );
+    expect(messages.some((m) => m.includes("import.meta.env"))).toBe(false);
   });
 
   it("detects relative imports into src/adapters/workers", () => {

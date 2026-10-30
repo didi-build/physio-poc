@@ -251,9 +251,6 @@ export function findPortableViolations(repoRelativePath, source) {
     if (ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal)) {
       return arg.literal;
     }
-    if (ts.isStringLiteral(arg)) {
-      return arg;
-    }
     return null;
   }
 
