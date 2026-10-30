@@ -64,31 +64,3 @@ export function formatExerciseParams(params: ExerciseParams): string {
 export function exerciseParamsKeys(params: ExerciseParams): ParamKey[] {
   return keysInDisplayOrder(params);
 }
-
-/** Non-empty when the param has an approved readout phrase for accessibility labels. */
-export function paramAccessibleName(
-  key: ParamKey,
-  value: NumericOrRange | undefined,
-  fallback: NumericOrRange,
-): string | null {
-  const resolved = value ?? fallback;
-  const phrase = paramPhrase(key, resolved);
-  return phrase.length > 0 ? phrase : null;
-}
-
-/** Input aria names: stable approved label from the field fallback, not the draft readout. */
-export function paramInputAccessibleName(
-  key: ParamKey,
-  value: NumericOrRange | undefined,
-  fallback: NumericOrRange,
-): string {
-  const fromFieldLabel = paramAccessibleName(key, fallback, fallback);
-  if (fromFieldLabel) {
-    return fromFieldLabel;
-  }
-  const resolved = value ?? fallback;
-  if (typeof resolved === "number") {
-    return String(resolved);
-  }
-  return `${resolved.min}-${resolved.max}`;
-}

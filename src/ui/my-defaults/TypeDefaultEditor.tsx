@@ -11,10 +11,7 @@ import {
   TYPE_DEFAULT_CORE_PARAMS,
   addableTypeDefaultParams,
 } from "../../domain/type-default-param-layout.js";
-import {
-  formatExerciseParams,
-  paramInputAccessibleName,
-} from "../../domain/format-exercise-params.js";
+import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { mergeExerciseParams } from "../../domain/exercise-params.js";
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../domain/global-type-defaults-seed.js";
 import {
@@ -29,6 +26,7 @@ import {
   matchApprovedPerDayOptionValue,
   perDayValueHasApprovedLabel,
 } from "./type-default-editor-options.js";
+import { doseParamAriaLabelledBy } from "./type-default-editor-a11y.js";
 
 /** Stored and saved, but no approved readout or field labels on mock 01 or 02. */
 const UI_HIDDEN_PARAM_KEYS = new Set<ParamKey>(["ascent_s"]);
@@ -66,6 +64,8 @@ function buildInitialDraft(
 
 export type TypeDefaultEditorProps = {
   type: PrescriptionType;
+  /** Id of the visible exercise type title (exercise type name on screen). */
+  typeTitleId: string;
   own: ExerciseParams | null;
   onSave: (params: ExerciseParams) => void;
   onCancel: () => void;
@@ -73,6 +73,7 @@ export type TypeDefaultEditorProps = {
 
 export function TypeDefaultEditor({
   type,
+  typeTitleId,
   own,
   onSave,
   onCancel,
@@ -146,8 +147,6 @@ export function TypeDefaultEditor({
     }));
   };
 
-  const perDayFallback = globalParams.per_day ?? { min: 1, max: 3 };
-
   return (
     <div className="md-type-edit">
       <p className="md-type-global-ref">
@@ -155,17 +154,14 @@ export function TypeDefaultEditor({
       </p>
       <div className="md-param-grid">
         {visibleKeys.map((key) => {
+          const labelledBy = doseParamAriaLabelledBy(typeTitleId, key);
           if (key === "per_day") {
             if (perDayUsesApprovedSelect) {
               return (
                 <label key={key} className="md-param-field">
                   <select
                     className="md-param-input"
-                    aria-label={paramInputAccessibleName(
-                      "per_day",
-                      draft.per_day,
-                      perDayFallback,
-                    )}
+                    aria-labelledby={labelledBy}
                     value={matchApprovedPerDayOptionValue(draft.per_day)}
                     onChange={(event) => {
                       updatePerDaySelect(event.target.value);
@@ -185,11 +181,7 @@ export function TypeDefaultEditor({
                 <input
                   className="md-param-input"
                   inputMode="numeric"
-                  aria-label={paramInputAccessibleName(
-                    "per_day",
-                    draft.per_day,
-                    perDayFallback,
-                  )}
+                  aria-labelledby={labelledBy}
                   value={numericFieldValue(
                     typeof draft.per_day === "number" ? draft.per_day : undefined,
                   )}
@@ -201,13 +193,12 @@ export function TypeDefaultEditor({
             );
           }
 
-          const fallback = globalParams[key] ?? PARAM_VALUE_BOUNDS[key].min;
           return (
             <label key={key} className="md-param-field">
               <input
                 className="md-param-input"
                 inputMode="numeric"
-                aria-label={paramInputAccessibleName(key, draft[key], fallback)}
+                aria-labelledby={labelledBy}
                 value={numericFieldValue(draft[key])}
                 onChange={(event) => {
                   updateNumber(key, event.target.value);

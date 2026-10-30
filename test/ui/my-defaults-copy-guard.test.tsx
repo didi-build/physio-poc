@@ -19,7 +19,7 @@ import {
   MyDefaultsClient,
   setMyDefaultsClientForTests,
 } from "../../src/ui/api/my-defaults-client.js";
-import { TypeDefaultEditor } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
+import { renderTypeDefaultEditor } from "./type-default-editor-a11y-helpers.js";
 
 afterEach(() => {
   cleanup();
@@ -136,14 +136,12 @@ describe("My defaults removed copy (integration, jsdom)", () => {
     for (const text of REMOVED_COPY) {
       expect(readout.includes(text)).toBe(false);
     }
-    const { container } = render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={GUARD_FIXTURE_PARAMS}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
+    const { container } = renderTypeDefaultEditor({
+      type: "concentric",
+      own: GUARD_FIXTURE_PARAMS,
+      onSave: () => {},
+      onCancel: () => {},
+    });
     const readsAs = container.querySelector(".md-reads-as");
     expect(readsAs?.textContent ?? "").not.toMatch(/once a day/);
     expect(readsAs?.textContent ?? "").not.toMatch(/1 set/);

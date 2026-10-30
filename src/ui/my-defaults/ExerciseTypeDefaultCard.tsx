@@ -13,6 +13,7 @@ import {
   editYourTypeDefaultLabel,
   setYourOwnTypeDefaultLabel,
 } from "../copy/my-defaults.js";
+import { typeDefaultEditorTypeTitleId } from "./type-default-editor-a11y.js";
 import { TypeDefaultEditor } from "./TypeDefaultEditor.js";
 
 export type ExerciseTypeDefaultCardProps = {
@@ -39,7 +40,12 @@ export function ExerciseTypeDefaultCard({
       <div className="md-type-card-head">
         <div className="md-type-card-titles">
           <div className="md-type-card-title-row">
-            <h2 className="md-type-card-title">{typeLabel}</h2>
+            <h2
+              className="md-type-card-title"
+              id={typeDefaultEditorTypeTitleId(entry.type)}
+            >
+              {typeLabel}
+            </h2>
           </div>
         </div>
         {own && !editing ? (
@@ -91,6 +97,7 @@ export function ExerciseTypeDefaultCard({
       ) : (
         <TypeDefaultEditor
           type={entry.type}
+          typeTitleId={typeDefaultEditorTypeTitleId(entry.type)}
           own={own}
           onSave={(params) => {
             onSave(entry.type, params);

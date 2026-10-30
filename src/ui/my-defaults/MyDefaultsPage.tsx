@@ -21,12 +21,12 @@ import {
   SHARE_LINK_EXPIRY_CHOICE_LABELS,
   SHARE_LINK_EXPIRY_HINT,
   SHARE_LINK_EXPIRY_SECTION,
-  TYPE_DEFAULTS_FOOTNOTE,
   TYPE_LABELS,
   YOUR_DEFAULT_BADGE,
   savedYourTypeDefaultToast,
 } from "../copy/my-defaults.js";
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
+import { TypeDefaultsFootnote } from "./TypeDefaultsFootnote.js";
 import { MyDefaultsBusyState, MyDefaultsErrorSlot } from "./MyDefaultsStates.js";
 
 const PRACTITIONER_EXPIRY_CHOICES = [
@@ -204,7 +204,7 @@ export function MyDefaultsPage() {
               />
             ))}
           </ul>
-          <p className="md-page-footnote">{TYPE_DEFAULTS_FOOTNOTE}</p>
+          <TypeDefaultsFootnote className="md-page-footnote" />
         </>
       ) : null}
     </section>

@@ -2,47 +2,34 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExerciseParams } from "../../src/domain/exercise-params.js";
-import type { PrescriptionType } from "../../src/domain/exercise-types.js";
 import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
 import {
   TYPE_DEFAULT_ADDABLE_PARAMS,
   addableTypeDefaultParams,
 } from "../../src/domain/type-default-param-layout.js";
-import { TypeDefaultEditor } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
+import {
+  EDGE_CASE_OWN,
+  renderTypeDefaultEditor,
+  resolveAriaLabelledByName,
+  valueDerivedAccessibleName,
+} from "./type-default-editor-a11y-helpers.js";
 
 afterEach(() => {
   cleanup();
 });
 
-const EDGE_CASE_OWN: Record<PrescriptionType, ExerciseParams> = {
-  stretching: { hold_s: 30, per_day: 2, days_per_week: 4 },
-  isometric: { reps: 1, hold_s: 10, sets: 1, days_per_week: 3 },
-  concentric: {
-    reps: 10,
-    hold_s: 2,
-    sets: 1,
-    per_day: 2,
-    ascent_s: 3,
-    days_per_week: 3,
-  },
-  eccentric: { reps: 10, descent_s: 4, sets: 1, days_per_week: 3 },
-};
-
 describe("TypeDefaultEditor (jsdom)", () => {
   it("keeps the sets field visible while typing 1 then 10 and saves 10", async () => {
     const onSave = vi.fn();
-    render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={null}
-        onSave={onSave}
-        onCancel={() => {}}
-      />,
-    );
+    renderTypeDefaultEditor({
+      type: "concentric",
+      own: null,
+      onSave,
+      onCancel: () => {},
+    });
 
     const inputs = screen.getAllByRole("textbox");
     expect(inputs[0]).toHaveValue("10");
@@ -63,14 +50,12 @@ describe("TypeDefaultEditor (jsdom)", () => {
   });
 
   it("shows a numeric per_day control for a saved scalar value", () => {
-    render(
-      <TypeDefaultEditor
-        type="stretching"
-        own={{ hold_s: 30, per_day: 2, days_per_week: 4 }}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
+    renderTypeDefaultEditor({
+      type: "stretching",
+      own: { hold_s: 30, per_day: 2, days_per_week: 4 },
+      onSave: () => {},
+      onCancel: () => {},
+    });
     expect(screen.getByDisplayValue("2")).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "2" })).not.toBeInTheDocument();
   });
@@ -83,32 +68,28 @@ describe("TypeDefaultEditor (jsdom)", () => {
   });
 
   it("does not render an input for stored ascent_s", () => {
-    const { container } = render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={{
-          reps: 10,
-          hold_s: 2,
-          ascent_s: 3,
-          sets: 3,
-          days_per_week: 3,
-        }}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
+    const { container } = renderTypeDefaultEditor({
+      type: "concentric",
+      own: {
+        reps: 10,
+        hold_s: 2,
+        ascent_s: 3,
+        sets: 3,
+        days_per_week: 3,
+      },
+      onSave: () => {},
+      onCancel: () => {},
+    });
     expect(container.querySelectorAll("input.md-param-input")).toHaveLength(4);
   });
 
   it("exhausts Add parameter with only approved addable params", async () => {
-    render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={null}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
+    renderTypeDefaultEditor({
+      type: "concentric",
+      own: null,
+      onSave: () => {},
+      onCancel: () => {},
+    });
     const addButton = screen.getByRole("button", { name: "Add parameter" });
     await userEvent.click(addButton);
     await userEvent.click(addButton);
@@ -120,20 +101,18 @@ describe("TypeDefaultEditor (jsdom)", () => {
 
   it("includes hidden ascent_s in the saved payload", async () => {
     const onSave = vi.fn();
-    render(
-      <TypeDefaultEditor
-        type="concentric"
-        own={{
-          reps: 10,
-          hold_s: 2,
-          ascent_s: 3,
-          sets: 3,
-          days_per_week: 3,
-        }}
-        onSave={onSave}
-        onCancel={() => {}}
-      />,
-    );
+    renderTypeDefaultEditor({
+      type: "concentric",
+      own: {
+        reps: 10,
+        hold_s: 2,
+        ascent_s: 3,
+        sets: 3,
+        days_per_week: 3,
+      },
+      onSave,
+      onCancel: () => {},
+    });
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onSave).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -142,27 +121,65 @@ describe("TypeDefaultEditor (jsdom)", () => {
     );
   });
 
-  it("gives every rendered input a non-empty accessible name for each type", () => {
+  it("gives every dose input a non-empty accessible name via aria-labelledby", () => {
     for (const type of PRESCRIPTION_TYPES) {
-      const { container, unmount } = render(
-        <TypeDefaultEditor
-          type={type}
-          own={EDGE_CASE_OWN[type]}
-          onSave={() => {}}
-          onCancel={() => {}}
-        />,
+      const { container, unmount } = renderTypeDefaultEditor({
+        type,
+        own: EDGE_CASE_OWN[type],
+        onSave: () => {},
+        onCancel: () => {},
+      });
+      const fields = container.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
       );
-      const fields = container.querySelectorAll("input, select");
       expect(fields.length).toBeGreaterThan(0);
       for (const field of fields) {
-        const name =
-          field.getAttribute("aria-label") ??
-          (field.id
-            ? container.querySelector(`label[for="${field.id}"]`)?.textContent
-            : null);
-        expect(name?.trim().length ?? 0).toBeGreaterThan(0);
+        expect(field.getAttribute("aria-label")).toBeNull();
+        expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
       }
       unmount();
     }
+  });
+
+  it("does not put the field value into the accessible name", () => {
+    for (const type of PRESCRIPTION_TYPES) {
+      const { container, unmount } = renderTypeDefaultEditor({
+        type,
+        own: EDGE_CASE_OWN[type],
+        onSave: () => {},
+        onCancel: () => {},
+      });
+      const fields = container.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      );
+      for (const field of fields) {
+        const value = (field as HTMLInputElement).value?.trim() ?? "";
+        const name = resolveAriaLabelledByName(field);
+        if (value.length > 0) {
+          expect(name).not.toContain(value);
+          expect(name).not.toBe(valueDerivedAccessibleName(value));
+        }
+      }
+      unmount();
+    }
+  });
+
+  it("fails the value-in-name guard when names are mutated to value-derived labels", () => {
+    const { container } = renderTypeDefaultEditor({
+      type: "stretching",
+      own: EDGE_CASE_OWN.stretching,
+      onSave: () => {},
+      onCancel: () => {},
+    });
+    const holdField = container.querySelector(
+      "input.md-param-input",
+    ) as HTMLInputElement;
+    const value = holdField.value;
+    const goodName = resolveAriaLabelledByName(holdField);
+    expect(goodName).not.toBe(valueDerivedAccessibleName(value));
+    expect(() => {
+      expect(valueDerivedAccessibleName(value)).toBe(valueDerivedAccessibleName(value));
+      expect(goodName).toBe(valueDerivedAccessibleName(value));
+    }).toThrow();
   });
 });
