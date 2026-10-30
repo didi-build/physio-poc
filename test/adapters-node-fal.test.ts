@@ -14,6 +14,7 @@ import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import {
   expectConsoleCallsLeakFree,
+  expectThrownErrorLeakFree,
   restoreConsoleSpies,
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
@@ -237,10 +238,15 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
       try {
         await expect(
           generator.generateStartImage(prompt, { regenerationNote: note }),
-        ).rejects.toMatchObject({
-          code: "fal_api_request_failed",
-          message: "fal_api_request_failed",
-          statusCode: 401,
+        ).rejects.toSatisfy((err: unknown) => {
+          expect(err).toMatchObject({
+            code: "fal_api_request_failed",
+            message: "fal_api_request_failed",
+            statusCode: 401,
+          });
+          expectThrownErrorLeakFree(err, { note, jsonBody, apiKey });
+          console.error(err);
+          return true;
         });
         expectConsoleCallsLeakFree(consoleSpies, { note, jsonBody, apiKey });
       } finally {
@@ -257,11 +263,11 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
     await expect(
       generator.generateStartImage("prompt", { regenerationNote: note }),
     ).rejects.toSatisfy((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      expect(message).toBe("fal_api_request_failed");
-      expect(message).not.toContain("deep");
-      expect(message).not.toContain('\\"');
-      expect(message).not.toContain(jsonBody);
+      expect(err).toMatchObject({
+        code: "fal_api_request_failed",
+        message: "fal_api_request_failed",
+      });
+      expectThrownErrorLeakFree(err, { note, jsonBody, apiKey });
       return true;
     });
   });

@@ -1,11 +1,12 @@
+import { inspect } from "node:util";
 import { expect, vi } from "vitest";
 
+export function inspectValue(value: unknown): string {
+  return inspect(value, { depth: null });
+}
+
 export function flattenConsoleCallArgs(call: unknown[]): string {
-  return call
-    .map((arg) =>
-      arg instanceof Error ? `${arg.message} ${arg.stack ?? ""}` : String(arg),
-    )
-    .join(" ");
+  return call.map((arg) => inspectValue(arg)).join(" ");
 }
 
 /** Escaped form of note as it would appear inside a JSON string literal. */
@@ -19,23 +20,36 @@ export type ConsoleLeakExpectations = {
   apiKey?: string;
 };
 
+export function assertLeakFreeText(
+  text: string,
+  expectations: ConsoleLeakExpectations,
+): void {
+  if (expectations.apiKey) {
+    expect(text).not.toContain(expectations.apiKey);
+  }
+  if (expectations.jsonBody) {
+    expect(text).not.toContain(expectations.jsonBody);
+  }
+  if (expectations.note) {
+    expect(text).not.toContain(expectations.note);
+    expect(text).not.toContain(jsonEscapedNoteFragment(expectations.note));
+  }
+}
+
+export function expectThrownErrorLeakFree(
+  err: unknown,
+  expectations: ConsoleLeakExpectations,
+): void {
+  assertLeakFreeText(inspectValue(err), expectations);
+}
+
 export function expectConsoleCallsLeakFree(
   spies: Array<ReturnType<typeof vi.spyOn>>,
   expectations: ConsoleLeakExpectations,
 ): void {
   for (const spy of spies) {
     for (const call of spy.mock.calls) {
-      const logged = flattenConsoleCallArgs(call as unknown[]);
-      if (expectations.apiKey) {
-        expect(logged).not.toContain(expectations.apiKey);
-      }
-      if (expectations.jsonBody) {
-        expect(logged).not.toContain(expectations.jsonBody);
-      }
-      if (expectations.note) {
-        expect(logged).not.toContain(expectations.note);
-        expect(logged).not.toContain(jsonEscapedNoteFragment(expectations.note));
-      }
+      assertLeakFreeText(flattenConsoleCallArgs(call as unknown[]), expectations);
     }
   }
 }
