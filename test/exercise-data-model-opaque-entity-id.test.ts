@@ -6,6 +6,7 @@ import {
 import {
   ExerciseAliasesRepository,
   ExerciseBodyRegionsRepository,
+  ExerciseRequestsRepository,
   ExercisesRepository,
   ExerciseVersionsRepository,
   PractitionerExercisesRepository,
@@ -29,6 +30,7 @@ const UPPER_VERSION_ID = "CCCCCCCC-CCCC-4CCC-8CCC-CCCCCCCCCCCC";
 const UPPER_ALIAS_ID = "DDDDDDDD-DDDD-4DDD-8DDD-DDDDDDDDDDDD";
 const UPPER_TYPE_DEFAULT_ID = "EEEEEEEE-EEEE-4EEE-8EEE-EEEEEEEEEEEE";
 const UPPER_MEDIA_SET_ID = "FFFFFFFF-FFFF-4FFF-8FFF-FFFFFFFFFFFF";
+const UPPER_REQUEST_ID = "FEDCBA98-7654-4321-8ABC-DEF012345678";
 
 function validVersionInsert(exerciseId: string, versionId: string) {
   return {
@@ -358,6 +360,98 @@ describe("DIDI-1048 opaque caller-supplied exercise data entity ids", () => {
         id: UPPER_TYPE_DEFAULT_ID.toLowerCase(),
         practitioner_id: UPPER_PRACTITIONER_ID.toLowerCase(),
       });
+
+      const myExercises = new PractitionerExercisesRepository(storage);
+      await myExercises.upsert({
+        practitionerId: UPPER_PRACTITIONER_ID,
+        exerciseId: UPPER_EXERCISE_ID,
+        savedAt: TS,
+      });
+      const myRow = await storage.first<{
+        practitioner_id: string;
+        exercise_id: string;
+      }>(
+        `SELECT practitioner_id, exercise_id FROM practitioner_exercises
+         WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
+        [UPPER_PRACTITIONER_ID.toLowerCase(), UPPER_EXERCISE_ID.toLowerCase()],
+      );
+      expect(myRow).toEqual({
+        practitioner_id: UPPER_PRACTITIONER_ID.toLowerCase(),
+        exercise_id: UPPER_EXERCISE_ID.toLowerCase(),
+      });
+      expect(
+        await storage.first(
+          `SELECT practitioner_id FROM practitioner_exercises
+           WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
+          [UPPER_PRACTITIONER_ID, UPPER_EXERCISE_ID.toLowerCase()],
+        ),
+      ).toBeNull();
+      expect(
+        await storage.first(
+          `SELECT exercise_id FROM practitioner_exercises
+           WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
+          [UPPER_PRACTITIONER_ID.toLowerCase(), UPPER_EXERCISE_ID],
+        ),
+      ).toBeNull();
+
+      const bodyRegions = new ExerciseBodyRegionsRepository(storage);
+      await bodyRegions.link(UPPER_EXERCISE_ID, "br-hip");
+      expect(
+        await storage.first<{ exercise_id: string }>(
+          `SELECT exercise_id FROM exercise_body_regions
+           WHERE exercise_id = ? AND body_region_id = ? LIMIT 1`,
+          [UPPER_EXERCISE_ID.toLowerCase(), "br-hip"],
+        ),
+      ).toEqual({ exercise_id: UPPER_EXERCISE_ID.toLowerCase() });
+      expect(
+        await storage.first(
+          `SELECT exercise_id FROM exercise_body_regions
+           WHERE exercise_id = ? AND body_region_id = ? LIMIT 1`,
+          [UPPER_EXERCISE_ID, "br-hip"],
+        ),
+      ).toBeNull();
+
+      const requests = new ExerciseRequestsRepository(storage);
+      await requests.insert({
+        id: UPPER_REQUEST_ID,
+        requestedName: "Heel slide",
+        requestedBy: UPPER_PRACTITIONER_ID,
+        exerciseId: UPPER_EXERCISE_ID,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      expect(
+        await storage.first<{
+          id: string;
+          requested_by: string;
+          exercise_id: string | null;
+        }>(
+          `SELECT id, requested_by, exercise_id FROM exercise_requests WHERE id = ? LIMIT 1`,
+          [UPPER_REQUEST_ID.toLowerCase()],
+        ),
+      ).toEqual({
+        id: UPPER_REQUEST_ID.toLowerCase(),
+        requested_by: UPPER_PRACTITIONER_ID.toLowerCase(),
+        exercise_id: UPPER_EXERCISE_ID.toLowerCase(),
+      });
+      expect(
+        await storage.first("SELECT id FROM exercise_requests WHERE id = ? LIMIT 1", [
+          UPPER_REQUEST_ID,
+        ]),
+      ).toBeNull();
+      expect(
+        await storage.first(
+          "SELECT requested_by FROM exercise_requests WHERE id = ? LIMIT 1",
+          [UPPER_REQUEST_ID.toLowerCase()],
+        ),
+      ).toEqual({ requested_by: UPPER_PRACTITIONER_ID.toLowerCase() });
+      expect(
+        await storage.first(
+          "SELECT exercise_id FROM exercise_requests WHERE id = ? LIMIT 1",
+          [UPPER_REQUEST_ID.toLowerCase()],
+        ),
+      ).toEqual({ exercise_id: UPPER_EXERCISE_ID.toLowerCase() });
     } finally {
       storage.close();
     }
@@ -478,6 +572,65 @@ describe("DIDI-1048 opaque caller-supplied exercise data entity ids", () => {
           "Exercise id must be a UUID v4 opaque id",
         );
       }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects invalid requestedBy and exerciseId on exercise request insert", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const exId = await seedExercise(storage, practId);
+      const repo = new ExerciseRequestsRepository(storage);
+      for (const badId of REJECT_IDS) {
+        await expect(
+          repo.insert({
+            id: id(`req-by-${badId}`),
+            requestedName: "Heel slide",
+            requestedBy: badId,
+            status: "open",
+            createdAt: TS,
+            updatedAt: TS,
+          }),
+        ).rejects.toThrow("Practitioner id must be a UUID v4 opaque id");
+        await expect(
+          repo.insert({
+            id: id(`req-ex-${badId}`),
+            requestedName: "Heel slide",
+            requestedBy: practId,
+            exerciseId: badId,
+            status: "open",
+            createdAt: TS,
+            updatedAt: TS,
+          }),
+        ).rejects.toThrow("Exercise id must be a UUID v4 opaque id");
+        expect(
+          await storage.first(
+            "SELECT id FROM exercise_requests WHERE requested_by = ? LIMIT 1",
+            [badId],
+          ),
+        ).toBeNull();
+      }
+      const validId = generateOpaqueEntityId();
+      await repo.insert({
+        id: validId,
+        requestedName: "Heel slide",
+        requestedBy: practId,
+        exerciseId: exId,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      expect(
+        await storage.first<{ requested_by: string; exercise_id: string | null }>(
+          "SELECT requested_by, exercise_id FROM exercise_requests WHERE id = ? LIMIT 1",
+          [validId.toLowerCase()],
+        ),
+      ).toEqual({
+        requested_by: practId.toLowerCase(),
+        exercise_id: exId.toLowerCase(),
+      });
     } finally {
       storage.close();
     }

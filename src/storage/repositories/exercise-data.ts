@@ -334,6 +334,11 @@ export class ExerciseRequestsRepository {
     const id = validateOpaqueEntityId(input.id, "Exercise request id");
     const requestedName = validateRequestedExerciseName(input.requestedName);
     const note = validateRequestNote(input.note);
+    const requestedBy = validateOpaqueEntityId(input.requestedBy, "Practitioner id");
+    const exerciseId =
+      input.exerciseId === null || input.exerciseId === undefined
+        ? null
+        : validateOpaqueEntityId(input.exerciseId, "Exercise id");
     await this.sql.run(
       `INSERT INTO exercise_requests (
         id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
@@ -342,9 +347,9 @@ export class ExerciseRequestsRepository {
         id,
         requestedName,
         note,
-        input.requestedBy,
+        requestedBy,
         input.status,
-        input.exerciseId ?? null,
+        exerciseId,
         input.createdAt,
         input.updatedAt,
       ],
