@@ -30,6 +30,7 @@ import {
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { likeContainsPattern } from "../../domain/sql-like.js";
 
 export class ProgramRepositoryError extends Error {
   constructor(message: string) {
@@ -188,6 +189,47 @@ export class ProgramsRepository {
       }
     }
     return null;
+  }
+
+  async listForPractitioner(input: {
+    practitionerId: string;
+    searchQuery?: string;
+    deletedOnly?: boolean;
+    includeActive?: boolean;
+  }): Promise<ProgramRecord[]> {
+    const bindings: (string | number)[] = [input.practitionerId];
+    const where: string[] = ["created_by = ?"];
+
+    if (input.deletedOnly) {
+      where.push("deleted_at IS NOT NULL");
+    } else if (input.includeActive !== false) {
+      where.push("deleted_at IS NULL");
+    }
+
+    const trimmed = input.searchQuery?.trim();
+    if (trimmed) {
+      const codeKeys = programCodeDomain.programCodeSearchKeys(trimmed);
+      const nameLike = likeContainsPattern(trimmed);
+      if (codeKeys.length > 0) {
+        where.push(
+          `(name LIKE ? ESCAPE '\\' COLLATE NOCASE OR code IN (${codeKeys.map(() => "?").join(", ")}))`,
+        );
+        bindings.push(nameLike, ...codeKeys);
+      } else {
+        where.push("name LIKE ? ESCAPE '\\' COLLATE NOCASE");
+        bindings.push(nameLike);
+      }
+    }
+
+    return this.sql.all<ProgramRecord>(
+      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
+              published_version, published_name, published_at, published_snapshot_json,
+              deleted_at, link_expires_in, link_expires_on
+       FROM programs
+       WHERE ${where.join(" AND ")}
+       ORDER BY draft_updated_at DESC`,
+      bindings,
+    );
   }
 
   async updateDraftName(programId: string, name: string | null): Promise<void> {
@@ -423,6 +465,94 @@ export class ProgramRowsRepository {
       ...row,
       prescription_type: assertPrescriptionType(row.prescription_type),
     }));
+  }
+
+  async findById(rowId: string): Promise<ProgramRow | null> {
+    const row = await this.sql.first<ProgramRow>(
+      `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+              prescription_type, params_json, text_snapshot_json, note
+       FROM program_rows WHERE id = ? LIMIT 1`,
+      [rowId],
+    );
+    if (!row) {
+      return null;
+    }
+    return {
+      ...row,
+      prescription_type: assertPrescriptionType(row.prescription_type),
+    };
+  }
+
+  async deleteRow(
+    programId: string,
+    rowId: string,
+    draftUpdatedAt: string,
+  ): Promise<void> {
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program || program.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const rows = await this.listForProgram(programId);
+    const target = rows.find((row) => row.id === rowId);
+    if (!target) {
+      throw new ProgramRepositoryError("Program row not found");
+    }
+    await this.sql.run(`DELETE FROM program_rows WHERE id = ? AND program_id = ?`, [
+      rowId,
+      programId,
+    ]);
+    const remaining = rows
+      .filter((row) => row.id !== rowId)
+      .sort((a, b) => a.position - b.position);
+    await this.applyPositions(
+      programId,
+      remaining.map((row) => row.id),
+    );
+    await new ProgramsRepository(this.sql).touchDraft(programId, draftUpdatedAt);
+  }
+
+  async reorderRows(
+    programId: string,
+    orderedRowIds: string[],
+    draftUpdatedAt: string,
+  ): Promise<void> {
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program || program.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const rows = await this.listForProgram(programId);
+    if (orderedRowIds.length !== rows.length) {
+      throw new ProgramRepositoryError("Reorder must include every program row");
+    }
+    const idSet = new Set(rows.map((row) => row.id));
+    for (const rowId of orderedRowIds) {
+      if (!idSet.has(rowId)) {
+        throw new ProgramRepositoryError("Reorder includes an unknown row id");
+      }
+    }
+    if (new Set(orderedRowIds).size !== orderedRowIds.length) {
+      throw new ProgramRepositoryError("Reorder row ids must be unique");
+    }
+    await this.applyPositions(programId, orderedRowIds);
+    await new ProgramsRepository(this.sql).touchDraft(programId, draftUpdatedAt);
+  }
+
+  private async applyPositions(
+    programId: string,
+    orderedRowIds: string[],
+  ): Promise<void> {
+    for (let i = 0; i < orderedRowIds.length; i += 1) {
+      await this.sql.run(
+        `UPDATE program_rows SET position = ? WHERE id = ? AND program_id = ?`,
+        [1_000_000 + i, orderedRowIds[i], programId],
+      );
+    }
+    for (let i = 0; i < orderedRowIds.length; i += 1) {
+      await this.sql.run(
+        `UPDATE program_rows SET position = ? WHERE id = ? AND program_id = ?`,
+        [i, orderedRowIds[i], programId],
+      );
+    }
   }
 }
 

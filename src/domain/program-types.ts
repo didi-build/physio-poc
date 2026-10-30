@@ -6,6 +6,8 @@ export type ProgramRowTextSnapshot = {
   title: string;
   description?: string;
   cue?: string;
+  /** When set, library update prompts stay hidden until a newer approved version ships. */
+  libraryUpdateDismissedVersionNumber?: number;
 };
 
 export type ProgramRowSnapshot = {
@@ -46,6 +48,19 @@ export function parseProgramRowTextSnapshotJson(raw: string): ProgramRowTextSnap
   }
   if (typeof record.cue === "string") {
     snapshot.cue = record.cue;
+  }
+  if (record.libraryUpdateDismissedVersionNumber !== undefined) {
+    if (
+      typeof record.libraryUpdateDismissedVersionNumber !== "number" ||
+      !Number.isInteger(record.libraryUpdateDismissedVersionNumber) ||
+      record.libraryUpdateDismissedVersionNumber < 1
+    ) {
+      throw new Error(
+        "text_snapshot_json.libraryUpdateDismissedVersionNumber must be a positive integer",
+      );
+    }
+    snapshot.libraryUpdateDismissedVersionNumber =
+      record.libraryUpdateDismissedVersionNumber;
   }
   return snapshot;
 }

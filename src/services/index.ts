@@ -3,3 +3,4 @@ export {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
 } from "./exercise-library/index.js";
+export { ProgramBuilderService, ProgramBuilderServiceError } from "./programs/index.js";
