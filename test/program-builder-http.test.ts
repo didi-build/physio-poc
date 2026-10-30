@@ -342,6 +342,102 @@ describe("Program builder HTTP routes (integration)", () => {
     }
   });
 
+  it("rejects practitionerId and practitioner_id query on program list, deleted list, GET program, and PATCH program without changing B storage", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("prog-query-b");
+      await seedPractitioner(storage, practitionerB, "b-query@example.com");
+      const programA = id("prog-query-a");
+      const programB = id("prog-query-b-owned");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerA, {
+        programId: programA,
+        name: "Program A",
+      });
+      await service.createProgram(practitionerB, {
+        programId: programB,
+        name: "Program B secret",
+      });
+
+      const querySuffixBuilders = [
+        (otherId: string) => `?practitionerId=${encodeURIComponent(otherId)}`,
+        (otherId: string) => `?practitioner_id=${encodeURIComponent(otherId)}`,
+      ] as const;
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+
+      for (const querySuffix of querySuffixBuilders) {
+        const beforeCountB = await programCount(storage, practitionerB);
+        const beforeNameB = await storage.first<{ name: string | null }>(
+          "SELECT name FROM programs WHERE id = ?",
+          [programB],
+        );
+
+        const listResponse = await handleRequest(
+          authedRequest(
+            `${BASE}${programsCollectionPath()}${querySuffix(practitionerB)}`,
+            cookie,
+          ),
+          deps,
+        );
+        expect(listResponse.status).toBe(400);
+        expect(await listResponse.json()).toEqual(INVALID_INPUT_BODY);
+
+        const deletedResponse = await handleRequest(
+          authedRequest(
+            `${BASE}${programsDeletedListPath()}${querySuffix(practitionerB)}`,
+            cookie,
+          ),
+          deps,
+        );
+        expect(deletedResponse.status).toBe(400);
+        expect(await deletedResponse.json()).toEqual(INVALID_INPUT_BODY);
+
+        const getResponse = await handleRequest(
+          authedRequest(
+            `${BASE}${programPath(programA)}${querySuffix(practitionerB)}`,
+            cookie,
+          ),
+          deps,
+        );
+        expect(getResponse.status).toBe(400);
+        expect(await getResponse.json()).toEqual(INVALID_INPUT_BODY);
+
+        const patchUrl = `${BASE}${programPath(programA)}${querySuffix(practitionerB)}`;
+        const patchResponse = await handleRequest(
+          new Request(
+            patchUrl,
+            mutatingAppApiRequestInit(patchUrl, {
+              method: "PATCH",
+              headers: { cookie },
+              body: JSON.stringify({ name: "Renamed by query attack" }),
+            }),
+          ),
+          deps,
+        );
+        expect(patchResponse.status).toBe(400);
+        expect(await patchResponse.json()).toEqual(INVALID_INPUT_BODY);
+
+        expect(await programCount(storage, practitionerB)).toBe(beforeCountB);
+        expect(
+          await storage.first<{ name: string | null }>(
+            "SELECT name FROM programs WHERE id = ?",
+            [programB],
+          ),
+        ).toEqual(beforeNameB);
+        expect(
+          await storage.first<{ name: string | null }>(
+            "SELECT name FROM programs WHERE id = ?",
+            [programA],
+          ),
+        ).toEqual({ name: "Program A" });
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns 401 without a session for every route in the program builder route table", async () => {
     const storage = await openMigratedDatabase();
     try {
