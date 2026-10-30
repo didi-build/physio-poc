@@ -112,4 +112,4 @@ Each row names a Vitest in `test/program-builder-service-mutation-guards.test.ts
 | programs.ts:569         | `listForExerciseRequestId` row order (M21)           | Equivalent survivor: link loop follows repo query order (`ORDER BY program_id ASC, position ASC`); no test asserts link processing order in isolation                                                            |
 | programs.ts:link        | batch only caller                                    | Not applicable: one caller (`linkApprovedPlaceholders` at program-builder-service.ts:188); linkPlaceholderRowToApprovedVersion is unreachable from user facing APIs today                                        |
 
-HTTP program-builder routes: none; isolation is service-layer only.
+HTTP program-builder routes: `test/program-builder-http.test.ts` (session table, 404 parity, body practitioner id, CSRF, invalid dose, delete and restore). Type mismatch skipped count: `test/program-builder-service.test.ts` (`skips incompatible prescription types and returns the skipped count`).
