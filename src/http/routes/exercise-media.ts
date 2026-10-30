@@ -1,0 +1,204 @@
+import type { AppDependencies } from "../app.js";
+import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
+import {
+  ExerciseMediaService,
+  ExerciseMediaServiceError,
+} from "../../services/exercise-media/index.js";
+import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
+import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
+
+const JSON_HEADERS = { "content-type": "application/json" };
+
+export type ExerciseMediaHttpRouteCase = {
+  method: string;
+  path: string;
+};
+
+/** Paths registered when enableUnauthenticatedApi is true (Node dev and tests only). */
+export function exerciseMediaHttpRouteCases(
+  practitionerId = "pract-1",
+  exerciseVersionId = "ver-1",
+): ExerciseMediaHttpRouteCase[] {
+  const base = `/api/practitioners/${practitionerId}`;
+  return [
+    {
+      method: "POST",
+      path: `${base}/exercise-versions/${exerciseVersionId}/media/generate`,
+    },
+    {
+      method: "POST",
+      path: `${base}/exercise-versions/${exerciseVersionId}/media/regenerate`,
+    },
+    {
+      method: "GET",
+      path: `${base}/media-regeneration-quota`,
+    },
+    {
+      method: "GET",
+      path: `/api/exercise-versions/${exerciseVersionId}/media?access=public`,
+    },
+  ];
+}
+
+function mediaService(deps: AppDependencies): ExerciseMediaService {
+  return new ExerciseMediaService(
+    deps.sql,
+    new FakeImageGeneration(),
+    new PrefixMediaStorage(deps.objects),
+  );
+}
+
+function serviceErrorResponse(error: ExerciseMediaServiceError): Response {
+  const status =
+    error.code === "version_not_found" || error.code === "media_set_not_found"
+      ? 404
+      : error.code === "daily_limit_reached"
+        ? 429
+        : 400;
+  return Response.json(
+    { error: error.code, message: error.message },
+    { status, headers: JSON_HEADERS },
+  );
+}
+
+async function readJsonBody(request: Request): Promise<unknown> {
+  const text = await request.text();
+  if (text.trim().length === 0) {
+    return {};
+  }
+  return JSON.parse(text) as unknown;
+}
+
+export async function handleExerciseMediaRequest(
+  request: Request,
+  deps: AppDependencies,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  const quotaMatch = path.match(
+    /^\/api\/practitioners\/([^/]+)\/media-regeneration-quota$/,
+  );
+  if (quotaMatch && request.method === "GET") {
+    try {
+      const quota = await mediaService(deps).getRegenerationQuota(quotaMatch[1] ?? "");
+      return Response.json(quota, { headers: JSON_HEADERS });
+    } catch (error) {
+      if (error instanceof ExerciseMediaServiceError) {
+        return serviceErrorResponse(error);
+      }
+      throw error;
+    }
+  }
+
+  const serveMatch = path.match(/^\/api\/exercise-versions\/([^/]+)\/media$/);
+  if (serveMatch && request.method === "GET") {
+    const access = url.searchParams.get("access");
+    if (access !== "public" && access !== "internal") {
+      return Response.json(
+        { error: "invalid_input", message: "access must be public or internal" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    try {
+      const view = await mediaService(deps).getMediaForServing(
+        serveMatch[1] ?? "",
+        access,
+      );
+      if (!view) {
+        return Response.json(
+          { error: "media_not_found", message: "Media not available" },
+          { status: 404, headers: JSON_HEADERS },
+        );
+      }
+      return Response.json(view, { headers: JSON_HEADERS });
+    } catch (error) {
+      if (error instanceof ExerciseMediaServiceError) {
+        return serviceErrorResponse(error);
+      }
+      throw error;
+    }
+  }
+
+  const versionMatch = path.match(
+    /^\/api\/practitioners\/([^/]+)\/exercise-versions\/([^/]+)\/media\/(generate|regenerate)$/,
+  );
+  if (!versionMatch) {
+    return null;
+  }
+
+  const practitionerId = versionMatch[1] ?? "";
+  const exerciseVersionId = versionMatch[2] ?? "";
+  const action = versionMatch[3];
+  const service = mediaService(deps);
+
+  if (action === "generate") {
+    if (request.method !== "POST") {
+      return Response.json(
+        { error: "method_not_allowed" },
+        { status: 405, headers: JSON_HEADERS },
+      );
+    }
+    let body: { note?: string | null } = {};
+    try {
+      body = (await readJsonBody(request)) as { note?: string | null };
+    } catch {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid JSON body" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    try {
+      const media = await service.generateInitialMediaForVersion({
+        exerciseVersionId,
+        regenerationNote: body.note,
+      });
+      return Response.json({ media }, { status: 201, headers: JSON_HEADERS });
+    } catch (error) {
+      if (error instanceof ExerciseMediaServiceError) {
+        return serviceErrorResponse(error);
+      }
+      throw error;
+    }
+  }
+
+  if (request.method !== "POST") {
+    return Response.json(
+      { error: "method_not_allowed" },
+      { status: 405, headers: JSON_HEADERS },
+    );
+  }
+
+  let body: { scope?: string; note?: string | null } = {};
+  try {
+    body = (await readJsonBody(request)) as { scope?: string; note?: string | null };
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+
+  const scope = body.scope as MediaRegenerationScope | undefined;
+  if (!scope) {
+    return Response.json(
+      { error: "invalid_input", message: "scope is required" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+
+  try {
+    const result = await service.regenerateMedia({
+      practitionerId,
+      exerciseVersionId,
+      scope,
+      note: body.note,
+    });
+    return Response.json(result, { headers: JSON_HEADERS });
+  } catch (error) {
+    if (error instanceof ExerciseMediaServiceError) {
+      return serviceErrorResponse(error);
+    }
+    throw error;
+  }
+}

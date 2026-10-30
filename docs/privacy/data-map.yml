@@ -302,6 +302,8 @@ d1_tables:
         notes: R2 object key; no patient information in key path
       end_object_key:
         notes: R2 object key; no patient information in key path
+      start_provider_url:
+        notes: fal CDN URL for the start image when returned by the provider; used to chain end-image edit
       visibility:
         notes: draft until exercise version approved; public when live
       created_at: {}

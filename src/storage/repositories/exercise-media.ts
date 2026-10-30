@@ -5,6 +5,7 @@ export type ExerciseMediaSetRow = {
   id: string;
   start_object_key: string;
   end_object_key: string;
+  start_provider_url: string | null;
   visibility: MediaVisibility;
   created_at: string;
 };
@@ -18,26 +19,38 @@ export class ExerciseMediaSetsRepository {
     id: string;
     startObjectKey: string;
     endObjectKey: string;
+    startProviderUrl?: string | null;
     visibility: MediaVisibility;
     createdAt: string;
   }): Promise<void> {
     await this.sql.run(
       `INSERT INTO exercise_media_sets (
-        id, start_object_key, end_object_key, visibility, created_at
-      ) VALUES (?, ?, ?, ?, ?)`,
+        id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         input.id,
         input.startObjectKey,
         input.endObjectKey,
+        input.startProviderUrl ?? null,
         input.visibility,
         input.createdAt,
       ],
     );
   }
 
+  async updateStartProviderUrl(
+    id: string,
+    startProviderUrl: string | null,
+  ): Promise<void> {
+    await this.sql.run(
+      "UPDATE exercise_media_sets SET start_provider_url = ? WHERE id = ?",
+      [startProviderUrl, id],
+    );
+  }
+
   async findById(id: string): Promise<ExerciseMediaSetRow | null> {
     return this.sql.first<ExerciseMediaSetRow>(
-      `SELECT id, start_object_key, end_object_key, visibility, created_at
+      `SELECT id, start_object_key, end_object_key, start_provider_url, visibility, created_at
        FROM exercise_media_sets WHERE id = ? LIMIT 1`,
       [id],
     );

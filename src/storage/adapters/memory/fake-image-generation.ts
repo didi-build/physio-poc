@@ -1,6 +1,7 @@
 import type {
   GenerateExerciseImagesInput,
   GeneratedImage,
+  ImageGenerationCallOptions,
   ImageGenerationPort,
 } from "../../ports/image-generation.js";
 
@@ -21,17 +22,32 @@ export class FakeImageGeneration implements ImageGenerationPort {
   async generateStartAndEndImages(
     input: GenerateExerciseImagesInput,
   ): Promise<{ start: GeneratedImage; end: GeneratedImage }> {
+    const start = pngFromSeed(input.startPrompt, 1);
     return {
-      start: pngFromSeed(input.startPrompt, 1),
+      start: {
+        ...start,
+        providerSourceUrl: "https://v3b.fal.media/files/fake/start.png",
+      },
       end: pngFromSeed(input.endPrompt, 2),
     };
   }
 
-  async generateStartImage(startPrompt: string): Promise<GeneratedImage> {
-    return pngFromSeed(startPrompt, 1);
+  async generateStartImage(
+    startPrompt: string,
+    options?: ImageGenerationCallOptions,
+  ): Promise<GeneratedImage> {
+    void options;
+    return {
+      ...pngFromSeed(startPrompt, 1),
+      providerSourceUrl: "https://v3b.fal.media/files/fake/start.png",
+    };
   }
 
-  async generateEndImage(endPrompt: string): Promise<GeneratedImage> {
+  async generateEndImage(
+    endPrompt: string,
+    options?: ImageGenerationCallOptions,
+  ): Promise<GeneratedImage> {
+    void options;
     return pngFromSeed(endPrompt, 2);
   }
 }

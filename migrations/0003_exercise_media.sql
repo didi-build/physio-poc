@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS exercise_media_sets (
   id TEXT PRIMARY KEY,
   start_object_key TEXT NOT NULL,
   end_object_key TEXT NOT NULL,
+  start_provider_url TEXT,
   visibility TEXT NOT NULL CHECK (visibility IN ('draft', 'public')),
   created_at TEXT NOT NULL
 );

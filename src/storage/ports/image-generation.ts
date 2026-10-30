@@ -1,11 +1,19 @@
 export type GeneratedImage = {
   bytes: Uint8Array;
   contentType: string;
+  /** fal CDN URL for the start image, when the provider returns one (for edit chaining). */
+  providerSourceUrl?: string;
 };
 
 export type GenerateExerciseImagesInput = {
   startPrompt: string;
   endPrompt: string;
+  regenerationNote?: string | null;
+};
+
+export type ImageGenerationCallOptions = {
+  regenerationNote?: string | null;
+  startReferenceImageUrl?: string;
 };
 
 /**
@@ -16,6 +24,12 @@ export interface ImageGenerationPort {
   generateStartAndEndImages(
     input: GenerateExerciseImagesInput,
   ): Promise<{ start: GeneratedImage; end: GeneratedImage }>;
-  generateStartImage(startPrompt: string): Promise<GeneratedImage>;
-  generateEndImage(endPrompt: string): Promise<GeneratedImage>;
+  generateStartImage(
+    startPrompt: string,
+    options?: ImageGenerationCallOptions,
+  ): Promise<GeneratedImage>;
+  generateEndImage(
+    endPrompt: string,
+    options?: ImageGenerationCallOptions,
+  ): Promise<GeneratedImage>;
 }

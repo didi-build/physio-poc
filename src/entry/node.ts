@@ -21,6 +21,7 @@ function defaultDependencies(): AppDependencies {
     objects: new InMemoryObjectStorage(),
     config,
     mcp: createPhysioMcpHttpHandler(config),
+    enableUnauthenticatedApi: true,
   };
 }
 

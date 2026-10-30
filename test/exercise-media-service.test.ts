@@ -10,10 +10,7 @@ import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-g
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import { applyMigration, MIGRATION_0003_ID } from "../src/storage/migrations/apply.js";
-import {
-  ExerciseMediaService,
-  DAILY_MEDIA_REGENERATION_CAP,
-} from "../src/services/exercise-media/exercise-media-service.js";
+import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -100,10 +97,9 @@ describe("ExerciseMediaService (integration)", () => {
     return { service, media };
   }
 
-  it("applies migration 0002", async () => {
+  it("applies migration 0003", async () => {
     const storage = await openMigratedDatabase();
     try {
-      await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
       const tables = await storage.all<{ name: string }>(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('exercise_media_sets', 'media_regenerations')",
       );
@@ -142,7 +138,7 @@ describe("ExerciseMediaService (integration)", () => {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const { service } = await createService(storage);
       await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
-      for (let i = 0; i < DAILY_MEDIA_REGENERATION_CAP; i += 1) {
+      for (let i = 0; i < 5; i += 1) {
         await service.regenerateMedia({
           practitionerId,
           exerciseVersionId: versionId,
@@ -206,7 +202,7 @@ describe("ExerciseMediaService (integration)", () => {
         "SELECT change_summary FROM exercise_versions WHERE exercise_id = ? AND version_number = 2",
         [exerciseId],
       );
-      expect(summaryRow?.change_summary).toBe("Regenerated start and end images");
+      expect(summaryRow?.change_summary).toBe("Regenerated images");
       expect(summaryRow?.change_summary).not.toContain("deeper range");
       const versions = await storage.all<{ version_number: number; status: string }>(
         "SELECT version_number, status FROM exercise_versions WHERE exercise_id = ? ORDER BY version_number",

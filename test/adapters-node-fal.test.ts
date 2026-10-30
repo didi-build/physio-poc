@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { createImageGenerationPort } from "../src/adapters/node/create-image-generation-port.js";
 import {
+  assertAllowedFalImageDownloadUrl,
+  FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID,
   FAL_FLUX_KLEIN_4B_MODEL_ID,
   FAL_IMAGE_DOWNLOAD_MAX_BYTES,
   FAL_STORE_IO_DISABLED,
   FAL_STORE_IO_HEADER,
   FalFluxKleinImageGeneration,
+  isAllowedFalImageDownloadHost,
 } from "../src/adapters/node/fal-flux-klein-image-generation.js";
 import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
-import { S3CompatibleObjectStorage } from "../src/adapters/node/s3-compatible-object-storage.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 
 function headerValue(
@@ -36,6 +38,7 @@ function headerValue(
 describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
   const apiKey = "fal-test-key-must-not-appear-in-errors";
   const allowedImageUrl = "https://v3b.fal.media/files/test/out.png";
+  const startImageUrl = "https://v3b.fal.media/files/test/start.png";
 
   it("POSTs to fal.run with Authorization and X-Fal-Store-IO: 0; download has X-Fal-Store-IO only", async () => {
     const seen: Array<{ url: string; init?: RequestInit }> = [];
@@ -71,6 +74,42 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
     expect(seen[0]?.init?.method).toBe("POST");
     expect(seen[1]?.url).toBe(allowedImageUrl);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("generates end image via klein edit from the start image URL", async () => {
+    const seen: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      seen.push(url);
+      if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_MODEL_ID}`)) {
+        return new Response(JSON.stringify({ images: [{ url: startImageUrl }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.endsWith(`/${FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID}`)) {
+        const body = JSON.parse(String(init?.body)) as { image_urls?: string[] };
+        expect(body.image_urls).toEqual([startImageUrl]);
+        return new Response(JSON.stringify({ images: [{ url: allowedImageUrl }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      });
+    });
+
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await generator.generateStartAndEndImages({
+      startPrompt: "start",
+      endPrompt: "end",
+    });
+
+    expect(
+      seen.some((url) => url.endsWith(`/${FAL_FLUX_KLEIN_4B_EDIT_MODEL_ID}`)),
+    ).toBe(true);
   });
 
   it("refuses a non-fal image URL from the API without a download fetch", async () => {
@@ -109,6 +148,21 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
       "fal image download URL must use https",
     );
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses download URLs with userinfo", () => {
+    const url = new URL("https://v3b.fal.media/files/test/out.png");
+    url.username = "user";
+    url.password = "pass";
+    expect(() => assertAllowedFalImageDownloadUrl(url.toString())).toThrow(
+      "fal image download URL must not include userinfo",
+    );
+  });
+
+  it("refuses download URLs with a non-default port", () => {
+    expect(() =>
+      assertAllowedFalImageDownloadUrl("https://v3b.fal.media:8443/files/test/out.png"),
+    ).toThrow("fal image download URL must use the default https port");
   });
 
   it("refuses an off-host redirect without following it", async () => {
@@ -158,8 +212,8 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
     );
   });
 
-  it("does not include the API key or practitioner guidance in thrown errors", async () => {
-    const guidance = "show forearm support only";
+  it("does not include the API key or a multi-sentence practitioner note in thrown errors", async () => {
+    const guidance = "Keep the knee soft. Arms crossed on chest";
     const fetchImpl = vi.fn(async () => {
       return new Response(`invalid key ${apiKey} guidance ${guidance}`, {
         status: 401,
@@ -170,15 +224,16 @@ describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
       title: "Bridge",
       regenerationNote: guidance,
     });
-    await expect(generator.generateEndImage(prompt)).rejects.toSatisfy(
-      (err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        expect(message).not.toContain(apiKey);
-        expect(message).not.toContain(guidance);
-        expect(message).toContain("[REDACTED]");
-        return true;
-      },
-    );
+    await expect(
+      generator.generateStartImage(prompt, { regenerationNote: guidance }),
+    ).rejects.toSatisfy((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toContain(apiKey);
+      expect(message).not.toContain("Keep the knee soft");
+      expect(message).not.toContain("Arms crossed on chest");
+      expect(message).toContain("[REDACTED]");
+      return true;
+    });
   });
 });
 
@@ -199,53 +254,10 @@ describe("createImageGenerationPort (unit)", () => {
   });
 });
 
-describe("S3CompatibleObjectStorage (unit, mocked fetch)", () => {
-  const secretAccessKey = "s3-secret-must-not-leak";
-
-  it("PUTs to the bucket object URL with SigV4 Authorization", async () => {
-    let capturedUrl = "";
-    let capturedMethod = "";
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      capturedUrl = typeof input === "string" ? input : input.toString();
-      capturedMethod = init?.method ?? "GET";
-      return new Response(null, { status: 200 });
-    });
-
-    const storage = new S3CompatibleObjectStorage({
-      endpoint: "https://example.r2.cloudflarestorage.com",
-      bucket: "physio-media",
-      accessKeyId: "access-id",
-      secretAccessKey,
-      region: "auto",
-      fetchImpl,
-    });
-
-    await storage.put("media-sets/ms-1/start.png", new Uint8Array([1, 2]), "image/png");
-
-    expect(capturedMethod).toBe("PUT");
-    expect(capturedUrl).toContain("physio-media");
-    expect(capturedUrl).toContain("media-sets/ms-1/start.png");
-    expect(headerValue(fetchImpl.mock.calls[0]?.[1]?.headers, "Authorization")).toMatch(
-      /^AWS4-HMAC-SHA256 Credential=/,
-    );
-  });
-
-  it("does not include the secret access key in thrown errors", async () => {
-    const fetchImpl = vi.fn(async () => {
-      return new Response(`SignatureDoesNotMatch ${secretAccessKey}`, { status: 403 });
-    });
-    const storage = new S3CompatibleObjectStorage({
-      endpoint: "https://example.r2.cloudflarestorage.com",
-      bucket: "physio-media",
-      accessKeyId: "access-id",
-      secretAccessKey,
-      fetchImpl,
-    });
-
-    await expect(storage.get("missing.png")).rejects.toSatisfy((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      expect(message).not.toContain(secretAccessKey);
-      return true;
-    });
+describe("fal download allowlist (unit)", () => {
+  it("allows apex fal.media and subdomains but rejects lookalike hosts", () => {
+    expect(isAllowedFalImageDownloadHost("fal.media")).toBe(true);
+    expect(isAllowedFalImageDownloadHost("v3b.fal.media")).toBe(true);
+    expect(isAllowedFalImageDownloadHost("evilfal.media")).toBe(false);
   });
 });

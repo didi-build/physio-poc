@@ -129,6 +129,7 @@ export class ExerciseMediaService {
     const generated = await this.images.generateStartAndEndImages({
       startPrompt: buildStartImagePrompt(promptContext),
       endPrompt: buildEndImagePrompt(promptContext),
+      regenerationNote,
     });
     return this.persistMediaSet({
       version,
@@ -194,17 +195,42 @@ export class ExerciseMediaService {
         )
       : null;
 
+    let startProviderUrl = existing?.start_provider_url ?? null;
+    const imageOptions = { regenerationNote };
+
     if (input.scope === "start" || input.scope === "both") {
       const generated = await this.images.generateStartImage(
         buildStartImagePrompt(promptContext),
+        imageOptions,
       );
       startImage = { body: generated.bytes, contentType: generated.contentType };
+      if (generated.providerSourceUrl) {
+        startProviderUrl = generated.providerSourceUrl;
+      }
     }
     if (input.scope === "end" || input.scope === "both") {
+      const startReferenceImageUrl =
+        input.scope === "both"
+          ? (startProviderUrl ?? undefined)
+          : (existing?.start_provider_url ?? undefined);
       const generated = await this.images.generateEndImage(
         buildEndImagePrompt(promptContext),
+        {
+          ...imageOptions,
+          startReferenceImageUrl,
+        },
       );
       endImage = { body: generated.bytes, contentType: generated.contentType };
+    }
+    if (!startImage || !endImage) {
+      const pair = await this.images.generateStartAndEndImages({
+        startPrompt: buildStartImagePrompt(promptContext),
+        endPrompt: buildEndImagePrompt(promptContext),
+        regenerationNote,
+      });
+      startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
+      endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
+      startProviderUrl = pair.start.providerSourceUrl ?? startProviderUrl;
     }
     if (!startImage || !endImage) {
       const pair = await this.images.generateStartAndEndImages({
@@ -231,7 +257,11 @@ export class ExerciseMediaService {
       const media = await this.persistMediaSet({
         version,
         visibility: "draft",
-        start: { bytes: startImage.body, contentType: startImage.contentType },
+        start: {
+          bytes: startImage.body,
+          contentType: startImage.contentType,
+          providerSourceUrl: startProviderUrl,
+        },
         end: { bytes: endImage.body, contentType: endImage.contentType },
         updateVersion: true,
       });
@@ -256,6 +286,7 @@ export class ExerciseMediaService {
       id: mediaSetId,
       startObjectKey: keys.startObjectKey,
       endObjectKey: keys.endObjectKey,
+      startProviderUrl,
       visibility: "public",
       createdAt: nowIso,
     });
@@ -365,7 +396,11 @@ export class ExerciseMediaService {
   private async persistMediaSet(input: {
     version: { id: string; media_set_id: string | null };
     visibility: MediaVisibility;
-    start: { bytes: Uint8Array; contentType: string };
+    start: {
+      bytes: Uint8Array;
+      contentType: string;
+      providerSourceUrl?: string | null;
+    };
     end: { bytes: Uint8Array; contentType: string };
     updateVersion: boolean;
   }): Promise<ExerciseMediaSetView> {
@@ -388,6 +423,7 @@ export class ExerciseMediaService {
       id: mediaSetId,
       startObjectKey: keys.startObjectKey,
       endObjectKey: keys.endObjectKey,
+      startProviderUrl: input.start.providerSourceUrl ?? null,
       visibility: input.visibility,
       createdAt,
     });
@@ -416,10 +452,6 @@ export class ExerciseMediaService {
 
 function summarizeRegeneration(scope: MediaRegenerationScope): string {
   const scopeLabel =
-    scope === "both"
-      ? "start and end images"
-      : scope === "start"
-        ? "start image"
-        : "end image";
+    scope === "both" ? "images" : scope === "start" ? "start image" : "end image";
   return `Regenerated ${scopeLabel}`;
 }
