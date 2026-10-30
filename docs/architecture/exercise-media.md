@@ -25,6 +25,7 @@ Area: app · Backend services for [DIDI-1013](https://linear.app/didi-build/issu
 2. **Regenerate on a draft** replaces the version’s media set (still draft).
 3. **Regenerate on an approved exercise** (4A) creates a **new approved version** with public media immediately; prior versions remain in history.
 4. **Daily cap:** five regenerations per practitioner per UTC day, enforced in `ExerciseMediaService` using `media_regenerations`.
+5. **Regeneration note:** optional, max 200 characters, patient-detail checked. Sent to fal only (with `X-Fal-Store-IO: 0`). Never stored in D1, object storage, logs, errors, or version history text. `media_regenerations.had_note` records whether a note was present.
 
 ## Related
 

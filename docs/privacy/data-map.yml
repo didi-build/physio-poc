@@ -321,8 +321,8 @@ d1_tables:
       exercise_id: {}
       exercise_version_id: {}
       scope: {}
-      note:
-        notes: optional practitioner note for AI; validateRequestNote on write
+      had_note:
+        notes: audit flag only; regeneration note text is never stored
       created_at: {}
 
 other_items: []

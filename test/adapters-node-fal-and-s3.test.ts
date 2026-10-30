@@ -1,0 +1,164 @@
+import { describe, expect, it, vi } from "vitest";
+import { createImageGenerationPort } from "../src/adapters/node/create-image-generation-port.js";
+import {
+  FAL_FLUX_KLEIN_4B_MODEL_ID,
+  FAL_STORE_IO_DISABLED,
+  FAL_STORE_IO_HEADER,
+  FalFluxKleinImageGeneration,
+} from "../src/adapters/node/fal-flux-klein-image-generation.js";
+import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
+import { S3CompatibleObjectStorage } from "../src/adapters/node/s3-compatible-object-storage.js";
+import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+
+function headerValue(
+  headers: HeadersInit | undefined,
+  name: string,
+): string | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  if (headers instanceof Headers) {
+    return headers.get(name) ?? undefined;
+  }
+  if (Array.isArray(headers)) {
+    const match = headers.find(([key]) => key.toLowerCase() === name.toLowerCase());
+    return match?.[1];
+  }
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === name.toLowerCase()) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+describe("FalFluxKleinImageGeneration (unit, mocked fetch)", () => {
+  const apiKey = "fal-test-key-must-not-appear-in-errors";
+
+  it("POSTs to the fal.run model endpoint with X-Fal-Store-IO: 0 and downloads the image with the same header", async () => {
+    const seen: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      seen.push({ url, init });
+      if (url.includes("fal.run")) {
+        expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe(
+          FAL_STORE_IO_DISABLED,
+        );
+        return new Response(
+          JSON.stringify({ images: [{ url: "https://cdn.example/out.png" }] }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      expect(headerValue(init?.headers, FAL_STORE_IO_HEADER)).toBe(
+        FAL_STORE_IO_DISABLED,
+      );
+      return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      });
+    });
+
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    const image = await generator.generateStartImage("test prompt");
+
+    expect(image.contentType).toBe("image/png");
+    expect(seen[0]?.url).toBe(`https://fal.run/${FAL_FLUX_KLEIN_4B_MODEL_ID}`);
+    expect(seen[0]?.init?.method).toBe("POST");
+    expect(seen[1]?.url).toBe("https://cdn.example/out.png");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not include the API key or practitioner guidance in thrown errors", async () => {
+    const guidance = "show forearm support only";
+    const fetchImpl = vi.fn(async () => {
+      return new Response(`invalid key ${apiKey} guidance ${guidance}`, {
+        status: 401,
+      });
+    });
+    const generator = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    const prompt = buildStartImagePrompt({
+      title: "Bridge",
+      regenerationNote: guidance,
+    });
+    await expect(generator.generateEndImage(prompt)).rejects.toSatisfy(
+      (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        expect(message).not.toContain(apiKey);
+        expect(message).not.toContain(guidance);
+        expect(message).toContain("[REDACTED]");
+        return true;
+      },
+    );
+  });
+});
+
+describe("createImageGenerationPort (unit)", () => {
+  it("returns FakeImageGeneration when FAL_KEY is missing or blank", () => {
+    expect(createImageGenerationPort({})).toBeInstanceOf(FakeImageGeneration);
+    expect(createImageGenerationPort({ FAL_KEY: "" })).toBeInstanceOf(
+      FakeImageGeneration,
+    );
+    expect(createImageGenerationPort({ FAL_KEY: "   " })).toBeInstanceOf(
+      FakeImageGeneration,
+    );
+  });
+
+  it("returns FalFluxKleinImageGeneration when FAL_KEY is set", () => {
+    const port = createImageGenerationPort({ FAL_KEY: "present-key" });
+    expect(port).toBeInstanceOf(FalFluxKleinImageGeneration);
+  });
+});
+
+describe("S3CompatibleObjectStorage (unit, mocked fetch)", () => {
+  const secretAccessKey = "s3-secret-must-not-leak";
+
+  it("PUTs to the bucket object URL with SigV4 Authorization", async () => {
+    let capturedUrl = "";
+    let capturedMethod = "";
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      capturedMethod = init?.method ?? "GET";
+      return new Response(null, { status: 200 });
+    });
+
+    const storage = new S3CompatibleObjectStorage({
+      endpoint: "https://example.r2.cloudflarestorage.com",
+      bucket: "physio-media",
+      accessKeyId: "access-id",
+      secretAccessKey,
+      region: "auto",
+      fetchImpl,
+    });
+
+    await storage.put("media-sets/ms-1/start.png", new Uint8Array([1, 2]), "image/png");
+
+    expect(capturedMethod).toBe("PUT");
+    expect(capturedUrl).toContain("physio-media");
+    expect(capturedUrl).toContain("media-sets/ms-1/start.png");
+    expect(headerValue(fetchImpl.mock.calls[0]?.[1]?.headers, "Authorization")).toMatch(
+      /^AWS4-HMAC-SHA256 Credential=/,
+    );
+  });
+
+  it("does not include the secret access key in thrown errors", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(`SignatureDoesNotMatch ${secretAccessKey}`, { status: 403 });
+    });
+    const storage = new S3CompatibleObjectStorage({
+      endpoint: "https://example.r2.cloudflarestorage.com",
+      bucket: "physio-media",
+      accessKeyId: "access-id",
+      secretAccessKey,
+      fetchImpl,
+    });
+
+    await expect(storage.get("missing.png")).rejects.toSatisfy((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).not.toContain(secretAccessKey);
+      return true;
+    });
+  });
+});

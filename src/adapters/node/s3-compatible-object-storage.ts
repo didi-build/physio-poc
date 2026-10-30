@@ -26,13 +26,17 @@ export class S3CompatibleObjectStorage implements ObjectStoragePort {
     this.region = config.region ?? "auto";
   }
 
+  private redactErrorDetail(detail: string): string {
+    return detail.split(this.config.secretAccessKey).join("[REDACTED]");
+  }
+
   async put(key: string, body: Uint8Array, contentType: string): Promise<void> {
     const url = this.objectUrl(key);
     const response = await this.signedRequest("PUT", url, body, {
       "content-type": contentType,
     });
     if (!response.ok) {
-      const detail = await response.text();
+      const detail = this.redactErrorDetail(await response.text());
       throw new Error(`S3 put failed (${response.status}): ${detail}`);
     }
   }
@@ -44,7 +48,7 @@ export class S3CompatibleObjectStorage implements ObjectStoragePort {
       return null;
     }
     if (!response.ok) {
-      const detail = await response.text();
+      const detail = this.redactErrorDetail(await response.text());
       throw new Error(`S3 get failed (${response.status}): ${detail}`);
     }
     const contentType =
@@ -60,7 +64,7 @@ export class S3CompatibleObjectStorage implements ObjectStoragePort {
       return null;
     }
     if (!response.ok) {
-      const detail = await response.text();
+      const detail = this.redactErrorDetail(await response.text());
       throw new Error(`S3 head failed (${response.status}): ${detail}`);
     }
     const contentType =
@@ -77,7 +81,7 @@ export class S3CompatibleObjectStorage implements ObjectStoragePort {
       return;
     }
     if (!response.ok) {
-      const detail = await response.text();
+      const detail = this.redactErrorDetail(await response.text());
       throw new Error(`S3 delete failed (${response.status}): ${detail}`);
     }
   }

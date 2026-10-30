@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
 import {
   buildEndImagePrompt,
   buildStartImagePrompt,
@@ -85,8 +86,8 @@ describe("ExerciseMediaService (integration)", () => {
 
   async function createService(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    images: ImageGenerationPort = new FakeImageGeneration(),
   ) {
-    const images = new FakeImageGeneration();
     const media = new PrefixMediaStorage(new InMemoryObjectStorage());
     let tick = 0;
     const service = new ExerciseMediaService(
@@ -201,6 +202,12 @@ describe("ExerciseMediaService (integration)", () => {
         expect(result.newVersionNumber).toBe(2);
         expect(result.media.visibility).toBe("public");
       }
+      const summaryRow = await storage.first<{ change_summary: string | null }>(
+        "SELECT change_summary FROM exercise_versions WHERE exercise_id = ? AND version_number = 2",
+        [exerciseId],
+      );
+      expect(summaryRow?.change_summary).toBe("Regenerated start and end images");
+      expect(summaryRow?.change_summary).not.toContain("deeper range");
       const versions = await storage.all<{ version_number: number; status: string }>(
         "SELECT version_number, status FROM exercise_versions WHERE exercise_id = ? ORDER BY version_number",
         [exerciseId],
@@ -209,6 +216,98 @@ describe("ExerciseMediaService (integration)", () => {
         { version_number: 1, status: "approved" },
         { version_number: 2, status: "approved" },
       ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not persist regeneration note text; records had_note only", async () => {
+    const storage = await openMigratedDatabase();
+    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    const secretNote = "UNPERSISTED_REGEN_NOTE_xyzzy";
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage);
+      await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "end",
+        note: secretNote,
+      });
+      const regenRows = await storage.all<{ had_note: number }>(
+        "SELECT had_note FROM media_regenerations",
+      );
+      expect(regenRows).toHaveLength(1);
+      expect(regenRows[0]?.had_note).toBe(1);
+      const tableDump = JSON.stringify(
+        await storage.all("SELECT * FROM media_regenerations"),
+      );
+      expect(tableDump).not.toContain(secretNote);
+      const columnNames = (
+        await storage.all<{ name: string }>("PRAGMA table_info(media_regenerations)")
+      ).map((row) => row.name);
+      expect(columnNames).not.toContain("note");
+      expect(columnNames).toContain("had_note");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects patient details in the note before calling image generation", async () => {
+    const storage = await openMigratedDatabase();
+    await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+    const generateStartImage = vi.fn();
+    const images: ImageGenerationPort = {
+      generateStartAndEndImages: vi.fn(),
+      generateStartImage,
+      generateEndImage: vi.fn(),
+    };
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, images);
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+          note: "Patient born 01/15/1990",
+        }),
+      ).rejects.toSatisfy((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        expect(message).not.toContain("01/15/1990");
+        return true;
+      });
+      expect(generateStartImage).not.toHaveBeenCalled();
+      const count = await storage.first<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM media_regenerations",
+      );
+      expect(count?.n).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects notes longer than 200 characters", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const generateStartImage = vi.fn();
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: vi.fn(),
+        generateStartImage,
+        generateEndImage: vi.fn(),
+      });
+      const longNote = "x".repeat(201);
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+          note: longNote,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      expect(generateStartImage).not.toHaveBeenCalled();
     } finally {
       storage.close();
     }

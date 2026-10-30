@@ -1,6 +1,5 @@
 import type { SqlStoragePort } from "../ports/sql-storage.js";
 import type { MediaVisibility } from "../ports/media-storage.js";
-import { validateRequestNote } from "../../domain/exercise-free-text.js";
 
 export type ExerciseMediaSetRow = {
   id: string;
@@ -61,13 +60,12 @@ export class MediaRegenerationsRepository {
     exerciseId: string;
     exerciseVersionId: string | null;
     scope: MediaRegenerationScope;
-    note?: string | null;
+    hadNote: boolean;
     createdAt: string;
   }): Promise<void> {
-    const note = validateRequestNote(input.note);
     await this.sql.run(
       `INSERT INTO media_regenerations (
-        id, practitioner_id, exercise_id, exercise_version_id, scope, note, created_at
+        id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         input.id,
@@ -75,7 +73,7 @@ export class MediaRegenerationsRepository {
         input.exerciseId,
         input.exerciseVersionId,
         input.scope,
-        note,
+        input.hadNote ? 1 : 0,
         input.createdAt,
       ],
     );

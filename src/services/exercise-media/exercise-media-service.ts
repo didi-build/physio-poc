@@ -3,6 +3,10 @@ import {
   buildStartImagePrompt,
   type ExerciseMediaPromptContext,
 } from "../../domain/exercise-media-prompts.js";
+import {
+  FreeTextValidationError,
+  validateMediaRegenerationNote,
+} from "../../domain/exercise-free-text.js";
 import type { ImageGenerationPort } from "../../storage/ports/image-generation.js";
 import type {
   MediaStoragePort,
@@ -68,6 +72,17 @@ function mediaObjectKeys(mediaSetId: string): {
   };
 }
 
+function parseRegenerationNote(note: string | null | undefined): string | null {
+  try {
+    return validateMediaRegenerationNote(note);
+  } catch (error) {
+    if (error instanceof FreeTextValidationError) {
+      throw new ExerciseMediaServiceError(error.message, "invalid_input");
+    }
+    throw error;
+  }
+}
+
 export class ExerciseMediaService {
   private readonly mediaSets: ExerciseMediaSetsRepository;
   private readonly regenerations: MediaRegenerationsRepository;
@@ -106,13 +121,11 @@ export class ExerciseMediaService {
     exerciseVersionId: string;
     regenerationNote?: string | null;
   }): Promise<ExerciseMediaSetView> {
+    const regenerationNote = parseRegenerationNote(input.regenerationNote);
     const version = await this.requireVersion(input.exerciseVersionId);
     const visibility: MediaVisibility =
       version.status === "approved" ? "public" : "draft";
-    const promptContext = this.promptContextFromVersion(
-      version,
-      input.regenerationNote,
-    );
+    const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const generated = await this.images.generateStartAndEndImages({
       startPrompt: buildStartImagePrompt(promptContext),
       endPrompt: buildEndImagePrompt(promptContext),
@@ -151,6 +164,9 @@ export class ExerciseMediaService {
         "invalid_scope",
       );
     }
+
+    const regenerationNote = parseRegenerationNote(input.note);
+
     const quota = await this.getRegenerationQuota(input.practitionerId);
     if (quota.limitReached) {
       throw new ExerciseMediaServiceError(
@@ -160,7 +176,7 @@ export class ExerciseMediaService {
     }
 
     const version = await this.requireVersion(input.exerciseVersionId);
-    const promptContext = this.promptContextFromVersion(version, input.note);
+    const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const existing = version.media_set_id
       ? await this.mediaSets.findById(version.media_set_id)
       : null;
@@ -206,7 +222,7 @@ export class ExerciseMediaService {
       exerciseId: version.exercise_id,
       exerciseVersionId: version.id,
       scope: input.scope,
-      note: input.note,
+      hadNote: regenerationNote !== null,
       createdAt: nowIso,
     });
     const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
@@ -247,7 +263,7 @@ export class ExerciseMediaService {
     const latest = await this.versions.latestApprovedVersionNumber(version.exercise_id);
     const nextVersion = (latest ?? version.version_number) + 1;
     const newVersionId = this.createId();
-    const summary = summarizeRegeneration(input.scope, input.note);
+    const summary = summarizeRegeneration(input.scope);
     await this.versions.insertApprovedVersionFromSource({
       id: newVersionId,
       source: version,
@@ -398,19 +414,12 @@ export class ExerciseMediaService {
   }
 }
 
-function summarizeRegeneration(
-  scope: MediaRegenerationScope,
-  note?: string | null,
-): string {
+function summarizeRegeneration(scope: MediaRegenerationScope): string {
   const scopeLabel =
     scope === "both"
       ? "start and end images"
       : scope === "start"
         ? "start image"
         : "end image";
-  const trimmed = note?.trim();
-  if (trimmed) {
-    return `Regenerated ${scopeLabel} with note "${trimmed}"`;
-  }
   return `Regenerated ${scopeLabel}`;
 }

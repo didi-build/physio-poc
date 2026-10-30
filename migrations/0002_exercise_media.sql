@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS media_regenerations (
   exercise_id TEXT NOT NULL REFERENCES exercises (id) ON DELETE RESTRICT,
   exercise_version_id TEXT REFERENCES exercise_versions (id) ON DELETE RESTRICT,
   scope TEXT NOT NULL CHECK (scope IN ('start', 'end', 'both')),
-  note TEXT,
+  had_note INTEGER NOT NULL DEFAULT 0 CHECK (had_note IN (0, 1)),
   created_at TEXT NOT NULL
 );
 
