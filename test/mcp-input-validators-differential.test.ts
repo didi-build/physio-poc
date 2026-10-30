@@ -69,9 +69,6 @@ function expectAgreement(toolName: string, data: unknown) {
   }
 }
 
-const loneHighSurrogate = "\uD800";
-const loneLowSurrogate = "\uDC00";
-
 const emoji = "😀";
 const ninetyNineLetters = "a".repeat(99);
 const astralQuery = `${ninetyNineLetters}${emoji}`;
@@ -85,14 +82,14 @@ describe("generated MCP validators vs runtime Ajv", () => {
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "" } },
       {
         tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
-        data: { query: `stretch${loneHighSurrogate}` },
-      },
-      {
-        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
-        data: { query: `${loneLowSurrogate}stretch` },
+        data: { query: `${ninetyNineLetters}\uD800x` },
       },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: "knee" } },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800x` },
+      },
       {
         tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         data: { program_code: "PRG-STUB01" },

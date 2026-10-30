@@ -498,6 +498,12 @@ describe("wrangler worker name pin", () => {
     );
   });
 
+  it("rejects a JSON array root", () => {
+    expect(() => parseWranglerJsonc("[]")).toThrow(
+      "Expected wrangler.jsonc root object",
+    );
+  });
+
   it("uses the physio-poc worker name", () => {
     const wranglerPath = join(process.cwd(), "wrangler.jsonc");
     const text = readFileSync(wranglerPath, "utf8");

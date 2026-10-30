@@ -12,14 +12,10 @@ export const outDir = join(repoRoot, "src/services/mcp/generated");
 export const outPath = join(outDir, "input-validators.js");
 export const runtimeDir = join(outDir, "runtime");
 export const ucs2VendorPath = join(runtimeDir, "ajv-ucs2length.js");
-export const dateVendorPath = join(runtimeDir, "ajv-formats-date.js");
 export const metaPath = join(outDir, "input-validator-meta.js");
 
 const AJV_PKG = JSON.parse(
   readFileSync(join(repoRoot, "node_modules/ajv/package.json"), "utf8"),
-);
-const AJV_FORMATS_PKG = JSON.parse(
-  readFileSync(join(repoRoot, "node_modules/ajv-formats/package.json"), "utf8"),
 );
 
 const banner = `/* eslint-disable */
@@ -41,24 +37,6 @@ export default ${match[0]};
 `;
 }
 
-export function buildAjvFormatsDateVendorSource() {
-  const upstream = readFileSync(
-    join(repoRoot, "node_modules/ajv-formats/dist/formats.js"),
-    "utf8",
-  );
-  const start = upstream.indexOf("function isLeapYear(year)");
-  const end = upstream.indexOf("const TIME = /^", start);
-  if (start === -1 || end === -1) {
-    throw new Error("Unexpected ajv-formats date upstream shape");
-  }
-  const dateBlock = upstream.slice(start, end).trimEnd();
-  return `/* Vendored from ajv-formats@${AJV_FORMATS_PKG.version} dist/formats.js (date helpers). Do not edit. */
-/* License: LICENSES/ajv-formats-MIT.txt */
-${dateBlock}
-export const fullFormatsDate = { validate: date, compare: compareDate };
-`;
-}
-
 function postProcessStandaloneSource(source) {
   let out = source;
   out = out.replace(
@@ -74,9 +52,13 @@ function postProcessStandaloneSource(source) {
       "Generated validators still contain require(); adjust postProcessStandaloneSource.",
     );
   }
-  const imports = `import ucs2length from "./runtime/ajv-ucs2length.js";
-import { fullFormatsDate } from "./runtime/ajv-formats-date.js";
+  let imports = `import ucs2length from "./runtime/ajv-ucs2length.js";
 `;
+  if (out.includes("formats0")) {
+    throw new Error(
+      "Unexpected date format in generated validators; reintroduce date vendor or adjust schemas.",
+    );
+  }
   return `${imports}${out}`;
 }
 
@@ -166,7 +148,6 @@ export function buildAllGeneratedOutputs() {
   const golden = JSON.parse(readFileSync(goldenPath, "utf8"));
   return {
     ucs2Vendor: buildAjvUcs2lengthVendorSource(),
-    dateVendor: buildAjvFormatsDateVendorSource(),
     validators: buildGeneratedSource(),
     meta: buildMetaSource(golden),
   };
@@ -175,12 +156,10 @@ export function buildAllGeneratedOutputs() {
 export function generatedOutputsMatchCommitted() {
   const expected = buildAllGeneratedOutputs();
   const committedUcs2 = readFileSync(ucs2VendorPath, "utf8");
-  const committedDate = readFileSync(dateVendorPath, "utf8");
   const committedMeta = readFileSync(metaPath, "utf8");
   const committedValidators = readFileSync(outPath, "utf8");
   return (
     committedUcs2 === expected.ucs2Vendor &&
-    committedDate === expected.dateVendor &&
     committedMeta === expected.meta &&
     committedValidators === expected.validators
   );
