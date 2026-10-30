@@ -56,6 +56,10 @@ function practitionerIdQuerySuffix(otherPractitionerId: string): string {
   return `?practitionerId=${encodeURIComponent(otherPractitionerId)}`;
 }
 
+function practitionerUnderscoreIdQuerySuffix(otherPractitionerId: string): string {
+  return `?practitioner_id=${encodeURIComponent(otherPractitionerId)}`;
+}
+
 async function expectInvalidInput(response: Response): Promise<void> {
   expect(response.status).toBe(400);
   expect(await response.json()).toEqual({
@@ -374,6 +378,57 @@ describe("My defaults HTTP routes (integration)", () => {
       expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
 
       await assertSessionANeverSeesPractitionerBData(storage, practitionerA);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitioner_id query on GET with invalid_input; B rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-query-get-snake");
+      await seedPractitioner(storage, practitionerB, "b-query-get-snake@example.com");
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-query-get-snake"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-query-get-snake"),
+        practitionerB,
+        "stretching",
+        { hold_s: 99, per_day: 1, days_per_week: 7 },
+      );
+      const bShareBefore = await shareLinkPractitionerRowSnapshot(
+        storage,
+        practitionerB,
+      );
+      const bStretchingBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const getResponse = await handleRequest(
+        authedRequest(
+          `http://127.0.0.1${MY_DEFAULTS_API_BASE}${practitionerUnderscoreIdQuerySuffix(practitionerB)}`,
+          cookie,
+        ),
+        deps,
+      );
+      await expectInvalidInput(getResponse);
+
+      expect(await shareLinkPractitionerRowSnapshot(storage, practitionerB)).toEqual(
+        bShareBefore,
+      );
+      const bStretchingAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, "stretching"],
+      );
+      expect(bStretchingAfter?.params_json).toBe(bStretchingBefore?.params_json);
     } finally {
       storage.close();
     }
