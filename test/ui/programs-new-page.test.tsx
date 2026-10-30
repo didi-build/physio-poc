@@ -71,7 +71,9 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
 }
 
 function scratchOptionButton(sheet: HTMLElement) {
-  return within(sheet).getByRole("button", { name: new RegExp(NEW_PROGRAM_FROM_SCRATCH) });
+  return within(sheet).getByRole("button", {
+    name: new RegExp(NEW_PROGRAM_FROM_SCRATCH),
+  });
 }
 
 function listAndBuilderStubs() {
@@ -128,7 +130,9 @@ describe("Programs new page (integration, jsdom)", () => {
     await waitFor(() => {
       expect(createProgram).toHaveBeenCalled();
     });
-    expect(screen.getByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE }),
+    ).toBeInTheDocument();
     expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
   });
 
@@ -148,9 +152,7 @@ describe("Programs new page (integration, jsdom)", () => {
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(
-        screen.getByRole("textbox", { name: "Program name" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
     });
     expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
   });
@@ -182,9 +184,7 @@ describe("Programs new page (integration, jsdom)", () => {
       expect(createProgram).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
-      expect(
-        screen.getByRole("textbox", { name: "Program name" }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
     });
     expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
   });
