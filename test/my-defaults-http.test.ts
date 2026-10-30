@@ -17,6 +17,10 @@ import {
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { ShareLinkDefaultsRepository } from "../src/storage/repositories/programs.js";
+import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
+
+const APP_API_ORIGIN = "http://127.0.0.1";
+const CSRF_EVIL_ORIGIN = "https://evil.example.com";
 
 function authedRequest(url: string, cookie: string, init: RequestInit = {}): Request {
   const headers = new Headers(init.headers);
@@ -25,12 +29,27 @@ function authedRequest(url: string, cookie: string, init: RequestInit = {}): Req
 }
 
 function authedJsonRequest(path: string, cookie: string, init: RequestInit): Request {
+  const url = `${APP_API_ORIGIN}${path}`;
+  const withCsrf = mutatingAppApiRequestInit(url, init);
+  const headers = new Headers(withCsrf.headers);
+  headers.set("cookie", cookie);
+  return new Request(url, { ...withCsrf, headers });
+}
+
+function authedCrossOriginJsonRequest(
+  path: string,
+  cookie: string,
+  init: RequestInit,
+  origin: string,
+): Request {
+  const url = `${APP_API_ORIGIN}${path}`;
   const headers = new Headers(init.headers);
   headers.set("cookie", cookie);
+  headers.set("origin", origin);
   if (init.body !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
-  return new Request(`http://127.0.0.1${path}`, { ...init, headers });
+  return new Request(url, { ...init, headers });
 }
 
 function apiDeps(
@@ -544,6 +563,97 @@ describe("My defaults HTTP routes (integration)", () => {
         ["practitioner", practitionerA, sharedType],
       );
       expect(aRow).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 403 for cross-origin PATCH PUT DELETE on my-defaults and leaves storage unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      const shareDefaults = new ShareLinkDefaultsRepository(storage);
+      await shareDefaults.upsertPractitionerDefault(
+        testOpaqueEntityId("sld-csrf-seed"),
+        practitionerId,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.thirty_days },
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-csrf-seed"),
+        practitionerId,
+        "isometric",
+        { reps: 2, hold_s: 15, sets: 4, days_per_week: 5 },
+      );
+
+      const shareRowBefore = await storage.first<{
+        expires_in: string;
+        custom_expires_on: string | null;
+      }>(
+        "SELECT expires_in, custom_expires_on FROM share_link_defaults WHERE scope = ? AND practitioner_id = ? LIMIT 1",
+        ["practitioner", practitionerId],
+      );
+      const typeRowBefore = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerId, "isometric"],
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const patchResponse = await handleRequest(
+        authedCrossOriginJsonRequest(
+          myDefaultsShareLinkExpiryPath(),
+          cookie,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.never }),
+          },
+          CSRF_EVIL_ORIGIN,
+        ),
+        deps,
+      );
+      expect(patchResponse.status).toBe(403);
+
+      const putResponse = await handleRequest(
+        authedCrossOriginJsonRequest(
+          myDefaultsTypePath("isometric"),
+          cookie,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              params: { reps: 9, hold_s: 9, sets: 9, days_per_week: 9 },
+            }),
+          },
+          CSRF_EVIL_ORIGIN,
+        ),
+        deps,
+      );
+      expect(putResponse.status).toBe(403);
+
+      const deleteResponse = await handleRequest(
+        authedCrossOriginJsonRequest(
+          myDefaultsTypePath("isometric"),
+          cookie,
+          { method: "DELETE", body: "{}" },
+          CSRF_EVIL_ORIGIN,
+        ),
+        deps,
+      );
+      expect(deleteResponse.status).toBe(403);
+
+      const shareRowAfter = await storage.first<{
+        expires_in: string;
+        custom_expires_on: string | null;
+      }>(
+        "SELECT expires_in, custom_expires_on FROM share_link_defaults WHERE scope = ? AND practitioner_id = ? LIMIT 1",
+        ["practitioner", practitionerId],
+      );
+      const typeRowAfter = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerId, "isometric"],
+      );
+      expect(shareRowAfter).toEqual(shareRowBefore);
+      expect(typeRowAfter?.params_json).toBe(typeRowBefore?.params_json);
     } finally {
       storage.close();
     }
