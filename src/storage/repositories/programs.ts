@@ -547,6 +547,82 @@ export class ProgramRowsRepository {
     );
   }
 
+  /**
+   * Approval batch only. Call from linkApprovedPlaceholders only
+   * (program-builder-service.ts). Allows soft deleted programs and does not
+   * check program ownership; must not be used from user facing row APIs.
+   * Does not accept note or program name changes; prescription_type and note
+   * stay as stored on the row.
+   */
+  async linkPlaceholderRowToApprovedVersion(input: {
+    programId: string;
+    rowId: string;
+    exerciseRequestId: string;
+    exerciseId: string;
+    exerciseVersionId: string;
+    params: ExerciseParams;
+    textSnapshot: ProgramRowTextSnapshot;
+    draftUpdatedAt: string;
+  }): Promise<boolean> {
+    const programId = validateOpaqueEntityId(input.programId, "Program id");
+    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
+    const exerciseRequestId = validateOpaqueEntityId(
+      input.exerciseRequestId,
+      "Exercise request id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const exerciseVersionId = validateOpaqueEntityId(
+      input.exerciseVersionId,
+      "Exercise version id",
+    );
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const row = await this.findById(rowId);
+    if (
+      !row ||
+      row.program_id !== programId ||
+      row.exercise_request_id !== exerciseRequestId ||
+      row.exercise_id ||
+      row.exercise_version_id
+    ) {
+      return false;
+    }
+    const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);
+    const paramsJson = JSON.stringify(validateExerciseParams(input.params));
+    const textJson = JSON.stringify(textSnapshot);
+    const result = await this.sql.run(
+      `UPDATE program_rows SET
+        exercise_id = ?,
+        exercise_version_id = ?,
+        exercise_request_id = NULL,
+        params_json = ?,
+        text_snapshot_json = ?
+      WHERE id = ? AND program_id = ? AND exercise_request_id = ?
+        AND exercise_id IS NULL AND exercise_version_id IS NULL`,
+      [
+        exerciseId,
+        exerciseVersionId,
+        paramsJson,
+        textJson,
+        rowId,
+        programId,
+        exerciseRequestId,
+      ],
+    );
+    if (result.rowsAffected === 0) {
+      return false;
+    }
+    if (!program.deleted_at) {
+      await new ProgramsRepository(this.sql).touchDraft(
+        programId,
+        input.draftUpdatedAt,
+      );
+    }
+    return true;
+  }
+
   async listForProgram(programId: string): Promise<ProgramRow[]> {
     const rows = await this.sql.all<ProgramRow>(
       `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,

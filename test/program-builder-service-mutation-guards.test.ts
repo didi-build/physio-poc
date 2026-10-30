@@ -1024,7 +1024,7 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
     }
   });
 
-  it("skips placeholder rows on deleted programs without linking them", async () => {
+  it("links placeholder rows on soft-deleted programs so restore shows linked exercises", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -1066,14 +1066,23 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       expect(skipped).toBe(0);
       const active = await service.getProgram(practitionerId, id("prog-active-link"));
       expect(active.rows[0]?.kind).toBe("exercise");
-      const deletedView = await service.getProgram(
+      expect(active.rows[0]?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+      expect(active.rows[0]?.exercise_version_id).toBe(FIXTURE_VERSION_ID);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const deletedRowWhileDeleted = await rowsRepo.findById(id("row-deleted-link"));
+      expect(deletedRowWhileDeleted?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+      expect(deletedRowWhileDeleted?.exercise_version_id).toBe(FIXTURE_VERSION_ID);
+      expect(deletedRowWhileDeleted?.exercise_request_id).toBeNull();
+      await service.restoreProgram(practitionerId, id("prog-deleted-link"));
+      const restored = await service.getProgram(
         practitionerId,
         id("prog-deleted-link"),
       );
-      expect(deletedView.rows).toHaveLength(0);
-      const rowsRepo = new ProgramRowsRepository(storage);
-      const deletedRow = await rowsRepo.findById(id("row-deleted-link"));
-      expect(deletedRow?.exercise_request_id).toBe(id("req-del-prog"));
+      expect(restored.rows).toHaveLength(1);
+      expect(restored.rows[0]?.kind).toBe("exercise");
+      expect(restored.rows[0]?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+      expect(restored.rows[0]?.exercise_version_id).toBe(FIXTURE_VERSION_ID);
+      expect(restored.rows[0]?.exercise_request_id).toBeNull();
     } finally {
       storage.close();
     }
@@ -1113,21 +1122,25 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       const before1 = await snapshotProgramDbState(storage, id("prog-write-fail"));
       const before2 = await snapshotProgramDbState(storage, id("prog-write-fail-2"));
       const rowsRepo = new ProgramRowsRepository(storage);
-      const original = ProgramRowsRepository.prototype.replaceRow;
+      const original =
+        ProgramRowsRepository.prototype.linkPlaceholderRowToApprovedVersion;
       let calls = 0;
-      vi.spyOn(ProgramRowsRepository.prototype, "replaceRow").mockImplementation(
-        async function (this: ProgramRowsRepository, input) {
-          calls += 1;
-          await original.call(this, input);
-          if (calls === 1) {
-            const linked = await rowsRepo.findById(input.id);
-            expect(linked?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
-          }
-          if (calls === 2) {
-            throw new Error("simulated mid-link write failure");
-          }
-        },
-      );
+      vi.spyOn(
+        ProgramRowsRepository.prototype,
+        "linkPlaceholderRowToApprovedVersion",
+      ).mockImplementation(async function (this: ProgramRowsRepository, input) {
+        calls += 1;
+        const linked = await original.call(this, input);
+        if (calls === 1) {
+          expect(linked).toBe(true);
+          const row = await rowsRepo.findById(input.rowId);
+          expect(row?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
+        }
+        if (calls === 2) {
+          throw new Error("simulated mid-link write failure");
+        }
+        return linked;
+      });
       await storage.run("BEGIN");
       await expect(
         linkApprovedPlaceholders(storage, id("req-write-fail"), FIXTURE_VERSION_ID),
