@@ -2,11 +2,6 @@
  * Contract rules for get_program_share_link_or_pdf (runtime-neutral).
  */
 
-export const GET_PROGRAM_NEVER_AUTO_PUBLISH = true as const;
-
-/** Republishing replaces the live version at the same share link (DIDI-594). */
-export const GET_PROGRAM_REPUBLISH_KEEPS_SHARE_LINK = true as const;
-
 export type ProgramVersionRef = {
   readonly version: number;
   readonly updated_at: string;
