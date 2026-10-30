@@ -1170,10 +1170,7 @@ export class ProgramBuilderService {
       throw err;
     }
     if (input.rowIds.length !== rows.length) {
-      throw new ProgramBuilderServiceError(
-        "rowIds must include one id per routine row",
-        "invalid_input",
-      );
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
     }
     const createdAt = this.now();
     const prefilledName = version.name?.trim() ?? null;
@@ -1263,10 +1260,7 @@ export class ProgramBuilderService {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
     }
     if (routine.published_version === null) {
-      throw new ProgramBuilderServiceError(
-        "Routine must be published before it can be used for a program",
-        "invalid_input",
-      );
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
     }
     return routine;
   }

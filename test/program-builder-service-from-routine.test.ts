@@ -398,7 +398,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       );
       expect(authorDraftCreate).toEqual(authorDraftUse);
       expect(authorDraftCreate).toEqual(authorDraftStats);
-      expect(authorDraftCreate.code).toBe("invalid_input");
+      expect(authorDraftCreate).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
 
       const missingId = id("missing-routine-id");
       const missingCreate = await expectServiceRejection(() =>
@@ -1159,7 +1159,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
     }
   });
 
-  it("rejects invalid routine row params before create and leaves no program", async () => {
+  it("rejects out-of-range params when routine rows load before create and leaves no program", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA } = await seedTwoPractitioners(storage);
@@ -1196,6 +1196,79 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       });
       await assertCreateFromRoutineDidNotPersist(storage, "prog-bad-params", [
         "bad-params-row",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects param keys disallowed for the prescription type before create and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "wrong-key-routine",
+        draftVersion: "wrong-key-rv",
+        row: "wrong-key-rvr",
+        name: "Wrong key routine",
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET params_json = ? WHERE id = ?`,
+        [
+          JSON.stringify({
+            hold_s: 30,
+            reps: 10,
+            per_day: { min: 1, max: 2 },
+            days_per_week: 7,
+          }),
+          id("wrong-key-rvr"),
+        ],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-wrong-key"),
+          routineId: id("wrong-key-routine"),
+          source: "community",
+          rowIds: [id("wrong-key-row")],
+        }),
+      );
+      expect(err).toEqual({
+        name: "ProgramBuilderServiceError",
+        code: "invalid_input",
+        message: "reps is not allowed for prescription type stretching",
+      });
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-wrong-key", [
+        "wrong-key-row",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects rowIds count mismatch before create with invalid_input and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "row-count-routine",
+        draftVersion: "row-count-rv",
+        row: "row-count-rvr",
+        name: "Row count routine",
+      });
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-row-count"),
+          routineId: id("row-count-routine"),
+          source: "community",
+          rowIds: [id("row-count-a"), id("row-count-b")],
+        }),
+      );
+      expect(err).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-row-count", [
+        "row-count-a",
+        "row-count-b",
       ]);
     } finally {
       storage.close();
