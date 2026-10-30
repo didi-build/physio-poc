@@ -17,6 +17,7 @@ import {
 import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
 import {
   collectForbiddenLegacySchemaFields,
+  collectPatternPropertiesViolations,
   collectPatientLikeDescriptionViolations,
   collectSchemaDescriptionViolations,
   collectSchemaPropertyNames,
@@ -67,6 +68,54 @@ describe("collectForbiddenLegacySchemaFields", () => {
     expect(collectForbiddenLegacySchemaFields(conditional)).toEqual([
       "property:exercises_not_found",
     ]);
+
+    const ifBranch: JsonSchema = {
+      if: {
+        type: "object",
+        properties: {
+          custom_date: { type: "string", format: "date" },
+        },
+      },
+      then: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+        },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(ifBranch).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
+  });
+});
+
+describe("collectPatternPropertiesViolations", () => {
+  it("detects patternProperties on nested output-shaped fixture schemas", () => {
+    const nestedOutputFixture: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        rows: {
+          type: "object",
+          patternProperties: {
+            "^[a-z]+$": { type: "string" },
+          },
+        },
+      },
+    };
+    expect(collectPatternPropertiesViolations(nestedOutputFixture)).toEqual([
+      "patternProperties",
+    ]);
+
+    const clean: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+      },
+    };
+    expect(collectPatternPropertiesViolations(clean)).toEqual([]);
   });
 });
 
@@ -177,6 +226,28 @@ describe("DIDI-1026 explicit MCP contract assertions", () => {
     expect(
       collectPatientLikeDescriptionViolations("Glute bridge and heel slides"),
     ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations("Romanian deadlift and bird dog"),
+    ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations(
+        "Clamshell, monster walk, band pull-apart",
+      ),
+    ).toEqual([]);
+
+    const madeUpSurnameCases: Array<{ text: string; pair: string }> = [
+      { text: "Billing contact Tessa Patel only", pair: "Tessa Patel" },
+      { text: "Escalate to Omar Khan when needed", pair: "Omar Khan" },
+      { text: "Copy Priya Singh on approvals", pair: "Priya Singh" },
+      { text: "Notify Wei Chen after review", pair: "Wei Chen" },
+      { text: "Loop in Hana Kim for scheduling", pair: "Hana Kim" },
+      { text: "Cc Rui Wang on the ticket", pair: "Rui Wang" },
+    ];
+    for (const { text, pair } of madeUpSurnameCases) {
+      expect(collectPatientLikeDescriptionViolations(text)).toEqual(
+        expect.arrayContaining([`capitalized-pair:${pair}`]),
+      );
+    }
 
     for (const tool of PHYSIO_MCP_TOOLS) {
       expect(

@@ -102,6 +102,7 @@ const SURNAME_LIKE = new Set([
   "Butler",
   "Campbell",
   "Carter",
+  "Chen",
   "Clark",
   "Collins",
   "Cook",
@@ -131,6 +132,8 @@ const SURNAME_LIKE = new Set([
   "Johnson",
   "Jones",
   "Kelly",
+  "Khan",
+  "Kim",
   "King",
   "Lee",
   "Lewis",
@@ -149,6 +152,7 @@ const SURNAME_LIKE = new Set([
   "Nguyen",
   "Ortiz",
   "Parker",
+  "Patel",
   "Perry",
   "Peterson",
   "Phillips",
@@ -166,6 +170,7 @@ const SURNAME_LIKE = new Set([
   "Russell",
   "Sanders",
   "Scott",
+  "Singh",
   "Smith",
   "Stewart",
   "Sullivan",
@@ -175,6 +180,7 @@ const SURNAME_LIKE = new Set([
   "Torres",
   "Turner",
   "Walker",
+  "Wang",
   "Ward",
   "Watson",
   "White",
@@ -201,6 +207,16 @@ export function collectSchemaPropertyNames(schema: JsonSchema): Set<string> {
     }
   });
   return names;
+}
+
+export function collectPatternPropertiesViolations(schema: JsonSchema): string[] {
+  const hits: string[] = [];
+  visitSchemaNodes(schema, (node) => {
+    if (node.patternProperties) {
+      hits.push("patternProperties");
+    }
+  });
+  return hits;
 }
 
 export function collectForbiddenLegacySchemaFields(schema: JsonSchema): string[] {
