@@ -75,6 +75,32 @@ const ROW_ID_ALREADY_IN_USE_ERROR = {
 
 const HOLD_S_RANGE_MESSAGE = "hold_s must be between 1 and 120";
 
+const PRESCRIPTION_CATEGORY_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "invalid_input",
+  message: "prescriptionType is not allowed for this exercise category",
+} as const;
+
+const PROGRAM_NOT_FOUND_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "program_not_found",
+  message: "Program not found",
+} as const;
+
+const EXERCISE_NOT_FOUND_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "exercise_not_found",
+  message: "Exercise not found",
+} as const;
+
+const PRACTITIONER_NOT_FOUND_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "practitioner_not_found",
+  message: "Practitioner not found",
+} as const;
+
+const DESCRIPTION_MAX_MESSAGE = "Description must be at most 4000 characters";
+
 async function assertCreateFromRoutineDidNotPersist(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   programId: string,
@@ -83,12 +109,67 @@ async function assertCreateFromRoutineDidNotPersist(
   const programs = new ProgramsRepository(storage);
   const rows = new ProgramRowsRepository(storage);
   expect(await programs.findById(id(programId))).toBeNull();
+  const persistedForProgram = await storage.all<{ id: string }>(
+    `SELECT id FROM program_rows WHERE program_id = ?`,
+    [id(programId)],
+  );
+  expect(persistedForProgram).toHaveLength(0);
   for (const rowKey of attemptedRowIds) {
     const row = await rows.findById(id(rowKey));
     if (row) {
       expect(row.program_id).not.toBe(id(programId));
     }
   }
+}
+
+async function seedStrengtheningApprovedExercise(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  exerciseId: string,
+  versionId: string,
+  title = "Bridge",
+) {
+  await storage.run(
+    "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+    [exerciseId, "strengthening", practitionerId, TS],
+  );
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      id: versionId,
+      exercise_id: exerciseId,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title,
+    }),
+  );
+}
+
+async function seedStretchApprovedExercise(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  exerciseId: string,
+  versionId: string,
+  versionNumber: number,
+  title: string,
+) {
+  await storage.run(
+    "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+    [exerciseId, "stretch", practitionerId, TS],
+  );
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      id: versionId,
+      exercise_id: exerciseId,
+      version_number: versionNumber,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title,
+    }),
+  );
 }
 
 async function publishRoutine(
@@ -422,6 +503,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       );
       expect(missingCreate).toEqual(missingUse);
       expect(missingCreate).toEqual(missingStats);
+      expect(missingCreate).toEqual(PROGRAM_NOT_FOUND_ERROR);
 
       const foreignCreate = await expectServiceRejection(() =>
         service.createProgramFromRoutine(practitionerB, {
@@ -1020,16 +1102,19 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         `UPDATE routine_version_rows SET exercise_version_id = ? WHERE id = ?`,
         [strengtheningVersion, id("txn-rvr2")],
       );
-      await expect(
+      const err = await expectServiceRejection(() =>
         service.createProgramFromRoutine(practitionerA, {
           programId: id("prog-txn-fail"),
           routineId: id("txn-routine"),
           source: "community",
           rowIds: [id("txn-row-1"), id("txn-row-2")],
         }),
-      ).rejects.toMatchObject({ code: "exercise_not_found" });
-      const programs = new ProgramsRepository(storage);
-      expect(await programs.findById(id("prog-txn-fail"))).toBeNull();
+      );
+      expect(err).toEqual(EXERCISE_NOT_FOUND_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-txn-fail", [
+        "txn-row-1",
+        "txn-row-2",
+      ]);
     } finally {
       storage.close();
     }
@@ -1270,6 +1355,615 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         "row-count-a",
         "row-count-b",
       ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects prescriptionType not allowed for exercise category before create and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const strengthEx = id("cat-strength-ex");
+      const strengthVer = id("cat-strength-ver");
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerA,
+        strengthEx,
+        strengthVer,
+      );
+      await publishRoutine(storage, practitionerA, {
+        routine: "cat-mismatch-routine",
+        draftVersion: "cat-mismatch-rv",
+        row: "cat-mismatch-rvr",
+        name: "Category mismatch routine",
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_id = ?, exercise_version_id = ?, prescription_type = ? WHERE id = ?`,
+        [strengthEx, strengthVer, "stretching", id("cat-mismatch-rvr")],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-cat-mismatch"),
+          routineId: id("cat-mismatch-routine"),
+          source: "community",
+          rowIds: [id("cat-mismatch-row")],
+        }),
+      );
+      expect(err).toEqual(PRESCRIPTION_CATEGORY_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-cat-mismatch", [
+        "cat-mismatch-row",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("validate-first: invalid last source row leaves no program and no rows with the full error", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const strengthEx = id("vf-strength-ex");
+      const strengthVer = id("vf-strength-ver");
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerA,
+        strengthEx,
+        strengthVer,
+      );
+      await publishRoutine(storage, practitionerA, {
+        routine: "validate-first-routine",
+        draftVersion: "validate-first-rv",
+        row: "validate-first-rvr1",
+        secondRow: "validate-first-rvr2",
+        name: "Validate first routine",
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_id = ?, exercise_version_id = ?, prescription_type = ? WHERE id = ?`,
+        [strengthEx, strengthVer, "stretching", id("validate-first-rvr2")],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-validate-first"),
+          routineId: id("validate-first-routine"),
+          source: "community",
+          rowIds: [id("vf-row-1"), id("vf-row-2")],
+        }),
+      );
+      expect(err).toEqual(PRESCRIPTION_CATEGORY_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-validate-first", [
+        "vf-row-1",
+        "vf-row-2",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects oversize row text snapshot before the first write and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const ex2 = id("snap-ex-2");
+      const ver2 = id("snap-ver-2");
+      await seedStretchApprovedExercise(
+        storage,
+        practitionerA,
+        ex2,
+        ver2,
+        1,
+        "Second stretch",
+      );
+      await storage.run(`UPDATE exercise_versions SET description = ? WHERE id = ?`, [
+        "x".repeat(4001),
+        ver2,
+      ]);
+      await publishRoutine(storage, practitionerA, {
+        routine: "snap-routine",
+        draftVersion: "snap-rv",
+        row: "snap-rvr1",
+        secondRow: "snap-rvr2",
+        name: "Snapshot limit routine",
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_id = ?, exercise_version_id = ? WHERE id = ?`,
+        [ex2, ver2, id("snap-rvr2")],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-snap-fail"),
+          routineId: id("snap-routine"),
+          source: "community",
+          rowIds: [id("snap-row-1"), id("snap-row-2")],
+        }),
+      );
+      expect(err).toEqual({
+        name: "ProgramBuilderServiceError",
+        code: "invalid_input",
+        message: DESCRIPTION_MAX_MESSAGE,
+      });
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-snap-fail", [
+        "snap-row-1",
+        "snap-row-2",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("compacts copied row positions so a later addExerciseRow keeps every row", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "gap-pos-routine",
+        draftVersion: "gap-pos-rv",
+        row: "gap-pos-rvr1",
+        secondRow: "gap-pos-rvr2",
+        name: "Gap positions routine",
+      });
+      await storage.run(`UPDATE routine_version_rows SET position = 2 WHERE id = ?`, [
+        id("gap-pos-rvr2"),
+      ]);
+      const created = await service.createProgramFromRoutine(practitionerA, {
+        programId: id("prog-gap-pos"),
+        routineId: id("gap-pos-routine"),
+        source: "community",
+        rowIds: [id("gap-row-1"), id("gap-row-2")],
+      });
+      expect(created.program.rows.map((row) => row.position)).toEqual([0, 1]);
+      await service.addExerciseRow(practitionerA, id("prog-gap-pos"), {
+        rowId: id("gap-row-added"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      const view = await service.getProgram(practitionerA, id("prog-gap-pos"));
+      expect(view.rows.map((row) => row.id).sort()).toEqual(
+        [id("gap-row-1"), id("gap-row-2"), id("gap-row-added")].sort(),
+      );
+      expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not apply another practitioner saved My copy when the caller has no saved copy", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const v1 = await publishRoutine(storage, practitionerA, {
+        routine: "iso-my-routine",
+        draftVersion: "iso-my-rv1",
+        row: "iso-my-rvr1",
+        name: "Isolation my copy v1",
+        hold_s: 10,
+      });
+      const my = new PractitionerRoutinesRepository(storage);
+      await my.saveFrozenCopy({
+        id: id("pr-b-only"),
+        practitionerId: practitionerB,
+        routineId: id("iso-my-routine"),
+        sourceRoutineVersionId: v1.id,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("pr-b-row"),
+            position: 0,
+            exerciseId: FIXTURE_EXERCISE_ID,
+            exerciseVersionId: FIXTURE_VERSION_ID,
+            prescriptionType: "stretching",
+            params: { hold_s: 77, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      const versions = new RoutineVersionsRepository(storage);
+      await versions.savePublishedVersion({
+        id: id("iso-my-rv2"),
+        routineId: id("iso-my-routine"),
+        createdBy: practitionerA,
+        createdAt: TS,
+        name: "Isolation my copy v2",
+        copyFromVersionId: v1.id,
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET params_json = ? WHERE routine_version_id = ?`,
+        [
+          JSON.stringify({
+            hold_s: 22,
+            per_day: { min: 1, max: 2 },
+            days_per_week: 7,
+          }),
+          id("iso-my-rv2"),
+        ],
+      );
+      const created = await service.createProgramFromRoutine(practitionerA, {
+        programId: id("prog-a-my-copy"),
+        routineId: id("iso-my-routine"),
+        source: "my_copy",
+        rowIds: [id("iso-my-prog-row")],
+      });
+      expect(created.program.rows[0]?.params.hold_s).toBe(22);
+      expect(created.program.rows[0]?.params.hold_s).not.toBe(77);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a row pinned to a draft exercise version before create with exercise_not_found", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "draft-pin-routine",
+        draftVersion: "draft-pin-rv",
+        row: "draft-pin-rvr",
+        name: "Draft pinned routine",
+      });
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE id = ?`,
+        [FIXTURE_VERSION_ID],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-draft-pin"),
+          routineId: id("draft-pin-routine"),
+          source: "community",
+          rowIds: [id("draft-pin-row")],
+        }),
+      );
+      expect(err).toEqual(EXERCISE_NOT_FOUND_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-draft-pin", [
+        "draft-pin-row",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects createProgramFromRoutine for an unknown practitioner id", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(id("practitioner-missing"), {
+          programId: id("prog-no-practitioner"),
+          routineId: id("any-routine"),
+          source: "community",
+          rowIds: [id("any-row")],
+        }),
+      );
+      expect(err).toEqual(PRACTITIONER_NOT_FOUND_ERROR);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a soft-deleted program id before create with invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const programs = new ProgramsRepository(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "soft-id-routine",
+        draftVersion: "soft-id-rv",
+        row: "soft-id-rvr",
+        name: "Soft id routine",
+      });
+      await service.createProgram(practitionerA, {
+        programId: id("prog-soft-deleted-id"),
+        name: "Taken then deleted",
+      });
+      await programs.softDelete(id("prog-soft-deleted-id"), TS);
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-soft-deleted-id"),
+          routineId: id("soft-id-routine"),
+          source: "community",
+          rowIds: [id("soft-id-row")],
+        }),
+      );
+      expect(err).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
+      const rows = new ProgramRowsRepository(storage);
+      expect(await rows.findById(id("soft-id-row"))).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("copies three pinned routine rows with full field fidelity for community and My copy sources", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      const exA = id("tri-ex-a");
+      const exB = id("tri-ex-b");
+      const exC = id("tri-ex-c");
+      const verA1 = id("tri-ver-a1");
+      const verA2 = id("tri-ver-a2");
+      const verB1 = id("tri-ver-b1");
+      const verB2 = id("tri-ver-b2");
+      const verC1 = id("tri-ver-c1");
+      const verC2 = id("tri-ver-c2");
+      await seedStretchApprovedExercise(
+        storage,
+        practitionerA,
+        exA,
+        verA1,
+        1,
+        "Row A v1",
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verA2,
+          exercise_id: exA,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row A v2",
+        }),
+      );
+      await seedStrengtheningApprovedExercise(
+        storage,
+        practitionerA,
+        exB,
+        verB1,
+        "Row B v1",
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verB2,
+          exercise_id: exB,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row B v2",
+        }),
+      );
+      await seedStretchApprovedExercise(
+        storage,
+        practitionerA,
+        exC,
+        verC1,
+        1,
+        "Row C v1",
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: verC2,
+          exercise_id: exC,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerA,
+          approved_at: TS,
+          title: "Row C v2",
+        }),
+      );
+      const routines = new RoutinesRepository(storage);
+      const rvRows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      await routines.createDraft({
+        id: id("tri-routine"),
+        draftVersionId: id("tri-rv1-draft"),
+        createdBy: practitionerA,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      const paramsA = {
+        hold_s: 11,
+        per_day: { min: 1, max: 2 },
+        days_per_week: 5,
+      };
+      const paramsB = {
+        hold_s: 45,
+        sets: 3,
+        reps: 10,
+        days_per_week: 4,
+      };
+      const paramsC = {
+        hold_s: 22,
+        per_day: { min: 1, max: 2 },
+        days_per_week: 6,
+      };
+      await rvRows.replaceDraftRow({
+        id: id("tri-rvr1"),
+        routineId: id("tri-routine"),
+        authorId: practitionerA,
+        position: 0,
+        exerciseId: exA,
+        exerciseVersionId: verA1,
+        prescriptionType: "stretching",
+        params: paramsA,
+        draftUpdatedAt: TS,
+      });
+      await rvRows.replaceDraftRow({
+        id: id("tri-rvr2"),
+        routineId: id("tri-routine"),
+        authorId: practitionerA,
+        position: 1,
+        exerciseId: exB,
+        exerciseVersionId: verB1,
+        prescriptionType: "isometric",
+        params: paramsB,
+        draftUpdatedAt: TS,
+      });
+      await rvRows.replaceDraftRow({
+        id: id("tri-rvr3"),
+        routineId: id("tri-routine"),
+        authorId: practitionerA,
+        position: 2,
+        exerciseId: exC,
+        exerciseVersionId: verC1,
+        prescriptionType: "stretching",
+        params: paramsC,
+        draftUpdatedAt: TS,
+      });
+      const v1 = await versions.publishDraft({
+        routineId: id("tri-routine"),
+        authorId: practitionerA,
+        publishedAt: TS,
+        name: "Three row v1",
+      });
+      const my = new PractitionerRoutinesRepository(storage);
+      await my.saveFrozenCopy({
+        id: id("pr-tri-b"),
+        practitionerId: practitionerB,
+        routineId: id("tri-routine"),
+        sourceRoutineVersionId: v1.id,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("pr-tri-row1"),
+            position: 0,
+            exerciseId: exA,
+            exerciseVersionId: verA1,
+            prescriptionType: "stretching",
+            params: paramsA,
+          },
+          {
+            id: id("pr-tri-row2"),
+            position: 1,
+            exerciseId: exB,
+            exerciseVersionId: verB1,
+            prescriptionType: "isometric",
+            params: paramsB,
+          },
+          {
+            id: id("pr-tri-row3"),
+            position: 2,
+            exerciseId: exC,
+            exerciseVersionId: verC1,
+            prescriptionType: "stretching",
+            params: paramsC,
+          },
+        ],
+      });
+      await versions.savePublishedVersion({
+        id: id("tri-rv2"),
+        routineId: id("tri-routine"),
+        createdBy: practitionerA,
+        createdAt: TS,
+        name: "Three row v2",
+        copyFromVersionId: v1.id,
+      });
+      const v2Rows = await rvRows.listForVersion(id("tri-rv2"));
+      expect(v2Rows).toHaveLength(3);
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_version_id = ?, params_json = ? WHERE id = ?`,
+        [
+          verA2,
+          JSON.stringify({ hold_s: 99, per_day: { min: 2, max: 3 }, days_per_week: 3 }),
+          v2Rows[0]!.id,
+        ],
+      );
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_version_id = ?, prescription_type = ?, params_json = ? WHERE id = ?`,
+        [
+          verB2,
+          "concentric",
+          JSON.stringify({ reps: 8, sets: 2, hold_s: 10, days_per_week: 3 }),
+          v2Rows[1]!.id,
+        ],
+      );
+      await storage.run(
+        `UPDATE routine_version_rows SET exercise_version_id = ?, params_json = ? WHERE id = ?`,
+        [
+          verC2,
+          JSON.stringify({ hold_s: 88, per_day: { min: 2, max: 3 }, days_per_week: 3 }),
+          v2Rows[2]!.id,
+        ],
+      );
+
+      const expectMyCopyRows = (
+        view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
+      ) => {
+        expect(view.routine_origin).toEqual({
+          routine_id: id("tri-routine"),
+          routine_version_id: v1.id,
+          routine_version_number: 1,
+          routine_name: "Three row v1",
+          used_as: "used_as_is",
+        });
+        expect(view.rows).toHaveLength(3);
+        expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
+        expect(view.rows[0]).toMatchObject({
+          exercise_id: exA,
+          exercise_version_id: verA1,
+          prescription_type: "stretching",
+          params: paramsA,
+        });
+        expect(view.rows[1]).toMatchObject({
+          exercise_id: exB,
+          exercise_version_id: verB1,
+          prescription_type: "isometric",
+          params: paramsB,
+        });
+        expect(view.rows[2]).toMatchObject({
+          exercise_id: exC,
+          exercise_version_id: verC1,
+          prescription_type: "stretching",
+          params: paramsC,
+        });
+      };
+
+      const expectCommunityRows = (
+        view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
+      ) => {
+        expect(view.routine_origin).toEqual({
+          routine_id: id("tri-routine"),
+          routine_version_id: id("tri-rv2"),
+          routine_version_number: 2,
+          routine_name: "Three row v2",
+          used_as: "used_as_is",
+        });
+        expect(view.rows).toHaveLength(3);
+        expect(view.rows.map((row) => row.position)).toEqual([0, 1, 2]);
+        expect(view.rows[0]).toMatchObject({
+          exercise_id: exA,
+          exercise_version_id: verA2,
+          prescription_type: "stretching",
+        });
+        expect(view.rows[0]?.params.hold_s).toBe(99);
+        expect(view.rows[1]).toMatchObject({
+          exercise_id: exB,
+          exercise_version_id: verB2,
+          prescription_type: "concentric",
+        });
+        expect(view.rows[1]?.params.reps).toBe(8);
+        expect(view.rows[2]).toMatchObject({
+          exercise_id: exC,
+          exercise_version_id: verC2,
+          prescription_type: "stretching",
+        });
+        expect(view.rows[2]?.params.hold_s).toBe(88);
+      };
+
+      const community = await service.createProgramFromRoutine(practitionerB, {
+        programId: id("prog-tri-community"),
+        routineId: id("tri-routine"),
+        source: "community",
+        rowIds: [id("tri-prog-r1"), id("tri-prog-r2"), id("tri-prog-r3")],
+      });
+      expectCommunityRows(community.program);
+
+      const fromCopy = await service.createProgramFromRoutine(practitionerB, {
+        programId: id("prog-tri-my-copy"),
+        routineId: id("tri-routine"),
+        source: "my_copy",
+        rowIds: [id("tri-copy-r1"), id("tri-copy-r2"), id("tri-copy-r3")],
+      });
+      expectMyCopyRows(fromCopy.program);
     } finally {
       storage.close();
     }

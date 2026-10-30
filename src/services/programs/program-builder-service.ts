@@ -1,4 +1,8 @@
-import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
+import {
+  FreeTextValidationError,
+  validateOptionalProgramName,
+} from "../../domain/exercise-free-text.js";
+import { validateProgramRowTextSnapshot } from "../../domain/program-row-text.js";
 import {
   OpaqueEntityIdValidationError,
   validateOpaqueEntityId,
@@ -1178,6 +1182,7 @@ export class ProgramBuilderService {
       rowId: string;
       sourceRow: (typeof rows)[number];
       textSnapshot: ProgramRowTextSnapshot;
+      position: number;
     }[] = [];
     for (let index = 0; index < rows.length; index += 1) {
       const sourceRow = rows[index]!;
@@ -1191,6 +1196,7 @@ export class ProgramBuilderService {
           "exercise_not_found",
         );
       }
+      this.assertPrescriptionAllowed(approved, sourceRow.prescriptionType);
       try {
         validateExerciseParamsForPrescriptionType(
           sourceRow.params,
@@ -1209,7 +1215,17 @@ export class ProgramBuilderService {
         overrides: resolved.overrides,
         prescriptionType: sourceRow.prescriptionType,
       });
-      preparedRows.push({ rowId, sourceRow, textSnapshot });
+      try {
+        validateProgramRowTextSnapshot(textSnapshot);
+      } catch (err) {
+        this.mapFreeTextError(err);
+      }
+      preparedRows.push({ rowId, sourceRow, textSnapshot, position: index });
+    }
+    try {
+      validateOptionalProgramName(prefilledName);
+    } catch (err) {
+      this.mapFreeTextError(err);
     }
     try {
       await this.programs.create({
@@ -1227,12 +1243,12 @@ export class ProgramBuilderService {
       this.mapRoutineProgramCreateError(err);
     }
     for (const prepared of preparedRows) {
-      const { rowId, sourceRow, textSnapshot } = prepared;
+      const { rowId, sourceRow, textSnapshot, position } = prepared;
       try {
         await this.rows.replaceRow({
           id: rowId,
           programId,
-          position: sourceRow.position,
+          position,
           exerciseId: sourceRow.exerciseId,
           exerciseVersionId: sourceRow.exerciseVersionId,
           prescriptionType: sourceRow.prescriptionType,
