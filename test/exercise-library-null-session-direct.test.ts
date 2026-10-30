@@ -17,7 +17,7 @@ import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
 const PRACT_ID = testOpaqueEntityId("ex-lib-null-session");
-const EX_ID = "ex-null-session";
+const EX_ID = testOpaqueEntityId("ex-null-session");
 
 type DirectRouteCase = {
   label: string;
@@ -95,7 +95,7 @@ describe("handleExerciseLibraryRequest null session (direct, integration)", () =
       await seedExercise(storage, PRACT_ID, EX_ID);
       await storage.run(VERSION_INSERT_SQL, [
         ...versionInsertBindings({
-          id: `ver-${EX_ID}`,
+          id: testOpaqueEntityId("ver-ex-null-session"),
           exercise_id: EX_ID,
           status: "approved",
           approved_by: PRACT_ID,
