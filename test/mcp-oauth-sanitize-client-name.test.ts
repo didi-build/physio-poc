@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeOAuthClientDisplayName } from "../src/auth/mcp-oauth/sanitize-client-name.js";
+import {
+  countGraphemes,
+  sanitizeOAuthClientDisplayName,
+} from "../src/auth/mcp-oauth/sanitize-client-name.js";
 
 describe("sanitizeOAuthClientDisplayName (DIDI-1043)", () => {
   it("applies NFC normalization", () => {
@@ -17,9 +20,22 @@ describe("sanitizeOAuthClientDisplayName (DIDI-1043)", () => {
     );
   });
 
-  it("caps at 64 characters", () => {
-    const long = "a".repeat(80);
-    expect(sanitizeOAuthClientDisplayName(long, "example.com")).toHaveLength(64);
+  it("strips bidi isolate code points U+2066 through U+2069", () => {
+    expect(
+      sanitizeOAuthClientDisplayName("A\u2066B\u2067C\u2068D\u2069E", "example.com"),
+    ).toBe("ABCDE");
+  });
+
+  it("strips Arabic letter mark U+061C", () => {
+    expect(sanitizeOAuthClientDisplayName("A\u061CB", "example.com")).toBe("AB");
+  });
+
+  it("caps at 64 graphemes without splitting emoji", () => {
+    const emoji = "😀";
+    const long = emoji.repeat(80);
+    const sanitized = sanitizeOAuthClientDisplayName(long, "example.com");
+    expect(countGraphemes(sanitized)).toBe(64);
+    expect(sanitized).toBe(emoji.repeat(64));
   });
 
   it("falls back to host when empty after sanitization", () => {
@@ -31,5 +47,11 @@ describe("sanitizeOAuthClientDisplayName (DIDI-1043)", () => {
   it("mutation: removing NFC step would not compose characters", () => {
     const nfc = "e\u0301".normalize("NFC");
     expect(sanitizeOAuthClientDisplayName("e\u0301", "example.com")).toBe(nfc);
+  });
+
+  it("mutation: dropping bidi isolate stripping would keep U+2066", () => {
+    expect(sanitizeOAuthClientDisplayName("x\u2066y", "example.com")).not.toContain(
+      "\u2066",
+    );
   });
 });

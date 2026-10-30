@@ -1,21 +1,44 @@
 import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 
-const DEFAULT_MAX_BYTES = 64 * 1024;
-const DEFAULT_TIMEOUT_MS = 5000;
+export const BOUNDED_CIMD_DEFAULT_MAX_BYTES = 64 * 1024;
+export const BOUNDED_CIMD_DEFAULT_TIMEOUT_MS = 5000;
+
+function mergeAbortSignals(
+  callerSignal: AbortSignal | undefined,
+  timeoutSignal: AbortSignal,
+): AbortSignal {
+  if (!callerSignal) {
+    return timeoutSignal;
+  }
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any([callerSignal, timeoutSignal]);
+  }
+  const merged = new AbortController();
+  const abortMerged = (): void => {
+    merged.abort();
+  };
+  if (callerSignal.aborted || timeoutSignal.aborted) {
+    merged.abort();
+    return merged.signal;
+  }
+  callerSignal.addEventListener("abort", abortMerged, { once: true });
+  timeoutSignal.addEventListener("abort", abortMerged, { once: true });
+  return merged.signal;
+}
 
 export function createBoundedCimdMetadataFetch(
   inner: ClientMetadataResourceFetch,
   options?: { maxBytes?: number; timeoutMs?: number },
 ): ClientMetadataResourceFetch {
-  const maxBytes = options?.maxBytes ?? DEFAULT_MAX_BYTES;
-  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxBytes = options?.maxBytes ?? BOUNDED_CIMD_DEFAULT_MAX_BYTES;
+  const timeoutMs = options?.timeoutMs ?? BOUNDED_CIMD_DEFAULT_TIMEOUT_MS;
   return async (input, init) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const signal = mergeAbortSignals(init?.signal ?? undefined, timeoutSignal);
     try {
       const response = await inner(input, {
         ...init,
-        signal: init?.signal ?? controller.signal,
+        signal,
       });
       if (!response.ok) {
         return response;
@@ -37,8 +60,11 @@ export function createBoundedCimdMetadataFetch(
         }
       }
       return response;
-    } finally {
-      clearTimeout(timer);
+    } catch (error) {
+      if (timeoutSignal.aborted) {
+        throw new TypeError("CIMD metadata fetch timed out");
+      }
+      throw error;
     }
   };
 }

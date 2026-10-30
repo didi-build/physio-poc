@@ -1,15 +1,15 @@
 import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
-import { isPublicRoutableHost } from "@better-auth/core/utils/host";
 import { createHash, randomBytes } from "node:crypto";
 import { expect } from "vitest";
 import type { FakeGoogleFixture } from "../../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../../src/auth/fake-google-http.js";
 import { generateOpaqueEntityId } from "../../src/domain/opaque-entity-id.js";
 import { handleRequest, type AppDependencies } from "../../src/http/app.js";
-import { MCP_OAUTH_CONSENT_FRAME_HEADERS } from "../../src/auth/mcp-oauth/consent-frame-headers.js";
 import { mcpOAuthResourceUrl } from "../../src/auth/mcp-oauth/paths.js";
 import { PHYSIO_MCP_OAUTH_SCOPES } from "../../src/adapters/node/physio-mcp-oauth-plugins.js";
 import { createNodeAppDependencies } from "../../src/adapters/node/create-node-app-dependencies.js";
+import { BetterAuthPort } from "../../src/adapters/node/better-auth-port.js";
+import type { PhysioMcpConsentClock } from "../../src/auth/mcp-oauth/consent-routes.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./physio-test-auth-secret.js";
 
 export const MCP_OAUTH_TEST_BASE = "http://127.0.0.1:8787";
@@ -38,38 +38,6 @@ export function createFakeCimdMetadataFetch(
       return new Response(null, { status: 404 });
     }
     return Response.json(doc);
-  };
-}
-
-/** Test-side guard mirroring Node CIMD fetch URL policy (SSRF-sensitive hosts). */
-export function createSsrfSafeTestFetch(
-  inner: ClientMetadataResourceFetch,
-): ClientMetadataResourceFetch {
-  return async (input, init) => {
-    const href =
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    let parsed: URL;
-    try {
-      parsed = new URL(href);
-    } catch {
-      throw new TypeError("invalid URL");
-    }
-    if (parsed.protocol !== "https:") {
-      throw new TypeError("CIMD Node transport requires an HTTPS URL");
-    }
-    if (!isPublicRoutableHost(parsed.hostname)) {
-      throw new TypeError(
-        "metadata hostname must resolve only to public-routable addresses",
-      );
-    }
-    const response = await inner(input, init);
-    if (response.status >= 300 && response.status < 400) {
-      throw new TypeError("Metadata document fetch must not follow redirects");
-    }
-    if (response.redirected) {
-      throw new TypeError("Metadata document fetch must not follow redirects");
-    }
-    return response;
   };
 }
 
@@ -170,7 +138,11 @@ export type CimdDocumentMap = Record<string, Record<string, unknown>>;
 
 export async function createMcpOAuthTestDeps(
   cimdDocuments: CimdDocumentMap,
-  options: { allowedEmails?: string; seedPractitioner?: boolean } = {},
+  options: {
+    allowedEmails?: string;
+    seedPractitioner?: boolean;
+    consentClock?: PhysioMcpConsentClock;
+  } = {},
 ): Promise<AppDependencies> {
   const deps = await createNodeAppDependencies(
     {
@@ -179,7 +151,10 @@ export async function createMcpOAuthTestDeps(
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
       BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
     },
-    { cimdMetadataFetch: createFakeCimdMetadataFetch(cimdDocuments) },
+    {
+      cimdMetadataFetch: createFakeCimdMetadataFetch(cimdDocuments),
+      consentClock: options.consentClock,
+    },
   );
   if (options.seedPractitioner !== false) {
     await deps.sql.run(
@@ -448,13 +423,46 @@ export async function callMcpInitialize(
 }
 
 export function expectConsentFrameHeaders(response: Response): void {
-  for (const [name, value] of Object.entries(MCP_OAUTH_CONSENT_FRAME_HEADERS)) {
-    expect(response.headers.get(name), name).toBe(value);
-  }
+  expect(response.headers.get("Content-Security-Policy")).toContain(
+    "frame-ancestors 'none'",
+  );
+  expect(response.headers.get("X-Frame-Options")).toBe("DENY");
 }
 
 export async function expectPlainFailClosedAsync(response: Response): Promise<void> {
   expect(await response.text()).toBe("");
+}
+
+export function expectMcpResourceUnauthorized(response: Response): void {
+  expect(response.status).toBe(401);
+  const header = response.headers.get("www-authenticate")?.toLowerCase() ?? "";
+  expect(header).toContain("bearer");
+  expect(header).toContain("resource_metadata");
+}
+
+export async function signTestMcpAccessToken(
+  deps: AppDependencies,
+  payload: Record<string, unknown>,
+): Promise<string> {
+  const port = deps.auth;
+  if (!(port instanceof BetterAuthPort)) {
+    throw new Error("expected BetterAuthPort");
+  }
+  const auth = port.getBetterAuthRuntime();
+  const signJwt = (
+    auth.api as unknown as {
+      signJWT(input: { body: { payload: Record<string, unknown> } }): Promise<{
+        token?: string;
+      }>;
+    }
+  ).signJWT;
+  const result = await signJwt({
+    body: { payload },
+  });
+  if (!result.token) {
+    throw new Error("signJWT did not return a token");
+  }
+  return result.token;
 }
 
 export function defaultCimdDocuments(): CimdDocumentMap {

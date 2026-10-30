@@ -11,6 +11,7 @@ import {
   createBetterAuthInstance,
   type CreateBetterAuthInstanceOptions,
 } from "./create-better-auth.js";
+import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { BetterAuthPort } from "./better-auth-port.js";
 
 export type NodeAuthDependencies = {
@@ -19,14 +20,18 @@ export type NodeAuthDependencies = {
   mcpResourceUrl?: string;
 };
 
+export type CreateNodeAuthPortOptions = CreateBetterAuthInstanceOptions & {
+  consentClock?: PhysioMcpConsentClock;
+};
+
 export function createNodeAuthPort(
   sqliteDb: Database.Database,
   sql: SqlStoragePort,
   config: PhysioServerConfig,
-  options: CreateBetterAuthInstanceOptions = {},
+  options: CreateNodeAuthPortOptions = {},
 ): NodeAuthDependencies {
   const bundle = createBetterAuthInstance(sqliteDb, config.auth, sql, options);
-  const port = new BetterAuthPort(bundle.auth, sql, config.auth);
+  const port = new BetterAuthPort(bundle.auth, sql, config.auth, options.consentClock);
   return {
     sqliteDb,
     auth: port,
@@ -90,7 +95,7 @@ export function createMcpBearerAuthHandler(
   function isAccessTokenSessionActive(claims: JWTPayload): boolean {
     const sessionId = claims.sid;
     if (typeof sessionId !== "string" || sessionId.length === 0) {
-      return true;
+      return false;
     }
     const row = sqliteDb
       .prepare('SELECT expiresAt FROM "session" WHERE id = ? LIMIT 1')

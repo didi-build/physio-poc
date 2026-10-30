@@ -12,6 +12,7 @@ import {
   MIGRATION_0006_ID,
 } from "../../storage/migrations/apply.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
+import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { createMcpBearerAuthHandler, createNodeAuthPort } from "./create-auth-port.js";
 import { createDistUiStaticPort } from "./dist-ui-static-port.js";
 import { resolveNodePhysioServerConfig } from "./resolve-node-config.js";
@@ -55,7 +56,10 @@ export type NodeEnvInput = WorkerEnv & {
 
 export async function createNodeAppDependencies(
   env: NodeEnvInput,
-  options: { cimdMetadataFetch?: ClientMetadataResourceFetch } = {},
+  options: {
+    cimdMetadataFetch?: ClientMetadataResourceFetch;
+    consentClock?: PhysioMcpConsentClock;
+  } = {},
 ): Promise<AppDependencies> {
   const config = resolveNodePhysioServerConfig(env, "127.0.0.1:8787");
   const storage = BetterSqliteStorage.openInMemory();
@@ -66,6 +70,7 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config, {
     cimdMetadataFetch: options.cimdMetadataFetch ?? defaultCimdMetadataFetch,
+    consentClock: options.consentClock,
   });
   const mcpHandler = createPhysioMcpHttpHandler(config);
   return {

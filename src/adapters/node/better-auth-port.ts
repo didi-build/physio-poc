@@ -7,9 +7,13 @@ import {
   deleteAuthSessionByToken,
   resolveBoundPractitionerSession,
 } from "../../auth/resolve-bound-practitioner-session.js";
-import { handlePhysioMcpConsentRoutes } from "../../auth/mcp-oauth/consent-routes.js";
+import {
+  handlePhysioMcpConsentRoutes,
+  type PhysioMcpConsentClock,
+} from "../../auth/mcp-oauth/consent-routes.js";
 import {
   PHYSIO_MCP_OAUTH_AUTH_SERVER_METADATA_PATH,
+  isPhysioForwardedWellKnownPath,
   isPhysioMcpOAuthConsentPath,
 } from "../../auth/mcp-oauth/paths.js";
 import {
@@ -30,6 +34,7 @@ export class BetterAuthPort implements AuthPort {
     private readonly auth: BetterAuthRuntime,
     private readonly sql: SqlStoragePort,
     private readonly authConfig: PhysioAuthConfig,
+    private readonly consentClock?: PhysioMcpConsentClock,
   ) {
     this.authSecret = resolveBetterAuthSecretForRuntime(authConfig.betterAuthSecret);
   }
@@ -75,6 +80,7 @@ export class BetterAuthPort implements AuthPort {
         practitioner,
         verifyOAuthQueryParams: (oauthQuery, secret) =>
           verifyOAuthQueryParams(oauthQuery, secret),
+        clock: this.consentClock,
       });
       if (consentResponse) {
         return consentResponse;
@@ -85,10 +91,14 @@ export class BetterAuthPort implements AuthPort {
       return oauthProviderAuthServerMetadata(this.auth as never)(request);
     }
 
-    if (
-      url.pathname.startsWith(`${AUTH_PREFIX}/`) ||
-      url.pathname.startsWith("/.well-known/")
-    ) {
+    if (url.pathname.startsWith("/.well-known/")) {
+      if (!isPhysioForwardedWellKnownPath(url.pathname)) {
+        return new Response(null, { status: 404 });
+      }
+      return this.auth.handler(request);
+    }
+
+    if (url.pathname.startsWith(`${AUTH_PREFIX}/`)) {
       return this.auth.handler(request);
     }
 

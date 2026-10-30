@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AppDependencies } from "../src/http/app.js";
 import { handleRequest } from "../src/http/app.js";
-import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
-import { handlePhysioMcpConsentRoutes } from "../src/auth/mcp-oauth/consent-routes.js";
+import { MCP_OAUTH_CONSENT_FRAME_HEADERS } from "../src/auth/mcp-oauth/consent-frame-headers.js";
+import { PHYSIO_MCP_PENDING_CONSENT_TTL_MS } from "../src/auth/mcp-oauth/pending-consent.js";
+import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import {
   MCP_OAUTH_TEST_BASE,
   OTHER_CIMD_CLIENT_ID,
@@ -21,6 +22,7 @@ import {
   denyConsent,
   exchangeAuthorizationCode,
   expectConsentFrameHeaders,
+  expectMcpResourceUnauthorized,
   expectPlainFailClosedAsync,
   followAuthorizeToConsent,
   mcpRequestHeaders,
@@ -28,9 +30,8 @@ import {
   randomPkceVerifier,
   refreshAccessToken,
   requestWithJar,
+  signTestMcpAccessToken,
 } from "./helpers/mcp-oauth-test-utils.js";
-import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
-import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 const AUTH_SERVER_METADATA_PATHS = [
   "/.well-known/oauth-authorization-server",
@@ -180,6 +181,33 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         resource: mcpResourceUrl(),
       });
     });
+
+    it("forwards only allowlisted root /.well-known paths", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const allowed: Array<{ path: string; status: number }> = [
+        { path: "/.well-known/oauth-authorization-server", status: 200 },
+        { path: "/.well-known/oauth-protected-resource", status: 200 },
+        { path: "/.well-known/oauth-protected-resource/mcp", status: 200 },
+      ];
+      for (const entry of allowed) {
+        const response = await handleRequest(
+          new Request(`${MCP_OAUTH_TEST_BASE}${entry.path}`),
+          deps,
+        );
+        expect(response.status).toBe(entry.status);
+      }
+      for (const path of [
+        "/.well-known/openid-configuration",
+        "/.well-known/jwks.json",
+        "/.well-known/foo",
+      ]) {
+        const response = await handleRequest(
+          new Request(`${MCP_OAUTH_TEST_BASE}${path}`),
+          deps,
+        );
+        expect(response.status).toBe(404);
+      }
+    });
   });
 
   describe("/mcp bearer enforcement", () => {
@@ -247,10 +275,35 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       );
       expect(stillSignedIn).toBeNull();
       const response = await callMcpInitialize(deps, accessToken);
-      expect(response.status).toBe(401);
-      expect(response.headers.get("www-authenticate")?.toLowerCase()).toContain(
-        "bearer",
-      );
+      expectMcpResourceUnauthorized(response);
+    });
+
+    it("rejects JWT access tokens with no sid claim", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const { tokens } = await runChatGptOAuthCodeFlow(deps);
+      const payload = JSON.parse(
+        Buffer.from(String(tokens.access_token).split(".")[1]!, "base64url").toString(
+          "utf8",
+        ),
+      ) as Record<string, unknown>;
+      delete payload.sid;
+      const token = await signTestMcpAccessToken(deps, payload);
+      const response = await callMcpInitialize(deps, token);
+      expectMcpResourceUnauthorized(response);
+    });
+
+    it("rejects JWT access tokens whose sid is unknown", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const { tokens } = await runChatGptOAuthCodeFlow(deps);
+      const payload = JSON.parse(
+        Buffer.from(String(tokens.access_token).split(".")[1]!, "base64url").toString(
+          "utf8",
+        ),
+      ) as Record<string, unknown>;
+      payload.sid = generateOpaqueEntityId();
+      const token = await signTestMcpAccessToken(deps, payload);
+      const response = await callMcpInitialize(deps, token);
+      expectMcpResourceUnauthorized(response);
     });
   });
 
@@ -359,6 +412,20 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       );
       expect(consent.status).toBe(403);
       await expectPlainFailClosedAsync(consent);
+    });
+
+    it("mutation: weakening consent frame headers would fail literal expectations", () => {
+      const weakened = new Response(null, {
+        headers: {
+          "Content-Security-Policy": "frame-ancestors 'self'",
+          "X-Frame-Options": "SAMEORIGIN",
+        },
+      });
+      expect(() => expectConsentFrameHeaders(weakened)).toThrow();
+      expect(MCP_OAUTH_CONSENT_FRAME_HEADERS["Content-Security-Policy"]).toContain(
+        "frame-ancestors 'none'",
+      );
+      expect(MCP_OAUTH_CONSENT_FRAME_HEADERS["X-Frame-Options"]).toBe("DENY");
     });
   });
 
@@ -544,12 +611,16 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
   });
 
   describe("pending consent expiry", () => {
-    it("refuses allow after pending consent expires or is reused", async () => {
-      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    it("accepts allow at nine minutes fifty-nine seconds and rejects at ten minutes", async () => {
+      let nowMs = 1_700_000_000_000;
+      const clock = { nowMs: () => nowMs };
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
+        consentClock: clock,
+      });
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
       const verifier = randomPkceVerifier();
-      const consentGet = await followAuthorizeToConsent(
+      await followAuthorizeToConsent(
         deps,
         jar,
         buildAuthorizeUrl({
@@ -559,44 +630,16 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      expect(consentGet.status).toBe(403);
-      await deps.sql.run("UPDATE physio_mcp_pending_consent SET expires_at_ms = ?", [
-        Date.now() - 1,
-      ]);
-      const port = deps.auth;
-      if (!(port instanceof BetterAuthPort)) {
-        throw new Error("expected BetterAuthPort");
-      }
-      const auth = port.getBetterAuthRuntime();
-      const practitioner = await deps.auth.getPractitioner(
-        new Request(`${MCP_OAUTH_TEST_BASE}/`, { headers: { cookie: jar.header() } }),
-      );
-      const expiredAllow = await handlePhysioMcpConsentRoutes({
-        request: new Request(`${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`, {
-          method: "POST",
-          headers: {
-            cookie: jar.header(),
-            origin: new URL(MCP_OAUTH_TEST_BASE).origin,
-          },
-        }),
-        pathname: "/oauth/consent/allow",
-        auth,
-        sql: deps.sql,
-        authBaseUrl: MCP_OAUTH_TEST_BASE,
-        authSecret: PHYSIO_TEST_BETTER_AUTH_SECRET,
-        practitioner,
-        verifyOAuthQueryParams: (oauthQuery, secret) =>
-          verifyOAuthQueryParams(oauthQuery, secret),
-      });
-      expect(expiredAllow?.status).toBe(403);
-      expectConsentFrameHeaders(expiredAllow!);
-      await expectPlainFailClosedAsync(expiredAllow!);
+      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS - 1000;
+      const redirect = await allowConsent(deps, jar);
+      expect(redirect.searchParams.get("code")).toBeTruthy();
 
-      const freshJar = new CookieJar();
-      await completeGoogleSignIn(deps, freshJar);
+      nowMs = 1_700_000_000_000;
+      const jarLate = new CookieJar();
+      await completeGoogleSignIn(deps, jarLate);
       await followAuthorizeToConsent(
         deps,
-        freshJar,
+        jarLate,
         buildAuthorizeUrl({
           clientId: CHATGPT_CIMD_CLIENT_ID,
           redirectUri: CHATGPT_REDIRECT_URI,
@@ -604,11 +647,65 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      await allowConsent(deps, freshJar);
+      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS;
+      const expiredAllow = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        deps,
+        jarLate,
+        { method: "POST" },
+      );
+      expect(expiredAllow.status).toBe(403);
+      expectConsentFrameHeaders(expiredAllow);
+      await expectPlainFailClosedAsync(expiredAllow);
+    });
+
+    it("mutation: eleven-minute pending TTL would accept allow after ten minutes", async () => {
+      let nowMs = 1_800_000_000_000;
+      const clock = { nowMs: () => nowMs };
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
+        consentClock: clock,
+      });
+      const jar = new CookieJar();
+      await completeGoogleSignIn(deps, jar);
+      await followAuthorizeToConsent(
+        deps,
+        jar,
+        buildAuthorizeUrl({
+          clientId: CHATGPT_CIMD_CLIENT_ID,
+          redirectUri: CHATGPT_REDIRECT_URI,
+          verifier: randomPkceVerifier(),
+          resource: mcpResourceUrl(),
+        }),
+      );
+      nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+      const response = await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        deps,
+        jar,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(403);
+    });
+
+    it("refuses reusing a consumed pending consent allow", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await completeGoogleSignIn(deps, jar);
+      await followAuthorizeToConsent(
+        deps,
+        jar,
+        buildAuthorizeUrl({
+          clientId: CHATGPT_CIMD_CLIENT_ID,
+          redirectUri: CHATGPT_REDIRECT_URI,
+          verifier: randomPkceVerifier(),
+          resource: mcpResourceUrl(),
+        }),
+      );
+      await allowConsent(deps, jar);
       const reuse = await requestWithJar(
         `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
         deps,
-        freshJar,
+        jar,
         { method: "POST" },
       );
       expect(reuse.status).toBe(403);
