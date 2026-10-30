@@ -61,6 +61,36 @@ async function expectServiceRejection(
   }
 }
 
+const DUPLICATE_ID_INVALID_INPUT_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "invalid_input",
+  message: "invalid_input",
+} as const;
+
+const ROW_ID_ALREADY_IN_USE_ERROR = {
+  name: "ProgramBuilderServiceError",
+  code: "invalid_input",
+  message: "Program row id is already in use",
+} as const;
+
+const HOLD_S_RANGE_MESSAGE = "hold_s must be between 1 and 120";
+
+async function assertCreateFromRoutineDidNotPersist(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  programId: string,
+  attemptedRowIds: string[],
+) {
+  const programs = new ProgramsRepository(storage);
+  const rows = new ProgramRowsRepository(storage);
+  expect(await programs.findById(id(programId))).toBeNull();
+  for (const rowKey of attemptedRowIds) {
+    const row = await rows.findById(id(rowKey));
+    if (row) {
+      expect(row.program_id).not.toBe(id(programId));
+    }
+  }
+}
+
 async function publishRoutine(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   author: string,
@@ -1000,6 +1030,198 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       ).rejects.toMatchObject({ code: "exercise_not_found" });
       const programs = new ProgramsRepository(storage);
       expect(await programs.findById(id("prog-txn-fail"))).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects duplicate rowIds before create with invalid_input and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "dup-rowids-routine",
+        draftVersion: "dup-rowids-rv",
+        row: "dup-rowids-rvr1",
+        secondRow: "dup-rowids-rvr2",
+        name: "Dup row ids routine",
+      });
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-dup-rowids"),
+          routineId: id("dup-rowids-routine"),
+          source: "community",
+          rowIds: [id("dup-row-a"), id("dup-row-a")],
+        }),
+      );
+      expect(err).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-dup-rowids", [
+        "dup-row-a",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a row id already in use before create with identical errors for own and foreign callers", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "row-collision-routine",
+        draftVersion: "row-collision-rv",
+        row: "row-collision-rvr",
+        name: "Row collision routine",
+      });
+      await service.createProgram(practitionerA, {
+        programId: id("prog-existing-row-owner"),
+        name: "Existing row owner",
+      });
+      await service.addExerciseRow(practitionerA, id("prog-existing-row-owner"), {
+        rowId: id("shared-program-row"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      const ownErr = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-row-collision-own"),
+          routineId: id("row-collision-routine"),
+          source: "community",
+          rowIds: [id("shared-program-row")],
+        }),
+      );
+      const foreignErr = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerB, {
+          programId: id("prog-row-collision-foreign"),
+          routineId: id("row-collision-routine"),
+          source: "community",
+          rowIds: [id("shared-program-row")],
+        }),
+      );
+      expect(ownErr).toEqual(ROW_ID_ALREADY_IN_USE_ERROR);
+      expect(foreignErr).toEqual(ownErr);
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-row-collision-own", [
+        "shared-program-row",
+      ]);
+      await assertCreateFromRoutineDidNotPersist(
+        storage,
+        "prog-row-collision-foreign",
+        ["shared-program-row"],
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a program id already in use before create with identical errors for own and foreign callers", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "prog-collision-routine",
+        draftVersion: "prog-collision-rv",
+        row: "prog-collision-rvr",
+        name: "Program collision routine",
+      });
+      await service.createProgram(practitionerA, {
+        programId: id("shared-program-id"),
+        name: "Taken program id",
+      });
+      const ownErr = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("shared-program-id"),
+          routineId: id("prog-collision-routine"),
+          source: "community",
+          rowIds: [id("prog-collision-row-own")],
+        }),
+      );
+      const foreignErr = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerB, {
+          programId: id("shared-program-id"),
+          routineId: id("prog-collision-routine"),
+          source: "community",
+          rowIds: [id("prog-collision-row-foreign")],
+        }),
+      );
+      expect(ownErr).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
+      expect(foreignErr).toEqual(ownErr);
+      const programs = new ProgramsRepository(storage);
+      const rows = new ProgramRowsRepository(storage);
+      expect(await rows.findById(id("prog-collision-row-own"))).toBeNull();
+      expect(await rows.findById(id("prog-collision-row-foreign"))).toBeNull();
+      expect((await programs.findById(id("shared-program-id")))?.name).toBe(
+        "Taken program id",
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects invalid routine row params before create and leaves no program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "bad-params-routine",
+        draftVersion: "bad-params-rv",
+        row: "bad-params-rvr",
+        name: "Bad params routine",
+      });
+      await storage.run(
+        `UPDATE routine_version_rows SET params_json = ? WHERE id = ?`,
+        [
+          JSON.stringify({
+            hold_s: -1,
+            per_day: { min: 1, max: 2 },
+            days_per_week: 7,
+          }),
+          id("bad-params-rvr"),
+        ],
+      );
+      const err = await expectServiceRejection(() =>
+        service.createProgramFromRoutine(practitionerA, {
+          programId: id("prog-bad-params"),
+          routineId: id("bad-params-routine"),
+          source: "community",
+          rowIds: [id("bad-params-row")],
+        }),
+      );
+      expect(err).toEqual({
+        name: "ProgramBuilderServiceError",
+        code: "invalid_input",
+        message: HOLD_S_RANGE_MESSAGE,
+      });
+      await assertCreateFromRoutineDidNotPersist(storage, "prog-bad-params", [
+        "bad-params-row",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("finds PRG-PRG7 when listPrograms search query is PRG7", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const programs = new ProgramsRepository(storage);
+      const service = new ProgramBuilderService(storage);
+      await programs.create({
+        id: id("prog-prg7-search"),
+        createdBy: practitionerA,
+        createdAt: TS,
+        code: "PRG-PRG7",
+        name: "Unrelated program title",
+      });
+      const result = await service.listPrograms(practitionerA, {
+        searchQuery: "PRG7",
+      });
+      expect(result.items.map((item) => item.program_id)).toEqual([
+        id("prog-prg7-search"),
+      ]);
+      expect(result.matched_code).toBe("PRG-PRG7");
     } finally {
       storage.close();
     }

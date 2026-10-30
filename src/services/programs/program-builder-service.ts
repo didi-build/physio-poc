@@ -1131,10 +1131,7 @@ export class ProgramBuilderService {
       parsedRowIds.push(this.parseOpaqueId(rowId, "Program row id"));
     }
     if (new Set(parsedRowIds).size !== parsedRowIds.length) {
-      throw new ProgramBuilderServiceError(
-        "rowIds must not contain duplicates",
-        "invalid_input",
-      );
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
     }
     for (const rowId of parsedRowIds) {
       if (await this.rows.findById(rowId)) {
@@ -1145,21 +1142,33 @@ export class ProgramBuilderService {
       }
     }
     if (await this.programs.findById(programId)) {
-      throw new ProgramBuilderServiceError(
-        "Program id is already in use",
-        "invalid_input",
-      );
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
     }
     const routine = await this.requireVisiblePublishedRoutine(
       practitionerId,
       routineId,
     );
-    const { version, rows } = await this.resolveRoutineRowsForProgramCopy(
-      practitionerId,
-      routine,
-      routineId,
-      input.source,
-    );
+    let version: RoutineVersionRecord;
+    let rows: {
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+    try {
+      ({ version, rows } = await this.resolveRoutineRowsForProgramCopy(
+        practitionerId,
+        routine,
+        routineId,
+        input.source,
+      ));
+    } catch (err) {
+      if (err instanceof ParamValidationError) {
+        this.mapParamError(err);
+      }
+      throw err;
+    }
     if (input.rowIds.length !== rows.length) {
       throw new ProgramBuilderServiceError(
         "rowIds must include one id per routine row",
@@ -1185,11 +1194,6 @@ export class ProgramBuilderService {
           "exercise_not_found",
         );
       }
-      const resolved = await this.resolveRowDefaults(
-        practitionerId,
-        approved,
-        sourceRow.prescriptionType,
-      );
       try {
         validateExerciseParamsForPrescriptionType(
           sourceRow.params,
@@ -1198,6 +1202,11 @@ export class ProgramBuilderService {
       } catch (err) {
         this.mapParamError(err);
       }
+      const resolved = await this.resolveRowDefaults(
+        practitionerId,
+        approved,
+        sourceRow.prescriptionType,
+      );
       const textSnapshot = buildProgramRowTextSnapshot({
         version: approved,
         overrides: resolved.overrides,
