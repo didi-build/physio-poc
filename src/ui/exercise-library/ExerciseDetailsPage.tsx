@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { APP_ROUTE_PATHS, exerciseMyCopyPath } from "../../app-routes.js";
+import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
 import { prescriptionTypesForCategory } from "../../domain/exercise-types.js";
 import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
-import {
-  ExerciseMediaLoop,
-  ExerciseMediaPlaceholder,
-} from "../components/ExerciseMediaLoop.js";
 import { useToast } from "../components/Toast.js";
 import {
   ABOUT,
@@ -53,6 +49,15 @@ import {
   toastRemovedFromMy,
   TOAST_SAVED_MY,
 } from "../copy/exercise-library.js";
+import { MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX } from "../copy/exercise-media.js";
+import {
+  LibraryDetailExerciseStill,
+  LibraryDetailExerciseVideo,
+} from "../exercise-visual/index.js";
+import {
+  ExerciseLibraryBusyState,
+  ExerciseLibraryDetailErrorSlot,
+} from "./ExerciseLibraryStates.js";
 import { parseSteps } from "./library-filters.js";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -68,14 +73,23 @@ export function ExerciseDetailsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [details, setDetails] = useState<ExerciseDetailsResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = () => {
+    setLoading(true);
+    setLoadFailed(false);
     void client
       .getExerciseDetails(exerciseId)
-      .then(setDetails)
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load exercise");
+      .then((result) => {
+        setDetails(result);
+      })
+      .catch(() => {
+        setLoadFailed(true);
+        setDetails(null);
+      })
+      .finally(() => {
+        setLoading(false);
       });
   };
 
@@ -83,15 +97,11 @@ export function ExerciseDetailsPage() {
     load();
   }, [exerciseId, client]);
 
-  if (error) {
-    return (
-      <p className="ex-error" role="alert">
-        {error}
-      </p>
-    );
+  if (loading) {
+    return <ExerciseLibraryBusyState />;
   }
-  if (!details) {
-    return <p className="ex-loading">Loading…</p>;
+  if (loadFailed || !details) {
+    return <ExerciseLibraryDetailErrorSlot />;
   }
 
   const title =
@@ -104,6 +114,8 @@ export function ExerciseDetailsPage() {
   const types = prescriptionTypesForCategory(
     details.category === "Stretching" ? "stretch" : "strengthening",
   );
+  const loopCaptionSuffix =
+    details.category === "Strengthening" ? MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX : "";
 
   const onSave = () => {
     void client.saveToMyExercises(exerciseId).then(({ undo }) => {
@@ -131,7 +143,7 @@ export function ExerciseDetailsPage() {
 
   return (
     <section className="ex-page ex-details" aria-labelledby="ex-detail-heading">
-      <Link to={APP_ROUTE_PATHS.exercises} className="ex-back-link">
+      <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
         {BACK_LIBRARY}
       </Link>
       <p className="ex-detail-kicker">{EXERCISE_DETAILS}</p>
@@ -160,18 +172,18 @@ export function ExerciseDetailsPage() {
         <h2>{IMAGES_AND_VIDEO}</h2>
         <div className="ex-media-grid">
           <figure>
-            <ExerciseMediaPlaceholder label={START_POSITION} />
+            <LibraryDetailExerciseStill label={START_POSITION} />
             <figcaption>{START_POSITION}</figcaption>
           </figure>
           <figure>
-            <ExerciseMediaPlaceholder label={END_POSITION} />
+            <LibraryDetailExerciseStill label={END_POSITION} />
             <figcaption>{END_POSITION}</figcaption>
           </figure>
         </div>
-        <ExerciseMediaLoop
-          startAlt={`${title}, start position`}
-          endAlt={`${title}, end position`}
+        <LibraryDetailExerciseVideo
+          alt={title}
           className="ex-media-loop-block"
+          loopCaptionSuffix={loopCaptionSuffix}
         />
       </div>
 
@@ -275,7 +287,7 @@ export function ExerciseDetailsPage() {
               type="button"
               className="ex-secondary-btn"
               onClick={() => {
-                navigate(exerciseMyCopyPath(exerciseId));
+                navigate(fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId }));
               }}
             >
               {EDIT_MY_COPY}

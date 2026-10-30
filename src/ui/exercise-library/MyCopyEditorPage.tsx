@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { exerciseDetailsPath } from "../../app-routes.js";
+import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
 import {
   TEXT_OVERRIDE_KEYS,
@@ -28,6 +28,10 @@ import {
   toastRemovedFromMy,
 } from "../copy/exercise-library.js";
 import { TOAST_UNDO } from "../copy/nav.js";
+import {
+  ExerciseLibraryBusyState,
+  ExerciseLibraryDetailErrorSlot,
+} from "./ExerciseLibraryStates.js";
 
 const FIELD_LABELS: Record<TextOverrideKey, string> = {
   title: TITLE_FIELD,
@@ -44,14 +48,23 @@ export function MyCopyEditorPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [details, setDetails] = useState<ExerciseDetailsResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = () => {
+    setLoading(true);
+    setLoadFailed(false);
     void client
       .getExerciseDetails(exerciseId)
-      .then(setDetails)
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "Failed to load exercise");
+      .then((result) => {
+        setDetails(result);
+      })
+      .catch(() => {
+        setLoadFailed(true);
+        setDetails(null);
+      })
+      .finally(() => {
+        setLoading(false);
       });
   };
 
@@ -59,15 +72,11 @@ export function MyCopyEditorPage() {
     load();
   }, [exerciseId, client]);
 
-  if (error) {
-    return (
-      <p className="ex-error" role="alert">
-        {error}
-      </p>
-    );
+  if (loading) {
+    return <ExerciseLibraryBusyState />;
   }
-  if (!details) {
-    return <p className="ex-loading">Loading…</p>;
+  if (loadFailed || !details) {
+    return <ExerciseLibraryDetailErrorSlot />;
   }
 
   const titleField = details.resolved_text.find((field) => field.key === "title");
@@ -91,13 +100,16 @@ export function MyCopyEditorPage() {
           void client.applyUndo(exerciseId, undo);
         },
       });
-      navigate(exerciseDetailsPath(exerciseId));
+      navigate(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId }));
     });
   };
 
   return (
     <section className="ex-page" aria-labelledby="ex-mycopy-heading">
-      <Link to={exerciseDetailsPath(exerciseId)} className="ex-back-link">
+      <Link
+        to={fillPhysioAppRoutePattern("exerciseDetail", { exerciseId })}
+        className="ex-back-link"
+      >
         {MY_COPY}
       </Link>
       <p className="ex-detail-kicker">{MY_COPY}</p>
@@ -168,7 +180,7 @@ export function MyCopyEditorPage() {
         type="button"
         className="ex-secondary-btn"
         onClick={() => {
-          navigate(exerciseDetailsPath(exerciseId));
+          navigate(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId }));
         }}
       >
         {SEE_LIBRARY_DETAILS}

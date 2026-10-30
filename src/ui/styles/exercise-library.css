@@ -657,3 +657,73 @@
   white-space: nowrap;
   border: 0;
 }
+
+.ex-media-placeholder {
+  position: relative;
+  display: flex;
+  aspect-ratio: 4 / 3;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.ex-media-tag {
+  position: absolute;
+  left: 0.5rem;
+  top: 0.5rem;
+  border-radius: 0.375rem;
+  background: rgb(255 255 255 / 0.9);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #115e59;
+}
+
+.ex-busy {
+  margin: 1rem 0;
+}
+
+.ex-busy-skeleton {
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: ex-busy-shimmer 1.2s ease-in-out infinite;
+}
+
+.ex-busy-skeleton--title {
+  height: 1.5rem;
+  width: 60%;
+  margin-bottom: 0.75rem;
+}
+
+.ex-busy-skeleton--line {
+  height: 0.875rem;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.ex-busy-skeleton--short {
+  width: 40%;
+}
+
+@keyframes ex-busy-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ex-busy-skeleton {
+    animation: none;
+  }
+}

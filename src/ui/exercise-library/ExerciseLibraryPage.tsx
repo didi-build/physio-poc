@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  APP_ROUTE_PATHS,
-  exerciseDetailsPath,
-  exercisesSearchPath,
+  fillPhysioAppRoutePattern,
+  physioAppExerciseSearchPath,
 } from "../../app-routes.js";
 import type {
   ApprovedExerciseSummary,
@@ -40,6 +39,10 @@ import {
 } from "../copy/exercise-library.js";
 import { TOAST_UNDO } from "../copy/nav.js";
 import { ExerciseListCard, type ExerciseCardModel } from "./ExerciseListCard.js";
+import {
+  ExerciseLibraryBusyState,
+  ExerciseLibraryListErrorSlot,
+} from "./ExerciseLibraryStates.js";
 import { FiltersSortPanel, LibrarySearchBar } from "./FiltersSortPanel.js";
 import {
   DEFAULT_FILTERS,
@@ -118,13 +121,13 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
   const [allTotal, setAllTotal] = useState(0);
   const [myIds, setMyIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const apiFilterParams = useMemo(() => filtersToApiParams(filters), [filters]);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    setLoadFailed(false);
     try {
       const trimmed = query.trim();
       if (tab === "mine") {
@@ -156,8 +159,8 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
         );
         setMyIds(ids);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load exercises");
+    } catch {
+      setLoadFailed(true);
     } finally {
       setLoading(false);
     }
@@ -205,9 +208,9 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
   const switchTab = (next: LibraryTab) => {
     setTab(next);
     if (next === "all" && trimmedQuery) {
-      navigate(exercisesSearchPath(trimmedQuery));
+      navigate(physioAppExerciseSearchPath(trimmedQuery));
     } else if (next === "mine") {
-      navigate(APP_ROUTE_PATHS.exercises);
+      navigate(fillPhysioAppRoutePattern("exercises"));
     }
   };
 
@@ -269,12 +272,8 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
       </div>
       <FiltersSortPanel filters={filters} onChange={setFilters} />
 
-      {error ? (
-        <p className="ex-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-      {loading ? <p className="ex-loading">Loading…</p> : null}
+      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
+      {loading ? <ExerciseLibraryBusyState /> : null}
 
       {!loading && tab === "mine" ? (
         myListState === "nothing_in_my_exercises_matches" && mySearchQuery ? (
@@ -428,7 +427,11 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
                           showToast({
                             message: usingExerciseToast(item.exercise_name),
                           });
-                          navigate(exerciseDetailsPath(item.exercise_id));
+                          navigate(
+                            fillPhysioAppRoutePattern("exerciseDetail", {
+                              exerciseId: item.exercise_id,
+                            }),
+                          );
                         });
                       }}
                     >

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { exerciseDetailsPath } from "../../app-routes.js";
+import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import {
   MATCHED_ALIAS_PREFIX,
   SAVED_PREFIX,
@@ -58,7 +58,12 @@ export function ExerciseListCard({
   const line = usageLine(item);
   return (
     <li className="ex-card">
-      <Link to={exerciseDetailsPath(item.exercise_id)} className="ex-card-main">
+      <Link
+        to={fillPhysioAppRoutePattern("exerciseDetail", {
+          exerciseId: item.exercise_id,
+        })}
+        className="ex-card-main"
+      >
         <div className="ex-card-thumb" aria-hidden />
         <div className="ex-card-body">
           <div className="ex-card-title-row">

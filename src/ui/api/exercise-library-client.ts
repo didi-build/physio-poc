@@ -44,7 +44,10 @@ function approvedSearchPath(practitionerId: string): string {
   return `${practitionerBase(practitionerId)}/exercises/approved/search`;
 }
 
-function exerciseDetailsPath(practitionerId: string, exerciseId: string): string {
+function practitionerExerciseDetailsPath(
+  practitionerId: string,
+  exerciseId: string,
+): string {
   return `${practitionerBase(practitionerId)}/exercises/${encodeURIComponent(exerciseId)}`;
 }
 
@@ -116,9 +119,12 @@ export class ExerciseLibraryClient {
   }
 
   getExerciseDetails(exerciseId: string): Promise<ExerciseDetailsResult> {
-    return this.fetchFn(exerciseDetailsPath(this.practitionerId, exerciseId), {
-      method: "GET",
-    }).then((response) => readJson<ExerciseDetailsResult>(response));
+    return this.fetchFn(
+      practitionerExerciseDetailsPath(this.practitionerId, exerciseId),
+      {
+        method: "GET",
+      },
+    ).then((response) => readJson<ExerciseDetailsResult>(response));
   }
 
   saveToMyExercises(exerciseId: string): Promise<{ undo: ExerciseMutationUndo }> {

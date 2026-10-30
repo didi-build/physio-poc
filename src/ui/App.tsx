@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import { APP_ROUTE_PATHS } from "../app-routes.js";
+import { fillPhysioAppRoutePattern, physioAppSpaRoutePath } from "../app-routes.js";
 import { ExerciseLibraryApiProvider } from "./api/exercise-library-context.js";
 import type { ExerciseLibraryClient } from "./api/exercise-library-client.js";
 import { ExerciseDetailsPage } from "./exercise-library/ExerciseDetailsPage.js";
@@ -20,18 +20,30 @@ export function PhysioApp({
     <ExerciseLibraryApiProvider client={exerciseLibraryClient}>
       <Routes>
         <Route element={<AppShell requestsReviewCount={requestsReviewCount} />}>
-          <Route index element={<Navigate to={APP_ROUTE_PATHS.exercises} replace />} />
-          <Route path="exercises" element={<ExerciseLibraryPage initialTab="mine" />} />
           <Route
-            path="exercises/search"
+            index
+            element={<Navigate to={fillPhysioAppRoutePattern("exercises")} replace />}
+          />
+          <Route
+            path={physioAppSpaRoutePath("exercises")}
+            element={<ExerciseLibraryPage initialTab="mine" />}
+          />
+          <Route
+            path={physioAppSpaRoutePath("exerciseSearch")}
             element={<ExerciseLibraryPage initialTab="all" />}
           />
-          <Route path="exercises/:exerciseId/my-copy" element={<MyCopyEditorPage />} />
-          <Route path="exercises/:exerciseId" element={<ExerciseDetailsPage />} />
-          <Route path="routines" element={null} />
-          <Route path="programs" element={null} />
-          <Route path="requests" element={null} />
-          <Route path="defaults" element={null} />
+          <Route
+            path={physioAppSpaRoutePath("exerciseMyCopy")}
+            element={<MyCopyEditorPage />}
+          />
+          <Route
+            path={physioAppSpaRoutePath("exerciseDetail")}
+            element={<ExerciseDetailsPage />}
+          />
+          <Route path={physioAppSpaRoutePath("routines")} element={null} />
+          <Route path={physioAppSpaRoutePath("programs")} element={null} />
+          <Route path={physioAppSpaRoutePath("requests")} element={null} />
+          <Route path={physioAppSpaRoutePath("defaults")} element={null} />
         </Route>
       </Routes>
     </ExerciseLibraryApiProvider>

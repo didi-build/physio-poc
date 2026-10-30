@@ -6,13 +6,25 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  fillPhysioAppRoutePattern,
+  physioAppSpaRoutePath,
+} from "../../src/app-routes.js";
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
-import { USE_LIBRARY_VERSION, KEEP_MINE } from "../../src/ui/copy/exercise-library.js";
+import {
+  KEEP_MINE,
+  NO_SAVED_WITH_FILTERS,
+  USE_LIBRARY_VERSION,
+  noExactMatchHeading,
+  nothingInMyMatches,
+} from "../../src/ui/copy/exercise-library.js";
+import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "../../src/ui/copy/exercise-library-states.js";
+import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
 import { DEFAULT_FILTERS } from "../../src/ui/exercise-library/library-filters.js";
 import { MyCopyEditorPage } from "../../src/ui/exercise-library/MyCopyEditorPage.js";
@@ -29,12 +41,16 @@ function mockClient(methods: Partial<ExerciseLibraryClient>): ExerciseLibraryCli
 
 function renderMyCopy(client: ExerciseLibraryClient) {
   return render(
-    <MemoryRouter initialEntries={["/exercises/ex-1/my-copy"]}>
+    <MemoryRouter
+      initialEntries={[
+        fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+      ]}
+    >
       <ExerciseLibraryApiProvider client={client}>
         <ToastProvider>
           <Routes>
             <Route
-              path="/exercises/:exerciseId/my-copy"
+              path={physioAppSpaRoutePath("exerciseMyCopy")}
               element={<MyCopyEditorPage />}
             />
           </Routes>
@@ -43,6 +59,56 @@ function renderMyCopy(client: ExerciseLibraryClient) {
     </MemoryRouter>,
   );
 }
+
+function renderDetails(client: ExerciseLibraryClient) {
+  return render(
+    <MemoryRouter
+      initialEntries={[
+        fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+      ]}
+    >
+      <ExerciseLibraryApiProvider client={client}>
+        <ToastProvider>
+          <Routes>
+            <Route
+              path={physioAppSpaRoutePath("exerciseDetail")}
+              element={<ExerciseDetailsPage />}
+            />
+          </Routes>
+        </ToastProvider>
+      </ExerciseLibraryApiProvider>
+    </MemoryRouter>,
+  );
+}
+
+const baseDetails = {
+  exercise_id: "ex-1",
+  category: "Stretching" as const,
+  body_regions: ["knee"],
+  aliases: [],
+  version_number: 1,
+  in_my_exercises: true,
+  favourite: false,
+  library: {
+    title: "Heel slide",
+    description: "Desc",
+    steps: "[]",
+    equipment: null,
+    precautions: null,
+    cue_stretching: null,
+    cue_isometric: null,
+    cue_concentric: null,
+    cue_eccentric: null,
+  },
+  resolved_text: [
+    {
+      key: "title",
+      resolved: "Heel slide",
+      library_value: "Heel slide",
+      library_updated: false,
+    },
+  ],
+};
 
 describe("Exercise library UI", () => {
   it("shows matched alias in search results on All exercises", async () => {
@@ -270,6 +336,265 @@ describe("Exercise library UI", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Saved to My exercises")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(applyUndo).toHaveBeenCalledWith("ex-1", undoPayload);
+  });
+
+  it("toggles pin through the client with an accessible pin control", async () => {
+    const setPinned = vi.fn().mockResolvedValue({ ok: true });
+    const listMyExercises = vi.fn().mockResolvedValue({
+      list_state: "ok",
+      sections: {
+        new_from_requests: [],
+        pinned: [
+          {
+            exercise_id: "ex-pin",
+            exercise_name: "Bridge",
+            category: "Strengthening",
+            body_regions: ["hip"],
+            matched_alias: null,
+            edited: false,
+            library_updated: false,
+            favourite: false,
+            saved_at: "2026-01-01T00:00:00Z",
+            last_used_at: null,
+            section: "pinned",
+          },
+        ],
+        recently_used_and_saved: [],
+      },
+    });
+    const client = mockClient({ listMyExercises, setPinned, searchApproved: vi.fn() });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Pin Bridge" })).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Pin Bridge" }));
+    expect(setPinned).toHaveBeenCalledWith("ex-pin", true);
+  });
+
+  it("opens exercise details from a card link", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: {
+          new_from_requests: [],
+          pinned: [],
+          recently_used_and_saved: [
+            {
+              exercise_id: "ex-open",
+              exercise_name: "Open me",
+              category: "Stretching",
+              body_regions: ["knee"],
+              matched_alias: null,
+              edited: false,
+              library_updated: false,
+              favourite: false,
+              saved_at: "2026-01-01T00:00:00Z",
+              last_used_at: null,
+              section: "recently_used_and_saved",
+            },
+          ],
+        },
+      }),
+      searchApproved: vi.fn(),
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        ...baseDetails,
+        exercise_id: "ex-open",
+        library: { ...baseDetails.library, title: "Open me" },
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /Open me/i })).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByRole("link", { name: /Open me/i }));
+
+    await waitFor(() => {
+      expect(client.getExerciseDetails).toHaveBeenCalledWith("ex-open");
+    });
+  });
+
+  it("shows spec empty state when My exercises search matches nothing", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "nothing_in_my_exercises_matches",
+        search_query: "zzzz",
+        sections: {
+          new_from_requests: [],
+          pinned: [],
+          recently_used_and_saved: [],
+        },
+      }),
+      searchApproved: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: nothingInMyMatches("zzzz") }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows filtered empty state copy on My exercises", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "no_saved_exercises_with_filters",
+        sections: {
+          new_from_requests: [],
+          pinned: [],
+          recently_used_and_saved: [],
+        },
+      }),
+      searchApproved: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: NO_SAVED_WITH_FILTERS }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows no exact match heading on All exercises search", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: {
+          new_from_requests: [],
+          pinned: [],
+          recently_used_and_saved: [],
+        },
+      }),
+      searchApproved: vi.fn().mockResolvedValue({
+        exercises: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+      }),
+    });
+
+    render(
+      <MemoryRouter
+        initialEntries={[fillPhysioAppRoutePattern("exerciseSearch") + "?q=UniqueName"]}
+      >
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: noExactMatchHeading("UniqueName") }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders a visual-only busy state while loading", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockImplementation(
+        () =>
+          new Promise(() => {
+            /* pending */
+          }),
+      ),
+      searchApproved: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    const busy = await screen.findByTestId("exercise-library-busy");
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
+      expect(screen.queryByText(phrase)).not.toBeInTheDocument();
+    }
+  });
+
+  it("renders the list error slot without unsourced copy when load fails", async () => {
+    const client = mockClient({
+      listMyExercises: vi.fn().mockRejectedValue(new Error("network")),
+      searchApproved: vi.fn(),
+    });
+
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp exerciseLibraryClient={client} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-list-error-slot"),
+      ).toBeInTheDocument();
+    });
+    for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
+      expect(screen.queryByText(phrase)).not.toBeInTheDocument();
+    }
+  });
+
+  it("remove from My exercises on details supports Undo", async () => {
+    const undoPayload = {
+      practitioner_id: "p-1",
+      exercise_id: "ex-1",
+      snapshot: {
+        had_row: true,
+        favourite: false,
+        saved_at: "2026-01-01T00:00:00Z",
+        last_used_at: null,
+        text_overrides_json: "{}",
+        param_overrides_json: "{}",
+      },
+    };
+    const applyUndo = vi.fn().mockResolvedValue({ ok: true });
+    const removeFromMyExercises = vi.fn().mockResolvedValue({ undo: undoPayload });
+    const getExerciseDetails = vi.fn().mockResolvedValue(baseDetails);
+    const client = mockClient({
+      getExerciseDetails,
+      removeFromMyExercises,
+      applyUndo,
+    });
+
+    renderDetails(client);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));

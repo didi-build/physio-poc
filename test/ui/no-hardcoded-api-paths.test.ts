@@ -20,6 +20,26 @@ function listSourceFiles(dir: string): string[] {
   return files;
 }
 
+function isRelativeUiModuleImportLine(line: string): boolean {
+  return /^\s*(import|export)\s.*\sfrom\s["'][^"']*\/api\/[^"']*["']/.test(line);
+}
+
+function lineHardcodesHttpApiPath(line: string): boolean {
+  if (isRelativeUiModuleImportLine(line)) {
+    return false;
+  }
+  const trimmed = line.trim();
+  if (trimmed.startsWith("//") || trimmed.startsWith("*")) {
+    return false;
+  }
+  if (/\/api\//.test(line)) {
+    return true;
+  }
+  const runtimeJoin =
+    /(?:[`'"]\/api\/[`'"]|[`'"]api\/[`'"]\s*\+|\+\s*[`'"]api\/[`'"])/.test(line);
+  return runtimeJoin;
+}
+
 describe("UI API path guard", () => {
   it("does not hardcode /api/ outside the exercise library client module", () => {
     const violations: string[] = [];
@@ -29,10 +49,21 @@ describe("UI API path guard", () => {
         continue;
       }
       const content = readFileSync(file, "utf8");
-      if (content.includes("/api/practitioners")) {
-        violations.push(rel);
+      const lines = content.split("\n");
+      for (let index = 0; index < lines.length; index += 1) {
+        if (lineHardcodesHttpApiPath(lines[index] ?? "")) {
+          violations.push(`${rel}:${index + 1}`);
+          break;
+        }
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("flags sample /api/ literals outside the client module", () => {
+    expect(lineHardcodesHttpApiPath('  return fetch("/api/practitioners/x");')).toBe(
+      true,
+    );
+    expect(lineHardcodesHttpApiPath('import { x } from "../api/foo.js";')).toBe(false);
   });
 });
