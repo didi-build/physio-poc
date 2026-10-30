@@ -64,6 +64,11 @@ export class PractitionerExercisesRepository {
   }): Promise<void> {
     const textOverrides = validateTextOverrides(input.textOverrides ?? {});
     const paramOverrides = validateParamOverridesByType(input.paramOverrides ?? {});
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
     const textJson = serializeTextOverrides(textOverrides);
     const paramJson = JSON.stringify(paramOverrides);
 
@@ -79,8 +84,8 @@ export class PractitionerExercisesRepository {
         text_overrides_json = excluded.text_overrides_json,
         param_overrides_json = excluded.param_overrides_json`,
       [
-        input.practitionerId,
-        input.exerciseId,
+        practitionerId,
+        exerciseId,
         input.favourite ? 1 : 0,
         input.savedAt,
         input.lastUsedAt ?? null,
@@ -138,9 +143,11 @@ export class ExercisesRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(row: ExerciseRow): Promise<void> {
+    const id = validateOpaqueEntityId(row.id, "Exercise id");
+    const createdBy = validateOpaqueEntityId(row.created_by, "Practitioner id");
     await this.sql.run(
       "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
-      [row.id, row.category, row.created_by, row.created_at],
+      [id, row.category, createdBy, row.created_at],
     );
   }
 }
@@ -189,6 +196,16 @@ export class ExerciseVersionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async insert(input: ExerciseVersionInsert): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Exercise version id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const approvedBy =
+      input.approvedBy === null
+        ? null
+        : validateOpaqueEntityId(input.approvedBy, "Practitioner id");
+    const mediaSetId =
+      input.mediaSetId === null || input.mediaSetId === undefined
+        ? null
+        : validateOpaqueEntityId(input.mediaSetId, "Media set id");
     const title = validateExerciseTitle(input.title);
     const description = validateExerciseTemplateText(
       input.description ?? "",
@@ -243,11 +260,11 @@ export class ExerciseVersionsRepository {
         media_set_id, change_summary, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        input.id,
-        input.exerciseId,
+        id,
+        exerciseId,
         input.versionNumber,
         input.status,
-        input.approvedBy,
+        approvedBy,
         input.approvedAt,
         title,
         description,
@@ -262,7 +279,7 @@ export class ExerciseVersionsRepository {
         cueIsometric,
         cueConcentric,
         cueEccentric,
-        input.mediaSetId ?? null,
+        mediaSetId,
         changeSummary,
         input.createdAt,
       ],
@@ -279,10 +296,12 @@ export class ExerciseAliasesRepository {
     alias: string;
     createdAt: string;
   }): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Exercise alias id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
     const alias = validateExerciseAlias(input.alias);
     await this.sql.run(
       "INSERT INTO exercise_aliases (id, exercise_id, alias, created_at) VALUES (?, ?, ?, ?)",
-      [input.id, input.exerciseId, alias, input.createdAt],
+      [id, exerciseId, alias, input.createdAt],
     );
   }
 }
@@ -291,9 +310,10 @@ export class ExerciseBodyRegionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
   async link(exerciseId: string, bodyRegionId: string): Promise<void> {
+    const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");
     await this.sql.run(
       "INSERT INTO exercise_body_regions (exercise_id, body_region_id) VALUES (?, ?)",
-      [exerciseId, bodyRegionId],
+      [opaqueExerciseId, bodyRegionId],
     );
   }
 }
@@ -334,6 +354,11 @@ export class ExerciseRequestsRepository {
     const id = validateOpaqueEntityId(input.id, "Exercise request id");
     const requestedName = validateRequestedExerciseName(input.requestedName);
     const note = validateRequestNote(input.note);
+    const requestedBy = validateOpaqueEntityId(input.requestedBy, "Practitioner id");
+    const exerciseId =
+      input.exerciseId === null || input.exerciseId === undefined
+        ? null
+        : validateOpaqueEntityId(input.exerciseId, "Exercise id");
     await this.sql.run(
       `INSERT INTO exercise_requests (
         id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
@@ -342,9 +367,9 @@ export class ExerciseRequestsRepository {
         id,
         requestedName,
         note,
-        input.requestedBy,
+        requestedBy,
         input.status,
-        input.exerciseId ?? null,
+        exerciseId,
         input.createdAt,
         input.updatedAt,
       ],

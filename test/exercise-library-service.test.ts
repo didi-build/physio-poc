@@ -9,6 +9,7 @@ import {
   VERSION_INSERT_SQL,
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { ExerciseAliasesRepository } from "../src/storage/repositories/exercise-data.js";
 import { ExerciseBodyRegionsRepository } from "../src/storage/repositories/exercise-data.js";
@@ -26,8 +27,8 @@ async function seedApprovedStretch(
     bodyRegionId?: string;
   } = {},
 ) {
-  const exerciseId = options.exerciseId ?? "ex-stretch-1";
-  const versionId = options.versionId ?? "ver-stretch-1";
+  const exerciseId = options.exerciseId ?? id("ex-stretch-1");
+  const versionId = options.versionId ?? id("ver-stretch-1");
   await seedExercise(storage, practitionerId, exerciseId);
   await storage.run(VERSION_INSERT_SQL, [
     ...versionInsertBindings({
@@ -43,7 +44,7 @@ async function seedApprovedStretch(
   if (options.alias) {
     const aliases = new ExerciseAliasesRepository(storage);
     await aliases.insert({
-      id: "alias-1",
+      id: id("alias-1"),
       exerciseId,
       alias: options.alias,
       createdAt: TS,
