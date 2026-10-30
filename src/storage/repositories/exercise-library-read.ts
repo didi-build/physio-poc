@@ -48,8 +48,9 @@ export type LatestApprovedVersionRow = {
 
 /**
  * usage_count: number of program_rows whose exercise_id equals the exercise, in programs
- * that are not soft-deleted (programs.deleted_at IS NULL). Each row counts once (duplicate
- * rows in the same program count separately). Counts rows across all practitioners' programs.
+ * that are not soft-deleted (programs.deleted_at IS NULL). Rows count regardless of which
+ * exercise_version_id they reference. Each row counts once (duplicate rows in the same
+ * program count separately). Counts rows across all practitioners' programs.
  * Deleting a program is not a use; Recently deleted is a trash bin, so those rows are excluded
  * until the program is restored. Placeholder rows (exercise_id IS NULL) are excluded.
  * Keep USAGE_COUNT_LIST_SQL and USAGE_COUNT_DETAILS_SQL in sync (All exercises list vs details).
@@ -81,7 +82,7 @@ const LATEST_APPROVED_JOIN = `
 function sortClause(sort: ApprovedExerciseSearchSort): string {
   switch (sort) {
     case "most_used":
-      return "usage_count DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC, ev.rowid ASC";
+      return "usage_count DESC, ev.title COLLATE NOCASE ASC";
     case "newest":
       return "ev.approved_at DESC, ev.title COLLATE NOCASE ASC, ev.exercise_id ASC";
     case "a_to_z":

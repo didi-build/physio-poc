@@ -142,6 +142,69 @@ describe("Exercise library usage_count from program rows (integration)", () => {
     }
   });
 
+  it("counts program rows on older approved versions toward usage_count", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const exerciseId = id("ex-multi-version");
+      const verV1 = id("ver-multi-v1");
+      const verV2 = id("ver-multi-v2");
+      await seedExercise(storage, practId, exerciseId);
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: verV1,
+          exercise_id: exerciseId,
+          version_number: 1,
+          status: "approved",
+          approved_by: practId,
+          approved_at: TS,
+          title: "Version one",
+          cue_stretching: "Hold",
+        }),
+      ]);
+      await addProgramExerciseRow(storage, {
+        practitionerId: practId,
+        programId: id("prog-multi-v1"),
+        rowId: id("row-multi-v1"),
+        exerciseId,
+        versionId: verV1,
+        position: 0,
+      });
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: verV2,
+          exercise_id: exerciseId,
+          version_number: 2,
+          status: "approved",
+          approved_by: practId,
+          approved_at: "2026-02-01T00:00:00.000Z",
+          title: "Version two",
+          cue_stretching: "Hold",
+        }),
+      ]);
+      await addProgramExerciseRow(storage, {
+        practitionerId: practId,
+        programId: id("prog-multi-v2"),
+        rowId: id("row-multi-v2"),
+        exerciseId,
+        versionId: verV2,
+        position: 0,
+      });
+
+      const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const details = await service.getExerciseDetails(practId, exerciseId);
+      expect(details.usage_count).toBe(2);
+      expect(details.version_number).toBe(2);
+      const list = await service.searchApprovedExercises({
+        practitionerId: practId,
+        sort: "most_used",
+      });
+      expect(listRow(list, exerciseId)?.usage_count).toBe(2);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns usage_count 0 when the exercise is in no program row", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -170,27 +233,38 @@ describe("Exercise library usage_count from program rows (integration)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(storage);
-      const exLower = "00000000-0000-4000-8000-000000000001";
-      const exHigher = "00000000-0000-4000-8000-000000000002";
-      expect(exLower < exHigher).toBe(true);
+      const exFirst = "00000000-0000-4000-8000-000000000001";
+      const exSecond = "00000000-0000-4000-8000-000000000002";
+      const exThird = "00000000-0000-4000-8000-000000000003";
       const sharedTitle = "Shared tie title";
-      const verLower = "00000000-0000-4000-8000-000000000011";
-      const verHigher = "00000000-0000-4000-8000-000000000012";
-      // Seed the higher exercise_id first so insertion order would prefer exHigher without a tie break.
-      await seedApprovedExercise(storage, practId, {
-        exerciseId: exHigher,
-        versionId: verHigher,
-        title: sharedTitle,
-      });
-      await seedApprovedExercise(storage, practId, {
-        exerciseId: exLower,
-        versionId: verLower,
-        title: sharedTitle,
-      });
-      for (const [exerciseId, versionId, rowId, progSeed] of [
-        [exHigher, verHigher, id("row-tie-id-higher"), "prog-tie-higher"],
-        [exLower, verLower, id("row-tie-id-lower"), "prog-tie-lower"],
-      ] as const) {
+      const tiedExercises = [
+        {
+          exerciseId: exThird,
+          versionId: "00000000-0000-4000-8000-000000000013",
+          rowId: id("row-tie-third"),
+          progSeed: "prog-tie-third",
+        },
+        {
+          exerciseId: exFirst,
+          versionId: "00000000-0000-4000-8000-000000000011",
+          rowId: id("row-tie-first"),
+          progSeed: "prog-tie-first",
+        },
+        {
+          exerciseId: exSecond,
+          versionId: "00000000-0000-4000-8000-000000000012",
+          rowId: id("row-tie-second"),
+          progSeed: "prog-tie-second",
+        },
+      ] as const;
+      for (const { exerciseId, versionId } of tiedExercises) {
+        await seedApprovedExercise(storage, practId, {
+          exerciseId,
+          versionId,
+          title: sharedTitle,
+        });
+      }
+      for (const { exerciseId, versionId, rowId, progSeed } of tiedExercises) {
         await addProgramExerciseRow(storage, {
           practitionerId: practId,
           programId: id(progSeed),
@@ -207,15 +281,13 @@ describe("Exercise library usage_count from program rows (integration)", () => {
         sort: "most_used",
       });
       expect(result.exercises.map((row) => row.exercise_id)).toEqual([
-        exLower,
-        exHigher,
+        exFirst,
+        exSecond,
+        exThird,
       ]);
-      expect(result.exercises.map((row) => row.exercise_id)).not.toEqual([
-        exHigher,
-        exLower,
-      ]);
-      expect(listRow(result, exLower)?.usage_count).toBe(1);
-      expect(listRow(result, exHigher)?.usage_count).toBe(1);
+      for (const exerciseId of [exFirst, exSecond, exThird]) {
+        expect(listRow(result, exerciseId)?.usage_count).toBe(1);
+      }
     } finally {
       storage.close();
     }
