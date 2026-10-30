@@ -16,6 +16,7 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
+import { ShareLinkDefaultsRepository } from "../src/storage/repositories/programs.js";
 
 function authedRequest(url: string, cookie: string, init: RequestInit = {}): Request {
   const headers = new Headers(init.headers);
@@ -133,6 +134,39 @@ describe("My defaults HTTP routes (integration)", () => {
         effective: { expiresIn: string };
       };
       expect(patched.effective.expiresIn).toBe(SHARE_LINK_EXPIRES_IN.one_week);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("session A GET does not expose practitioner B share-link override", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-share");
+      await seedPractitioner(storage, practitionerB, "b-share@example.com");
+      await new ShareLinkDefaultsRepository(storage).upsertPractitionerDefault(
+        testOpaqueEntityId("sld-b-share"),
+        practitionerB,
+        { expiresIn: SHARE_LINK_EXPIRES_IN.never },
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const getResponse = await handleRequest(
+        authedRequest(`http://127.0.0.1${MY_DEFAULTS_API_BASE}`, cookie),
+        deps,
+      );
+      expect(getResponse.status).toBe(200);
+      const page = (await getResponse.json()) as {
+        share_link_expiry: {
+          practitioner: { expiresIn: string } | null;
+          effective: { expiresIn: string };
+        };
+      };
+      expect(page.share_link_expiry.practitioner).toBeNull();
+      expect(page.share_link_expiry.effective.expiresIn).toBe(
+        SHARE_LINK_EXPIRES_IN.one_year,
+      );
     } finally {
       storage.close();
     }
@@ -461,6 +495,55 @@ describe("My defaults HTTP routes (integration)", () => {
         deps,
       );
       expect(putResponse.status).toBe(400);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("session A reset to global leaves practitioner B type override unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("my-defaults-b-reset");
+      await seedPractitioner(storage, practitionerB, "b-reset@example.com");
+      const typeDefaults = new TypeDefaultsRepository(storage);
+      const sharedType = "concentric" as const;
+      const bParams = { reps: 8, hold_s: 3, sets: 2, days_per_week: 4 };
+      const aParams = { reps: 12, hold_s: 2, sets: 3, days_per_week: 3 };
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-b-reset"),
+        practitionerB,
+        sharedType,
+        bParams,
+      );
+      await typeDefaults.upsertPractitionerDefaults(
+        testOpaqueEntityId("td-a-reset"),
+        practitionerA,
+        sharedType,
+        aParams,
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const deleteResponse = await handleRequest(
+        authedJsonRequest(myDefaultsTypePath(sharedType), cookie, {
+          method: "DELETE",
+          body: "{}",
+        }),
+        deps,
+      );
+      expect(deleteResponse.status).toBe(200);
+
+      const bRow = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerB, sharedType],
+      );
+      expect(JSON.parse(bRow!.params_json)).toEqual(bParams);
+
+      const aRow = await storage.first<{ params_json: string }>(
+        "SELECT params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ? LIMIT 1",
+        ["practitioner", practitionerA, sharedType],
+      );
+      expect(aRow).toBeNull();
     } finally {
       storage.close();
     }
