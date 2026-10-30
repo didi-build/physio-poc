@@ -15,6 +15,7 @@ import {
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import {
   completeGoogleSignIn,
+  countAuthSessions,
   requestWithJar,
   CookieJar,
 } from "./helpers/google-sign-in-flow.js";
@@ -156,5 +157,58 @@ describe("Better Auth practitionerId binding guards", () => {
     );
     expect(deleteSpy).toHaveBeenCalled();
     deleteSpy.mockRestore();
+  });
+
+  it("binds practitionerId from the matching email when multiple practitioner rows exist", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: BASE,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const otherId = generateOpaqueEntityId();
+    const allowedId = generateOpaqueEntityId();
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [otherId, "other.practitioner@example.com", "2026-01-01T00:00:00.000Z"],
+    );
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [allowedId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+
+    await completeGoogleSignIn(BASE, deps, "allowed");
+    expect(await readUserPractitionerId(deps)).toBe(allowedId);
+    expect(await readUserPractitionerId(deps)).not.toBe(otherId);
+  });
+
+  it("returns null and deletes the session when user.practitionerId disagrees with email lookup", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: BASE,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const practId = generateOpaqueEntityId();
+    const wrongId = generateOpaqueEntityId();
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [practId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [wrongId, "wrong-binding@example.com", "2026-01-01T00:00:00.000Z"],
+    );
+    const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
+    await deps.sql.run('UPDATE "user" SET "practitionerId" = ? WHERE email = ?', [
+      wrongId,
+      FAKE_GOOGLE_ALLOWED_EMAIL,
+    ]);
+
+    const practitioner = await deps.auth.getPractitioner(
+      new Request(`${BASE}/exercises`, { headers: { cookie: jar.header() } }),
+    );
+    expect(practitioner).toBeNull();
+    expect(await countAuthSessions(deps)).toBe(0);
   });
 });

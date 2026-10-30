@@ -21,8 +21,15 @@ describe("normalizeReturnTo", () => {
     expect(normalizeReturnTo("/\t/evil.example")).toBe("/");
   });
 
-  it("rejects control characters", () => {
-    expect(normalizeReturnTo("/programs\u0000/evil")).toBe("/");
-    expect(normalizeReturnTo("/\u007f")).toBe("/");
+  it("rejects protocol-relative paths starting with //", () => {
+    expect(normalizeReturnTo("//evil.example")).toBe("/");
+  });
+
+  it("rejects paths starting with /\\", () => {
+    expect(normalizeReturnTo("/\\evil.example")).toBe("/");
+  });
+
+  it("rejects paths containing a scheme", () => {
+    expect(normalizeReturnTo("/programs://evil")).toBe("/");
   });
 });

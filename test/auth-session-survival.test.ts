@@ -102,4 +102,23 @@ describe("Auth session survival (integration)", () => {
 
     await expectSessionInvalidated(deps, jar, practId);
   });
+
+  it("allows a new sign-in after practitioner recreate and binds the new practitioner id", async () => {
+    const { deps, practId } = await createDeps();
+    const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
+    await deps.sql.run("DELETE FROM practitioners WHERE id = ?", [practId]);
+    const replacementId = generateOpaqueEntityId();
+    await deps.sql.run(
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [replacementId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
+    );
+    await expectSessionInvalidated(deps, jar, practId);
+
+    const { jar: freshJar } = await completeGoogleSignIn(BASE, deps, "allowed");
+    expect(freshJar.header()).toContain("better-auth.session_token=");
+    const practitioner = await deps.auth.getPractitioner(
+      new Request(`${BASE}/exercises`, { headers: { cookie: freshJar.header() } }),
+    );
+    expect(practitioner?.practitionerId).toBe(replacementId);
+  });
 });

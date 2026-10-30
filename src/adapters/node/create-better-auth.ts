@@ -6,12 +6,16 @@ import {
   isEmailAllowlisted,
 } from "../../auth/allowed-emails.js";
 import {
-  createPhysioBetterAuthDatabaseHooks,
+  createPhysioBetterAuthDatabaseHooks as createMinimalStorageDatabaseHooks,
   PHYSIO_GOOGLE_OAUTH_SCOPES,
-  stripClientPractitionerId,
   stripPhysioSessionMetadata,
-  stripPhysioUserImage,
 } from "../../auth/better-auth-minimal-storage.js";
+import {
+  bindPractitionerForSessionUser,
+  runPhysioUserCreateBeforeHook,
+  runPhysioUserUpdateBeforeHook,
+} from "../../auth/physio-better-auth-hooks.js";
+export { PhysioPractitionerBindingError } from "../../auth/physio-better-auth-hooks.js";
 import { installFakeGoogleFetch } from "../../auth/fake-google-http.js";
 import type { PhysioAuthConfig } from "../../http/config.js";
 import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
@@ -20,64 +24,30 @@ import { findPractitionerByEmail } from "../../storage/repositories/practitioner
 
 import type { BetterAuthHandle, BetterAuthRuntime } from "./better-auth-types.js";
 
-export class PhysioPractitionerBindingError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PhysioPractitionerBindingError";
-  }
-}
+export type CreateBetterAuthInstanceOptions = {
+  /** Test-only: exercise user-create hook fail-closed without validateUserInfo practitioner check. */
+  skipValidateUserInfoPractitionerCheck?: boolean;
+};
 
-function mergePhysioDatabaseHooks(sql: SqlStoragePort) {
-  const storageHooks = createPhysioBetterAuthDatabaseHooks();
-
-  async function bindPractitionerForSessionUser(
-    session: Record<string, unknown>,
-  ): Promise<void> {
-    const userId = typeof session.userId === "string" ? session.userId.trim() : "";
-    if (!userId) {
-      throw new PhysioPractitionerBindingError("session_missing_user");
-    }
-    const userRow = await sql.first<{ email: string | null }>(
-      'SELECT email FROM "user" WHERE id = ? LIMIT 1',
-      [userId],
-    );
-    const email = typeof userRow?.email === "string" ? userRow.email : null;
-    if (!email) {
-      throw new PhysioPractitionerBindingError("session_user_missing_email");
-    }
-    const practitioner = await findPractitionerByEmail(sql, email);
-    if (!practitioner) {
-      throw new PhysioPractitionerBindingError("practitioner_row_missing");
-    }
-    await sql.run('UPDATE "user" SET "practitionerId" = ? WHERE id = ?', [
-      practitioner.id,
-      userId,
-    ]);
-  }
-
+function mergePhysioDatabaseHooks(sql: SqlStoragePort, authConfig: PhysioAuthConfig) {
+  const storageHooks = createMinimalStorageDatabaseHooks();
   return {
     ...storageHooks,
     user: {
-      ...storageHooks.user,
       create: {
-        ...storageHooks.user?.create,
-        before: async (user: Record<string, unknown>) => ({
-          data: stripClientPractitionerId(stripPhysioUserImage(user)),
-        }),
+        before: async (user: Record<string, unknown>) =>
+          runPhysioUserCreateBeforeHook(sql, authConfig, user),
       },
       update: {
-        ...storageHooks.user?.update,
-        before: async (user: Record<string, unknown>) => ({
-          data: stripClientPractitionerId(stripPhysioUserImage(user)),
-        }),
+        before: async (user: Record<string, unknown>) =>
+          runPhysioUserUpdateBeforeHook(user),
       },
     },
     session: {
       ...storageHooks.session,
       create: {
-        ...storageHooks.session?.create,
         before: async (session: Record<string, unknown>) => {
-          await bindPractitionerForSessionUser(session);
+          await bindPractitionerForSessionUser(sql, session);
           return { data: stripPhysioSessionMetadata(session) };
         },
       },
@@ -135,6 +105,7 @@ export function createBetterAuthInstance(
   database: Database.Database,
   config: PhysioAuthConfig,
   sql: SqlStoragePort,
+  options: CreateBetterAuthInstanceOptions = {},
 ): BetterAuthHandle {
   const plugins = config.fakeGoogleProviderEnabled ? [fakeGooglePlugin(config)] : [];
   if (config.fakeGoogleProviderEnabled) {
@@ -157,7 +128,7 @@ export function createBetterAuthInstance(
       ? {}
       : googleSocialProvider(config),
     account: PHYSIO_BETTER_AUTH_ACCOUNT,
-    databaseHooks: mergePhysioDatabaseHooks(sql) as NonNullable<
+    databaseHooks: mergePhysioDatabaseHooks(sql, config) as NonNullable<
       Parameters<typeof betterAuth>[0]["databaseHooks"]
     >,
     plugins,
@@ -183,7 +154,7 @@ export function createBetterAuthInstance(
         if (!isEmailAllowlisted(config.allowedGoogleEmails, email)) {
           return { error: ALLOWLIST_REFUSAL_ERROR };
         }
-        if (email) {
+        if (email && !options.skipValidateUserInfoPractitionerCheck) {
           const practitioner = await findPractitionerByEmail(sql, email);
           if (!practitioner) {
             return { error: ALLOWLIST_REFUSAL_ERROR };

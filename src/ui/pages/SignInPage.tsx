@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { postAuthSignInSocial } from "../api/auth-client.js";
 import { SIGN_IN_WITH_GOOGLE_LABEL, AUTH_ERROR_MESSAGE } from "../copy/sign-in.js";
 import "../styles/sign-in.css";
 
@@ -14,14 +15,9 @@ export function SignInPage({ returnTo, authError }: SignInPageProps) {
   async function signInWithGoogle() {
     setBusy(true);
     try {
-      const response = await fetch("/api/auth/sign-in/social", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          provider: "google",
-          callbackURL: safeReturn,
-        }),
+      const response = await postAuthSignInSocial({
+        provider: "google",
+        callbackURL: safeReturn,
       });
       const payload = (await response.json()) as { url?: string };
       if (payload.url) {

@@ -111,7 +111,7 @@ async function seedApprovedForPractitioner(
 }
 
 describe("Exercise library practitioner session binding (integration)", () => {
-  it("returns 401 on each exercise route without a session and performs no writes", async () => {
+  it("returns 401 on each exercise route without a session at the app guard (handleRequest)", async () => {
     const storage = await openMigratedDatabase();
     const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
     await seedApprovedForPractitioner(storage, practA, EX_B);
