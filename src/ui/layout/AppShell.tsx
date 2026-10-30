@@ -16,7 +16,11 @@ export function AppShell({ requestsReviewCount = 0 }: AppShellProps) {
         <div className="shell-frame">
           <header className="shell-header">
             <div className="shell-header-inner">
-              <div className="shell-brand-mark" aria-hidden>
+              <div
+                className="shell-brand-mark"
+                aria-hidden
+                data-testid="shell-brand-mark"
+              >
                 D
               </div>
               <MainNav variant="top" requestsReviewCount={requestsReviewCount} />
