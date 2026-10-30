@@ -21,6 +21,7 @@ import {
   CookieJar,
   MCP_OAUTH_TEST_BASE,
   allowConsent,
+  authorizationCodeFromConsentRedirect,
   buildAuthorizeUrl,
   callMcpInitialize,
   completeGoogleSignIn,
@@ -32,6 +33,9 @@ import {
   expectPlainFailClosedAsync,
   followAuthorizeToConsent,
   mcpResourceUrl,
+  mcpOAuthExactOriginAttackOrigins,
+  postConsentAllow,
+  postConsentDeny,
   randomPkceVerifier,
   requestWithJar,
   signTestMcpAccessToken,
@@ -493,6 +497,30 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
       expect(response.status).toBe(403);
       if (response.status === 302) {
         throw new Error("mutant: wrong CSRF header was accepted");
+      }
+    });
+
+    it("refuses exact-origin impostors on allow and deny (startsWith mutant)", async () => {
+      const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+      const jar = new CookieJar();
+      await setupConsentPending(deps, jar);
+      for (const origin of mcpOAuthExactOriginAttackOrigins()) {
+        const auditBefore = await countPractitionerConsentAudit(deps);
+        const unconsumedBefore = await countUnconsumedPending(deps);
+        const allow = await postConsentAllow(deps, jar, { origin });
+        expect(allow.status).toBe(403);
+        expectConsentFrameHeaders(allow);
+        await expectPlainFailClosedAsync(allow);
+        expect(authorizationCodeFromConsentRedirect(allow)).toBeNull();
+        expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+        expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
+
+        const deny = await postConsentDeny(deps, jar, { origin });
+        expect(deny.status).toBe(403);
+        expectConsentFrameHeaders(deny);
+        await expectPlainFailClosedAsync(deny);
+        expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
+        expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
       }
     });
 
