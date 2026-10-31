@@ -1,6 +1,6 @@
 # Exercise requests mutants (DIDI-1004 round 3, final)
 
-Branch head: `fdb8bc6be8112a8ab410071f8e65f24b9ea6f6e6` (after merge `cfa23f0` and atomic approve batch).
+Branch head: `fa512a93900a9d2ae37fbf350736d506f908cfa2` (mutants exercised on `fdb8bc6be8112a8ab410071f8e65f24b9ea6f6e6`; after merge `cfa23f0` and atomic approve batch).
 
 Each row was applied as a one-file (or noted) edit on that head, then **`npm test`** (full Vitest suite). Temp dir: `TMPDIR=/tmp/physio-npm-tmp`. Only the touched path was reverted with `git checkout HEAD -- <path>` before the next row.
 
