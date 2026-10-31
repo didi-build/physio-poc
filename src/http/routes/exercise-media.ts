@@ -7,6 +7,8 @@ import {
 } from "../../services/exercise-media/index.js";
 import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
 import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
+import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
+import type { PractitionerSession } from "../../auth/auth-port.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -86,19 +88,34 @@ async function readJsonBody(request: Request): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
+export type HandleExerciseMediaOptions = {
+  sessionPractitioner?: PractitionerSession | null;
+};
+
 export async function handleExerciseMediaRequest(
   request: Request,
   deps: AppDependencies,
+  options: HandleExerciseMediaOptions = {},
 ): Promise<Response | null> {
+  const sessionPractitioner = options.sessionPractitioner;
   const url = new URL(request.url);
   const path = url.pathname;
+
+  function bindPathPractitioner(pathPractitionerId: string): string | Response {
+    return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
+  }
 
   const quotaMatch = path.match(
     /^\/api\/practitioners\/([^/]+)\/media-regeneration-quota$/,
   );
   if (quotaMatch && request.method === "GET") {
+    const pathPractitionerId = quotaMatch[1] ?? "";
+    const practitionerId = bindPathPractitioner(pathPractitionerId);
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
     try {
-      const quota = await mediaService(deps).getRegenerationQuota(quotaMatch[1] ?? "");
+      const quota = await mediaService(deps).getRegenerationQuota(practitionerId);
       return Response.json(quota, { headers: JSON_HEADERS });
     } catch (error) {
       const response = routeErrorResponse(error);
@@ -146,7 +163,12 @@ export async function handleExerciseMediaRequest(
     return null;
   }
 
-  const practitionerId = versionMatch[1] ?? "";
+  const pathPractitionerId = versionMatch[1] ?? "";
+  const boundPractitionerId = bindPathPractitioner(pathPractitionerId);
+  if (boundPractitionerId instanceof Response) {
+    return boundPractitionerId;
+  }
+  const practitionerId = boundPractitionerId;
   const exerciseVersionId = versionMatch[2] ?? "";
   const action = versionMatch[3];
   const service = mediaService(deps);
