@@ -21,6 +21,8 @@ const VALIDATE_STEP = "Validate production auth secrets";
 const PUT_STEP = "Put production Worker auth secrets";
 const MIGRATE_STEP = "Apply production D1 migrations";
 
+const DEFAULT_GITHUB_SHELL = "bash -e {0}";
+
 const FIXTURE = {
   GOOGLE_CLIENT_ID: "fixture-google-client-id",
   GOOGLE_CLIENT_SECRET: "fixture-google-client-secret",
@@ -55,12 +57,12 @@ function loadDeployWorkflowFrom(path: string): DeployWorkflow {
   return doc as DeployWorkflow;
 }
 
-function stepRunBlock(workflow: DeployWorkflow, stepName: string): string {
+function stepByName(workflow: DeployWorkflow, stepName: string): WorkflowStep {
   const step = workflow.jobs.deploy.steps.find((entry) => entry.name === stepName);
-  if (!step?.run) {
-    throw new Error(`missing run block for ${stepName}`);
+  if (!step) {
+    throw new Error(`missing step: ${stepName}`);
   }
-  return step.run;
+  return step;
 }
 
 function createWranglerStubBin(tempDir: string): {
@@ -118,8 +120,17 @@ if (process.argv.includes("--remote")) process.exit(99);
   );
 }
 
-function runGithubDefaultShell(
+function githubShellArgv(
+  shellTemplate: string | undefined,
+  scriptPath: string,
+): string[] {
+  const template = shellTemplate?.trim() || DEFAULT_GITHUB_SHELL;
+  return template.split(/\s+/).map((token) => (token === "{0}" ? scriptPath : token));
+}
+
+function runGithubStepShell(
   runBlock: string,
+  shellTemplate: string | undefined,
   env: NodeJS.ProcessEnv,
   binDir: string,
   logPath: string,
@@ -128,7 +139,12 @@ function runGithubDefaultShell(
   const scriptPath = join(tempDir, "github-step.sh");
   writeFileSync(scriptPath, runBlock, "utf8");
   chmodSync(scriptPath, 0o755);
-  return spawnSync("bash", ["-e", scriptPath], {
+  const argv = githubShellArgv(shellTemplate, scriptPath);
+  const command = argv[0];
+  if (!command) {
+    throw new Error("empty GitHub shell command");
+  }
+  return spawnSync(command, argv.slice(1), {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
@@ -166,27 +182,43 @@ function assertNoSensitiveValuesInOutput(output: string): void {
 
 describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", () => {
   const workflow = loadDeployWorkflowFrom(DEPLOY_WORKFLOW_PATH);
-  const validateRun = stepRunBlock(workflow, VALIDATE_STEP);
-  const putRun = stepRunBlock(workflow, PUT_STEP);
-  const migrateRun = stepRunBlock(workflow, MIGRATE_STEP);
+  const validateStep = stepByName(workflow, VALIDATE_STEP);
+  const putStep = stepByName(workflow, PUT_STEP);
+  const validateRun = validateStep.run ?? "";
+  const putRun = putStep.run ?? "";
+  const validateShell = validateStep.shell;
+  const putShell = putStep.shell;
+  const migrateRun = stepByName(workflow, MIGRATE_STEP).run ?? "";
 
-  it("runs parsed Validate under bash -e and masks only on add-mask lines when preflight passes", () => {
+  it("runs parsed Validate under the step shell and masks only on add-mask lines when preflight passes", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-b2-validate-"));
     const { binDir, logPath, readLog } = createWranglerStubBin(tempDir);
-    const result = runGithubDefaultShell(validateRun, FIXTURE, binDir, logPath);
+    const result = runGithubStepShell(
+      validateRun,
+      validateShell,
+      FIXTURE,
+      binDir,
+      logPath,
+    );
     expect(result.status, combinedOutput(result)).toBe(0);
-    assertSensitiveValuesOnlyOnMaskLines(shellText(result.stdout));
-    assertNoSensitiveValuesInOutput(shellText(result.stderr));
+    assertSensitiveValuesOnlyOnMaskLines(combinedOutput(result));
     expect(readLog()).toBe("");
   });
 
-  it("fails Validate under bash -e without masks, wrangler, migrate, or put when allowlist is invalid", () => {
+  it("fails Validate under the step shell without masks, wrangler, migrate, or put when allowlist is invalid", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-b2-validate-fail-"));
     const { binDir, logPath, readLog } = createWranglerStubBin(tempDir);
+    const stubWrangler = join(tempDir, "wrangler-stub.mjs");
+    writeNodeWranglerStub(stubWrangler);
     const chained = `${validateRun}\n${migrateRun}\n${putRun}`;
-    const result = runGithubDefaultShell(
+    const result = runGithubStepShell(
       chained,
-      { ...FIXTURE, PHYSIO_ALLOWED_GOOGLE_EMAILS: "not-an-email" },
+      validateShell,
+      {
+        ...FIXTURE,
+        PHYSIO_ALLOWED_GOOGLE_EMAILS: "not-an-email",
+        PHYSIO_WRANGLER_JS_PATH: stubWrangler,
+      },
       binDir,
       logPath,
     );
@@ -197,7 +229,7 @@ describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", (
     expect(log).not.toContain("--remote");
   });
 
-  it("runs parsed Put under bash -e with stub wrangler bulk and masks before put", () => {
+  it("runs parsed Put under the step shell with stub wrangler bulk and masks before put on stdout and stderr", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-b2-put-"));
     const { binDir, logPath, readLog } = createWranglerStubBin(tempDir);
     const configPath = join(tempDir, "wrangler.ci.jsonc");
@@ -205,8 +237,9 @@ describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", (
     const putRunWithConfig = putRun.replaceAll("wrangler.ci.jsonc", configPath);
     const stubWrangler = join(tempDir, "wrangler-stub.mjs");
     writeNodeWranglerStub(stubWrangler);
-    const result = runGithubDefaultShell(
+    const result = runGithubStepShell(
       putRunWithConfig,
+      putShell,
       {
         ...FIXTURE,
         PHYSIO_WRANGLER_JS_PATH: stubWrangler,
@@ -215,14 +248,14 @@ describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", (
       logPath,
     );
     expect(result.status, combinedOutput(result)).toBe(0);
-    assertSensitiveValuesOnlyOnMaskLines(shellText(result.stdout));
+    assertSensitiveValuesOnlyOnMaskLines(combinedOutput(result));
     const log = readLog();
     expect(log).toContain("secret");
     expect(log).toContain("bulk");
     expect(log).not.toContain("--remote");
   });
 
-  it("fails Put under bash -e before stub wrangler when preflight fails", () => {
+  it("fails Put under the step shell before stub wrangler when preflight fails", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-b2-put-fail-"));
     const { binDir, logPath, readLog } = createWranglerStubBin(tempDir);
     const configPath = join(tempDir, "wrangler.ci.jsonc");
@@ -230,8 +263,9 @@ describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", (
     const putRunWithConfig = putRun.replaceAll("wrangler.ci.jsonc", configPath);
     const stubWrangler = join(tempDir, "wrangler-stub.mjs");
     writeNodeWranglerStub(stubWrangler);
-    const result = runGithubDefaultShell(
+    const result = runGithubStepShell(
       putRunWithConfig,
+      putShell,
       {
         ...FIXTURE,
         PHYSIO_ALLOWED_GOOGLE_EMAILS: ",",
@@ -241,6 +275,7 @@ describe("production deploy Validate and Put bash integration (DIDI-1044 B2)", (
       logPath,
     );
     expect(result.status).not.toBe(0);
+    assertNoSensitiveValuesInOutput(combinedOutput(result));
     expect(readLog()).not.toContain("bulk");
   });
 });

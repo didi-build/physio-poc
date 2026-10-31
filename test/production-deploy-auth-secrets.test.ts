@@ -255,14 +255,43 @@ describe("production deploy preflight (DIDI-1153 3(b))", () => {
   });
 
   it("matches Worker allowlist comma split, trim, and empty-entry drop", () => {
-    for (const raw of ["a@example.com,b@c.example.org", ",", " , , ", "  x@y.z  "]) {
+    /** DIDI-1154: `a@.` and `a@x.` parity only; deploy shape rules may change later. */
+    const parityInputs: Array<{ raw: string; note?: string }> = [
+      { raw: "," },
+      { raw: " , , " },
+      { raw: "   " },
+      { raw: "\t\t" },
+      { raw: "\u00a0\u00a0" },
+      { raw: "\ufeffcoach@example.com" },
+      { raw: "a@example.com;b@c.example.org" },
+      { raw: "Coach@Example.com" },
+      { raw: " COACH@EXAMPLE.COM " },
+      { raw: "coach@example.com" },
+      { raw: "coach@example.com,admin@example.org" },
+      { raw: ",coach@example.com," },
+      { raw: "coach@example.com,,admin@example.org" },
+      { raw: "a@example.com,b@c.example.org" },
+      { raw: "coach@example.com\nadmin@example.org" },
+      { raw: "  x@y.z  " },
+      { raw: "not-an-email" },
+      { raw: "ok@example.com,not-an-email" },
+      { raw: "coach@localhost" },
+      { raw: "fake@" },
+      { raw: "@example.com" },
+      { raw: "x@y.z" },
+      { raw: "a@example.com,\tb@c.example.org" },
+      { raw: "a@.", note: "DIDI-1154 current behaviour" },
+      { raw: "a@x.", note: "DIDI-1154 current behaviour" },
+      { raw: "coach@example.com\tadmin@example.org", note: "DIDI-1154 tab whitespace" },
+    ];
+    for (const { raw } of parityInputs) {
       expect([...parseAllowedGoogleEmailsRaw(raw)].sort()).toEqual(
         [...parseAllowedGoogleEmails(raw)].sort(),
       );
     }
   });
 
-  it("rejects comma-only, whitespace-comma, invalid, and mixed allowlists without echoing values", () => {
+  it("rejects comma-only, whitespace-comma, invalid, mixed, and no-dot allowlists without echoing values", () => {
     const invalidMessage =
       "PHYSIO_ALLOWED_GOOGLE_EMAILS is invalid for production deploy.";
     for (const allowlist of [
@@ -270,6 +299,7 @@ describe("production deploy preflight (DIDI-1153 3(b))", () => {
       " , , ",
       "not-an-email",
       "ok@example.com,not-an-email",
+      "coach@localhost",
     ]) {
       const run = runAssertScript({
         ...FIXTURE_SECRET_VALUES,
