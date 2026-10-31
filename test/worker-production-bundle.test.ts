@@ -9,6 +9,7 @@ import {
   type ParseError,
 } from "jsonc-parser";
 import { describe, expect, it } from "vitest";
+import { ensureWranglerUiAssetsDirectory } from "./helpers/wrangler-ui-assets-fixture.js";
 
 const REPO_ROOT = process.cwd();
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
@@ -47,6 +48,7 @@ describe("Worker production bundle (DIDI-1153)", () => {
     expect(wrangler.main).toBe("src/entry/worker.ts");
 
     const outdir = await mkdtemp(join(tmpdir(), "physio-worker-bundle-"));
+    const assetsFixture = ensureWranglerUiAssetsDirectory();
     try {
       execFileSync(
         join(REPO_ROOT, "node_modules", ".bin", "wrangler"),
@@ -73,6 +75,7 @@ describe("Worker production bundle (DIDI-1153)", () => {
         expect(combined).not.toContain(marker);
       }
     } finally {
+      assetsFixture.cleanup();
       await rm(outdir, { recursive: true, force: true });
     }
   }, 120_000);

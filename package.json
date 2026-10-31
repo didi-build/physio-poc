@@ -17,7 +17,7 @@
     "dev": "tsx src/entry/node.ts",
     "build:ui": "vite build",
     "test": "vitest run",
-    "test:worker": "vitest run test/worker-entry-production-auth.test.ts test/worker-entry-fail-closed.test.ts test/worker-entry.test.ts test/worker-exercise-library.test.ts test/mcp-worker-local.test.ts test/d1-binding-production-deploy.test.ts test/worker-production-bundle.test.ts test/worker-production-auth-wiring.test.ts",
+    "test:worker": "vitest run test/worker-entry-production-auth.test.ts test/worker-entry-fail-closed.test.ts test/worker-entry.test.ts test/worker-exercise-library.test.ts test/mcp-worker-local.test.ts test/d1-binding-production-deploy.test.ts test/worker-production-bundle.test.ts test/worker-production-auth-wiring.test.ts test/worker-production-ui-static.test.ts",
     "test:watch": "vitest",
     "secrets": "secretlint \"**/*\"",
     "conflict-markers": "node scripts/check-conflict-markers.mjs",

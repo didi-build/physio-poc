@@ -210,6 +210,7 @@ describe("production deploy workflow (DIDI-1031)", () => {
     expect(validateIdx).toBeLessThan(prepareIdx);
     expect(prepareIdx).toBeLessThan(migrateIdx);
     expect(migrateIdx).toBeLessThan(putIdx);
+    expect(putIdx).toBeLessThan(stepIndexByName(jobBlock, "Build UI static assets"));
     expect(putIdx).toBeLessThan(deployIdx);
   });
 
@@ -596,6 +597,7 @@ describe("deploy job step inventory", () => {
       "Prepare Wrangler config (production D1 ID)",
       "Apply production D1 migrations",
       "Put production Worker auth secrets",
+      "Build UI static assets",
       "Deploy to Cloudflare Workers",
     ]);
   });

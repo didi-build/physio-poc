@@ -90,6 +90,8 @@ jobs:
           echo "::add-mask::${BETTER_AUTH_SECRET}"
           echo "::add-mask::${PHYSIO_ALLOWED_GOOGLE_EMAILS}"
           node scripts/put-production-worker-secrets.mjs --config wrangler.ci.jsonc
+      - name: Build UI static assets
+        run: npm run build:ui
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
         with:

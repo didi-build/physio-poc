@@ -4,7 +4,7 @@ import type { UiStaticPort } from "../../http/ui-static-port.js";
 
 export function createDistUiStaticPort(): UiStaticPort {
   return {
-    tryServeAsset(pathname: string): Response | null {
+    async tryServeAsset(pathname: string): Promise<Response | null> {
       if (!pathname.startsWith("/assets/")) {
         return null;
       }
@@ -24,7 +24,7 @@ export function createDistUiStaticPort(): UiStaticPort {
         return null;
       }
     },
-    renderAppShell(): Response | null {
+    async renderAppShell(): Promise<Response | null> {
       try {
         const html = readFileSync(join(process.cwd(), "dist/ui/index.html"), "utf8");
         return new Response(html, {

@@ -137,7 +137,7 @@ export async function handleRequest(
     }
   }
 
-  const asset = ui.tryServeAsset(pathname);
+  const asset = await ui.tryServeAsset(pathname);
   if (asset) {
     return asset;
   }
@@ -223,7 +223,7 @@ export async function handleRequest(
   }
 
   if (request.method === "GET" || request.method === "HEAD") {
-    const shell = ui.renderAppShell();
+    const shell = await ui.renderAppShell();
     if (shell) {
       return shell;
     }
