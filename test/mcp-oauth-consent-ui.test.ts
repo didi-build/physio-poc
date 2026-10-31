@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { JSDOM } from "jsdom";
+import { describe, expect, it, vi } from "vitest";
 import {
   CHATGPT_CIMD_CLIENT_ID,
   CHATGPT_REDIRECT_URI,
   CookieJar,
   MCP_OAUTH_TEST_BASE,
+  OTHER_CIMD_CLIENT_ID,
+  OTHER_REDIRECT_URI,
   allowConsent,
   buildAuthorizeUrl,
   completeGoogleSignIn,
@@ -12,6 +15,7 @@ import {
   defaultCimdDocuments,
   followAuthorizeToConsent,
   mcpResourceUrl,
+  postConsentDeny,
   randomPkceVerifier,
   requestWithJar,
 } from "./helpers/mcp-oauth-test-utils.js";
@@ -71,6 +75,9 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(html).toContain("Allow");
     expect(html).toContain(`Signed in as ${FAKE_GOOGLE_ALLOWED_EMAIL}`);
     expect(html).toContain("Not you? Sign out");
+    expect(html).toContain("consent-list-icon-can");
+    expect(html).toContain("consent-list-icon-cant");
+    expect(html).toContain("consent-sign-out-wrap");
   });
 
   it("escapes HTML in the client display name", async () => {
@@ -97,6 +104,42 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     const html = await response.text();
     expect(html).not.toMatch(/The app calls itself “<script>/);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+
+  it("escapes less-than in inline JSON for the consent script", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    const response = await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const html = await response.text();
+    expect(html).not.toMatch(/var csrfToken = "[^"]*<[^"]*"/);
+    expect(html).toMatch(/var csrfToken = /);
+  });
+
+  it("sets Cache-Control no-store on consent HTML", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    const response = await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("requires consent again for another practitioner with the same client, redirect_uri and scopes", async () => {
@@ -132,6 +175,35 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     );
     expect(consentB.status).toBe(200);
     expect(await consentB.text()).toContain("Allow read-only access to Didi Physio?");
+  });
+
+  it("requires consent again when client_id changes but redirect_uri and scopes match", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    await allowConsent(deps, jar);
+    const consent = await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: OTHER_CIMD_CLIENT_ID,
+        redirectUri: OTHER_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    expect(consent.status).toBe(200);
+    expect(await consent.text()).toContain("Allow read-only access to Didi Physio?");
   });
 
   it("requires consent again when redirect_uri changes", async () => {
@@ -228,23 +300,26 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(html).toContain('id="invalid-heading"');
     expect(html).toContain('tabindex="-1"');
     expect(html).toContain('document.getElementById("invalid-heading").focus()');
+    expect(html).toContain("consent-wordmark-centered");
     expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("keeps the pending request after sign-out and shows consent for the next allowlisted account", async () => {
+  it("keeps the pending request after sign-out, shows consent for B, and completes allow as B", async () => {
     const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
       allowedEmails: `${FAKE_GOOGLE_ALLOWED_EMAIL},${FAKE_GOOGLE_ALLOWED_B_EMAIL}`,
     });
     await seedTwoPractitioners(deps);
     const jarA = new CookieJar();
     await completeGoogleSignIn(deps, jarA, "allowed");
+    const verifier = randomPkceVerifier();
     await followAuthorizeToConsent(
       deps,
       jarA,
       buildAuthorizeUrl({
         clientId: CHATGPT_CIMD_CLIENT_ID,
         redirectUri: CHATGPT_REDIRECT_URI,
-        verifier: randomPkceVerifier(),
+        verifier,
         resource: mcpResourceUrl(),
       }),
     );
@@ -258,8 +333,8 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     );
     expect(signOut.ok).toBe(true);
     expect(jarA.get("physio_mcp_pending_consent_id")).toBe(pendingBefore);
-    const pendingRow = await deps.sql.first<{ id: string }>(
-      "SELECT id FROM physio_mcp_pending_consent WHERE id = ?",
+    const pendingRow = await deps.sql.first<{ id: string; practitioner_id: string }>(
+      "SELECT id, practitioner_id FROM physio_mcp_pending_consent WHERE id = ?",
       [pendingBefore!],
     );
     expect(pendingRow?.id).toBe(pendingBefore);
@@ -272,6 +347,13 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     );
     expect(resume.status).toBe(200);
     expect(await resume.text()).toContain("Allow read-only access to Didi Physio?");
+    const rebound = await deps.sql.first<{ practitioner_id: string }>(
+      "SELECT practitioner_id FROM physio_mcp_pending_consent WHERE id = ?",
+      [pendingBefore!],
+    );
+    expect(rebound?.practitioner_id).toBeTruthy();
+    const redirect = await allowConsent(deps, jarA);
+    expect(redirect.searchParams.get("code")).toBeTruthy();
   });
 
   it("shows the expired page after the pending TTL", async () => {
@@ -306,9 +388,11 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(html).toContain("Go back to the app you were connecting and start again.");
     expect(html).toContain('id="expired-heading"');
     expect(html).toContain('tabindex="-1"');
+    expect(html).toContain('document.getElementById("expired-heading").focus()');
+    expect(html).toContain("consent-wordmark-centered");
   });
 
-  it("disables Allow and Deny while a POST is in flight", async () => {
+  it("disables Allow and Deny while a consent POST is in flight", async () => {
     const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
     const jar = new CookieJar();
     await completeGoogleSignIn(deps, jar);
@@ -328,7 +412,173 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       jar,
     );
     const html = await response.text();
-    expect(html).toContain("if (deny) deny.disabled = next");
-    expect(html).toContain("if (allow) allow.disabled = next");
+    const dom = new JSDOM(html, {
+      url: MCP_OAUTH_TEST_BASE,
+      runScripts: "outside-only",
+    });
+    const { window } = dom;
+    let resolveFetch!: (value: Response) => void;
+    const fetchGate = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    window.fetch = vi.fn(() => fetchGate) as unknown as typeof window.fetch;
+    for (const script of window.document.querySelectorAll("script")) {
+      window.eval(script.textContent ?? "");
+    }
+    const allow = window.document.getElementById("consent-allow") as HTMLButtonElement;
+    const deny = window.document.getElementById("consent-deny") as HTMLButtonElement;
+    allow.click();
+    expect(allow.disabled).toBe(true);
+    expect(deny.disabled).toBe(true);
+    resolveFetch(
+      new Response(null, {
+        status: 302,
+        headers: { Location: `${CHATGPT_REDIRECT_URI}?code=test` },
+      }),
+    );
+    await fetchGate;
+  });
+
+  it("shows After Deny copy and Cache-Control on deny", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const denyResponse = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jar,
+      { method: "POST" },
+    );
+    expect(denyResponse.headers.get("Cache-Control")).toBe("no-store");
+    const html = await denyResponse.text();
+    expect(html).toContain("Not connected");
+    expect(html).toContain("Nothing was shared. Taking you back to chatgpt.com.");
+    expect(html).toContain("consent-status-row");
+    expect(html).toContain("consent-status-card");
+  });
+
+  it("shows the expired page when deny is posted on an already consumed pending row", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    await allowConsent(deps, jar);
+    const denyAgain = await postConsentDeny(deps, jar);
+    expect(denyAgain.status).toBe(200);
+    const html = await denyAgain.text();
+    expect(html).toContain("This request has expired");
+  });
+
+  it("refuses allow when pending redirect_uri no longer matches the registered client", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const pendingId = jar.get("physio_mcp_pending_consent_id");
+    expect(pendingId).toBeTruthy();
+    await deps.sql.run(
+      "UPDATE physio_mcp_pending_consent SET redirect_uri = ? WHERE id = ?",
+      ["https://evil.example/callback", pendingId!],
+    );
+    const response = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jar,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("This app can’t connect");
+  });
+
+  it("returns 403 not expired HTML when a non-owner posts allow on an expired pending row", async () => {
+    let nowMs = 3_000_000_000_000;
+    const clock = { nowMs: () => nowMs };
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
+      allowedEmails: `${FAKE_GOOGLE_ALLOWED_EMAIL},${FAKE_GOOGLE_ALLOWED_B_EMAIL}`,
+      consentClock: clock,
+    });
+    await seedTwoPractitioners(deps);
+    const jarA = new CookieJar();
+    await completeGoogleSignIn(deps, jarA, "allowed");
+    await followAuthorizeToConsent(
+      deps,
+      jarA,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const stolenPending = jarA.get("physio_mcp_pending_consent_id");
+    const stolenCsrf = jarA.get("physio_mcp_consent_csrf");
+    nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+    const jarB = new CookieJar();
+    await completeGoogleSignIn(deps, jarB, "allowed-b");
+    jarB.set("physio_mcp_pending_consent_id", stolenPending!);
+    jarB.set("physio_mcp_consent_csrf", stolenCsrf!);
+    const response = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jarB,
+      { method: "POST" },
+    );
+    expect(response.status).toBe(403);
+    const text = await response.text();
+    expect(text).not.toContain("This request has expired");
+  });
+
+  it("renders After Allow in the status card layout", async () => {
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const allowResponse = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jar,
+      { method: "POST" },
+    );
+    const html = await allowResponse.text();
+    expect(html).toContain("Connected");
+    expect(html).toContain("Taking you back to chatgpt.com.");
+    expect(html).toContain("consent-status-row");
   });
 });

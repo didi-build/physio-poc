@@ -82,6 +82,7 @@ function plainStatus(status: number, extraHeaders?: HeadersInit): Response {
 function framedHtml(html: string, status = 200, extraHeaders?: HeadersInit): Response {
   const headers = new Headers(extraHeaders);
   headers.set("content-type", "text/html; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
   return new Response(html, withMcpOAuthConsentFrameHeaders({ status, headers }));
 }
 
@@ -398,10 +399,6 @@ async function loadPendingForRequest(
   if (!pending) {
     return { ok: false, response: plainStatus(403) };
   }
-  const nowMs = (clock ?? systemPhysioMcpConsentClock).nowMs();
-  if (!isPhysioMcpPendingConsentUsable(pending, nowMs)) {
-    return { ok: false, response: await expiredResponse(authBaseUrl) };
-  }
   if (pending.practitioner_id !== practitioner.practitionerId) {
     return { ok: false, response: plainStatus(403) };
   }
@@ -413,7 +410,27 @@ async function loadPendingForRequest(
   if (csrfHash !== pending.csrf_token_hash) {
     return { ok: false, response: plainStatus(403) };
   }
+  const nowMs = (clock ?? systemPhysioMcpConsentClock).nowMs();
+  if (!isPhysioMcpPendingConsentUsable(pending, nowMs)) {
+    return { ok: false, response: await expiredResponse(authBaseUrl) };
+  }
   return { ok: true, pendingId };
+}
+
+async function pendingRedirectUriStillRegistered(
+  sql: SqlStoragePort,
+  pending: { client_id: string; redirect_uri: string },
+  authBaseUrl: string,
+): Promise<Response | null> {
+  const resolved = await resolveOAuthClientForConsent(
+    sql,
+    pending.client_id,
+    pending.redirect_uri,
+  );
+  if (!resolved) {
+    return invalidClientResponse(authBaseUrl);
+  }
+  return null;
 }
 
 function refuseCrossOriginConsentPost(
@@ -446,6 +463,14 @@ async function handleConsentAllow(
   if (!pending) {
     return plainStatus(403);
   }
+  const redirectGuard = await pendingRedirectUriStillRegistered(
+    input.sql,
+    pending,
+    input.authBaseUrl,
+  );
+  if (redirectGuard) {
+    return redirectGuard;
+  }
   const consumed = await markPhysioMcpPendingConsentConsumed(
     input.sql,
     pending.id,
@@ -474,6 +499,14 @@ async function handleConsentDeny(
   const pending = await findPhysioMcpPendingConsentById(input.sql, loaded.pendingId);
   if (!pending) {
     return plainStatus(403);
+  }
+  const redirectGuard = await pendingRedirectUriStillRegistered(
+    input.sql,
+    pending,
+    input.authBaseUrl,
+  );
+  if (redirectGuard) {
+    return redirectGuard;
   }
   const consumed = await markPhysioMcpPendingConsentConsumed(
     input.sql,

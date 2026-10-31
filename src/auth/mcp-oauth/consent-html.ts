@@ -1,13 +1,22 @@
-import { escapeHtml } from "./escape-html.js";
+import { escapeHtml, jsonForHtmlScript } from "./escape-html.js";
 import { CONSENT_PAGE_STYLES } from "./consent-page-styles.js";
 
 const CONSENT_TAB_TITLE = "Connect an app · Didi Physio";
 
-function wordmarkHtml(): string {
-  return `<div class="consent-wordmark">
+const CONSENT_LIST_ICON_CAN = `<svg class="consent-list-icon consent-list-icon-can" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
+const CONSENT_LIST_ICON_CANT = `<svg class="consent-list-icon consent-list-icon-cant" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+
+function wordmarkHtml(centered = false): string {
+  const centerClass = centered ? " consent-wordmark-centered" : "";
+  return `<div class="consent-wordmark${centerClass}">
   <span class="consent-wordmark-tile" aria-hidden="true">D</span>
   <span class="consent-wordmark-text">Didi Physio</span>
 </div>`;
+}
+
+function consentListItem(icon: string, text: string): string {
+  return `<li>${icon}<span>${escapeHtml(text)}</span></li>`;
 }
 
 function pageShell(title: string, body: string, extraHead = ""): string {
@@ -39,11 +48,14 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
   const host = escapeHtml(model.host);
   const name = escapeHtml(model.clientName);
   const email = escapeHtml(model.email);
+  const csrfJson = jsonForHtmlScript(model.csrfToken);
+  const signInReturnJson = jsonForHtmlScript(model.signInReturnUrl);
+  const csrfHeaderJson = jsonForHtmlScript("X-Physio-Mcp-Consent-Csrf");
 
   const script = `<script>
 (function () {
   var busy = false;
-  var csrfToken = ${JSON.stringify(model.csrfToken)};
+  var csrfToken = ${csrfJson};
   function setBusy(next) {
     busy = next;
     var deny = document.getElementById("consent-deny");
@@ -73,7 +85,7 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
       method: "POST",
       credentials: "include",
       redirect: "manual",
-      headers: { ${JSON.stringify("X-Physio-Mcp-Consent-Csrf")}: csrfToken }
+      headers: { ${csrfHeaderJson}: csrfToken }
     }).then(followConsentResponse).catch(function () { setBusy(false); });
   }
   var denyBtn = document.getElementById("consent-deny");
@@ -83,7 +95,7 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
   var signOut = document.getElementById("consent-sign-out");
   if (signOut) signOut.addEventListener("click", function () {
     fetch("/api/auth/sign-out", { method: "POST", credentials: "include" }).then(function () {
-      window.location.href = ${JSON.stringify(model.signInReturnUrl)};
+      window.location.href = ${signInReturnJson};
     });
   });
 })();
@@ -94,17 +106,21 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
     ${wordmarkHtml()}
     <p class="consent-host-line">Request from <span class="consent-host-mono">${host}</span></p>
     <h1 id="consent-heading" class="consent-heading">Allow read-only access to Didi Physio?</h1>
-    <p class="consent-name-line">The app calls itself “${name}” <span class="consent-tag">Self-reported</span></p>
+    <p class="consent-name-line">The app calls itself “${name}”</p>
+    <p class="consent-tag">Self-reported</p>
     <p class="consent-list-heading">It can</p>
     <ul class="consent-list">
-      <li>Search your approved exercises</li>
-      <li>Search your routines</li>
-      <li>See your programs and their share links</li>
+      ${consentListItem(CONSENT_LIST_ICON_CAN, "Search your approved exercises")}
+      ${consentListItem(CONSENT_LIST_ICON_CAN, "Search your routines")}
+      ${consentListItem(CONSENT_LIST_ICON_CAN, "See your programs and their share links")}
     </ul>
     <p class="consent-list-heading">It can’t</p>
     <ul class="consent-list">
-      <li>Create, edit, publish or delete anything</li>
-      <li>For changes, it sends you a link to the right page here instead</li>
+      ${consentListItem(CONSENT_LIST_ICON_CANT, "Create, edit, publish or delete anything")}
+      ${consentListItem(
+        CONSENT_LIST_ICON_CANT,
+        "For changes, it sends you a link to the right page here instead",
+      )}
     </ul>
     <p class="consent-muted-line">Didi Physio never stores or shares patient details.</p>
     <p class="consent-muted-line">Only allow it if you just started connecting from ${host}.</p>
@@ -113,7 +129,7 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
       <button type="button" class="consent-btn consent-btn-allow" id="consent-allow">Allow</button>
     </div>
     <p class="consent-account-line">Signed in as ${email}</p>
-    <button type="button" class="consent-sign-out" id="consent-sign-out">Not you? Sign out</button>
+    <p class="consent-sign-out-wrap"><button type="button" class="consent-sign-out-link" id="consent-sign-out">Not you? Sign out</button></p>
   </section>
 </main>
 ${script}`;
@@ -126,7 +142,7 @@ export function renderInvalidClientPageHtml(homeHref: string): string {
   const focus = `<script>document.getElementById("invalid-heading").focus();</script>`;
   const body = `<main class="consent-root">
   <div class="consent-card consent-card-centered" role="alert" aria-labelledby="invalid-heading">
-    ${wordmarkHtml()}
+    ${wordmarkHtml(true)}
     <div class="consent-icon-wrap consent-icon-wrap-warn" aria-hidden="true">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
     </div>
@@ -145,7 +161,7 @@ export function renderExpiredRequestPageHtml(homeHref: string): string {
   const focus = `<script>document.getElementById("expired-heading").focus();</script>`;
   const body = `<main class="consent-root">
   <div class="consent-card consent-card-centered" role="alert" aria-labelledby="expired-heading">
-    ${wordmarkHtml()}
+    ${wordmarkHtml(true)}
     <div class="consent-icon-wrap consent-icon-wrap-clock" aria-hidden="true">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
     </div>
@@ -159,42 +175,41 @@ ${focus}`;
   return pageShell(CONSENT_TAB_TITLE, body);
 }
 
-export function renderAfterAllowPageHtml(host: string, redirectUrl: string): string {
-  const hostEsc = escapeHtml(host);
+function renderAfterDecisionPageHtml(
+  heading: string,
+  bodyLine: string,
+  redirectUrl: string,
+): string {
   const redirect = escapeHtml(redirectUrl);
+  const redirectJson = jsonForHtmlScript(redirectUrl);
   const body = `<main class="consent-root">
-  <div class="consent-status" role="status" aria-live="polite">
-    <div class="consent-spinner" aria-hidden="true"></div>
-    <h1 class="consent-heading">Connected</h1>
-    <p class="consent-body">Taking you back to ${hostEsc}.</p>
+  <div class="consent-status-card" role="status" aria-live="polite">
+    <div class="consent-status-row">
+      <div class="consent-spinner" aria-hidden="true"></div>
+      <h1 class="consent-heading">${escapeHtml(heading)}</h1>
+    </div>
+    <p class="consent-body">${bodyLine}</p>
   </div>
 </main>
 <meta http-equiv="refresh" content="0;url=${redirect}" />
-<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>`;
+<script>window.location.replace(${redirectJson});</script>`;
   return pageShell(CONSENT_TAB_TITLE, body);
+}
+
+export function renderAfterAllowPageHtml(host: string, redirectUrl: string): string {
+  const hostEsc = escapeHtml(host);
+  return renderAfterDecisionPageHtml(
+    "Connected",
+    `Taking you back to ${hostEsc}.`,
+    redirectUrl,
+  );
 }
 
 export function renderAfterDenyPageHtml(host: string, redirectUrl: string): string {
   const hostEsc = escapeHtml(host);
-  const redirect = escapeHtml(redirectUrl);
-  const body = `<main class="consent-root">
-  <div class="consent-status" role="status" aria-live="polite">
-    <div class="consent-spinner" aria-hidden="true"></div>
-    <h1 class="consent-heading">Not connected</h1>
-    <p class="consent-body">Nothing was shared. Taking you back to ${hostEsc}.</p>
-  </div>
-</main>
-<meta http-equiv="refresh" content="0;url=${redirect}" />
-<script>window.location.replace(${JSON.stringify(redirectUrl)});</script>`;
-  return pageShell(CONSENT_TAB_TITLE, body);
-}
-
-export function htmlResponse(
-  html: string,
-  extraHeaders?: HeadersInit,
-  status = 200,
-): Response {
-  const headers = new Headers(extraHeaders);
-  headers.set("content-type", "text/html; charset=utf-8");
-  return new Response(html, { status, headers });
+  return renderAfterDecisionPageHtml(
+    "Not connected",
+    `Nothing was shared. Taking you back to ${hostEsc}.`,
+    redirectUrl,
+  );
 }

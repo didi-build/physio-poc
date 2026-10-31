@@ -14,7 +14,7 @@ import { PHYSIO_MCP_OAUTH_SCOPES } from "../../src/adapters/node/physio-mcp-oaut
 import { createNodeAppDependencies } from "../../src/adapters/node/create-node-app-dependencies.js";
 import { BetterAuthPort } from "../../src/adapters/node/better-auth-port.js";
 import type { PhysioMcpConsentClock } from "../../src/auth/mcp-oauth/consent-routes.js";
-import { extractRedirectTargetFromConsentHtml } from "../../src/auth/mcp-oauth/consent-redirect-from-html.js";
+import { extractRedirectTargetFromConsentHtml } from "./consent-redirect-from-html.js";
 import {
   PHYSIO_MCP_CONSENT_CSRF_COOKIE,
   PHYSIO_MCP_CONSENT_CSRF_HEADER,

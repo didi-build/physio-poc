@@ -1,2 +1,323 @@
-export const CONSENT_PAGE_STYLES =
-  "/* OAuth consent pages (DIDI-1126). Matches sign-in chrome from src/ui/styles/sign-in.css. */\n.consent-root {\n  min-height: 100vh;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  padding: 1.5rem;\n  background: #f8fafc;\n  font-family: Inter, ui-sans-serif, system-ui, sans-serif;\n  color: #0f172a;\n}\n\n.consent-card {\n  width: 100%;\n  max-width: 24rem;\n  padding: 2rem;\n  border-radius: 1rem;\n  background: #ffffff;\n  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);\n}\n\n.consent-card-centered {\n  text-align: center;\n}\n\n.consent-wordmark {\n  display: flex;\n  align-items: center;\n  gap: 0.5rem;\n  margin-bottom: 1.25rem;\n}\n\n.consent-wordmark-tile {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  width: 2rem;\n  height: 2rem;\n  border-radius: 0.5rem;\n  background: #0f766e;\n  color: #ffffff;\n  font-weight: 700;\n  font-size: 1rem;\n  line-height: 1;\n}\n\n.consent-wordmark-text {\n  font-weight: 600;\n  font-size: 1.125rem;\n}\n\n.consent-host-line {\n  font-size: 0.875rem;\n  color: #64748b;\n  margin: 0 0 0.5rem;\n}\n\n.consent-host-mono {\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;\n  font-weight: 700;\n  color: #0f172a;\n}\n\n.consent-heading {\n  font-size: 1.25rem;\n  font-weight: 700;\n  margin: 0 0 1rem;\n  line-height: 1.3;\n}\n\n.consent-name-line {\n  font-size: 0.9375rem;\n  margin: 0 0 1rem;\n}\n\n.consent-tag {\n  display: inline-block;\n  margin-left: 0.35rem;\n  padding: 0.125rem 0.5rem;\n  border-radius: 9999px;\n  background: #f1f5f9;\n  color: #475569;\n  font-size: 0.75rem;\n  font-weight: 600;\n}\n\n.consent-list-heading {\n  font-size: 0.6875rem;\n  font-weight: 700;\n  letter-spacing: 0.05em;\n  text-transform: uppercase;\n  color: #64748b;\n  margin: 0 0 0.35rem;\n}\n\n.consent-list {\n  margin: 0 0 1rem;\n  padding-left: 1.25rem;\n  font-size: 0.875rem;\n  color: #334155;\n}\n\n.consent-list li {\n  margin-bottom: 0.35rem;\n}\n\n.consent-muted-line {\n  font-size: 0.8125rem;\n  color: #64748b;\n  margin: 0 0 0.75rem;\n  line-height: 1.45;\n}\n\n.consent-actions {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 0.75rem;\n  margin: 1.25rem 0 1rem;\n}\n\n.consent-btn {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 2.75rem;\n  padding: 0.625rem 1rem;\n  border-radius: 9999px;\n  font-weight: 600;\n  font-size: 0.9375rem;\n  cursor: pointer;\n  border: 1px solid transparent;\n}\n\n.consent-btn:disabled {\n  opacity: 0.55;\n  cursor: not-allowed;\n}\n\n.consent-btn-deny {\n  background: #ffffff;\n  color: #0f766e;\n  border-color: #0f766e;\n}\n\n.consent-btn-allow {\n  background: #0f766e;\n  color: #ffffff;\n}\n\n.consent-btn-allow:hover:not(:disabled) {\n  background: #115e59;\n}\n\n.consent-account-line {\n  text-align: center;\n  font-size: 0.8125rem;\n  color: #64748b;\n  margin: 0;\n}\n\n.consent-sign-out {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 2.75rem;\n  margin-top: 0.25rem;\n  padding: 0 0.5rem;\n  color: #0f766e;\n  font-weight: 600;\n  text-decoration: none;\n  background: none;\n  border: none;\n  cursor: pointer;\n  font-size: 0.8125rem;\n}\n\n.consent-icon-wrap {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 3.5rem;\n  height: 3.5rem;\n  margin: 0 auto 1rem;\n  border-radius: 9999px;\n}\n\n.consent-icon-wrap-warn {\n  background: #fef3c7;\n  color: #d97706;\n}\n\n.consent-icon-wrap-clock {\n  background: #f1f5f9;\n  color: #64748b;\n}\n\n.consent-body {\n  font-size: 0.9375rem;\n  color: #475569;\n  margin: 0 0 1rem;\n  line-height: 1.5;\n}\n\n.consent-next-step {\n  font-size: 0.875rem;\n  color: #475569;\n  background: #f1f5f9;\n  border-radius: 0.75rem;\n  padding: 0.875rem 1rem;\n  margin: 0 0 1.25rem;\n  line-height: 1.45;\n}\n\n.consent-btn-full {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  width: 100%;\n  min-height: 2.75rem;\n  padding: 0.75rem 1rem;\n  border-radius: 9999px;\n  background: #0f766e;\n  color: #ffffff;\n  font-weight: 600;\n  text-decoration: none;\n  border: none;\n  cursor: pointer;\n  font-size: 0.9375rem;\n}\n\n.consent-btn-full:hover {\n  background: #115e59;\n}\n\n.consent-status {\n  text-align: center;\n}\n\n.consent-spinner {\n  width: 2rem;\n  height: 2rem;\n  margin: 0 auto 1rem;\n  border: 3px solid #e2e8f0;\n  border-top-color: #0f766e;\n  border-radius: 9999px;\n  animation: consent-spin 0.8s linear infinite;\n}\n\n@keyframes consent-spin {\n  to {\n    transform: rotate(360deg);\n  }\n}\n\n@media (prefers-reduced-motion: reduce) {\n  .consent-spinner {\n    animation: none;\n    border-top-color: #0f766e;\n  }\n}\n\n.sr-only {\n  position: absolute;\n  width: 1px;\n  height: 1px;\n  padding: 0;\n  margin: -1px;\n  overflow: hidden;\n  clip: rect(0, 0, 0, 0);\n  white-space: nowrap;\n  border: 0;\n}\n";
+export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches sign-in chrome from src/ui/styles/sign-in.css. */
+.consent-root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #f8fafc;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #0f172a;
+}
+
+.consent-card {
+  width: 100%;
+  max-width: 24rem;
+  padding: 2rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.consent-card-centered {
+  text-align: center;
+}
+
+.consent-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.consent-wordmark-centered {
+  justify-content: center;
+}
+
+.consent-wordmark-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.consent-wordmark-text {
+  font-weight: 600;
+  font-size: 1.125rem;
+}
+
+.consent-host-line {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0 0 0.5rem;
+}
+
+.consent-host-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.consent-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  line-height: 1.3;
+}
+
+.consent-name-line {
+  font-size: 0.9375rem;
+  margin: 0 0 0.35rem;
+}
+
+.consent-tag {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px dashed #cbd5e1;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.consent-list-heading {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin: 0 0 0.35rem;
+}
+
+.consent-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.consent-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.consent-list-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+}
+
+.consent-list-icon-can {
+  color: #0f766e;
+}
+
+.consent-list-icon-cant {
+  color: #94a3b8;
+}
+
+.consent-muted-line {
+  font-size: 0.8125rem;
+  color: #64748b;
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.consent-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+}
+
+.consent-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.625rem 1rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.consent-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.consent-btn-deny {
+  background: #ffffff;
+  color: #0f172a;
+  border-color: #e2e8f0;
+}
+
+.consent-btn-allow {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+.consent-btn-allow:hover:not(:disabled) {
+  background: #115e59;
+}
+
+.consent-account-line {
+  text-align: center;
+  font-size: 0.8125rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.consent-sign-out-wrap {
+  text-align: center;
+  margin-top: 0.35rem;
+}
+
+.consent-sign-out-link {
+  display: inline;
+  padding: 0;
+  color: #0f766e;
+  font-weight: 600;
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-family: inherit;
+}
+
+.consent-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: 0 auto 1rem;
+  border-radius: 9999px;
+}
+
+.consent-icon-wrap-warn {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.consent-icon-wrap-clock {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.consent-body {
+  font-size: 0.9375rem;
+  color: #475569;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.consent-next-step {
+  font-size: 0.875rem;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 0.75rem;
+  padding: 0.875rem 1rem;
+  margin: 0 0 1.25rem;
+  line-height: 1.45;
+}
+
+.consent-btn-full {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 9999px;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9375rem;
+}
+
+.consent-btn-full:hover {
+  background: #115e59;
+}
+
+.consent-status-card {
+  width: 100%;
+  max-width: 24rem;
+  padding: 1.5rem 2rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.consent-status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.consent-status-row .consent-heading {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.consent-spinner {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #e2e8f0;
+  border-top-color: #0f766e;
+  border-radius: 9999px;
+  animation: consent-spin 0.8s linear infinite;
+}
+
+.consent-status-card .consent-body {
+  margin: 0;
+  text-align: left;
+}
+
+@keyframes consent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .consent-spinner {
+    animation: none;
+    border-top-color: #0f766e;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+`;
