@@ -178,17 +178,24 @@ describe("production deploy workflow (DIDI-1031)", () => {
     expect(workflowText).not.toMatch(/^\s*pull_request:/m);
   });
 
-  it("validates auth secrets before remote deploy steps (DIDI-1044)", () => {
+  it("orders auth deploy steps validate < prepare < migrate < put < deploy (DIDI-1044)", () => {
     expect(workflowText).toContain("Validate production auth secrets");
-    expect(workflowText).toContain("assert-production-deploy-secrets.mjs");
+    expect(workflowText).toContain("Prepare Wrangler config (production D1 ID)");
+    expect(workflowText).toContain("Apply production D1 migrations");
     expect(workflowText).toContain("Put production Worker auth secrets");
-    expect(workflowText).toContain("put-production-worker-secrets.mjs");
+    expect(workflowText).toContain("Deploy to Cloudflare Workers");
     const validateIdx = stepIndexByName(jobBlock, "Validate production auth secrets");
+    const prepareIdx = stepIndexByName(
+      jobBlock,
+      "Prepare Wrangler config (production D1 ID)",
+    );
     const migrateIdx = stepIndexByName(jobBlock, "Apply production D1 migrations");
+    const putIdx = stepIndexByName(jobBlock, "Put production Worker auth secrets");
     const deployIdx = stepIndexByName(jobBlock, "Deploy to Cloudflare Workers");
-    expect(validateIdx).toBeGreaterThan(0);
-    expect(migrateIdx).toBeGreaterThan(validateIdx);
-    expect(deployIdx).toBeGreaterThan(migrateIdx);
+    expect(validateIdx).toBeLessThan(prepareIdx);
+    expect(prepareIdx).toBeLessThan(migrateIdx);
+    expect(migrateIdx).toBeLessThan(putIdx);
+    expect(putIdx).toBeLessThan(deployIdx);
   });
 
   it("does not reference production D1 secrets outside the production deploy job file", () => {

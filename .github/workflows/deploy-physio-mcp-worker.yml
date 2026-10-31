@@ -35,11 +35,11 @@ jobs:
           PHYSIO_ALLOWED_GOOGLE_EMAILS: ${{ secrets.PHYSIO_ALLOWED_GOOGLE_EMAILS }}
         run: |
           set -euo pipefail
+          node scripts/assert-production-deploy-secrets.mjs
           echo "::add-mask::${GOOGLE_CLIENT_ID}"
           echo "::add-mask::${GOOGLE_CLIENT_SECRET}"
           echo "::add-mask::${BETTER_AUTH_SECRET}"
           echo "::add-mask::${PHYSIO_ALLOWED_GOOGLE_EMAILS}"
-          node scripts/assert-production-deploy-secrets.mjs
       - name: Prepare Wrangler config (production D1 ID)
         env:
           PHYSIO_D1_DATABASE_ID: ${{ secrets.PHYSIO_D1_DATABASE_ID }}
@@ -64,6 +64,7 @@ jobs:
           PHYSIO_ALLOWED_GOOGLE_EMAILS: ${{ secrets.PHYSIO_ALLOWED_GOOGLE_EMAILS }}
         run: |
           set -euo pipefail
+          node scripts/assert-production-deploy-secrets.mjs
           echo "::add-mask::${GOOGLE_CLIENT_ID}"
           echo "::add-mask::${GOOGLE_CLIENT_SECRET}"
           echo "::add-mask::${BETTER_AUTH_SECRET}"

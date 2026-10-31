@@ -41,10 +41,22 @@ function runAssertScript(env: NodeJS.ProcessEnv): {
 }
 
 describe("production Worker auth secret guard (DIDI-1044)", () => {
-  it("reports every missing secret name without echoing values", () => {
-    expect(missingProductionWorkerAuthSecretNames({})).toEqual(
-      PRODUCTION_WORKER_AUTH_SECRET_NAMES,
-    );
+  it("pins the four ticket auth secret names for guard and upload", () => {
+    expect([...PRODUCTION_WORKER_AUTH_SECRET_NAMES]).toEqual([
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "BETTER_AUTH_SECRET",
+      "PHYSIO_ALLOWED_GOOGLE_EMAILS",
+    ]);
+  });
+
+  it("reports every missing ticket secret name without echoing values", () => {
+    expect(missingProductionWorkerAuthSecretNames({})).toEqual([
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "BETTER_AUTH_SECRET",
+      "PHYSIO_ALLOWED_GOOGLE_EMAILS",
+    ]);
   });
 
   it("fails the assert script when any secret is empty or whitespace-only", () => {

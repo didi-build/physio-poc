@@ -24,7 +24,7 @@ Platform-specific code stays under `src/entry/` and `src/adapters/workers/`. Dep
 - Public production origin: `vars.WEB_APP_BASE_URL` in `wrangler.jsonc` (`https://physio-poc.diademshoukralla.workers.dev`, committed; not a GitHub variable).
 - Token TTL and expiry are set by Diadem on DIDI-994; check them before the token lapses (no fixed date in this repo).
 
-After deploy, the MCP URL is `https://physio-poc.<account-subdomain>.workers.dev/mcp` (exact host comes from the Cloudflare dashboard).
+After deploy, the MCP URL is `https://physio-poc.diademshoukralla.workers.dev/mcp` (`WEB_APP_BASE_URL` is committed in `wrangler.jsonc` vars; see DIDI-1044).
 
 ## Privacy
 

@@ -7,7 +7,11 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { D1_PLACEHOLDER_PRODUCTION } from "./lib/wrangler-d1-placeholders.mjs";
+import {
+  COMMITTED_WEB_APP_BASE_URL,
+  D1_PLACEHOLDER_PRODUCTION,
+  isExactHttpsOrigin,
+} from "./lib/wrangler-d1-placeholders.mjs";
 
 const SOURCE = resolve("wrangler.jsonc");
 
@@ -37,6 +41,17 @@ function assertNoPlaceholderLeft(text) {
   }
 }
 
+function assertCommittedWebAppBaseUrlInSource(sourceText) {
+  const match = sourceText.match(/"WEB_APP_BASE_URL":\s*"([^"]+)"/);
+  const value = match?.[1];
+  if (!value || value !== COMMITTED_WEB_APP_BASE_URL || !isExactHttpsOrigin(value)) {
+    console.error(
+      "WEB_APP_BASE_URL in wrangler.jsonc must be the committed production https origin.",
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
   const { output } = parseArgs(process.argv.slice(2));
   const productionId = process.env.PHYSIO_D1_DATABASE_ID?.trim();
@@ -49,6 +64,7 @@ function main() {
     process.exit(1);
   }
   const sourceText = readFileSync(SOURCE, "utf8");
+  assertCommittedWebAppBaseUrlInSource(sourceText);
   const text = sourceText.replaceAll(D1_PLACEHOLDER_PRODUCTION, productionId);
   assertNoPlaceholderLeft(text);
   writeFileSync(output, text, "utf8");
