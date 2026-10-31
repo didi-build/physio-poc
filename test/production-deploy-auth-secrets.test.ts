@@ -9,6 +9,7 @@ import {
   readWebAppBaseUrlFromWranglerSource,
   resolveProductionWranglerSourcePath,
 } from "../scripts/lib/production-deploy-preflight.mjs";
+import { parseAllowedGoogleEmailsRaw } from "../scripts/lib/allowed-google-emails-deploy.mjs";
 import {
   buildWorkerAuthSecretsPayload,
   invalidProductionWorkerAuthSecretNames,
@@ -21,6 +22,7 @@ import {
   isExactHttpsOrigin,
 } from "../scripts/lib/wrangler-d1-placeholders.mjs";
 import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
+import { parseAllowedGoogleEmails } from "../src/auth/allowed-emails.js";
 import { InvalidAuthConfigError, resolvePhysioAuthConfig } from "../src/http/config.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -250,6 +252,38 @@ describe("production deploy preflight (DIDI-1153 3(b))", () => {
       "PHYSIO_ALLOWED_GOOGLE_EMAILS is required for production deploy.",
     );
     assertStderrNamesVariablesOnly(whitespace.stderr, [fixtureAllowlist, "   \t  "]);
+  });
+
+  it("matches Worker allowlist comma split, trim, and empty-entry drop", () => {
+    for (const raw of ["a@example.com,b@c.example.org", ",", " , , ", "  x@y.z  "]) {
+      expect([...parseAllowedGoogleEmailsRaw(raw)].sort()).toEqual(
+        [...parseAllowedGoogleEmails(raw)].sort(),
+      );
+    }
+  });
+
+  it("rejects comma-only, whitespace-comma, invalid, and mixed allowlists without echoing values", () => {
+    const invalidMessage =
+      "PHYSIO_ALLOWED_GOOGLE_EMAILS is invalid for production deploy.";
+    for (const allowlist of [
+      ",",
+      " , , ",
+      "not-an-email",
+      "ok@example.com,not-an-email",
+    ]) {
+      const run = runAssertScript({
+        ...FIXTURE_SECRET_VALUES,
+        PHYSIO_ALLOWED_GOOGLE_EMAILS: allowlist,
+      });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toContain(invalidMessage);
+      assertStderrNamesVariablesOnly(run.stderr, [allowlist]);
+    }
+    const ok = runAssertScript({
+      ...FIXTURE_SECRET_VALUES,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "coach@example.com,admin@example.org",
+    });
+    expect(ok.status).toBe(0);
   });
 });
 

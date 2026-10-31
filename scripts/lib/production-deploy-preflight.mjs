@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { productionAllowlistShapeProblemName } from "./allowed-google-emails-deploy.mjs";
 import { isExactHttpsOrigin } from "./wrangler-d1-placeholders.mjs";
 import {
   invalidProductionWorkerAuthSecretNames,
@@ -78,6 +79,14 @@ export function collectProductionDeployPreflightErrorLines(env, wranglerSourceTe
     );
   }
   if (lines.length > 0) {
+    return lines;
+  }
+
+  const allowlistProblem = productionAllowlistShapeProblemName(
+    env.PHYSIO_ALLOWED_GOOGLE_EMAILS,
+  );
+  if (allowlistProblem) {
+    lines.push(`${allowlistProblem} is invalid for production deploy.`);
     return lines;
   }
 
