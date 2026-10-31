@@ -12,7 +12,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
     });
     expect(deps.auth).toBeInstanceOf(FailClosedAuthPort);
     expect(deps.auth).not.toBeInstanceOf(FakeAuthPort);
-    expect(deps.enableFakeGoogleRoutes).toBe(false);
+    expect(deps.fakeGooglePreAuth).toBeUndefined();
   });
 
   it("does not mount fake Google routes on the Worker entry", async () => {

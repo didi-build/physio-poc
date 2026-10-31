@@ -10,7 +10,10 @@ import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node
 import { ALLOWLIST_REFUSAL_ERROR } from "../src/auth/allowed-emails.js";
 import { AUTH_REFUSAL_MESSAGE } from "../src/http/auth-pages.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
-import { installFakeGoogleFetch } from "../src/auth/fake-google-http.js";
+import {
+  installFakeGoogleFetch,
+  handleFakeGoogleRequest,
+} from "../src/auth/fake-google-http.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -73,6 +76,7 @@ async function createAuthTestDeps(
     config: serverConfig,
     auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
     mcp: createPhysioMcpHttpHandler(serverConfig),
+    fakeGooglePreAuth: handleFakeGoogleRequest,
     enableFakeGoogleRoutes: true,
   };
 }

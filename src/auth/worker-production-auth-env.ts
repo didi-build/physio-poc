@@ -6,12 +6,11 @@ export const WORKER_PRODUCTION_AUTH_SECRET_ENV_NAMES = [
   "PHYSIO_ALLOWED_GOOGLE_EMAILS",
 ] as const;
 
-/** Production base URL Worker var from DIDI-1044 (#59); same name on main wrangler `vars`. */
+/** Production base URL Worker var (DIDI-1044 / #59 wrangler `vars` once that PR lands). */
 export const WORKER_PRODUCTION_WEB_APP_BASE_URL_ENV_NAME = "WEB_APP_BASE_URL";
 
 export type WorkerProductionAuthEnv = {
   WEB_APP_BASE_URL?: string;
-  AUTH_BASE_URL?: string;
   BETTER_AUTH_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;

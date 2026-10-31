@@ -33,7 +33,6 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     auth: authBundle.auth,
     mcp: createPhysioMcpHttpHandler(config),
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
-    enableFakeGoogleRoutes: false,
     guardedAppWithoutSession: "redirect",
   };
 }

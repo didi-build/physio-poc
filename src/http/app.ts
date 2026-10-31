@@ -27,6 +27,11 @@ export type McpBearerAuthHandler = (
   mcpHandler: McpHttpHandler,
 ) => Promise<Response>;
 
+export type FakeGooglePreAuthHandler = (
+  request: Request,
+  authBaseUrl: string,
+) => Promise<Response | null>;
+
 export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
 
 export type AppRouteHandlerContext = {
@@ -49,7 +54,9 @@ export type AppDependencies = {
   /** When set, /mcp requires a valid OAuth bearer token (DIDI-1043). */
   mcpBearerAuth?: McpBearerAuthHandler;
   uiStatic?: UiStaticPort;
-  /** Dev/test entries only; never true on the Worker entry. */
+  /** Dev/test Node entry only; never set on the Worker entry. */
+  fakeGooglePreAuth?: FakeGooglePreAuthHandler;
+  /** @deprecated Use fakeGooglePreAuth; kept for tests that assert the flag. */
   enableFakeGoogleRoutes?: boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
   /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
@@ -78,7 +85,8 @@ export async function handleRequest(
   void deps.objects;
 
   const sessionGuardOptions = {
-    fakeGoogleRoutesEnabled: deps.enableFakeGoogleRoutes === true,
+    fakeGoogleRoutesEnabled:
+      deps.fakeGooglePreAuth !== undefined || deps.enableFakeGoogleRoutes === true,
   };
 
   if (
@@ -98,9 +106,8 @@ export async function handleRequest(
     );
   }
 
-  if (deps.enableFakeGoogleRoutes) {
-    const { handleFakeGoogleRequest } = await import("../auth/fake-google-http.js");
-    const fakeGoogle = await handleFakeGoogleRequest(
+  if (deps.fakeGooglePreAuth) {
+    const fakeGoogle = await deps.fakeGooglePreAuth(
       request,
       deps.config.auth.authBaseUrl,
     );

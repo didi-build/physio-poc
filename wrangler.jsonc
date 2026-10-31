@@ -1,8 +1,8 @@
 {
   "name": "physio-poc",
   "main": "src/entry/worker.ts",
-  "compatibility_date": "2025-04-01",
-  "compatibility_flags": ["nodejs_compat_v2"],
+  "compatibility_date": "2025-10-29",
+  "compatibility_flags": ["nodejs_compat"],
   "d1_databases": [
     {
       "binding": "PHYSIO_DB",

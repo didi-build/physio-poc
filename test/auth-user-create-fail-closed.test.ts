@@ -9,7 +9,10 @@ import {
 } from "../src/auth/allowed-emails.js";
 import { buildPhysioBetterAuthOptionsForConfig } from "../src/adapters/node/create-better-auth.js";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
-import { installFakeGoogleFetch } from "../src/auth/fake-google-http.js";
+import {
+  installFakeGoogleFetch,
+  handleFakeGoogleRequest,
+} from "../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import {
   PhysioPractitionerBindingError,
@@ -135,6 +138,7 @@ describe("OAuth user-create hook fail-closed (integration)", () => {
         config: serverConfig,
         auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
         mcp: createPhysioMcpHttpHandler(serverConfig),
+        fakeGooglePreAuth: handleFakeGoogleRequest,
         enableFakeGoogleRoutes: true,
       };
 

@@ -7,6 +7,7 @@ const SCAN_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", "
 export const WORKER_AUTH_IMPORT_GUARD_ENTRY_PATHS = [
   "src/entry/worker.ts",
   "src/adapters/workers/create-app-dependencies.ts",
+  "src/adapters/workers/create-worker-production-app-dependencies.ts",
 ];
 
 /**
@@ -22,6 +23,9 @@ export function isForbiddenWorkerProductionAuthDependency(repoRelativePath) {
     return true;
   }
   if (normalized === "src/adapters/node/create-better-auth.ts") {
+    return true;
+  }
+  if (normalized === "src/auth/fake-google-http.ts") {
     return true;
   }
   return false;
@@ -98,6 +102,43 @@ function readModuleSource(repoRoot, repoRelativePath) {
 }
 
 /**
+ * @param {string | ts.Expression} moduleSpecifier
+ * @returns {string | null}
+ */
+function stringLiteralModuleSpecifier(moduleSpecifier) {
+  if (ts.isStringLiteral(moduleSpecifier)) {
+    return moduleSpecifier.text;
+  }
+  return null;
+}
+
+/**
+ * @param {object} params
+ * @param {string} params.repoRoot
+ * @param {string} params.from
+ * @param {string} params.spec
+ * @param {Set<string>} params.visited
+ * @param {string[]} params.queue
+ * @param {Array<{ from: string, module: string }>} params.violations
+ */
+function followRelativeSpecifier(params) {
+  const { repoRoot, from, spec, visited, queue, violations } = params;
+  if (!spec.startsWith(".") && !spec.startsWith("..")) {
+    return;
+  }
+  const resolved = resolveRelativeModule(repoRoot, from, spec);
+  if (!resolved) {
+    return;
+  }
+  if (isForbiddenWorkerProductionAuthDependency(resolved)) {
+    violations.push({ from, module: resolved });
+  }
+  if (!visited.has(resolved)) {
+    queue.push(resolved);
+  }
+}
+
+/**
  * @param {object} options
  * @param {string} options.repoRoot
  * @param {string[]} [options.entryPaths]
@@ -133,17 +174,43 @@ export function scanWorkerAuthImportGraph(options) {
         node.moduleSpecifier &&
         ts.isStringLiteral(node.moduleSpecifier)
       ) {
-        const spec = node.moduleSpecifier.text;
-        if (spec.startsWith(".") || spec.startsWith("..")) {
-          const resolved = resolveRelativeModule(repoRoot, current, spec);
-          if (resolved) {
-            if (isForbiddenWorkerProductionAuthDependency(resolved)) {
-              violations.push({ from: current, module: resolved });
-            }
-            if (!visited.has(resolved)) {
-              queue.push(resolved);
-            }
-          }
+        followRelativeSpecifier({
+          repoRoot,
+          from: current,
+          spec: node.moduleSpecifier.text,
+          visited,
+          queue,
+          violations,
+        });
+      }
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        const spec = stringLiteralModuleSpecifier(node.moduleSpecifier);
+        if (spec) {
+          followRelativeSpecifier({
+            repoRoot,
+            from: current,
+            spec,
+            visited,
+            queue,
+            violations,
+          });
+        }
+      }
+      if (ts.isImportCall(node)) {
+        const arg = node.arguments[0];
+        const spec =
+          arg && ts.isStringLiteral(arg)
+            ? arg.text
+            : stringLiteralModuleSpecifier(node.moduleSpecifier ?? arg);
+        if (spec) {
+          followRelativeSpecifier({
+            repoRoot,
+            from: current,
+            spec,
+            visited,
+            queue,
+            violations,
+          });
         }
       }
       ts.forEachChild(node, visit);
