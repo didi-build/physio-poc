@@ -2,7 +2,12 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { buildWorkerAuthSecretsPayload } from "./lib/production-worker-auth-secrets.mjs";
+import {
+  buildWorkerAuthSecretsPayload,
+  invalidProductionWorkerAuthSecretNames,
+  missingProductionWorkerAuthSecretNames,
+  serializeWorkerAuthSecretsBulkPayload,
+} from "./lib/production-worker-auth-secrets.mjs";
 
 function usage() {
   console.error("Usage: put-production-worker-secrets.mjs --config <wrangler.jsonc>");
@@ -23,29 +28,59 @@ function parseArgs(argv) {
   return { config: resolve(config) };
 }
 
+function resolveWranglerJsPath(env = process.env) {
+  const override = env.PHYSIO_WRANGLER_JS_PATH?.trim();
+  if (override) {
+    return resolve(override);
+  }
+  return resolve(
+    fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url)),
+  );
+}
+
+function reportSecretProblemsAndExit() {
+  const invalid = invalidProductionWorkerAuthSecretNames(process.env);
+  if (invalid.length > 0) {
+    for (const name of invalid) {
+      console.error(`${name} must be a single line for production deploy.`);
+    }
+    process.exit(1);
+  }
+  const missing = missingProductionWorkerAuthSecretNames(process.env);
+  if (missing.length > 0) {
+    for (const name of missing) {
+      console.error(`${name} is required for production deploy.`);
+    }
+    process.exit(1);
+  }
+}
+
 function main() {
   const { config } = parseArgs(process.argv.slice(2));
   let payload;
   try {
     payload = buildWorkerAuthSecretsPayload(process.env);
   } catch (err) {
-    const missing = err.missing;
     if (
-      err.code === "MISSING_PRODUCTION_WORKER_AUTH_SECRETS" &&
-      Array.isArray(missing)
+      err.code === "INVALID_PRODUCTION_WORKER_AUTH_SECRETS" &&
+      Array.isArray(err.invalid)
     ) {
-      for (const name of missing) {
-        console.error(`${name} is required for production deploy.`);
+      for (const name of err.invalid) {
+        console.error(`${name} must be a single line for production deploy.`);
       }
       process.exit(1);
+    }
+    if (
+      err.code === "MISSING_PRODUCTION_WORKER_AUTH_SECRETS" &&
+      Array.isArray(err.missing)
+    ) {
+      reportSecretProblemsAndExit();
     }
     throw err;
   }
 
-  const wranglerBin = resolve(
-    fileURLToPath(new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url)),
-  );
-  const json = `${JSON.stringify(payload)}\n`;
+  const wranglerBin = resolveWranglerJsPath(process.env);
+  const json = serializeWorkerAuthSecretsBulkPayload(payload);
   const result = spawnSync(
     process.execPath,
     [wranglerBin, "secret", "bulk", "--config", config],
@@ -64,4 +99,10 @@ function main() {
   }
 }
 
-main();
+const isMain =
+  process.argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+
+if (isMain) {
+  main();
+}

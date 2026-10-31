@@ -8,17 +8,46 @@ export const PRODUCTION_WORKER_AUTH_SECRET_NAMES = [
 
 /**
  * @param {NodeJS.ProcessEnv} env
- * @returns {string[]}
+ * @returns {{ missing: string[]; invalid: string[] }}
  */
-export function missingProductionWorkerAuthSecretNames(env) {
+export function productionWorkerAuthSecretProblems(env) {
   const missing = [];
+  const invalid = [];
   for (const name of PRODUCTION_WORKER_AUTH_SECRET_NAMES) {
     const value = env[name];
     if (typeof value !== "string" || value.trim().length === 0) {
       missing.push(name);
+      continue;
+    }
+    if (/[\r\n]/.test(value)) {
+      invalid.push(name);
     }
   }
-  return missing;
+  return { missing, invalid };
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function missingProductionWorkerAuthSecretNames(env) {
+  return productionWorkerAuthSecretProblems(env).missing;
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function invalidProductionWorkerAuthSecretNames(env) {
+  return productionWorkerAuthSecretProblems(env).invalid;
+}
+
+/**
+ * @param {Record<string, string>} payload
+ * @returns {string}
+ */
+export function serializeWorkerAuthSecretsBulkPayload(payload) {
+  return `${JSON.stringify(payload)}\n`;
 }
 
 /**
@@ -26,7 +55,13 @@ export function missingProductionWorkerAuthSecretNames(env) {
  * @returns {Record<string, string>}
  */
 export function buildWorkerAuthSecretsPayload(env) {
-  const missing = missingProductionWorkerAuthSecretNames(env);
+  const { missing, invalid } = productionWorkerAuthSecretProblems(env);
+  if (invalid.length > 0) {
+    const err = new Error("production Worker auth secrets contain invalid values");
+    err.code = "INVALID_PRODUCTION_WORKER_AUTH_SECRETS";
+    err.invalid = invalid;
+    throw err;
+  }
   if (missing.length > 0) {
     const err = new Error("production Worker auth secrets are incomplete");
     err.code = "MISSING_PRODUCTION_WORKER_AUTH_SECRETS";
