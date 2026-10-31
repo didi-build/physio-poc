@@ -12,8 +12,6 @@ import { resolveWorkerFailClosedPhysioServerConfig } from "./resolve-worker-conf
 
 export type WorkerEnv = {
   WEB_APP_BASE_URL?: string;
-  /** Ignored on the Worker entry; production auth uses WEB_APP_BASE_URL only. */
-  AUTH_BASE_URL?: string;
   BETTER_AUTH_SECRET?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -42,7 +40,6 @@ export function resetWorkerProductionAuthCacheForTests(): void {
 
 export function createFailClosedWorkerAppDependencies(env: WorkerEnv): AppDependencies {
   void env.PHYSIO_USE_FAKE_GOOGLE_PROVIDER;
-  void env.AUTH_BASE_URL;
   const config = resolveWorkerFailClosedPhysioServerConfig(env);
   return {
     sql: new D1SqlStorage(env.PHYSIO_DB),

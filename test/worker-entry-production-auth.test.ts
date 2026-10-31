@@ -131,11 +131,49 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     expect(first.auth).toBe(second.auth);
   });
 
-  it("ignores AUTH_BASE_URL override in Worker env for issuer and trusted origin", async () => {
-    const { deps } = await createWorkerProductionAuthTestDeps({
-      AUTH_BASE_URL: "https://override.example",
-    });
-    expect(deps.config.auth.authBaseUrl).toBe(WORKER_BASE);
+  it("ignores stray AUTH_BASE_URL in Worker env for issuer and trusted origin via worker.fetch", async () => {
+    resetWorkerProductionAuthCacheForTests();
+    const overrideAuthBase = "https://override.example";
+    const { d1, storage } = await openWorkerAuthTestDatabase();
+    await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+    const env = {
+      ...buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 }),
+      AUTH_BASE_URL: overrideAuthBase,
+    } as WorkerEnv;
+
+    const signIn = await worker.fetch(
+      new Request(`${WORKER_BASE}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: new URL(WORKER_BASE).origin,
+        },
+        body: JSON.stringify({ provider: "google", callbackURL: "/programs" }),
+      }),
+      env,
+    );
+    expect(signIn.status).toBe(200);
+    const payload = (await signIn.json()) as { url?: string };
+    const redirectUri =
+      new URL(payload.url ?? "").searchParams.get("redirect_uri") ?? "";
+    expect(redirectUri).toContain(new URL(WORKER_BASE).hostname);
+    expect(redirectUri).not.toContain(new URL(overrideAuthBase).hostname);
+
+    const badCallback = await worker.fetch(
+      new Request(`${WORKER_BASE}/api/auth/sign-in/social`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: new URL(WORKER_BASE).origin,
+        },
+        body: JSON.stringify({
+          provider: "google",
+          callbackURL: `${overrideAuthBase}/steal`,
+        }),
+      }),
+      env,
+    );
+    expect(badCallback.status).toBe(403);
   });
 
   it.each([
@@ -211,6 +249,7 @@ describe("Worker entry production auth (DIDI-1153)", () => {
 
   it("returns 503 for auth routes via worker.fetch when secrets are present but PHYSIO_DB is missing", async () => {
     resetWorkerProductionAuthCacheForTests();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const env = buildWorkerProductionAuthEnv();
     const response = await worker.fetch(
       new Request(`${WORKER_BASE}/api/auth/sign-in/social`, { method: "POST" }),
@@ -219,6 +258,8 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     expect(response.status).toBe(503);
     const deps = await createWorkerAppDependencies(env);
     expect(deps.auth).toBeInstanceOf(FailClosedAuthPort);
+    expect(logSpy).not.toHaveBeenCalledWith(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
+    logSpy.mockRestore();
   });
 
   it("returns 401 for MCP without a session when production auth is wired", async () => {
