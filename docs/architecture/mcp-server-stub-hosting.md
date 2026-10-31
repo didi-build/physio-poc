@@ -20,7 +20,8 @@ Platform-specific code stays under `src/entry/` and `src/adapters/workers/`. Dep
 - Workflow: `.github/workflows/deploy-physio-mcp-worker.yml`
 - Runs on push to `main` or `workflow_dispatch` on `main` only (never on pull requests).
 - GitHub Environment: `production` (Diadem's required reviewers apply to every deploy run).
-- Secrets (environment secrets on `production` only): `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+- Secrets (environment secrets on `production` only): `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `PHYSIO_D1_DATABASE_ID`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `BETTER_AUTH_SECRET`, `PHYSIO_ALLOWED_GOOGLE_EMAILS`.
+- Environment variable (not a secret): `PHYSIO_PRODUCTION_WEB_APP_BASE_URL` (https workers.dev origin for the Worker).
 - Token TTL and expiry are set by Diadem on DIDI-994; check them before the token lapses (no fixed date in this repo).
 
 After deploy, the MCP URL is `https://physio-poc.<account-subdomain>.workers.dev/mcp` (exact host comes from the Cloudflare dashboard).

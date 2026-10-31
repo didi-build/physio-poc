@@ -13,4 +13,8 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    "WEB_APP_BASE_URL": "https://00000000-0000-0000-0000-000000000002.invalid",
+    "PHYSIO_USE_FAKE_GOOGLE_PROVIDER": "false",
+  },
 }
