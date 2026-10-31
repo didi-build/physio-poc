@@ -1,5 +1,10 @@
 import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
+import {
+  expandSqlBatchStatementsWithMinRowsGuards,
+  isSqlBatchGuardAbortError,
+  SQL_BATCH_MIN_ROWS_GUARD_ENSURE,
+} from "../../storage/sql-batch-min-rows-guard.js";
 import type {
   SqlBatchStatement,
   SqlBindings,
@@ -8,22 +13,19 @@ import type {
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
 
-/** Minimal D1 binding surface used by the Workers entry. */
-export type PhysioD1BatchStatement = {
-  sql: string;
-  args?: SqlValue[];
+export type PhysioD1PreparedStatement = {
+  run(): Promise<{ meta: { changes?: number } }>;
+  all(): Promise<{ results?: Record<string, SqlValue>[] }>;
+  first(): Promise<Record<string, SqlValue> | null>;
 };
 
+/** Minimal D1 binding surface used by the Workers entry. */
 export type PhysioD1Database = {
   prepare(query: string): {
-    bind(...values: SqlValue[]): {
-      run(): Promise<{ meta: { changes?: number } }>;
-      all(): Promise<{ results?: Record<string, SqlValue>[] }>;
-      first(): Promise<Record<string, SqlValue> | null>;
-    };
+    bind(...values: SqlValue[]): PhysioD1PreparedStatement;
   };
   batch(
-    statements: PhysioD1BatchStatement[],
+    statements: PhysioD1PreparedStatement[],
   ): Promise<{ meta: { changes?: number } }[]>;
 };
 
@@ -46,6 +48,16 @@ function mapD1UniqueIdConstraint(error: unknown): unknown {
   return error;
 }
 
+function mapBatchError(error: unknown): unknown {
+  if (error instanceof SqlBatchGuardError) {
+    return error;
+  }
+  if (isSqlBatchGuardAbortError(error)) {
+    return new SqlBatchGuardError();
+  }
+  return mapD1UniqueIdConstraint(error);
+}
+
 /**
  * D1-backed SqlStoragePort for the Workers entry (production binding).
  */
@@ -65,7 +77,7 @@ export class D1SqlStorage implements SqlStoragePort {
       const result = await stmt.bind(...bindings.map(normalizeBinding)).run();
       return { rowsAffected: result.meta.changes ?? 0 };
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 
@@ -78,7 +90,7 @@ export class D1SqlStorage implements SqlStoragePort {
       const result = await stmt.bind(...bindings.map(normalizeBinding)).all();
       return (result.results ?? []) as T[];
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 
@@ -91,7 +103,7 @@ export class D1SqlStorage implements SqlStoragePort {
       const row = await stmt.bind(...bindings.map(normalizeBinding)).first();
       return (row as T | null) ?? null;
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 
@@ -100,28 +112,15 @@ export class D1SqlStorage implements SqlStoragePort {
       return;
     }
     const db = this.requireDb();
+    await this.run(SQL_BATCH_MIN_ROWS_GUARD_ENSURE);
+    const expanded = expandSqlBatchStatementsWithMinRowsGuards(statements);
+    const prepared = expanded.map((statement) =>
+      db.prepare(statement.sql).bind(...statement.bindings.map(normalizeBinding)),
+    );
     try {
-      const results = await db.batch(
-        statements.map((statement) => ({
-          sql: statement.sql,
-          args: [...(statement.bindings ?? []).map(normalizeBinding)],
-        })),
-      );
-      for (let index = 0; index < statements.length; index += 1) {
-        const minRows = statements[index]?.minRowsAffected;
-        if (minRows === undefined) {
-          continue;
-        }
-        const changes = results[index]?.meta?.changes ?? 0;
-        if (changes < minRows) {
-          throw new SqlBatchGuardError();
-        }
-      }
+      await db.batch(prepared);
     } catch (error) {
-      if (error instanceof SqlBatchGuardError) {
-        throw error;
-      }
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 }

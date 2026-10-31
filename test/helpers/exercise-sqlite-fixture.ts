@@ -144,6 +144,13 @@ export async function seedApprovedExerciseVersion(
   practitionerId: string,
 ): Promise<{ exerciseId: string; versionId: string }> {
   const exerciseId = await seedExercise(storage, practitionerId);
-  await storage.run(VERSION_INSERT_SQL, versionInsertBindings());
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+    }),
+  );
   return { exerciseId, versionId: FIXTURE_VERSION_ID };
 }

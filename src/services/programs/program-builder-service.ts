@@ -219,7 +219,7 @@ export class ProgramBuilderService {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
     const request = await this.exerciseRequests.findById(requestId);
-    if (!request?.exercise_id || request.exercise_id !== version.exercise_id) {
+    if (request?.exercise_id && request.exercise_id !== version.exercise_id) {
       throw new ProgramBuilderServiceError(
         "approvedVersionId does not match the exercise request",
         "invalid_input",

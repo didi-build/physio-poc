@@ -854,7 +854,11 @@ export class ProgramRowsRepository {
         params_json = ?,
         text_snapshot_json = ?
       WHERE id = ? AND program_id = ? AND exercise_request_id = ?
-        AND exercise_id IS NULL AND exercise_version_id IS NULL`,
+        AND exercise_id IS NULL AND exercise_version_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM exercise_requests er
+          WHERE er.id = ? AND (er.exercise_id IS NULL OR er.exercise_id = ?)
+        )`,
       bindings: [
         exerciseId,
         exerciseVersionId,
@@ -863,6 +867,8 @@ export class ProgramRowsRepository {
         rowId,
         programId,
         exerciseRequestId,
+        exerciseRequestId,
+        exerciseId,
       ],
       minRowsAffected: 1,
     };

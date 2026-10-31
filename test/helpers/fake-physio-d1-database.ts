@@ -1,15 +1,46 @@
 import Database from "better-sqlite3";
 import type {
-  PhysioD1BatchStatement,
   PhysioD1Database,
+  PhysioD1PreparedStatement,
 } from "../../src/adapters/workers/d1-sql-storage.js";
 import type { SqlValue } from "../../src/storage/ports/sql-storage.js";
+import { SQL_BATCH_MIN_ROWS_GUARD_ENSURE } from "../../src/storage/sql-batch-min-rows-guard.js";
+
+const PHYSIO_D1_PREPARED = Symbol("PhysioD1PreparedStatement");
+
+type MarkedPrepared = PhysioD1PreparedStatement & {
+  [PHYSIO_D1_PREPARED]: true;
+  __sqliteRun(): { meta: { changes?: number } };
+};
 
 function normalizeBinding(value: SqlValue): SqlValue {
   if (typeof value === "boolean") {
     return value ? 1 : 0;
   }
   return value;
+}
+
+function markPrepared(statement: {
+  __sqliteRun(): { meta: { changes?: number } };
+  run(): Promise<{ meta: { changes?: number } }>;
+  all(): Promise<{ results?: Record<string, SqlValue>[] }>;
+  first(): Promise<Record<string, SqlValue> | null>;
+}): MarkedPrepared {
+  return Object.assign(statement, { [PHYSIO_D1_PREPARED]: true as const });
+}
+
+function assertPreparedStatement(
+  statement: PhysioD1PreparedStatement,
+): asserts statement is MarkedPrepared {
+  if (
+    typeof statement !== "object" ||
+    statement === null ||
+    !(PHYSIO_D1_PREPARED in statement)
+  ) {
+    throw new Error(
+      "D1Database.batch requires prepared statements from db.prepare(sql).bind(...)",
+    );
+  }
 }
 
 /**
@@ -25,10 +56,13 @@ export function createFakePhysioD1Database(): PhysioD1Database {
       return {
         bind(...values: SqlValue[]) {
           const bound = values.map(normalizeBinding);
-          return {
-            run(): Promise<{ meta: { changes?: number } }> {
+          return markPrepared({
+            __sqliteRun() {
               const result = stmt.run(...bound);
-              return Promise.resolve({ meta: { changes: result.changes } });
+              return { meta: { changes: result.changes } };
+            },
+            run(): Promise<{ meta: { changes?: number } }> {
+              return Promise.resolve(this.__sqliteRun());
             },
             all(): Promise<{ results?: Record<string, SqlValue>[] }> {
               const results = stmt.all(...bound) as Record<string, SqlValue>[];
@@ -38,17 +72,19 @@ export function createFakePhysioD1Database(): PhysioD1Database {
               const row = stmt.get(...bound) as Record<string, SqlValue> | undefined;
               return Promise.resolve(row ?? null);
             },
-          };
+          });
         },
       };
     },
-    async batch(statements: PhysioD1BatchStatement[]) {
+    async batch(statements: PhysioD1PreparedStatement[]) {
+      for (const statement of statements) {
+        assertPreparedStatement(statement);
+      }
+      db.exec(SQL_BATCH_MIN_ROWS_GUARD_ENSURE);
       const runBatch = db.transaction(() => {
         const results: { meta: { changes?: number } }[] = [];
         for (const statement of statements) {
-          const stmt = db.prepare(statement.sql);
-          const result = stmt.run(...(statement.args ?? []).map(normalizeBinding));
-          results.push({ meta: { changes: result.changes } });
+          results.push((statement as MarkedPrepared).__sqliteRun());
         }
         return results;
       });
