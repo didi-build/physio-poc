@@ -23,6 +23,9 @@ export type UseProgramAutoSaveResult = {
 type RunSaveOptions = {
   clearDebounce?: boolean;
   allowRetryOnFailure?: boolean;
+  fromRetry?: boolean;
+  fromDebouncedFire?: boolean;
+  fromDeferred?: boolean;
 };
 
 export function useProgramAutoSave({
@@ -40,7 +43,7 @@ export function useProgramAutoSave({
   const latestTaskByKeyRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const editGenerationByKeyRef = useRef<Map<string, number>>(new Map());
   const savedGenerationByKeyRef = useRef<Map<string, number>>(new Map());
-  const unmountFlushTaskRef = useRef<Map<string, () => Promise<void>>>(new Map());
+  const unmountFlushAfterInFlightRef = useRef<Set<string>>(new Set());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryDelayMsRef = useRef(AUTO_SAVE_RETRY_INITIAL_MS);
   const activeRef = useRef(true);
@@ -78,6 +81,28 @@ export function useProgramAutoSave({
     setState("saved");
   }, []);
 
+  const recordLatestEdit = useCallback((key: string, task: () => Promise<void>) => {
+    const nextGeneration = (editGenerationByKeyRef.current.get(key) ?? 0) + 1;
+    editGenerationByKeyRef.current.set(key, nextGeneration);
+    latestTaskByKeyRef.current.set(key, task);
+    return nextGeneration;
+  }, []);
+
+  const getConfirmedGeneration = useCallback((key: string) => {
+    return savedGenerationByKeyRef.current.get(key) ?? 0;
+  }, []);
+
+  const getLatestGeneration = useCallback((key: string) => {
+    return editGenerationByKeyRef.current.get(key) ?? 0;
+  }, []);
+
+  const shouldSendLatest = useCallback(
+    (key: string) => {
+      return getLatestGeneration(key) > getConfirmedGeneration(key);
+    },
+    [getConfirmedGeneration, getLatestGeneration],
+  );
+
   const runSaveRef = useRef<
     | ((
         key: string,
@@ -114,24 +139,37 @@ export function useProgramAutoSave({
         if (shouldSkipAutomaticRetryForKey(key)) {
           continue;
         }
-        void runSaveRef.current?.(key, run, { allowRetryOnFailure: true });
+        void runSaveRef.current?.(key, run, {
+          allowRetryOnFailure: true,
+          fromRetry: true,
+        });
       }
     }, delay);
   }, [clearRetryTimer, shouldSkipAutomaticRetryForKey]);
 
   const runSaveOnceAfterUnmount = useCallback(
-    async (key: string, task: () => Promise<void>) => {
+    async (key: string) => {
       if (inFlightKeysRef.current.has(key)) {
-        unmountFlushTaskRef.current.set(key, task);
+        unmountFlushAfterInFlightRef.current.add(key);
         return;
       }
+      if (!shouldSendLatest(key)) {
+        return;
+      }
+      const task = latestTaskByKeyRef.current.get(key);
+      if (task === undefined) {
+        return;
+      }
+      const attemptGeneration = getLatestGeneration(key);
       pendingKeysRef.current.add(key);
       inFlightKeysRef.current.add(key);
       inFlightRef.current += 1;
       try {
         await task();
-        const generation = editGenerationByKeyRef.current.get(key) ?? 0;
-        savedGenerationByKeyRef.current.set(key, generation);
+        const confirmed = getConfirmedGeneration(key);
+        if (attemptGeneration > confirmed) {
+          savedGenerationByKeyRef.current.set(key, attemptGeneration);
+        }
         pendingKeysRef.current.delete(key);
         failedSavesRef.current.delete(key);
       } catch {
@@ -142,26 +180,37 @@ export function useProgramAutoSave({
         pendingKeysRef.current.delete(key);
       }
     },
-    [],
+    [getConfirmedGeneration, getLatestGeneration, shouldSendLatest],
   );
 
   const runSave = useCallback(
     async (key: string, task: () => Promise<void>, options: RunSaveOptions = {}) => {
-      const { clearDebounce = false, allowRetryOnFailure = true } = options;
+      const {
+        clearDebounce = false,
+        allowRetryOnFailure = true,
+        fromRetry = false,
+        fromDebouncedFire = false,
+        fromDeferred = false,
+      } = options;
 
       if (inFlightKeysRef.current.has(key)) {
+        recordLatestEdit(key, task);
         deferredTaskRef.current.set(key, task);
-        latestTaskByKeyRef.current.set(key, task);
-        editGenerationByKeyRef.current.set(
-          key,
-          (editGenerationByKeyRef.current.get(key) ?? 0) + 1,
-        );
         if (failedSavesRef.current.has(key)) {
           failedSavesRef.current.set(key, task);
         }
         pendingKeysRef.current.add(key);
         syncUi();
         return;
+      }
+
+      const taskToRun =
+        fromRetry && latestTaskByKeyRef.current.has(key)
+          ? latestTaskByKeyRef.current.get(key)!
+          : task;
+
+      if (!fromRetry && !fromDebouncedFire && !fromDeferred) {
+        recordLatestEdit(key, taskToRun);
       }
 
       if (clearDebounce) {
@@ -172,20 +221,23 @@ export function useProgramAutoSave({
         }
       }
 
+      const attemptGeneration = getLatestGeneration(key);
+      const confirmedGeneration = getConfirmedGeneration(key);
+      if (attemptGeneration <= confirmedGeneration) {
+        pendingKeysRef.current.delete(key);
+        syncUi();
+        return;
+      }
+
       pendingKeysRef.current.add(key);
       inFlightKeysRef.current.add(key);
       inFlightRef.current += 1;
       syncUi();
       try {
-        await task();
-        const generation = editGenerationByKeyRef.current.get(key) ?? 0;
-        const latest = latestTaskByKeyRef.current.get(key);
-        const hasNewerQueued =
-          deferredTaskRef.current.has(key) ||
-          timersRef.current.has(key) ||
-          (latest !== undefined && latest !== task);
-        if (!hasNewerQueued) {
-          savedGenerationByKeyRef.current.set(key, generation);
+        await taskToRun();
+        const confirmedAfter = getConfirmedGeneration(key);
+        if (attemptGeneration > confirmedAfter) {
+          savedGenerationByKeyRef.current.set(key, attemptGeneration);
         }
         if (!timersRef.current.has(key) && !deferredTaskRef.current.has(key)) {
           pendingKeysRef.current.delete(key);
@@ -198,11 +250,13 @@ export function useProgramAutoSave({
           } else if (activeRef.current) {
             scheduleFailedRetries();
           }
+        } else if (failedSavesRef.current.size === 0) {
+          setFailureAlertShown(false);
         }
       } catch {
         if (activeRef.current && allowRetryOnFailure) {
           if (!timersRef.current.has(key)) {
-            failedSavesRef.current.set(key, task);
+            failedSavesRef.current.set(key, taskToRun);
           }
           setFailureAlertShown(true);
           scheduleFailedRetries();
@@ -212,10 +266,9 @@ export function useProgramAutoSave({
         inFlightRef.current = Math.max(0, inFlightRef.current - 1);
         syncUi();
         if (!activeRef.current) {
-          const flushTask = unmountFlushTaskRef.current.get(key);
-          if (flushTask) {
-            unmountFlushTaskRef.current.delete(key);
-            void runSaveOnceAfterUnmount(key, flushTask);
+          if (unmountFlushAfterInFlightRef.current.has(key)) {
+            unmountFlushAfterInFlightRef.current.delete(key);
+            void runSaveOnceAfterUnmount(key);
           }
         } else if (timersRef.current.has(key)) {
           deferredTaskRef.current.delete(key);
@@ -223,13 +276,19 @@ export function useProgramAutoSave({
           const deferred = deferredTaskRef.current.get(key);
           if (deferred) {
             deferredTaskRef.current.delete(key);
-            void runSave(key, deferred, { allowRetryOnFailure: true });
+            void runSave(key, deferred, {
+              fromDeferred: true,
+              allowRetryOnFailure: true,
+            });
           }
         }
       }
     },
     [
       clearRetryTimer,
+      getConfirmedGeneration,
+      getLatestGeneration,
+      recordLatestEdit,
       resetRetryBackoff,
       runSaveOnceAfterUnmount,
       scheduleFailedRetries,
@@ -241,11 +300,7 @@ export function useProgramAutoSave({
 
   const scheduleDebouncedSave = useCallback(
     (key: string, task: () => Promise<void>) => {
-      latestTaskByKeyRef.current.set(key, task);
-      editGenerationByKeyRef.current.set(
-        key,
-        (editGenerationByKeyRef.current.get(key) ?? 0) + 1,
-      );
+      recordLatestEdit(key, task);
       if (failedSavesRef.current.has(key)) {
         failedSavesRef.current.set(key, task);
       }
@@ -259,11 +314,15 @@ export function useProgramAutoSave({
         key,
         setTimeout(() => {
           timersRef.current.delete(key);
-          void runSave(key, task, { clearDebounce: true, allowRetryOnFailure: true });
+          void runSave(key, task, {
+            clearDebounce: true,
+            allowRetryOnFailure: true,
+            fromDebouncedFire: true,
+          });
         }, debounceMs),
       );
     },
-    [debounceMs, runSave, syncUi],
+    [debounceMs, recordLatestEdit, runSave, syncUi],
   );
 
   const markSaved = useCallback(() => {
@@ -277,7 +336,7 @@ export function useProgramAutoSave({
     latestTaskByKeyRef.current.clear();
     editGenerationByKeyRef.current.clear();
     savedGenerationByKeyRef.current.clear();
-    unmountFlushTaskRef.current.clear();
+    unmountFlushAfterInFlightRef.current.clear();
     setFailureAlertShown(false);
     clearRetryTimer();
     resetRetryBackoff();
@@ -291,7 +350,7 @@ export function useProgramAutoSave({
       if (shouldSkipAutomaticRetryForKey(key)) {
         continue;
       }
-      void runSave(key, run, { allowRetryOnFailure: true });
+      void runSave(key, run, { allowRetryOnFailure: true, fromRetry: true });
     }
   }, [clearRetryTimer, resetRetryBackoff, runSave, shouldSkipAutomaticRetryForKey]);
 
@@ -304,28 +363,20 @@ export function useProgramAutoSave({
       }
       timersRef.current.clear();
       clearRetryTimer();
+      deferredTaskRef.current.clear();
 
-      const keysToConsider = new Set<string>([
-        ...pendingKeysRef.current,
-        ...deferredTaskRef.current.keys(),
-        ...latestTaskByKeyRef.current.keys(),
-        ...unmountFlushTaskRef.current.keys(),
-      ]);
-
-      for (const key of keysToConsider) {
-        const latest = latestTaskByKeyRef.current.get(key);
-        if (latest === undefined) {
+      for (const key of latestTaskByKeyRef.current.keys()) {
+        if (!shouldSendLatest(key)) {
           continue;
         }
-        const generation = editGenerationByKeyRef.current.get(key) ?? 0;
-        const savedGeneration = savedGenerationByKeyRef.current.get(key) ?? 0;
-        if (generation <= savedGeneration) {
-          continue;
+        if (inFlightKeysRef.current.has(key)) {
+          unmountFlushAfterInFlightRef.current.add(key);
+        } else {
+          void runSaveOnceAfterUnmount(key);
         }
-        void runSaveOnceAfterUnmount(key, latest);
       }
     };
-  }, [clearRetryTimer, runSaveOnceAfterUnmount]);
+  }, [clearRetryTimer, runSaveOnceAfterUnmount, shouldSendLatest]);
 
   const publishAllowed = state === "saved" && !hasUnsavedEdits;
 

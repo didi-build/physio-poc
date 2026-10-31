@@ -397,7 +397,11 @@ describe("useProgramAutoSave (unit)", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(save).toHaveBeenCalledTimes(2);
   });
 
   it("uses exponential auto retry delays of 1.5s doubling up to a 30s cap", async () => {
@@ -829,7 +833,7 @@ describe("useProgramAutoSave (unit)", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(120_000);
     });
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
   });
 
   it("D03 exact: newest debounced value wins over deferred task (debounceMs 100)", async () => {
@@ -1145,5 +1149,319 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(120_000);
     });
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("B1: in-flight save that succeeds sends the value once (PA)", async () => {
+    vi.useFakeTimers();
+    let finishA: (() => void) | undefined;
+    const sent: string[] = [];
+    const { result, unmount } = renderHook(() =>
+      useProgramAutoSave({ debounceMs: 100 }),
+    );
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        await new Promise<void>((resolve) => {
+          finishA = resolve;
+        });
+        sent.push("a");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    unmount();
+    await act(async () => {
+      finishA!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(sent).toEqual(["a"]);
+  });
+
+  it("B1: in-flight save with queued newer edit sends both values (PH)", async () => {
+    vi.useFakeTimers();
+    let finishA: (() => void) | undefined;
+    const sent: string[] = [];
+    const { result, unmount } = renderHook(() =>
+      useProgramAutoSave({ debounceMs: 100 }),
+    );
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        await new Promise<void>((resolve) => {
+          finishA = resolve;
+        });
+        sent.push("a");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        sent.push("ab");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    await act(async () => {
+      finishA!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(sent).toEqual(["a", "ab"]);
+  });
+
+  it("B1: in-flight save that fails retries once then stops", async () => {
+    vi.useFakeTimers();
+    let finishA: (() => void) | undefined;
+    const sent: string[] = [];
+    const save = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_, reject) => {
+            finishA = () => {
+              reject(new Error("fail"));
+            };
+          }),
+      )
+      .mockImplementationOnce(async () => {
+        throw new Error("fail again");
+      })
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 100 }));
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        sent.push("a");
+        await save();
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await act(async () => {
+      finishA!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      result.current.tryAgain();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(sent).toEqual(["a", "a"]);
+    act(() => {
+      result.current.markSaved();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(sent).toEqual(["a", "a"]);
+  });
+
+  it("B1: reorder PG ends on v3 and never re-sends v2 after unmount", async () => {
+    vi.useFakeTimers();
+    let finishV1: (() => void) | undefined;
+    let rejectV2: ((error: Error) => void) | undefined;
+    const order: string[] = [];
+    const { result, unmount } = renderHook(() =>
+      useProgramAutoSave({ debounceMs: 100 }),
+    );
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v1");
+        await new Promise<void>((resolve) => {
+          finishV1 = resolve;
+        });
+      });
+    });
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v2");
+        await new Promise<void>((_, reject) => {
+          rejectV2 = reject;
+        });
+      });
+    });
+    await act(async () => {
+      finishV1!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      rejectV2!(new Error("fail v2"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await result.current.runSave("reorder-rows", async () => {
+        order.push("v3");
+      });
+    });
+    expect(result.current.state).toBe("saved");
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(order).toEqual(["v1", "v2", "v3"]);
+  });
+
+  it("B1: direct reorder save with queued v2 sends v1 then v2 (PC2 reorder)", async () => {
+    vi.useFakeTimers();
+    let finishV1: (() => void) | undefined;
+    const order: string[] = [];
+    const { result, unmount } = renderHook(() =>
+      useProgramAutoSave({ debounceMs: 100 }),
+    );
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v1");
+        await new Promise<void>((resolve) => {
+          finishV1 = resolve;
+        });
+      });
+    });
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v2");
+      });
+    });
+    await act(async () => {
+      finishV1!();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(order).toEqual(["v1", "v2"]);
+  });
+
+  it("B1: version invariants fuzz (1000 seeded sequences)", async () => {
+    vi.useFakeTimers();
+    const FUZZ_SEED = 0x1149b1d1;
+    let state = FUZZ_SEED >>> 0;
+    const rand = () => {
+      state = (Math.imul(1_664_525, state) + 1_013_904_422) >>> 0;
+      return state / 0x1_0000_0000;
+    };
+
+    type Key = "name" | "reorder-rows";
+    const keys: Key[] = ["name", "reorder-rows"];
+
+    for (let seq = 0; seq < 1000; seq += 1) {
+      const server: Record<Key, string | null> = { name: null, "reorder-rows": null };
+      const confirmed: Record<Key, number> = { name: 0, "reorder-rows": 0 };
+      const latest: Record<Key, number> = { name: 0, "reorder-rows": 0 };
+      const sentByKey: Record<Key, string[]> = { name: [], "reorder-rows": [] };
+      const unmountSends: Record<Key, number> = { name: 0, "reorder-rows": 0 };
+      let unmounted = false;
+
+      const makeTask =
+        (key: Key, label: string, generation: number, fail: boolean) => async () => {
+          if (generation <= confirmed[key]) {
+            throw new Error("sent at or below confirmed");
+          }
+          if (generation !== latest[key]) {
+            throw new Error("sent superseded version");
+          }
+          if (unmounted) {
+            unmountSends[key] += 1;
+            if (unmountSends[key] > 1) {
+              throw new Error("more than one unmount send");
+            }
+          }
+          sentByKey[key].push(label);
+          if (fail) {
+            throw new Error("fail");
+          }
+          if (generation > confirmed[key]) {
+            confirmed[key] = generation;
+            server[key] = label;
+          }
+        };
+
+      const { result, unmount } = renderHook(() =>
+        useProgramAutoSave({ debounceMs: 100 }),
+      );
+
+      const steps = 3 + Math.floor(rand() * 8);
+      for (let step = 0; step < steps; step += 1) {
+        const key = keys[Math.floor(rand() * keys.length)]!;
+        const fail = rand() < 0.25;
+        latest[key] += 1;
+        const generation = latest[key];
+        const label = `${key}:${generation}`;
+        if (rand() < 0.5) {
+          act(() => {
+            result.current.scheduleDebouncedSave(
+              key,
+              makeTask(key, label, generation, fail),
+            );
+          });
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(50 + Math.floor(rand() * 100));
+            await Promise.resolve();
+          });
+        } else {
+          await act(async () => {
+            try {
+              await result.current.runSave(key, makeTask(key, label, generation, fail));
+            } catch {
+              // hook swallows
+            }
+            await Promise.resolve();
+          });
+        }
+        if (rand() < 0.15) {
+          act(() => {
+            result.current.tryAgain();
+          });
+          await act(async () => {
+            await Promise.resolve();
+          });
+        }
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10);
+        });
+      }
+
+      unmounted = true;
+      unmount();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+        await Promise.resolve();
+      });
+
+      for (const key of keys) {
+        expect(unmountSends[key]).toBeLessThanOrEqual(1);
+        expect(confirmed[key]).toBeLessThanOrEqual(latest[key]);
+        if (server[key] !== null) {
+          expect(server[key]).toBe(`${key}:${confirmed[key]}`);
+        }
+        if (confirmed[key] === latest[key] && latest[key] > 0) {
+          expect(server[key]).toBe(`${key}:${latest[key]}`);
+        }
+      }
+    }
+
+    console.info(`B1 fuzz seed: ${FUZZ_SEED}`);
   });
 });

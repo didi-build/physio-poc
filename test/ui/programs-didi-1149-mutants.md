@@ -1,6 +1,6 @@
 # Programs auto-save and published time mutants (DIDI-1149 / #61)
 
-Each mutant was applied alone at the PR head and run against the full `npm test` suite (1524 tests in CI scope). Results below are from actual runs on this branch unless noted.
+Each mutant was applied alone at the PR head and run against the full `npm test` suite with `GIT_CONFIG_*` unset (`1575` tests: `1570` passed, `4` skipped). Results below are from actual runs on this branch at the round 3 B1 head unless noted.
 
 ## Original #61 table (D1 through Q6b, P2, D8b)
 
@@ -15,7 +15,7 @@ Each mutant was applied alone at the PR head and run against the full `npm test`
 | D7  | No reset in `tryAgain`                                                            | Killed   | `resets auto retry backoff when Try again is pressed`                                                                                                                                   |
 | D8  | Remove in-flight skip in retry timer loop                                         | Killed   | `R61c: does not duplicate the latest debounced save when auto retry fires during an in-flight save` only (not the legacy D8 or D08/D09 titles)                                          |
 | D8b | Remove deferred-key skip in retry timer loop (in-flight skip kept)                | Survived | none under normal app lifecycle (see precondition below)                                                                                                                                |
-| D8c | Do not replace an existing deferred task on in-flight `runSave`                   | Killed   | `D03 exact: newest debounced value wins over deferred task (debounceMs 100)` only (not R61c or D08/D09 titles)                                                                          |
+| D8c | Do not replace an existing deferred task on in-flight `runSave`                   | Killed   | `D03: sends the latest value after several debounced edits while a save is in flight` only (not R61c or D08/D09 titles)                                                                 |
 | P2  | Skip `activeRef` guard in `scheduleFailedRetries` / failure `catch` after unmount | Survived | none (timer callback and cleanup guards remain; see QA round 2)                                                                                                                         |
 | Q1  | No cap (`MAX = Infinity`)                                                         | Killed   | `uses exponential auto retry delays of 1.5s doubling up to a 30s cap`                                                                                                                   |
 | Q2  | Cap at 15 s                                                                       | Killed   | `uses exponential auto retry delays of 1.5s doubling up to a 30s cap`                                                                                                                   |
@@ -29,24 +29,28 @@ Each mutant was applied alone at the PR head and run against the full `npm test`
 
 **D8b precondition:** `src/` does not use React `<Activity>` remount semantics. With the shipped lifecycle, a deferred task only exists while its key is in flight; the deferred-only retry skip is redundant with the in-flight skip for probed scenarios. Removing the skip is not a supported product path and is not given a dedicated killing test.
 
-**Round 2 corrected totals (rows D1 through Q6b, P2, D8b):** 18 killed, 2 survived (P2, D8b).
+**Round 3 totals (rows D1 through Q6b, P2, D8b):** 18 killed, 2 survived (P2, D8b).
 
-## Round 2 additional mutants
+**Round 2 survivors (for comparison):** same two on the core rows (P2, D8b).
 
-| ID    | Mutant                                              | Result   | Killing test(s)                                                                                                |
-| ----- | --------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------- |
-| UM1   | Cleanup does not set `activeRef` false              | Killed   | `does not schedule auto retry after unmount when an in-flight save fails`; `does not auto retry after unmount` |
-| UMall | All three `activeRef` guards removed                | Killed   | Same unmount auto retry tests                                                                                  |
-| UM2   | Cleanup does not clear retry timer                  | Survived | none (equivalent while cleanup clears `activeRef`)                                                             |
-| UM3   | No guard at top of `scheduleFailedRetries`          | Survived | none (equivalent with other guards)                                                                            |
-| UM4   | No guard in `catch`                                 | Survived | none (equivalent with other guards)                                                                            |
-| UM5   | No guard in retry timer callback                    | Survived | none (equivalent with other guards)                                                                            |
-| UM6   | No unmount flush of newest unsaved value            | Killed   | `UM6: unmount flushes exactly one save with the newest deferred value`; failed flush / no-op unmount tests     |
-| TA1   | No in-flight skip in `tryAgain`                     | Killed   | `N4 and N5: runs exactly one retry when Try again is pressed twice...`                                         |
-| TA2   | `tryAgain` does not clear retry timer               | Survived | none (equivalent)                                                                                              |
-| NW1   | Debounced edit does not replace failed task         | Killed   | `NW1: debounced edit replaces failed task before auto retry fires`                                             |
-| NW2   | In-flight `runSave` does not replace failed task    | Survived | none today (`catch` overwrites; equivalent until retry ordering changes)                                       |
-| NW3   | Deferred flush runs failed task instead of deferred | Killed   | `D08 and D09: saves the deferred newer value after an in-flight failure without re-sending stale data`         |
-| NW4   | `catch` keeps older failed task                     | Killed   | `NW4: auto retry sends the latest failed reorder task`                                                         |
+## Round 2 additional mutants (round 3 re-run at B1 head)
+
+| ID    | Mutant                                              | Result       | Killing test(s)                                                                                                |
+| ----- | --------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------- |
+| UM1   | Cleanup does not set `activeRef` false              | Killed       | `does not schedule auto retry after unmount when an in-flight save fails`; `does not auto retry after unmount` |
+| UMall | All three `activeRef` guards removed                | (not re-run) |                                                                                                                |
+| UM2   | Cleanup does not clear retry timer                  | Survived     | none (equivalent while cleanup clears `activeRef`)                                                             |
+| UM3   | No guard at top of `scheduleFailedRetries`          | Survived     | none (equivalent with other guards)                                                                            |
+| UM4   | No guard in `catch`                                 | Survived     | none (equivalent with other guards)                                                                            |
+| UM5   | No guard in retry timer callback                    | Survived     | none (equivalent with other guards)                                                                            |
+| UM6   | No unmount flush of newest unsaved value            | Killed       | `UM6: unmount flushes exactly one save with the newest deferred value`; B1 unmount/value tests                 |
+| TA1   | No in-flight skip in `tryAgain`                     | Killed       | `N4 and N5: runs exactly one retry when Try again is pressed twice...`                                         |
+| TA2   | `tryAgain` does not clear retry timer               | Survived     | none (equivalent)                                                                                              |
+| NW1   | Debounced edit does not replace failed task         | Equivalent   | Auto retry uses `latestTaskByKeyRef` on `fromRetry`; stale `failedSaves` entry is not sent.                    |
+| NW2   | In-flight `runSave` does not replace failed task    | Survived     | none today (`catch` overwrites; equivalent until retry ordering changes)                                       |
+| NW3   | Deferred flush runs failed task instead of deferred | Killed       | `D08 and D09: saves the deferred newer value after an in-flight failure without re-sending stale data`         |
+| NW4   | `catch` keeps older failed task                     | Survived     | none (`fromRetry` sends latest generation task; see B1 version model)                                          |
+
+**Round 2 survivors on additional rows:** UM2, UM3, UM4, UM5, TA2, NW2 (NW4 was listed killed in round 2; round 3 B1 head reruns it as survived).
 
 **#47 mutant table rows corrected in #61:** the prior D8 "equivalent survivor" row and the "7 killed, 1 survived" total were wrong.
