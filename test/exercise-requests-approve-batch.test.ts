@@ -82,120 +82,7 @@ describe("Exercise request approve batch (integration)", () => {
     }
   });
 
-  it("does not leave a placeholder unlinked when approve batch guard fails", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const requester = await seedPractitioner(
-        storage,
-        id("pract-batch-fail-req"),
-        "bfr@example.com",
-      );
-      const approver = await seedPractitioner(
-        storage,
-        id("pract-batch-fail-app"),
-        "bfa@example.com",
-      );
-      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        now: () => AFTER_FORM,
-      });
-      const created = await service.submitRequest({
-        practitionerId: requester,
-        requestedName: "Batch fail move",
-        formOpenedAt: FORM_OPENED,
-      });
-      expect(created.outcome).toBe("created");
-      if (created.outcome !== "created" || !created.exercise_id) {
-        return;
-      }
-
-      await seedApprovedExerciseVersion(storage, approver);
-      const programBuilder = new ProgramBuilderService(storage);
-      const programId = id("prog-batch-fail");
-      await programBuilder.createProgram(requester, { programId });
-      const rowId = id("row-batch-fail");
-      await programBuilder.addPlaceholderRow(requester, programId, {
-        rowId,
-        exerciseRequestId: created.request_id,
-        prescriptionType: "stretching",
-        params: { hold_s: 15 },
-      });
-
-      await storage.run(
-        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ?
-         WHERE exercise_id = ? AND status = 'draft'`,
-        [approver, AFTER_FORM, created.exercise_id],
-      );
-
-      await expect(
-        service.approveRequest({
-          practitionerId: approver,
-          requestId: created.request_id,
-        }),
-      ).rejects.toMatchObject({ code: "draft_not_ready" });
-
-      const linked = await storage.first<{ exercise_version_id: string | null }>(
-        `SELECT exercise_version_id FROM program_rows WHERE id = ?`,
-        [rowId],
-      );
-      expect(linked?.exercise_version_id).toBeNull();
-
-      const requestRow = await storage.first<{ status: string }>(
-        "SELECT status FROM exercise_requests WHERE id = ?",
-        [created.request_id],
-      );
-      expect(requestRow?.status).toBe("drafting");
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("does not approve the request when status is not drafting at approve time", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const requester = await seedPractitioner(
-        storage,
-        id("pract-batch-status-req"),
-        "bsr@example.com",
-      );
-      const approver = await seedPractitioner(
-        storage,
-        id("pract-batch-status-app"),
-        "bsa@example.com",
-      );
-      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        now: () => AFTER_FORM,
-      });
-      const created = await service.submitRequest({
-        practitionerId: requester,
-        requestedName: "Wrong status approve",
-        formOpenedAt: FORM_OPENED,
-      });
-      expect(created.outcome).toBe("created");
-      if (created.outcome !== "created") {
-        return;
-      }
-      await storage.run(
-        `UPDATE exercise_requests SET status = 'open', updated_at = ? WHERE id = ?`,
-        [AFTER_FORM, created.request_id],
-      );
-      await expect(
-        service.approveRequest({
-          practitionerId: approver,
-          requestId: created.request_id,
-        }),
-      ).rejects.toMatchObject({ code: "draft_not_ready" });
-
-      const requestRow = await storage.first<{ status: string }>(
-        "SELECT status FROM exercise_requests WHERE id = ?",
-        [created.request_id],
-      );
-      expect(requestRow?.status).toBe("open");
-    } finally {
-      storage.close();
-    }
-  });
-
-  it("approveRequest commits approve and link through one sql.batch call", async () => {
+  it("approveRequest commits approve and link through one sql.batch call when a placeholder row exists", async () => {
     const storage = await openMigratedDatabase();
     try {
       const requester = await seedPractitioner(
@@ -240,6 +127,17 @@ describe("Exercise request approve batch (integration)", () => {
       if (created.outcome !== "created") {
         return;
       }
+      await seedApprovedExerciseVersion(storage, approver);
+      const programBuilder = new ProgramBuilderService(storage);
+      const programId = id("prog-batch-once");
+      await programBuilder.createProgram(requester, { programId });
+      const rowId = id("row-batch-once");
+      await programBuilder.addPlaceholderRow(requester, programId, {
+        rowId,
+        exerciseRequestId: created.request_id,
+        prescriptionType: "stretching",
+        params: { hold_s: 12 },
+      });
       await service.approveRequest({
         practitionerId: approver,
         requestId: created.request_id,

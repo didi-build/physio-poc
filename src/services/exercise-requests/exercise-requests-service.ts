@@ -36,6 +36,7 @@ import {
   fakeExerciseDraftGenerator,
   type ExerciseDraftGenerator,
 } from "./fake-draft-generator.js";
+import { ExerciseRequestsServiceError } from "./errors.js";
 import type {
   ApproveExerciseRequestResult,
   DraftFieldPatch,
@@ -49,22 +50,8 @@ import type {
 const SIMILAR_LIBRARY_LIMIT = 10;
 const FORM_OPENED_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
-export class ExerciseRequestsServiceError extends Error {
-  constructor(
-    message: string,
-    readonly code:
-      | "practitioner_not_found"
-      | "request_not_found"
-      | "invalid_input"
-      | "draft_not_ready"
-      | "conflict_target_not_found"
-      | "merge_target_not_ready"
-      | "approve_failed",
-  ) {
-    super(message);
-    this.name = "ExerciseRequestsServiceError";
-  }
-}
+export { ExerciseRequestsServiceError } from "./errors.js";
+export type { ExerciseRequestsServiceErrorCode } from "./errors.js";
 
 function isIsoDateTimeString(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/.test(value)) {
@@ -467,14 +454,20 @@ export class ExerciseRequestsService {
       }
     }
 
-    const updated = await this.requests.updateStatus({
-      id: row.id,
-      status: "drafting",
-      updatedAt: this.now(),
-      allowedFromStatuses: ["open", "drafting"],
-    });
-    if (!updated) {
-      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    try {
+      await this.sql.batch([
+        this.requests.buildUpdateStatusBatchStatement({
+          id: row.id,
+          status: "drafting",
+          updatedAt: this.now(),
+          allowedFromStatuses: ["open", "drafting"],
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+      }
+      throw error;
     }
 
     return this.getRequest({ practitionerId: input.practitionerId, requestId: row.id });

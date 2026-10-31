@@ -1,5 +1,8 @@
-import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
-import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
+import type {
+  SqlBatchStatement,
+  SqlStoragePort,
+} from "../../storage/ports/sql-storage.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import {
   ExerciseAliasesRepository,
   ExerciseRequestsRepository,
@@ -11,6 +14,10 @@ import {
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
 import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  ExerciseRequestsServiceError,
+  isExerciseAliasUniqueConstraintError,
+} from "./errors.js";
 
 export type ExerciseDraftGeneratorResult = {
   exerciseId: string;
@@ -92,29 +99,54 @@ export async function appendMergeToDraftRequest(input: {
   if (input.mergedNote) {
     mergedParts.push(input.mergedNote);
   }
-  if (mergedParts.length > 0) {
-    await requests.updateNote({
-      id: input.targetRequestId,
-      note: mergedParts.join("\n"),
-      updatedAt: input.now,
-    });
-  }
+  const mergedNote = mergedParts.length > 0 ? mergedParts.join("\n") : null;
 
   const aliasName = validateRequestedExerciseName(input.mergedName);
   const versions = new ExerciseVersionsRepository(input.sql);
   const draft = await versions.findDraftForExercise(row.exercise_id);
-  if (draft && draft.title.toLowerCase() !== aliasName.toLowerCase()) {
-    try {
-      await aliases.insert({
+  const needsAliasInsert =
+    draft !== null && draft.title.toLowerCase() !== aliasName.toLowerCase();
+
+  if (needsAliasInsert && (await aliases.aliasExistsCaseInsensitive(aliasName))) {
+    throw new ExerciseRequestsServiceError("Alias conflict", "alias_conflict");
+  }
+
+  const batchStatements: SqlBatchStatement[] = [];
+  if (mergedNote !== null) {
+    batchStatements.push(
+      requests.buildUpdateNoteBatchStatement({
+        id: input.targetRequestId,
+        note: mergedNote,
+        updatedAt: input.now,
+      }),
+    );
+  }
+  if (needsAliasInsert) {
+    batchStatements.push(
+      aliases.buildInsertBatchStatement({
         id: generateOpaqueEntityId(),
         exerciseId: row.exercise_id,
         alias: aliasName,
         createdAt: input.now,
-      });
-    } catch (error) {
-      if (!isSqlDuplicateIdError(error)) {
-        throw error;
-      }
+      }),
+    );
+  }
+
+  if (batchStatements.length === 0) {
+    return;
+  }
+
+  try {
+    await input.sql.batch(batchStatements);
+  } catch (error) {
+    if (error instanceof SqlBatchGuardError) {
+      throw error;
     }
+    if (isExerciseAliasUniqueConstraintError(error)) {
+      throw new ExerciseRequestsServiceError("Alias conflict", "alias_conflict", {
+        cause: error,
+      });
+    }
+    throw error;
   }
 }

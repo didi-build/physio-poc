@@ -521,6 +521,31 @@ export class ExerciseAliasesRepository {
       [id, exerciseId, alias, input.createdAt],
     );
   }
+
+  async aliasExistsCaseInsensitive(alias: string): Promise<boolean> {
+    const normalized = validateExerciseAlias(alias);
+    const row = await this.sql.first<{ one: number }>(
+      `SELECT 1 AS one FROM exercise_aliases WHERE alias = ? COLLATE NOCASE LIMIT 1`,
+      [normalized],
+    );
+    return row !== null;
+  }
+
+  buildInsertBatchStatement(input: {
+    id: string;
+    exerciseId: string;
+    alias: string;
+    createdAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise alias id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const alias = validateExerciseAlias(input.alias);
+    return {
+      sql: "INSERT INTO exercise_aliases (id, exercise_id, alias, created_at) VALUES (?, ?, ?, ?)",
+      bindings: [id, exerciseId, alias, input.createdAt],
+      minRowsAffected: 1,
+    };
+  }
 }
 
 export class ExerciseBodyRegionsRepository {
@@ -662,6 +687,20 @@ export class ExerciseRequestsRepository {
       [note, input.updatedAt, input.id],
     );
     return result.rowsAffected > 0;
+  }
+
+  buildUpdateNoteBatchStatement(input: {
+    id: string;
+    note: string | null;
+    updatedAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const note = validateRequestNote(input.note);
+    return {
+      sql: `UPDATE exercise_requests SET note = ?, updated_at = ? WHERE id = ?`,
+      bindings: [note, input.updatedAt, id],
+      minRowsAffected: 1,
+    };
   }
 
   async countInProgress(): Promise<number> {

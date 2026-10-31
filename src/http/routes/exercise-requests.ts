@@ -51,7 +51,7 @@ function errorResponse(error: unknown): Response {
             error.code === "draft_not_ready" ||
             error.code === "merge_target_not_ready"
           ? 404
-          : error.code === "approve_failed"
+          : error.code === "approve_failed" || error.code === "alias_conflict"
             ? 409
             : 400;
     return Response.json(

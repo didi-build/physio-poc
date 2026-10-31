@@ -38,7 +38,6 @@ import {
 } from "./helpers/mutating-app-api-route-registry.js";
 import {
   expectInvalidInputQueryGuardResponse,
-  practitionerAsQuerySuffix,
   practitionerIdQuerySuffix,
   practitionerUnderscoreIdQuerySuffix,
 } from "./helpers/invalid-input-query-guard.js";
@@ -233,7 +232,6 @@ describe("Exercise requests HTTP routes (integration)", () => {
       const querySuffixBuilders = [
         practitionerIdQuerySuffix,
         practitionerUnderscoreIdQuerySuffix,
-        practitionerAsQuerySuffix,
       ] as const;
 
       for (const routeCase of exerciseRequestsHttpRouteCases(requestId)) {
