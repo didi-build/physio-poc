@@ -9,7 +9,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const ROUTINES = path.join(ROOT, "src/storage/repositories/routines.ts");
-const BATCH_TEST = path.join(ROOT, "test/routine-repository-batch-atomicity.test.ts");
+const BATCH_TEST = path.join(ROOT, "test/routine-batch-didi-1098-atomicity.test.ts");
 
 function read(file) {
   return fs.readFileSync(file, "utf8");
@@ -225,19 +225,27 @@ const MUTANTS = [
     apply: () =>
       patchRoutines((s) =>
         s.replace(
-          `        minRowsAffected: 1,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 1,
       },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
-          `      },
+        sql: \`INSERT INTO routine_versions (`,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+      },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
+        sql: \`INSERT INTO routine_versions (`,
         ),
       ),
   },
@@ -255,6 +263,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -265,6 +274,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       })) {
@@ -446,6 +456,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -456,6 +467,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       })) {
@@ -612,6 +624,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -622,6 +635,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       });
@@ -710,6 +724,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -720,6 +735,7 @@ const MUTANTS = [
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       });
@@ -777,20 +793,28 @@ const MUTANTS = [
     apply: () =>
       patchRoutines((s) =>
         s.replace(
-          `        minRowsAffected: 1,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 1,
       },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
-          `        minRowsAffected: 0,
+        sql: \`INSERT INTO routine_versions (`,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 0,
       },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
+        sql: \`INSERT INTO routine_versions (`,
         ),
       ),
   },
@@ -800,20 +824,28 @@ const MUTANTS = [
     apply: () =>
       patchRoutines((s) =>
         s.replace(
-          `        minRowsAffected: 1,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 1,
       },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
-          `        minRowsAffected: 2,
+        sql: \`INSERT INTO routine_versions (`,
+          `        sql: \`UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?\`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 2,
       },
       {
-        sql: \`INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,`,
+        sql: \`INSERT INTO routine_versions (`,
         ),
       ),
   },
@@ -1226,6 +1258,7 @@ export type ConditionRow`,
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -1236,6 +1269,7 @@ export type ConditionRow`,
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       });
@@ -1246,51 +1280,8 @@ export type ConditionRow`,
   },
   {
     id: "H1",
-    mutation: "`expectNoFrozenCopy`: dead practitioner filter reverted",
-    apply: () =>
-      patchBatchTest((s) =>
-        s.replace(
-          `async function expectNoFrozenCopy(
-  storage: SqlStoragePort,
-  practitionerId: string,
-  routineId: string,
-  copyId: string,
-): Promise<void> {
-  const header = await storage.first<{ id: string }>(
-    \`SELECT id FROM practitioner_routines WHERE id = ? LIMIT 1\`,
-    [copyId],
-  );
-  expect(header).toBeNull();
-  const copies = await storage.all<{ id: string; routine_id: string }>(
-    "SELECT id, routine_id FROM practitioner_routines WHERE practitioner_id = ?",
-    [practitionerId],
-  );
-  expect(copies.filter((row) => row.routine_id === routineId)).toHaveLength(0);
-  const rows = await storage.all<{ id: string }>(
-    \`SELECT id FROM practitioner_routine_rows WHERE practitioner_routine_id = ?\`,
-    [copyId],
-  );
-  expect(rows).toHaveLength(0);
-}`,
-          `async function expectNoFrozenCopy(
-  storage: SqlStoragePort,
-  practitionerId: string,
-  routineId: string,
-  copyId: string,
-): Promise<void> {
-  const copies = await storage.all<{ id: string }>(
-    "SELECT id FROM practitioner_routines WHERE practitioner_id = ?",
-    [practitionerId],
-  );
-  expect(copies).toHaveLength(0);
-  const rows = await storage.all<{ id: string }>(
-    \`SELECT id FROM practitioner_routine_rows WHERE practitioner_routine_id = ?\`,
-    [copyId],
-  );
-  expect(rows).toHaveLength(0);
-}`,
-        ),
-      ),
+    mutation: "`expectNoFrozenCopy`: dead header-by-id check removed",
+    apply: () => patchBatchTest((s) => s.replace("  expect(header).toBeNull();\n", "")),
   },
   {
     id: "H2",
