@@ -421,9 +421,10 @@ describe("Programs builder dev verification", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByText(/so anyone who opens it sees "This link was closed"\./),
+      within(dialog).getByText(
+        'It also closes its share link, so anyone who opens it sees "This link was closed".',
+      ),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText(/closes its share link/)).toBeInTheDocument();
     expect(
       within(dialog).getByText(
         "To stop sharing but keep the program, close the link on the Share screen instead.",
