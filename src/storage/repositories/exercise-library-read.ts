@@ -363,6 +363,44 @@ export class ExerciseLibraryReadRepository {
     );
   }
 
+  /** Draft or approved version metadata for composing approve-and-link batch statements. */
+  async getVersionForApproveLinkCompose(
+    versionId: string,
+  ): Promise<LatestApprovedVersionRow | null> {
+    return this.sql.first<LatestApprovedVersionRow>(
+      `
+      SELECT
+        ev.id,
+        ev.exercise_id,
+        ev.version_number,
+        ev.title,
+        ev.description,
+        ev.equipment,
+        ev.starting_position,
+        ev.steps,
+        ev.common_mistakes,
+        ev.regressions,
+        ev.progressions,
+        ev.precautions,
+        ev.cue_stretching,
+        ev.cue_isometric,
+        ev.cue_concentric,
+        ev.cue_eccentric,
+        ev.approved_at,
+        ev.created_at,
+        ev.change_summary,
+        ev.media_set_id,
+        e.category,
+        e.created_by
+      FROM exercise_versions ev
+      INNER JOIN exercises e ON e.id = ev.exercise_id
+      WHERE ev.id = ? AND ev.status IN ('draft', 'approved')
+      LIMIT 1
+      `,
+      [versionId],
+    );
+  }
+
   async listBodyRegionLabelsForExercise(exerciseId: string): Promise<string[]> {
     const rows = await this.sql.all<{ label: string }>(
       `SELECT br.label

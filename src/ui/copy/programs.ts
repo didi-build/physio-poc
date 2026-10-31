@@ -88,7 +88,6 @@ export function formatProgramPublishedAt(iso: string): string {
     return iso;
   }
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Toronto",
     month: "short",
     day: "numeric",
     hour: "numeric",

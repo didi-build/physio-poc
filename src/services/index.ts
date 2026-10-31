@@ -4,6 +4,10 @@ export {
   ExerciseLibraryServiceError,
 } from "./exercise-library/index.js";
 export {
+  ExerciseRequestsService,
+  ExerciseRequestsServiceError,
+} from "./exercise-requests/index.js";
+export {
   DAILY_MEDIA_REGENERATION_CAP,
   ExerciseMediaService,
   ExerciseMediaServiceError,
