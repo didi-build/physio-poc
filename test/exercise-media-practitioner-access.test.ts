@@ -207,7 +207,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
   });
 });
 
-describe("Exercise media cross-practitioner approved access (integration, pinned behaviour)", () => {
+describe("Exercise media cross-practitioner approved access (integration)", () => {
   async function seedPractitionerBApprovedWithPublicMedia(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   ): Promise<{ practA: string; practB: string; approvedVersionId: string }> {
@@ -255,7 +255,7 @@ describe("Exercise media cross-practitioner approved access (integration, pinned
     return { practA, practB, approvedVersionId };
   }
 
-  it("pins today: practitioner A can POST generate on B approved version (CTO owner-only differs)", async () => {
+  it("POST generate: practitioner A on B approved matches missing version response", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practA, approvedVersionId } =
@@ -266,25 +266,30 @@ describe("Exercise media cross-practitioner approved access (integration, pinned
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const url = `${BASE}/api/practitioners/${practA}/exercise-versions/${approvedVersionId}/media/generate`;
-      const response = await handleRequest(
-        new Request(
-          url,
-          mutatingAppApiRequestInit(url, {
-            method: "POST",
-            headers: { cookie, "content-type": "application/json" },
-            body: JSON.stringify({}),
-          }),
-        ),
-        deps,
+      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/generate`;
+      const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/generate`;
+      const init = (url: string) =>
+        mutatingAppApiRequestInit(url, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      const missing = await responseSnapshot(
+        await handleRequest(new Request(missingUrl, init(missingUrl)), deps),
       );
-      expect(response.status).toBe(201);
+      const foreign = await responseSnapshot(
+        await handleRequest(new Request(foreignUrl, init(foreignUrl)), deps),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
     } finally {
       storage.close();
     }
   });
 
-  it("pins today: practitioner A can POST regenerate on B approved version (CTO owner-only differs)", async () => {
+  it("POST regenerate: practitioner A on B approved matches missing version response", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practA, approvedVersionId } =
@@ -295,25 +300,31 @@ describe("Exercise media cross-practitioner approved access (integration, pinned
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const url = `${BASE}/api/practitioners/${practA}/exercise-versions/${approvedVersionId}/media/regenerate`;
-      const response = await handleRequest(
-        new Request(
-          url,
-          mutatingAppApiRequestInit(url, {
-            method: "POST",
-            headers: { cookie, "content-type": "application/json" },
-            body: JSON.stringify({ scope: "both", note: null }),
-          }),
-        ),
-        deps,
+      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const body = JSON.stringify({ scope: "both", note: null });
+      const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/regenerate`;
+      const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const init = (url: string) =>
+        mutatingAppApiRequestInit(url, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body,
+        });
+      const missing = await responseSnapshot(
+        await handleRequest(new Request(missingUrl, init(missingUrl)), deps),
       );
-      expect(response.status).toBe(200);
+      const foreign = await responseSnapshot(
+        await handleRequest(new Request(foreignUrl, init(foreignUrl)), deps),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
     } finally {
       storage.close();
     }
   });
 
-  it("pins today: practitioner A can GET internal serve on B approved version (CTO owner-only differs)", async () => {
+  it("GET internal serve: practitioner A on B approved matches missing version response", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practA, approvedVersionId } =
@@ -324,22 +335,33 @@ describe("Exercise media cross-practitioner approved access (integration, pinned
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const response = await handleRequest(
-        new Request(
-          `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
-          { headers: { cookie } },
+      const missing = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=internal`,
+            { headers: { cookie } },
+          ),
+          deps,
         ),
-        deps,
       );
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as { mediaSetId?: string };
-      expect(body.mediaSetId).toBeTruthy();
+      const foreign = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
+            { headers: { cookie } },
+          ),
+          deps,
+        ),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
     } finally {
       storage.close();
     }
   });
 
-  it("pins today: practitioner A can GET public serve on B approved version (matches CTO)", async () => {
+  it("GET public serve: practitioner A on B approved version returns media", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practA, approvedVersionId } =

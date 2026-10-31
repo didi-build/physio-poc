@@ -485,10 +485,7 @@ export class ExerciseMediaService {
     practitionerId: string,
   ): Promise<ExerciseVersionMediaRow> {
     const version = await this.versions.findVersionWithExerciseOwner(versionId);
-    if (
-      !version ||
-      (version.status === "draft" && version.exercise_created_by !== practitionerId)
-    ) {
+    if (!version || version.exercise_created_by !== practitionerId) {
       throw this.versionNotFoundError();
     }
     return version;
