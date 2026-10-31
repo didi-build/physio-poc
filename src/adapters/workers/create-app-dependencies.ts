@@ -10,6 +10,8 @@ import { D1SqlStorage, type PhysioD1Database } from "./d1-sql-storage.js";
 import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
 import { resolveWorkerFailClosedPhysioServerConfig } from "./resolve-worker-config.js";
 
+export type { WorkerAssetsBinding } from "./worker-assets-ui-static-port.js";
+
 export const WORKER_WRANGLER_COMPATIBILITY_DATE = "2025-10-29";
 
 export const WORKER_WRANGLER_COMPATIBILITY_FLAGS = [
@@ -24,6 +26,7 @@ export type WorkerEnv = {
   GOOGLE_CLIENT_SECRET?: string;
   PHYSIO_ALLOWED_GOOGLE_EMAILS?: string;
   PHYSIO_DB?: PhysioD1Database;
+  ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 
 const workerDbCacheIds = new WeakMap<object, number>();

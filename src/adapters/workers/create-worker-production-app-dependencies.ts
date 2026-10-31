@@ -10,6 +10,7 @@ import {
 import { resolveWorkerPhysioServerConfig } from "./resolve-worker-config.js";
 import { workerCimdMetadataFetch } from "./worker-cimd-metadata-fetch.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
+import { createWorkerAssetsUiStaticPort } from "./worker-assets-ui-static-port.js";
 
 /** Production Better Auth wiring (dynamic import from the Worker entry only). */
 export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDependencies {
@@ -26,6 +27,9 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
       cimdMetadataFetch: workerCimdMetadataFetch,
     },
   );
+  const uiStatic = env.ASSETS
+    ? createWorkerAssetsUiStaticPort(env.ASSETS, config.webAppBaseUrl)
+    : undefined;
   return {
     sql,
     objects: new InMemoryObjectStorage(),
@@ -34,5 +38,6 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     mcp: createPhysioMcpHttpHandler(config),
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
     guardedAppWithoutSession: "redirect",
+    uiStatic,
   };
 }

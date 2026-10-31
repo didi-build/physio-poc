@@ -29,6 +29,7 @@ const VALIDATE_STEP = "Validate production auth secrets";
 const PREPARE_STEP = "Prepare Wrangler config (production D1 ID)";
 const MIGRATE_STEP = "Apply production D1 migrations";
 const PUT_STEP = "Put production Worker auth secrets";
+const BUILD_UI_STEP = "Build UI static assets";
 const DEPLOY_STEP = "Deploy to Cloudflare Workers";
 
 const ASSERT_RUN_LINE = "node scripts/assert-production-deploy-secrets.mjs";
@@ -108,19 +109,28 @@ describe("production deploy workflow structure (DIDI-1044 QA)", () => {
     ]);
   });
 
-  it("orders deploy steps validate < prepare < migrate < put < deploy", () => {
+  it("orders deploy steps validate < prepare < migrate < put < build ui < deploy", () => {
     const validateIdx = stepIndexByName(steps, VALIDATE_STEP);
     const prepareIdx = stepIndexByName(steps, PREPARE_STEP);
     const migrateIdx = stepIndexByName(steps, MIGRATE_STEP);
     const putIdx = stepIndexByName(steps, PUT_STEP);
+    const buildIdx = stepIndexByName(steps, BUILD_UI_STEP);
     const deployIdx = stepIndexByName(steps, DEPLOY_STEP);
-    for (const idx of [validateIdx, prepareIdx, migrateIdx, putIdx, deployIdx]) {
+    for (const idx of [
+      validateIdx,
+      prepareIdx,
+      migrateIdx,
+      putIdx,
+      buildIdx,
+      deployIdx,
+    ]) {
       expect(idx).toBeGreaterThan(-1);
     }
     expect(validateIdx).toBeLessThan(prepareIdx);
     expect(prepareIdx).toBeLessThan(migrateIdx);
     expect(migrateIdx).toBeLessThan(putIdx);
-    expect(putIdx).toBeLessThan(deployIdx);
+    expect(putIdx).toBeLessThan(buildIdx);
+    expect(buildIdx).toBeLessThan(deployIdx);
   });
 
   it("keeps auth secrets out of workflow-wide and job-wide env", () => {

@@ -1,9 +1,9 @@
 export type UiStaticPort = {
-  tryServeAsset(pathname: string): Response | null;
-  renderAppShell(): Response | null;
+  tryServeAsset(pathname: string): Promise<Response | null>;
+  renderAppShell(): Promise<Response | null>;
 };
 
 export const noopUiStaticPort: UiStaticPort = {
-  tryServeAsset: () => null,
-  renderAppShell: () => null,
+  tryServeAsset: async () => null,
+  renderAppShell: async () => null,
 };

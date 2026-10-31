@@ -52,8 +52,8 @@ const APP_SHELL_ROUTING_TEST_MARKER = "csrf-mixed-case-app-shell-marker";
 
 function testUiStaticPortForAppShellRouting(): UiStaticPort {
   return {
-    tryServeAsset: () => null,
-    renderAppShell: () =>
+    tryServeAsset: async () => null,
+    renderAppShell: async () =>
       new Response(
         `<!DOCTYPE html><html><body>${APP_SHELL_ROUTING_TEST_MARKER}</body></html>`,
         {

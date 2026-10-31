@@ -11,6 +11,11 @@
       "migrations_dir": "migrations",
     },
   ],
+  "assets": {
+    "directory": "./dist/ui",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
   "observability": {
     "enabled": true,
   },
