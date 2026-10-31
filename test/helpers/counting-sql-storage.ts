@@ -69,6 +69,12 @@ export function wrapSqlStorageWithPendingSelectCounter(
       bumpPendingConsentCount(statement, bumpStore, bumpWrite);
       return inner.first<T>(statement, bindings);
     },
+    batch: async (statements) => {
+      for (const statement of statements) {
+        bumpPendingConsentCount(statement.sql, bumpStore, bumpWrite);
+      }
+      return inner.batch(statements);
+    },
   };
   return {
     sql,

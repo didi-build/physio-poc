@@ -8,6 +8,7 @@ describe("wrapSqlStorageWithPendingSelectCounter (unit)", () => {
       run: async () => ({ rowsAffected: 0 }),
       all: async () => [],
       first: async () => null,
+      batch: async () => {},
     };
     const { sql, pendingConsentStoreCallCount, resetPendingConsentStoreCallCount } =
       wrapSqlStorageWithPendingSelectCounter(inner);
