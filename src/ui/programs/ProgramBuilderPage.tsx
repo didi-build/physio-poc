@@ -70,7 +70,6 @@ export function ProgramBuilderPage() {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [pendingLeaveTo, setPendingLeaveTo] = useState<string | null>(null);
   const [redirectToList, setRedirectToList] = useState(false);
-  const pendingAddExerciseRowIdRef = useRef<string | null>(null);
 
   const saveName = useCallback(async () => {
     const current = programRef.current;
@@ -215,17 +214,14 @@ export function ProgramBuilderPage() {
     }
     setAddExerciseOpen(false);
     setRowMutationBusy(true);
-    if (pendingAddExerciseRowIdRef.current === null) {
-      pendingAddExerciseRowIdRef.current = crypto.randomUUID();
-    }
-    const rowId = pendingAddExerciseRowIdRef.current;
+    const rowId = crypto.randomUUID();
+    const saveKey = `add-exercise:${rowId}`;
     void autoSave
-      .runSave("add-exercise", async () => {
+      .runSave(saveKey, async () => {
         const result = await client.addExerciseRow(program.program_id, {
           row_id: rowId,
           exercise_id: exerciseId,
         });
-        pendingAddExerciseRowIdRef.current = null;
         applyProgram(result.program);
         setNoteDrafts(noteDraftsFromProgram(result.program));
       })

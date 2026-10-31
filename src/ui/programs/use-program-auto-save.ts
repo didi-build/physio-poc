@@ -27,6 +27,7 @@ export function useProgramAutoSave({
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inFlightRef = useRef(0);
   const inFlightKeysRef = useRef<Set<string>>(new Set());
+  const deferredTaskRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const failedSavesRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -76,6 +77,9 @@ export function useProgramAutoSave({
   const runSave = useCallback(
     async (key: string, task: () => Promise<void>) => {
       if (inFlightKeysRef.current.has(key)) {
+        deferredTaskRef.current.set(key, task);
+        pendingKeysRef.current.add(key);
+        syncUi();
         return;
       }
       const timer = timersRef.current.get(key);
@@ -83,6 +87,7 @@ export function useProgramAutoSave({
         clearTimeout(timer);
         timersRef.current.delete(key);
       }
+      pendingKeysRef.current.add(key);
       inFlightKeysRef.current.add(key);
       inFlightRef.current += 1;
       syncUi();
@@ -100,6 +105,11 @@ export function useProgramAutoSave({
         inFlightKeysRef.current.delete(key);
         inFlightRef.current = Math.max(0, inFlightRef.current - 1);
         syncUi();
+        const deferred = deferredTaskRef.current.get(key);
+        if (deferred) {
+          deferredTaskRef.current.delete(key);
+          void runSave(key, deferred);
+        }
       }
     },
     [scheduleFailedRetries, syncUi],
@@ -135,6 +145,7 @@ export function useProgramAutoSave({
     }
     timersRef.current.clear();
     pendingKeysRef.current.clear();
+    deferredTaskRef.current.clear();
     failedSavesRef.current.clear();
     setFailureAlertShown(false);
     clearRetryTimer();

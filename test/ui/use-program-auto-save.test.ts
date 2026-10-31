@@ -271,15 +271,52 @@ describe("useProgramAutoSave (unit)", () => {
     expect(ok).toHaveBeenCalledTimes(1);
   });
 
+  it("saves the latest debounced value after an in-flight save for the same key", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishFirst: (() => void) | undefined;
+    const saved: string[] = [];
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    act(() => {
+      result.current.scheduleDebouncedSave("note:1", async () => {
+        await new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        });
+        saved.push("a");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(result.current.state).toBe("saving");
+    act(() => {
+      result.current.scheduleDebouncedSave("note:1", async () => {
+        saved.push("ab");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(result.current.state).toBe("saving");
+    expect(saved).toEqual([]);
+    await act(async () => {
+      finishFirst!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(saved).toEqual(["a", "ab"]);
+    });
+    expect(result.current.state).toBe("saved");
+    expect(result.current.hasUnsavedEdits).toBe(false);
+    vi.useRealTimers();
+  });
+
   it("clears only the key that succeeded on retry and keeps other failed saves", async () => {
     const noteSave = vi
       .fn()
       .mockRejectedValueOnce(new Error("fail"))
       .mockResolvedValue(undefined);
-    const nameSave = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("fail"))
-      .mockRejectedValue(new Error("still fail"));
+    const nameSave = vi.fn().mockRejectedValue(new Error("still fail"));
     const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
     await act(async () => {
       await result.current.runSave("note:row-1", noteSave);
@@ -288,15 +325,11 @@ describe("useProgramAutoSave (unit)", () => {
       await result.current.runSave("name", nameSave);
     });
     expect(result.current.state).toBe("failed");
-    act(() => {
-      result.current.tryAgain();
+    await act(async () => {
+      await result.current.runSave("note:row-1", noteSave);
     });
-    await waitFor(() => {
-      expect(noteSave).toHaveBeenCalledTimes(2);
-    });
-    await waitFor(() => {
-      expect(nameSave).toHaveBeenCalledTimes(2);
-    });
+    expect(noteSave).toHaveBeenCalledTimes(2);
+    expect(nameSave).toHaveBeenCalledTimes(1);
     expect(result.current.state).toBe("failed");
     expect(result.current.failureAlertShown).toBe(true);
   });

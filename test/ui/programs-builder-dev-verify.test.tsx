@@ -1008,7 +1008,13 @@ describe("Programs builder dev verification", () => {
 
   it("runs a failed add exercise only once when Try saving again is pressed twice", async () => {
     mockMinWidth1024(true);
-    vi.stubGlobal("crypto", { randomUUID: () => "stable-add-row-id" });
+    let uuidSeq = 0;
+    vi.stubGlobal("crypto", {
+      randomUUID: () => {
+        uuidSeq += 1;
+        return `add-row-${uuidSeq}`;
+      },
+    });
     let addCalls = 0;
     const addExerciseRow = vi.fn().mockImplementation(async () => {
       addCalls += 1;
@@ -1047,19 +1053,83 @@ describe("Programs builder dev verification", () => {
     });
     await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(2));
     expect(addExerciseRow).toHaveBeenNthCalledWith(1, "prog-1", {
-      row_id: "stable-add-row-id",
+      row_id: "add-row-1",
       exercise_id: "ex-heel",
     });
     expect(addExerciseRow).toHaveBeenNthCalledWith(2, "prog-1", {
-      row_id: "stable-add-row-id",
+      row_id: "add-row-1",
       exercise_id: "ex-heel",
     });
+  });
+
+  it("assigns a new row_id per add and keeps a failed add retryable", async () => {
+    mockMinWidth1024(true);
+    let uuidSeq = 0;
+    vi.stubGlobal("crypto", {
+      randomUUID: () => {
+        uuidSeq += 1;
+        return `add-row-${uuidSeq}`;
+      },
+    });
+    const addExerciseRow = vi.fn().mockRejectedValue(new Error("fail"));
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={libraryClientWithHeel()}
+          programsClient={builderStubs({
+            addExerciseRow,
+            getProgram: vi.fn().mockResolvedValue(builderView()),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Add exercise" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(1));
+    expect(addExerciseRow).toHaveBeenLastCalledWith("prog-1", {
+      row_id: "add-row-1",
+      exercise_id: "ex-heel",
+    });
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+      ).toBeGreaterThan(0);
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Add exercise" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(2));
+    expect(addExerciseRow).toHaveBeenLastCalledWith("prog-1", {
+      row_id: "add-row-2",
+      exercise_id: "ex-heel",
+    });
+    expect(
+      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+    ).toBeGreaterThan(0);
+    await userEvent.click(
+      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
+    );
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(4));
+    const rowIds = addExerciseRow.mock.calls.map(
+      (call) => (call[1] as { row_id: string }).row_id,
+    );
+    expect(rowIds.filter((id) => id === "add-row-1")).toHaveLength(2);
+    expect(rowIds.filter((id) => id === "add-row-2")).toHaveLength(2);
   });
 
   it("runs a failed add exercise only once when Try saving again and auto retry overlap", async () => {
     mockMinWidth1024(true);
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.stubGlobal("crypto", { randomUUID: () => "stable-add-row-id" });
+    let uuidSeq = 0;
+    vi.stubGlobal("crypto", {
+      randomUUID: () => {
+        uuidSeq += 1;
+        return `add-row-${uuidSeq}`;
+      },
+    });
     let addCalls = 0;
     const addExerciseRow = vi.fn().mockImplementation(async () => {
       addCalls += 1;
