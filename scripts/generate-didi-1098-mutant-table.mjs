@@ -1281,7 +1281,18 @@ export type ConditionRow`,
   {
     id: "H1",
     mutation: "`expectNoFrozenCopy`: dead header-by-id check removed",
-    apply: () => patchBatchTest((s) => s.replace("  expect(header).toBeNull();\n", "")),
+    apply: () =>
+      patchBatchTest((s) =>
+        s.replace(
+          `  const header = await storage.first<{ id: string }>(
+    \`SELECT id FROM practitioner_routines WHERE id = ? LIMIT 1\`,
+    [copyId],
+  );
+  expect(header).toBeNull();
+  `,
+          "",
+        ),
+      ),
   },
   {
     id: "H2",
