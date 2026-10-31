@@ -93,7 +93,6 @@ body {
 
 .consent-name-inline {
   overflow-wrap: anywhere;
-  white-space: normal;
 }
 
 .consent-tag {
@@ -110,60 +109,6 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-@media (min-width: 640px) {
-  .consent-name-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: 0.375rem;
-    row-gap: 0.25rem;
-    font-size: 0.875rem;
-  }
-
-  .consent-name-lead {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-
-  .consent-name-inline {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  .consent-tag {
-    flex: 0 0 auto;
-    margin-left: 0;
-  }
-}
-
-@media (max-width: 639.98px) {
-  .consent-name-line {
-    display: block;
-  }
-
-  .consent-name-lead {
-    display: inline;
-    white-space: nowrap;
-    margin-right: 0.375rem;
-  }
-
-  .consent-name-inline {
-    display: inline;
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  .consent-tag {
-    display: inline-block;
-    margin-left: 0;
-    margin-top: 0.35rem;
-    width: fit-content;
-    max-width: 100%;
-  }
 }
 
 .consent-list-heading {
