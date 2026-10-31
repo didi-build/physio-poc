@@ -24,11 +24,19 @@ const LONG_CLIENT_NAME_DISPLAY = sanitizeOAuthClientDisplayName(
   "chatgpt.com",
 );
 
-const INTER_WOFF2 = join(
+const FONT_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
-  "../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2",
+  "../node_modules/@fontsource/inter/files",
 );
-const INTER_WOFF2_B64 = readFileSync(INTER_WOFF2).toString("base64");
+
+function interWoff2Base64(weight: 400 | 600 | 700): string {
+  const file = join(FONT_DIR, `inter-latin-${weight}-normal.woff2`);
+  return readFileSync(file).toString("base64");
+}
+
+const INTER_400_B64 = interWoff2Base64(400);
+const INTER_600_B64 = interWoff2Base64(600);
+const INTER_700_B64 = interWoff2Base64(700);
 
 async function loadConsentHtmlInPage(page: Page, html: string): Promise<void> {
   const fontFace = `<style>
@@ -37,7 +45,21 @@ async function loadConsentHtmlInPage(page: Page, html: string): Promise<void> {
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url(data:font/woff2;base64,${INTER_WOFF2_B64}) format("woff2");
+  src: url(data:font/woff2;base64,${INTER_400_B64}) format("woff2");
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(data:font/woff2;base64,${INTER_600_B64}) format("woff2");
+}
+@font-face {
+  font-family: Inter;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(data:font/woff2;base64,${INTER_700_B64}) format("woff2");
 }
 </style>`;
   const withFont = html.includes("<head>")
@@ -45,6 +67,12 @@ async function loadConsentHtmlInPage(page: Page, html: string): Promise<void> {
     : `${fontFace}${html}`;
   await page.setContent(withFont, { waitUntil: "domcontentloaded" });
   await page.evaluate(async () => {
+    await Promise.all([
+      document.fonts.load('400 16px "Inter"'),
+      document.fonts.load('600 16px "Inter"'),
+      document.fonts.load('700 16px "Inter"'),
+      document.fonts.load('700 11px "Inter"'),
+    ]);
     await document.fonts.ready;
   });
 }
@@ -74,7 +102,7 @@ async function consentPageHtml(options: { clientName?: string }): Promise<string
 }
 
 describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
-  it("keeps the Self-reported tag on the same row as the quoted name at 1280 px", async () => {
+  it("keeps the Self-reported tag on the name row inside the card at 1280 px", async () => {
     const html = await consentPageHtml({});
     const browser = await chromium.launch();
     try {
@@ -82,23 +110,69 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await loadConsentHtmlInPage(page, html);
       const boxes = await page.evaluate(() => {
+        const card = document.querySelector(".consent-card");
         const name = document.querySelector(".consent-name-inline");
         const tag = document.querySelector(".consent-tag");
-        if (!name || !tag) {
+        if (!card || !name || !tag) {
           return null;
         }
+        const cardBox = card.getBoundingClientRect();
         const nameBox = name.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
-        return { nameTop: nameBox.top, tagTop: tagBox.top, tagBottom: tagBox.bottom };
+        return {
+          nameTop: nameBox.top,
+          tagTop: tagBox.top,
+          tagRight: tagBox.right,
+          tagWidth: tagBox.width,
+          cardRight: cardBox.right,
+          cardClientWidth: card.clientWidth,
+          cardScrollWidth: card.scrollWidth,
+        };
       });
       expect(boxes).not.toBeNull();
       expect(Math.abs(boxes!.nameTop - boxes!.tagTop)).toBeLessThan(4);
+      expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.cardRight + 0.5);
+      expect(boxes!.tagWidth).toBeGreaterThan(95);
+      expect(boxes!.tagWidth).toBeLessThan(130);
+      expect(boxes!.cardScrollWidth).toBeLessThanOrEqual(boxes!.cardClientWidth + 1);
     } finally {
       await browser.close();
     }
   }, 120_000);
 
-  it("matches mockup 02 long-name arrangement at 390 px", async () => {
+  it("matches mockup 01 short-name phone layout at 390 px", async () => {
+    const html = await consentPageHtml({});
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 390, height: 844 });
+      await loadConsentHtmlInPage(page, html);
+      const layout = await page.evaluate(() => {
+        const lead = document.querySelector(".consent-name-lead");
+        const name = document.querySelector(".consent-name-inline");
+        const tag = document.querySelector(".consent-tag");
+        if (!lead || !name || !tag) {
+          return null;
+        }
+        const leadBox = lead.getBoundingClientRect();
+        const nameBox = name.getBoundingClientRect();
+        const tagBox = tag.getBoundingClientRect();
+        return {
+          leadTop: leadBox.top,
+          nameTop: nameBox.top,
+          nameBottom: nameBox.bottom,
+          tagTop: tagBox.top,
+        };
+      });
+      expect(layout).not.toBeNull();
+      expect(Math.abs(layout!.leadTop - layout!.nameTop)).toBeLessThan(4);
+      expect(layout!.tagTop).toBeGreaterThanOrEqual(layout!.nameBottom - 2);
+    } finally {
+      await browser.close();
+    }
+  }, 120_000);
+
+  it("matches mockup 02 long-name phone layout at 390 px", async () => {
     const html = await consentPageHtml({ clientName: LONG_CLIENT_NAME_RAW });
     const browser = await chromium.launch();
     try {
@@ -120,12 +194,11 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           return { error: "name mismatch" as const };
         }
         return {
-          leadBottom: leadBox.bottom,
           nameTop: nameBox.top,
           nameBottom: nameBox.bottom,
           tagTop: tagBox.top,
-          leadDisplay: getComputedStyle(lead).display,
-          tagDisplay: getComputedStyle(tag).display,
+          tagWidth: tagBox.width,
+          leadBottom: leadBox.bottom,
         };
       }, LONG_CLIENT_NAME_DISPLAY);
       expect(layout).not.toBeNull();
@@ -133,11 +206,35 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         expect.fail("expected long-name layout metrics");
       }
       const metrics = layout;
-      expect(metrics.leadDisplay).toBe("block");
-      expect(metrics.tagDisplay).toBe("block");
-      expect(metrics.nameTop).toBeGreaterThanOrEqual(metrics.leadBottom - 2);
       expect(metrics.tagTop).toBeGreaterThanOrEqual(metrics.nameBottom - 2);
       expect(metrics.tagTop - metrics.nameTop).toBeGreaterThan(12);
+      expect(metrics.tagWidth).toBeGreaterThan(95);
+    } finally {
+      await browser.close();
+    }
+  }, 120_000);
+
+  it("keeps a long client name inside the card width at 1280 px", async () => {
+    const html = await consentPageHtml({ clientName: LONG_CLIENT_NAME_RAW });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await loadConsentHtmlInPage(page, html);
+      const cardMetrics = await page.evaluate(() => {
+        const card = document.querySelector(".consent-card") as HTMLElement | null;
+        if (!card) {
+          return null;
+        }
+        return {
+          clientWidth: card.clientWidth,
+          scrollWidth: card.scrollWidth,
+        };
+      });
+      expect(cardMetrics).not.toBeNull();
+      expect(cardMetrics!.scrollWidth).toBeLessThanOrEqual(
+        cardMetrics!.clientWidth + 1,
+      );
     } finally {
       await browser.close();
     }
