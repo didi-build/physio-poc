@@ -4,6 +4,7 @@ import type {
   SqlStoragePort,
   SqlValue,
 } from "../../ports/sql-storage.js";
+import { SqlDuplicateIdError } from "../../errors/sql-duplicate-id-error.js";
 
 type Row = Record<string, SqlValue>;
 
@@ -25,13 +26,13 @@ function copyRow(row: Row): Row {
 function parseSelectWhere(
   normalized: string,
 ): { tableName: string; column: string; limitOne: boolean } | null {
-  const withLimit = /^SELECT \* FROM (\w+) WHERE (\w+) = \?(?: LIMIT 1)?$/i.exec(
+  const match = /^SELECT .+ FROM (\w+) WHERE (\w+) = \?(?: LIMIT 1)?$/i.exec(
     normalized,
   );
-  if (withLimit) {
+  if (match) {
     return {
-      tableName: withLimit[1],
-      column: withLimit[2],
+      tableName: match[1],
+      column: match[2],
       limitOne: /LIMIT 1$/i.test(normalized),
     };
   }
@@ -41,6 +42,7 @@ function parseSelectWhere(
 /**
  * Plain TypeScript fake for tests. Not SQLite; DIDI-997 adds better-sqlite3 for real SQL tests.
  * BEGIN/COMMIT/ROLLBACK are no-ops: there is no atomicity or rollback (see src/storage/migrations/README.md).
+ * first() accepts only SELECT ... WHERE ... = ? LIMIT 1; all() accepts the same shape without LIMIT 1.
  */
 export class InMemorySqlStorage implements SqlStoragePort {
   private readonly tables = new Map<string, Row[]>();
@@ -82,6 +84,9 @@ export class InMemorySqlStorage implements SqlStoragePort {
         if (idValue !== null && idValue !== undefined) {
           const duplicate = table.some((existing) => existing.id === idValue);
           if (duplicate) {
+            if (tableName === "programs") {
+              throw new SqlDuplicateIdError(tableName, String(idValue));
+            }
             throw new Error(`Duplicate id in ${tableName}: ${String(idValue)}`);
           }
         }

@@ -1,0 +1,431 @@
+import { describe, expect, it } from "vitest";
+import type { JsonSchema } from "../src/mcp-connector/index.js";
+import {
+  MAX_LENGTH_QUERY,
+  MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+  MAX_LENGTH_ROUTINE_NAME,
+  MAX_LENGTH_SUMMARY,
+  PHYSIO_MCP_TOOLS,
+  SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+  SEARCH_ROUTINES_TOOL_NAME,
+  searchApprovedExercisesInputSchema,
+  searchApprovedExercisesOutputSchema,
+  searchLinkOutputProperty,
+  searchRoutinesInputSchema,
+  summaryOutputProperty,
+} from "../src/mcp-connector/index.js";
+import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
+import {
+  collectForbiddenLegacySchemaFields,
+  assertNoOutputPatternProperties,
+  collectOutputPatternPropertiesViolations,
+  collectPatternPropertiesViolations,
+  collectPatientLikeDescriptionViolations,
+  collectSchemaDescriptionViolations,
+  collectSchemaPropertyNames,
+  findSchemaAtPath,
+  visitSchemaNodes,
+} from "./mcp-connector-schema-test-utils.js";
+
+const qaFixturePatternPropertiesTool = {
+  name: "qa_fixture_output_pattern_properties",
+  outputSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      rows: {
+        type: "object",
+        patternProperties: {
+          "^[a-z]+$": { type: "string" },
+        },
+      },
+    },
+  } satisfies JsonSchema,
+};
+
+const qaPatternPropertiesObjectSchema = {
+  type: "object",
+  patternProperties: {
+    "^qa$": { type: "string" },
+  },
+} satisfies JsonSchema;
+
+const schemaWalkerBranchFixtures: Array<{
+  branch: string;
+  schema: JsonSchema;
+  expectedPath: string;
+}> = [
+  {
+    branch: "anyOf",
+    schema: { anyOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "anyOf.0",
+  },
+  {
+    branch: "oneOf",
+    schema: { oneOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "oneOf.0",
+  },
+  {
+    branch: "allOf",
+    schema: { allOf: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "allOf.0",
+  },
+  {
+    branch: "items (single schema)",
+    schema: { items: qaPatternPropertiesObjectSchema },
+    expectedPath: "items",
+  },
+  {
+    branch: "items (tuple array)",
+    schema: {
+      items: [{ type: "string" }, qaPatternPropertiesObjectSchema],
+    },
+    expectedPath: "items.1",
+  },
+  {
+    branch: "prefixItems",
+    schema: { prefixItems: [qaPatternPropertiesObjectSchema] },
+    expectedPath: "prefixItems.0",
+  },
+  {
+    branch: "additionalProperties",
+    schema: {
+      type: "object",
+      additionalProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "additionalProperties",
+  },
+  {
+    branch: "$defs",
+    schema: {
+      $defs: {
+        qa_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "$defs.qa_def_pattern_properties",
+  },
+  {
+    branch: "definitions",
+    schema: {
+      definitions: {
+        qa_legacy_def_pattern_properties: qaPatternPropertiesObjectSchema,
+      },
+    },
+    expectedPath: "definitions.qa_legacy_def_pattern_properties",
+  },
+  {
+    branch: "contains",
+    schema: { contains: qaPatternPropertiesObjectSchema },
+    expectedPath: "contains",
+  },
+  {
+    branch: "propertyNames",
+    schema: {
+      type: "object",
+      propertyNames: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "propertyNames",
+  },
+  {
+    branch: "unevaluatedProperties",
+    schema: {
+      type: "object",
+      unevaluatedProperties: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedProperties",
+  },
+  {
+    branch: "unevaluatedItems",
+    schema: {
+      type: "array",
+      unevaluatedItems: qaPatternPropertiesObjectSchema,
+    },
+    expectedPath: "unevaluatedItems",
+  },
+];
+
+describe("collectForbiddenLegacySchemaFields", () => {
+  it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
+    const topLevel: JsonSchema = {
+      type: "object",
+      properties: {
+        expires_in: { type: "string" },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(topLevel)).toEqual([
+      "property:expires_in",
+    ]);
+
+    const nested: JsonSchema = {
+      type: "object",
+      properties: {
+        wrapper: {
+          type: "object",
+          properties: {
+            custom_date: { type: "string", format: "date" },
+          },
+        },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(nested).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
+
+    const conditional: JsonSchema = {
+      allOf: [
+        {
+          if: { properties: { publish: { const: true } } },
+          then: {
+            type: "object",
+            properties: {
+              exercises_not_found: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      ],
+    };
+    expect(collectForbiddenLegacySchemaFields(conditional)).toEqual([
+      "property:exercises_not_found",
+    ]);
+
+    const ifBranch: JsonSchema = {
+      if: {
+        type: "object",
+        properties: {
+          custom_date: { type: "string", format: "date" },
+        },
+      },
+      then: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+        },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(ifBranch).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
+  });
+});
+
+describe("collectPatternPropertiesViolations", () => {
+  it("detects patternProperties on nested output-shaped fixture schemas", () => {
+    const nestedOutputFixture: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        rows: {
+          type: "object",
+          patternProperties: {
+            "^[a-z]+$": { type: "string" },
+          },
+        },
+      },
+    };
+    expect(collectPatternPropertiesViolations(nestedOutputFixture)).toEqual([
+      "properties.rows",
+    ]);
+
+    const clean: JsonSchema = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+      },
+    };
+    expect(collectPatternPropertiesViolations(clean)).toEqual([]);
+  });
+
+  it.each(schemaWalkerBranchFixtures)(
+    "detects patternProperties under $branch at $expectedPath",
+    ({ schema, expectedPath }) => {
+      expect(collectPatternPropertiesViolations(schema)).toEqual([expectedPath]);
+    },
+  );
+});
+
+describe("collectOutputPatternPropertiesViolations", () => {
+  it("reports a planted fixture tool by name and schema path alongside real tools", () => {
+    expect(
+      collectOutputPatternPropertiesViolations([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toEqual([
+      {
+        tool: qaFixturePatternPropertiesTool.name,
+        path: "properties.rows",
+      },
+    ]);
+  });
+});
+
+describe("assertNoOutputPatternProperties", () => {
+  it("does not throw for real tool output schemas alone", () => {
+    expect(() => assertNoOutputPatternProperties(PHYSIO_MCP_TOOLS)).not.toThrow();
+  });
+
+  it("throws naming the planted fixture tool and properties.rows when mixed with real tools", () => {
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/qa_fixture_output_pattern_properties/);
+    expect(() =>
+      assertNoOutputPatternProperties([
+        ...PHYSIO_MCP_TOOLS,
+        qaFixturePatternPropertiesTool,
+      ]),
+    ).toThrow(/properties\.rows/);
+  });
+});
+
+describe("DIDI-1026 explicit MCP contract assertions", () => {
+  it("has no legacy date or publish override fields anywhere in tool schemas", () => {
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      for (const [side, schema] of [
+        ["input", tool.inputSchema],
+        ["output", tool.outputSchema],
+      ] as const) {
+        expect(
+          collectForbiddenLegacySchemaFields(schema),
+          `${tool.name} ${side}`,
+        ).toEqual([]);
+      }
+    }
+  });
+
+  it("pins query maxLength on both search tool inputs", () => {
+    for (const schema of [
+      searchApprovedExercisesInputSchema,
+      searchRoutinesInputSchema,
+    ]) {
+      expect(findSchemaAtPath(schema, ["query"])).toMatchObject({
+        maxLength: MAX_LENGTH_QUERY,
+      });
+    }
+    expect(MAX_LENGTH_QUERY).toBe(100);
+  });
+
+  it("requires routine_name maxLength on search_routines routine items", () => {
+    const routinesTool = PHYSIO_MCP_TOOLS.find(
+      (t) => t.name === SEARCH_ROUTINES_TOOL_NAME,
+    )!;
+    expect(
+      findSchemaAtPath(routinesTool.outputSchema, [
+        "routines",
+        "items",
+        "routine_name",
+      ]),
+    ).toMatchObject({ maxLength: MAX_LENGTH_ROUTINE_NAME });
+    expect(MAX_LENGTH_ROUTINE_NAME).toBe(80);
+  });
+
+  it("requires summary maxLength 4000 on every tool output schema", () => {
+    expect(summaryOutputProperty).toMatchObject({ maxLength: MAX_LENGTH_SUMMARY });
+    expect(MAX_LENGTH_SUMMARY).toBe(4000);
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      expect(
+        findSchemaAtPath(tool.outputSchema, ["summary"]),
+        `${tool.name} summary`,
+      ).toMatchObject({
+        type: "string",
+        maxLength: MAX_LENGTH_SUMMARY,
+      });
+    }
+  });
+
+  it("pins programRowInputSchema exercise_name maxLength at 100", () => {
+    let sawExerciseName = false;
+    visitSchemaNodes(programRowInputSchema, (node) => {
+      const props = node.properties as
+        Record<string, { maxLength?: number }> | undefined;
+      if (props?.exercise_name !== undefined) {
+        sawExerciseName = true;
+        expect(props.exercise_name.maxLength).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
+      }
+    });
+    expect(sawExerciseName).toBe(true);
+    expect(MAX_LENGTH_REQUESTED_EXERCISE_NAME).toBe(100);
+  });
+
+  it("keeps search_link only on search_approved_exercises and pins uri format", () => {
+    expect(searchLinkOutputProperty).toMatchObject({ format: "uri" });
+
+    const owners: string[] = [];
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      const outputProps = collectSchemaPropertyNames(tool.outputSchema);
+      if (outputProps.has("search_link")) {
+        owners.push(tool.name);
+      }
+    }
+    expect(owners).toEqual([SEARCH_APPROVED_EXERCISES_TOOL_NAME]);
+
+    const routines = PHYSIO_MCP_TOOLS.find(
+      (t) => t.name === SEARCH_ROUTINES_TOOL_NAME,
+    )!;
+    expect(collectSchemaPropertyNames(routines.outputSchema).has("search_link")).toBe(
+      false,
+    );
+    expect(
+      findSchemaAtPath(searchApprovedExercisesOutputSchema, ["search_link"]),
+    ).toMatchObject({ format: "uri" });
+  });
+
+  it("flags patient-like names in descriptions", () => {
+    expect(
+      collectPatientLikeDescriptionViolations("Contact Maria Lopez for care"),
+    ).toEqual(
+      expect.arrayContaining(["fixture-patient-name", "capitalized-pair:Maria Lopez"]),
+    );
+    expect(collectPatientLikeDescriptionViolations("Schedule for Jane Doe")).toEqual(
+      expect.arrayContaining(["fixture-patient-name", "capitalized-pair:Jane Doe"]),
+    );
+    expect(
+      collectPatientLikeDescriptionViolations("Stable code (for example PRG-7K3Q)."),
+    ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations("Glute bridge and heel slides"),
+    ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations("Romanian deadlift and bird dog"),
+    ).toEqual([]);
+    expect(
+      collectPatientLikeDescriptionViolations(
+        "Clamshell, monster walk, band pull-apart",
+      ),
+    ).toEqual([]);
+
+    const madeUpSurnameCases: Array<{ text: string; pair: string }> = [
+      { text: "Billing contact Tessa Patel only", pair: "Tessa Patel" },
+      { text: "Escalate to Omar Khan when needed", pair: "Omar Khan" },
+      { text: "Copy Priya Singh on approvals", pair: "Priya Singh" },
+      { text: "Notify Wei Chen after review", pair: "Wei Chen" },
+      { text: "Loop in Hana Kim for scheduling", pair: "Hana Kim" },
+      { text: "Cc Rui Wang on the ticket", pair: "Rui Wang" },
+    ];
+    for (const { text, pair } of madeUpSurnameCases) {
+      expect(collectPatientLikeDescriptionViolations(text)).toEqual(
+        expect.arrayContaining([`capitalized-pair:${pair}`]),
+      );
+    }
+
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      expect(
+        collectSchemaDescriptionViolations(tool.inputSchema),
+        `${tool.name} input`,
+      ).toEqual([]);
+      expect(
+        collectSchemaDescriptionViolations(tool.outputSchema),
+        `${tool.name} output`,
+      ).toEqual([]);
+      expect(
+        collectPatientLikeDescriptionViolations(tool.description),
+        `${tool.name} tool description`,
+      ).toEqual([]);
+    }
+  });
+});

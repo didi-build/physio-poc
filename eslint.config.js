@@ -4,7 +4,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/", "dist/", "coverage/", "test-results/", "design/"],
+    ignores: [
+      "node_modules/",
+      "dist/",
+      "coverage/",
+      "test-results/",
+      "design/",
+      "test/fixtures/mcp-stub-import-guard/**",
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,

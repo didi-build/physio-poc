@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { NavLink } from "react-router-dom";
+import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
+import { postAuthSignOut } from "../api/auth-client.js";
 import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
@@ -20,25 +22,25 @@ export type MainNavProps = {
 
 const tabs = [
   {
-    to: "/exercises",
+    to: PHYSIO_APP_ROUTE_PATTERNS.exercises,
     desktopLabel: NAV_TAB_EXERCISES,
     phoneLabel: NAV_TAB_EXERCISES,
     showCount: false,
   },
   {
-    to: "/routines",
+    to: PHYSIO_APP_ROUTE_PATTERNS.routines,
     desktopLabel: NAV_TAB_ROUTINES,
     phoneLabel: NAV_TAB_ROUTINES,
     showCount: false,
   },
   {
-    to: "/programs",
+    to: PHYSIO_APP_ROUTE_PATTERNS.programs,
     desktopLabel: NAV_TAB_PROGRAMS,
     phoneLabel: NAV_TAB_PROGRAMS,
     showCount: false,
   },
   {
-    to: "/requests",
+    to: PHYSIO_APP_ROUTE_PATTERNS.requests,
     desktopLabel: NAV_TAB_REQUESTS_DESKTOP,
     phoneLabel: NAV_TAB_REQUESTS_PHONE,
     showCount: true,
@@ -96,6 +98,7 @@ export type AccountMenuProps = {
 };
 
 export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -107,10 +110,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
   };
 
   useEffect(() => {
-    if (!open || !menuRef.current) {
+    if (!open || !menuRef.current || !wrapRef.current) {
       return;
     }
     const menu = menuRef.current;
+    const wrap = wrapRef.current;
     const menuItems = () => [
       ...menu.querySelectorAll<HTMLElement>('[role="menuitem"]'),
     ];
@@ -144,15 +148,47 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
       items[nextIndex]?.focus();
     };
 
-    menu.addEventListener("keydown", onKeyDown);
+    const onFocusOut = (event: FocusEvent) => {
+      const related = event.relatedTarget as Node | null;
+      if (related === null) {
+        return;
+      }
+      if (menu.contains(related)) {
+        return;
+      }
+      if (wrap.contains(related)) {
+        return;
+      }
+      onCloseRef.current();
+    };
+
+    const onWindowBlur = () => {
+      onCloseRef.current();
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (wrap.contains(target)) {
+        return;
+      }
+      onCloseRef.current();
+    };
+
+    wrap.addEventListener("keydown", onKeyDown);
+    wrap.addEventListener("focusout", onFocusOut);
+    window.addEventListener("blur", onWindowBlur);
+    document.addEventListener("pointerdown", onPointerDown, true);
     return () => {
-      menu.removeEventListener("keydown", onKeyDown);
+      wrap.removeEventListener("keydown", onKeyDown);
+      wrap.removeEventListener("focusout", onFocusOut);
+      window.removeEventListener("blur", onWindowBlur);
+      document.removeEventListener("pointerdown", onPointerDown, true);
     };
   }, [open]);
 
   return (
     <div className="shell-header-actions">
-      <div className="shell-account-wrap">
+      <div ref={wrapRef} className="shell-account-wrap">
         <button
           ref={triggerRef}
           type="button"
@@ -162,7 +198,11 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
           aria-label="Account menu"
           onClick={onToggle}
         >
-          <span className="shell-account-avatar" aria-hidden>
+          <span
+            className="shell-account-avatar"
+            aria-hidden
+            data-testid="shell-account-avatar"
+          >
             K
           </span>
           <span className="shell-account-name">{ACCOUNT_DISPLAY_NAME}</span>
@@ -179,7 +219,7 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
             <div ref={menuRef} role="menu" className="shell-menu-panel">
               <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
               <NavLink
-                to="/defaults"
+                to={PHYSIO_APP_ROUTE_PATTERNS.defaults}
                 role="menuitem"
                 className="shell-menu-item"
                 onClick={closeMenu}
@@ -189,17 +229,20 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
                   {ACCOUNT_MY_DEFAULTS_DETAIL}
                 </span>
               </NavLink>
-              <a
-                href="#"
+              <button
+                type="button"
                 role="menuitem"
                 className="shell-menu-item shell-menu-sign-out"
                 onClick={(event) => {
                   event.preventDefault();
                   closeMenu();
+                  void postAuthSignOut().then(() => {
+                    window.location.href = "/sign-in";
+                  });
                 }}
               >
                 {ACCOUNT_SIGN_OUT}
-              </a>
+              </button>
             </div>
           </>
         ) : null}

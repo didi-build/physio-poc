@@ -5,12 +5,28 @@ import type {
   SqlStoragePort,
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
+import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 
 export class NestedSqlTransactionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "NestedSqlTransactionError";
   }
+}
+
+function mapSqliteUniqueIdConstraint(error: unknown): unknown {
+  if (error instanceof Database.SqliteError) {
+    const isUnique =
+      error.code === "SQLITE_CONSTRAINT_UNIQUE" ||
+      error.code === "SQLITE_CONSTRAINT_PRIMARYKEY";
+    if (isUnique) {
+      const tableMatch = /^UNIQUE constraint failed: (\w+)\.id$/.exec(error.message);
+      if (tableMatch && tableMatch[1] === "programs") {
+        return new SqlDuplicateIdError(tableMatch[1]);
+      }
+    }
+  }
+  return error;
 }
 
 function normalizeBinding(value: SqlValue): SqlValue {
@@ -44,6 +60,10 @@ export class BetterSqliteStorage implements SqlStoragePort {
     this.db.exec(sql);
   }
 
+  nativeDatabase(): Database.Database {
+    return this.db;
+  }
+
   async run(sql: string, bindings: SqlBindings = []): Promise<SqlRunResult> {
     const normalized = sql.trim().replace(/\s+/g, " ");
     if (/^BEGIN$/i.test(normalized)) {
@@ -62,8 +82,12 @@ export class BetterSqliteStorage implements SqlStoragePort {
       this.transactionDepth -= 1;
     }
     const stmt = this.db.prepare(sql);
-    const result = stmt.run(...bindings.map(normalizeBinding));
-    return { rowsAffected: result.changes };
+    try {
+      const result = stmt.run(...bindings.map(normalizeBinding));
+      return { rowsAffected: result.changes };
+    } catch (error) {
+      throw mapSqliteUniqueIdConstraint(error);
+    }
   }
 
   async all<T extends Record<string, SqlValue>>(

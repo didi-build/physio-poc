@@ -2,6 +2,14 @@
   "name": "physio-poc",
   "main": "src/entry/worker.ts",
   "compatibility_date": "2025-10-29",
+  "d1_databases": [
+    {
+      "binding": "PHYSIO_DB",
+      "database_name": "physio-poc",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations",
+    },
+  ],
   "observability": {
     "enabled": true,
   },

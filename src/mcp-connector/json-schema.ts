@@ -3,7 +3,10 @@
  * No runtime or platform imports.
  */
 
-import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
+import {
+  OPAQUE_ENTITY_ID_LENGTH,
+  OPAQUE_ENTITY_ID_PATTERN,
+} from "../domain/opaque-entity-id.js";
 import {
   FREE_TEXT_NO_PATIENT_DETAILS,
   MAX_LENGTH_PROGRAM_TITLE,
@@ -72,7 +75,26 @@ export const searchLinkOutputProperty: JsonSchema = {
 export const manageUrlOutputProperty: JsonSchema = {
   ...uriOrEmptyStringSchema,
   description:
-    "HTTPS link to manage the program in the web app (delete and link close are web app only in v1). Empty when no program applies.",
+    "HTTPS link to open the related screen in the web app. Empty when no screen applies.",
+};
+
+export const builderLinkOutputProperty: JsonSchema = {
+  type: "string",
+  format: "uri",
+  description:
+    "Deep link to the program builder in the web app (built from server-configured base URL and shared route table).",
+};
+
+export const publishLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program publish page when a draft needs publishing. Empty when no draft publish page applies.",
+};
+
+export const manageLinkOutputProperty: JsonSchema = {
+  ...uriOrEmptyStringSchema,
+  description:
+    "Deep link to the program share page in the web app (expiry, close link, delete). Empty when no program applies.",
 };
 
 export const expiresAtOutputProperty: JsonSchema = {
@@ -103,38 +125,6 @@ export const programVersionRefSchema: JsonSchema = {
 export const nullableProgramVersionRefSchema: JsonSchema = {
   oneOf: [{ type: "null" }, programVersionRefSchema],
   description: "Null when that side (draft or published) does not exist.",
-};
-
-export const publishOverridesInputSchema: JsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    expires_in: {
-      type: "string",
-      enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
-      description:
-        "Share link expiry for this publish. Omit overrides entirely to use the practitioner default.",
-    },
-    custom_date: {
-      type: "string",
-      format: "date",
-      description:
-        "Required when expires_in is custom_date. Any calendar date from tomorrow onward per product rules.",
-    },
-  },
-  allOf: [
-    {
-      if: {
-        properties: {
-          expires_in: { const: "custom_date" },
-        },
-        required: ["expires_in"],
-      },
-      then: {
-        required: ["custom_date"],
-      },
-    },
-  ],
 };
 
 export const exerciseCategorySchema: JsonSchema = {
@@ -193,6 +183,14 @@ export const programCodeProperty: JsonSchema = {
   type: "string",
   pattern: "^PRG-[A-Z0-9]+$",
   description: "Stable program code assigned by the system (for example PRG-7K3Q).",
+};
+
+export const routineIdProperty: JsonSchema = {
+  type: "string",
+  pattern: OPAQUE_ENTITY_ID_PATTERN,
+  maxLength: OPAQUE_ENTITY_ID_LENGTH,
+  description:
+    "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000).",
 };
 
 const programRowSharedProperties: Record<string, JsonSchema> = {
@@ -281,16 +279,6 @@ export const approvedExerciseSummarySchema: JsonSchema = {
   },
 };
 
-export const exerciseNotFoundCandidateSchema: JsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["exercise_version_id", "exercise_name"],
-  properties: {
-    exercise_version_id: { type: "string" },
-    exercise_name: { type: "string" },
-  },
-};
-
 export const routineSummarySchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -308,32 +296,6 @@ export const routineSummarySchema: JsonSchema = {
       type: "string",
       enum: ["community", "personal_copy"],
       description: "Whether this hit is the community routine or a personal copy.",
-    },
-  },
-};
-
-export const exerciseNotFoundSchema: JsonSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["requested_exercise_name", "web_app_exercise_search_url"],
-  properties: {
-    requested_exercise_name: {
-      type: "string",
-      maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
-      description: `Exercise name that could not be resolved to exactly one approved exercise. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
-    },
-    candidate_matches: {
-      type: "array",
-      maxItems: 3,
-      items: exerciseNotFoundCandidateSchema,
-      description:
-        "Up to three similar approved exercises when the name was ambiguous.",
-    },
-    web_app_exercise_search_url: {
-      type: "string",
-      format: "uri",
-      description:
-        "Web app exercise search URL with the query prefilled, built from server-configured web app base URL and the requested name.",
     },
   },
 };

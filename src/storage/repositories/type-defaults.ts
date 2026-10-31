@@ -8,6 +8,7 @@ import {
   validateExerciseParams,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
+import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 
 export type TypeDefaultsRow = {
   scope: "global" | "practitioner";
@@ -53,12 +54,17 @@ export class TypeDefaultsRepository {
     type: PrescriptionType,
     params: ExerciseParams,
   ): Promise<void> {
+    const opaqueId = validateOpaqueEntityId(id, "Type default id");
+    const opaquePractitionerId = validateOpaqueEntityId(
+      practitionerId,
+      "Practitioner id",
+    );
     const validated = validateExerciseParams(params);
     await this.sql.run(
       `INSERT INTO type_defaults (id, scope, practitioner_id, type, params_json)
        VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(practitioner_id, type) WHERE scope = 'practitioner' DO UPDATE SET params_json = excluded.params_json`,
-      [id, "practitioner", practitionerId, type, JSON.stringify(validated)],
+      [opaqueId, "practitioner", opaquePractitionerId, type, JSON.stringify(validated)],
     );
   }
 
@@ -70,5 +76,19 @@ export class TypeDefaultsRepository {
       "DELETE FROM type_defaults WHERE scope = ? AND practitioner_id = ? AND type = ?",
       ["practitioner", practitionerId, type],
     );
+  }
+
+  async listPractitionerDefaults(
+    practitionerId: string,
+  ): Promise<Partial<Record<PrescriptionType, ExerciseParams>>> {
+    const rows = await this.sql.all<TypeDefaultsRow>(
+      "SELECT scope, practitioner_id, type, params_json FROM type_defaults WHERE scope = ? AND practitioner_id = ?",
+      ["practitioner", practitionerId],
+    );
+    const result: Partial<Record<PrescriptionType, ExerciseParams>> = {};
+    for (const row of rows) {
+      result[row.type] = parseExerciseParamsJson(row.params_json);
+    }
+    return result;
   }
 }

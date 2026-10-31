@@ -111,6 +111,35 @@ function isPlatformModuleSpecifier(specifierText) {
 }
 
 /**
+ * Pure UI non-relative import check (platform deny before allowlist). Used by the scanner
+ * and by tests with injected predicates.
+ *
+ * @param {string} specifierText
+ * @param {string} kind
+ * @param {{
+ *   isPlatformModule: (text: string) => boolean,
+ *   isAllowedUiModule: (text: string) => boolean,
+ *   isDisallowedBareUiModule: (text: string) => boolean,
+ * }} checks
+ * @returns {string | null}
+ */
+export function uiNonRelativeImportViolationMessage(specifierText, kind, checks) {
+  if (checks.isPlatformModule(specifierText)) {
+    return `${kind} platform module in ui: ${specifierText}`;
+  }
+  if (specifierText.includes("..")) {
+    return `${kind} ui import with parent segments: ${specifierText}`;
+  }
+  if (checks.isDisallowedBareUiModule(specifierText)) {
+    return `${kind} disallowed bare module in ui: ${specifierText}`;
+  }
+  if (checks.isAllowedUiModule(specifierText)) {
+    return null;
+  }
+  return `${kind} disallowed ui import: ${specifierText}`;
+}
+
+/**
  * @param {string} srcRoot absolute path to src/
  * @returns {string[]} repo-relative paths like src/http/app.ts
  */
@@ -161,7 +190,10 @@ function landsInPlatformTree(resolvedRepoPath) {
   if (normalized.startsWith("src/")) {
     withinSrc = normalized.slice("src/".length);
   }
-  return PLATFORM_PREFIXES.some((prefix) => withinSrc.startsWith(prefix));
+  return PLATFORM_PREFIXES.some((prefix) => {
+    const directory = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+    return withinSrc === directory || withinSrc.startsWith(prefix);
+  });
 }
 
 /**
@@ -175,7 +207,8 @@ function unwrapExpression(node) {
       ts.isParenthesizedExpression(current) ||
       ts.isAsExpression(current) ||
       ts.isSatisfiesExpression(current) ||
-      ts.isNonNullExpression(current)
+      ts.isNonNullExpression(current) ||
+      ts.isTypeAssertionExpression(current)
     ) {
       current = current.expression;
       continue;
@@ -183,6 +216,70 @@ function unwrapExpression(node) {
     break;
   }
   return current;
+}
+
+/**
+ * @param {import("typescript").Node} node
+ * @returns {boolean}
+ */
+function isImportMetaMetaProperty(node) {
+  return ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword;
+}
+
+/**
+ * True when expression is import.meta or only parenthesized wrappers around it.
+ * Defensive: parent.expression should already be metaProp or a paren chain in allowed url reads.
+ *
+ * @param {import("typescript").Expression} expression
+ * @param {import("typescript").MetaProperty} metaProp
+ * @returns {boolean}
+ */
+function isImportMetaReceiverExpression(expression, metaProp) {
+  if (expression === metaProp) {
+    return true;
+  }
+  let current = expression;
+  while (current !== metaProp) {
+    if (!ts.isParenthesizedExpression(current)) {
+      return false;
+    }
+    current = current.expression;
+  }
+  return true;
+}
+
+/**
+ * Portable src/ may read import.meta only as a direct url access (ADR 0004 item 11).
+ * Allowed: import.meta.url, import.meta["url"], (import.meta).url, ((import.meta))["url"].
+ * The import.meta node must be the receiver after stripping parentheses only; type assertions,
+ * satisfies, non-null assertions, and every other shape are flagged as import.meta.env access.
+ *
+ * @param {import("typescript").MetaProperty} metaProp
+ * @returns {boolean}
+ */
+function isAllowedImportMetaUrlAccess(metaProp) {
+  let parent = metaProp.parent;
+  while (parent && ts.isParenthesizedExpression(parent)) {
+    parent = parent.parent;
+  }
+  if (
+    ts.isPropertyAccessExpression(parent) &&
+    parent.name.text === "url" &&
+    isImportMetaReceiverExpression(parent.expression, metaProp)
+  ) {
+    return true;
+  }
+  if (ts.isElementAccessExpression(parent)) {
+    const arg = parent.argumentExpression;
+    if (
+      ts.isStringLiteral(arg) &&
+      arg.text === "url" &&
+      isImportMetaReceiverExpression(parent.expression, metaProp)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -218,28 +315,43 @@ export function findPortableViolations(repoRelativePath, source) {
       return;
     }
     if (isUiSourceFile(repoRelativePath)) {
-      if (isPlatformModuleSpecifier(text)) {
-        violations.push(`${kind} platform module in ui: ${text}`);
-        return;
+      const uiChecks = {
+        isPlatformModule: isPlatformModuleSpecifier,
+        isAllowedUiModule: isAllowedUiModuleSpecifier,
+        isDisallowedBareUiModule: isDisallowedBareUiModule,
+      };
+      const message = uiNonRelativeImportViolationMessage(text, kind, uiChecks);
+      if (message) {
+        violations.push(message);
       }
-      if (text.includes("..")) {
-        violations.push(`${kind} ui import with parent segments: ${text}`);
-        return;
-      }
-      if (isDisallowedBareUiModule(text)) {
-        violations.push(`${kind} disallowed bare module in ui: ${text}`);
-        return;
-      }
-      if (isAllowedUiModuleSpecifier(text)) {
-        return;
-      }
-      violations.push(`${kind} disallowed ui import: ${text}`);
       return;
     }
     violations.push(`${kind} non-relative import: ${text}`);
   }
 
+  /**
+   * @param {import("typescript").ImportTypeNode} node
+   * @returns {import("typescript").StringLiteral | null}
+   */
+  function stringLiteralFromImportType(node) {
+    const arg = node.argument;
+    if (ts.isLiteralTypeNode(arg) && ts.isStringLiteral(arg.literal)) {
+      return arg.literal;
+    }
+    return null;
+  }
+
+  function flagImportMetaEnvAccess() {
+    violations.push("import.meta.env access");
+  }
+
   function visit(node) {
+    if (ts.isImportTypeNode(node)) {
+      const literal = stringLiteralFromImportType(node);
+      if (literal) {
+        checkModuleSpecifier(literal, "import type");
+      }
+    }
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       checkModuleSpecifier(node.moduleSpecifier, "import");
     }
@@ -287,6 +399,9 @@ export function findPortableViolations(repoRelativePath, source) {
       node.argumentExpression.text === "process"
     ) {
       violations.push("process string element access");
+    }
+    if (isImportMetaMetaProperty(node) && !isAllowedImportMetaUrlAccess(node)) {
+      flagImportMetaEnvAccess();
     }
     if (ts.isElementAccessExpression(node)) {
       const receiver = unwrapExpression(node.expression);

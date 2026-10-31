@@ -1,12 +1,24 @@
 import type { AppDependencies } from "../app.js";
+import type { PractitionerSession } from "../../auth/auth-port.js";
 import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
 import { OpaqueEntityIdValidationError } from "../../domain/opaque-entity-id.js";
+import {
+  exerciseRequestApprovePath,
+  exerciseRequestDraftPath,
+  exerciseRequestPath,
+  exerciseRequestsCollectionPath,
+  exerciseRequestsInProgressCountPath,
+  exerciseRequestsInProgressPath,
+  EXERCISE_REQUESTS_API_BASE,
+} from "../../exercise-requests-api-paths.js";
 import {
   ExerciseRequestsService,
   ExerciseRequestsServiceError,
   type DraftFieldPatch,
   type SubmitResolution,
 } from "../../services/exercise-requests/index.js";
+import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
+import { requirePractitioner } from "../require-practitioner.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -16,6 +28,34 @@ const SUBMIT_RESOLUTIONS = new Set<SubmitResolution>([
   "merge",
   "submit_anyway",
 ]);
+
+export type ExerciseRequestsHttpRouteCase = {
+  readonly method: string;
+  readonly path: string;
+};
+
+/** Paths handled by `handleExerciseRequestsHttpRequest` (Worker 401 and route table tests). */
+export function exerciseRequestsHttpRouteCases(
+  requestId = "00000000-0000-4000-8000-00001f7b01a3",
+): readonly ExerciseRequestsHttpRouteCase[] {
+  return [
+    { method: "GET", path: `${EXERCISE_REQUESTS_API_BASE}/similar` },
+    { method: "GET", path: exerciseRequestsInProgressPath() },
+    { method: "GET", path: exerciseRequestsInProgressCountPath() },
+    { method: "POST", path: exerciseRequestsCollectionPath() },
+    { method: "GET", path: exerciseRequestPath(requestId) },
+    { method: "PATCH", path: exerciseRequestDraftPath(requestId) },
+    { method: "POST", path: exerciseRequestApprovePath(requestId) },
+  ];
+}
+
+export function exerciseRequestsMutatingHttpRouteCases(
+  requestId = "00000000-0000-4000-8000-00001f7b01a3",
+): readonly ExerciseRequestsHttpRouteCase[] {
+  return exerciseRequestsHttpRouteCases(requestId).filter((routeCase) =>
+    ["POST", "PATCH"].includes(routeCase.method),
+  );
+}
 
 function service(deps: AppDependencies): ExerciseRequestsService {
   return new ExerciseRequestsService(deps.sql, deps.config);
@@ -53,17 +93,52 @@ function errorResponse(error: unknown): Response {
   throw error;
 }
 
+async function readJsonObjectBody(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    const body = (await request.json()) as unknown;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid JSON body" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    return body as Record<string, unknown>;
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+}
+
+type HandleExerciseRequestsOptions = {
+  sessionPractitioner?: PractitionerSession | null;
+};
+
 export async function handleExerciseRequestsHttpRequest(
   request: Request,
   deps: AppDependencies,
+  options: HandleExerciseRequestsOptions = {},
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
 
-  const similarMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercise-requests\/similar$/.exec(path);
-  if (similarMatch && request.method === "GET") {
-    const practitionerId = similarMatch[1];
+  if (
+    !path.startsWith(`${EXERCISE_REQUESTS_API_BASE}/`) &&
+    path !== EXERCISE_REQUESTS_API_BASE
+  ) {
+    return null;
+  }
+
+  const practitionerOrResponse = requirePractitioner(options.sessionPractitioner);
+  if (practitionerOrResponse instanceof Response) {
+    return practitionerOrResponse;
+  }
+  const practitionerId = practitionerOrResponse;
+
+  if (path === `${EXERCISE_REQUESTS_API_BASE}/similar` && request.method === "GET") {
     const q = url.searchParams.get("q") ?? "";
     try {
       const result = await service(deps).listSimilar({ practitionerId, query: q });
@@ -73,10 +148,7 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
-  const countMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercise-requests\/in-progress\/count$/.exec(path);
-  if (countMatch && request.method === "GET") {
-    const practitionerId = countMatch[1];
+  if (path === exerciseRequestsInProgressCountPath() && request.method === "GET") {
     try {
       const count = await service(deps).getInProgressCount({ practitionerId });
       return Response.json({ in_progress_count: count }, { headers: JSON_HEADERS });
@@ -85,10 +157,7 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
-  const listMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercise-requests\/in-progress$/.exec(path);
-  if (listMatch && request.method === "GET") {
-    const practitionerId = listMatch[1];
+  if (path === exerciseRequestsInProgressPath() && request.method === "GET") {
     try {
       const result = await service(deps).listInProgress({ practitionerId });
       return Response.json(result, { headers: JSON_HEADERS });
@@ -97,19 +166,14 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
-  const collectionMatch = /^\/api\/practitioners\/([^/]+)\/exercise-requests$/.exec(
-    path,
-  );
-  if (collectionMatch && request.method === "POST") {
-    const practitionerId = collectionMatch[1];
-    let body: Record<string, unknown> = {};
-    try {
-      body = (await request.json()) as Record<string, unknown>;
-    } catch {
-      return Response.json(
-        { error: "invalid_input", message: "Invalid JSON body" },
-        { status: 400, headers: JSON_HEADERS },
-      );
+  if (path === exerciseRequestsCollectionPath() && request.method === "POST") {
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
     }
     if (typeof body.requested_name !== "string") {
       return Response.json(
@@ -157,33 +221,31 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
-  const itemMatch = /^\/api\/practitioners\/([^/]+)\/exercise-requests\/([^/]+)$/.exec(
-    path,
-  );
-  if (itemMatch) {
-    const [, practitionerId, requestId] = itemMatch;
-    if (request.method === "GET") {
-      try {
-        const result = await service(deps).getRequest({ practitionerId, requestId });
-        return Response.json(result, { headers: JSON_HEADERS });
-      } catch (error) {
-        return errorResponse(error);
-      }
+  const itemMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)$`,
+  ).exec(path);
+  if (itemMatch && request.method === "GET") {
+    const requestId = decodeURIComponent(itemMatch[1]!);
+    try {
+      const result = await service(deps).getRequest({ practitionerId, requestId });
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
     }
   }
 
-  const draftMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercise-requests\/([^/]+)\/draft$/.exec(path);
+  const draftMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/draft$`,
+  ).exec(path);
   if (draftMatch && request.method === "PATCH") {
-    const [, practitionerId, requestId] = draftMatch;
-    let body: Record<string, unknown> = {};
-    try {
-      body = (await request.json()) as Record<string, unknown>;
-    } catch {
-      return Response.json(
-        { error: "invalid_input", message: "Invalid JSON body" },
-        { status: 400, headers: JSON_HEADERS },
-      );
+    const requestId = decodeURIComponent(draftMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
     }
     try {
       const result = await service(deps).updateDraft({
@@ -197,16 +259,24 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
-  const approveMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercise-requests\/([^/]+)\/approve$/.exec(path);
+  const approveMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/approve$`,
+  ).exec(path);
   if (approveMatch && request.method === "POST") {
-    const [, practitionerId, requestId] = approveMatch;
+    const requestId = decodeURIComponent(approveMatch[1]!);
     try {
       const result = await service(deps).approveRequest({ practitionerId, requestId });
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
     }
+  }
+
+  if (path.startsWith(EXERCISE_REQUESTS_API_BASE)) {
+    return Response.json(
+      { error: "not_found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
   }
 
   return null;

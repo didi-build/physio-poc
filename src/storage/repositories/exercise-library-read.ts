@@ -46,6 +46,27 @@ export type LatestApprovedVersionRow = {
   created_by: string;
 };
 
+/**
+ * usage_count: number of program_rows whose exercise_id equals the exercise, in programs
+ * that are not soft-deleted (programs.deleted_at IS NULL). Rows count regardless of which
+ * exercise_version_id they reference. Each row counts once (duplicate rows in the same
+ * program count separately). Counts rows across all practitioners' programs.
+ * Deleting a program is not a use; Recently deleted is a trash bin, so those rows are excluded
+ * until the program is restored. Placeholder rows (exercise_id IS NULL) are excluded.
+ * Keep USAGE_COUNT_LIST_SQL and USAGE_COUNT_DETAILS_SQL in sync (All exercises list vs details).
+ */
+const USAGE_COUNT_LIST_SQL = `SELECT COUNT(*)
+  FROM program_rows pr_usage
+  INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
+  WHERE pr_usage.exercise_id = e.id
+    AND p_usage.deleted_at IS NULL`;
+
+const USAGE_COUNT_DETAILS_SQL = `SELECT COUNT(*) AS count
+  FROM program_rows pr_usage
+  INNER JOIN programs p_usage ON p_usage.id = pr_usage.program_id
+  WHERE pr_usage.exercise_id = ?
+    AND p_usage.deleted_at IS NULL`;
+
 const LATEST_APPROVED_JOIN = `
   INNER JOIN (
     SELECT exercise_id, MAX(version_number) AS max_version
@@ -150,11 +171,7 @@ export class ExerciseLibraryReadRepository {
         ev.title,
         e.category,
         ev.approved_at,
-        (
-          SELECT COUNT(*)
-          FROM practitioner_exercises pe
-          WHERE pe.exercise_id = e.id AND pe.last_used_at IS NOT NULL
-        ) AS usage_count,
+        (${USAGE_COUNT_LIST_SQL}) AS usage_count,
         (
           SELECT ea.alias
           FROM exercise_aliases ea
@@ -309,6 +326,43 @@ export class ExerciseLibraryReadRepository {
     );
   }
 
+  async getApprovedVersionById(
+    versionId: string,
+  ): Promise<LatestApprovedVersionRow | null> {
+    return this.sql.first<LatestApprovedVersionRow>(
+      `
+      SELECT
+        ev.id,
+        ev.exercise_id,
+        ev.version_number,
+        ev.title,
+        ev.description,
+        ev.equipment,
+        ev.starting_position,
+        ev.steps,
+        ev.common_mistakes,
+        ev.regressions,
+        ev.progressions,
+        ev.precautions,
+        ev.cue_stretching,
+        ev.cue_isometric,
+        ev.cue_concentric,
+        ev.cue_eccentric,
+        ev.approved_at,
+        ev.created_at,
+        ev.change_summary,
+        ev.media_set_id,
+        e.category,
+        e.created_by
+      FROM exercise_versions ev
+      INNER JOIN exercises e ON e.id = ev.exercise_id
+      WHERE ev.id = ? AND ev.status = 'approved'
+      LIMIT 1
+      `,
+      [versionId],
+    );
+  }
+
   async listBodyRegionLabelsForExercise(exerciseId: string): Promise<string[]> {
     const rows = await this.sql.all<{ label: string }>(
       `SELECT br.label
@@ -330,12 +384,9 @@ export class ExerciseLibraryReadRepository {
   }
 
   async getUsageCount(exerciseId: string): Promise<number> {
-    const row = await this.sql.first<{ count: number }>(
-      `SELECT COUNT(*) AS count
-       FROM practitioner_exercises
-       WHERE exercise_id = ? AND last_used_at IS NOT NULL`,
-      [exerciseId],
-    );
+    const row = await this.sql.first<{ count: number }>(USAGE_COUNT_DETAILS_SQL, [
+      exerciseId,
+    ]);
     return row?.count ?? 0;
   }
 }

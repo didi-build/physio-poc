@@ -6,11 +6,17 @@ import {
 import { PHYSIO_MCP_TOOLS } from "../../../mcp-connector/index.js";
 import type { PhysioServerConfig } from "../../../http/config.js";
 import { invokePhysioMcpStubTool } from "../../../services/mcp/stub-tool-handler.js";
+import { PhysioMcpWorkersSafeJsonSchemaValidator } from "./workers-safe-json-schema-validator.js";
+
+const workersSafeJsonSchemaValidator = new PhysioMcpWorkersSafeJsonSchemaValidator();
 
 export function createPhysioMcpServer(config: PhysioServerConfig): Server {
   const server = new Server(
     { name: "physio-poc", version: "0.0.0" },
-    { capabilities: { tools: {} } },
+    {
+      capabilities: { tools: {} },
+      jsonSchemaValidator: workersSafeJsonSchemaValidator,
+    },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -19,6 +25,7 @@ export function createPhysioMcpServer(config: PhysioServerConfig): Server {
       description: tool.description,
       inputSchema: tool.inputSchema,
       outputSchema: tool.outputSchema,
+      annotations: tool.annotations,
     })),
   }));
 

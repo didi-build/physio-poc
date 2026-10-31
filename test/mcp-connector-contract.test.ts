@@ -4,12 +4,13 @@ import { join } from "node:path";
 import { ToolSchema } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
 import {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
-  buildWebAppExerciseSearchUrl,
-  GET_PROGRAM_NEVER_AUTO_PUBLISH,
-  GET_PROGRAM_REPUBLISH_KEEPS_SHARE_LINK,
+  CONNECTOR_PHYSIO_APP_ROUTE_NAMES,
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-  getProgramShareLinkOrPdfDescription,
+  MCP_TOOL_ANNOTATIONS,
+  PHYSIO_APP_ROUTE_PATTERNS,
+  buildProgramBuilderLink,
+  buildWebAppExerciseSearchUrl,
   getProgramShareLinkOrPdfInputSchema,
   inferGetProgramDisplayState,
   PATIENT_DETAIL_REJECTION_MESSAGE,
@@ -17,35 +18,35 @@ import {
   publishedLinkFieldsPresent,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  SHARE_LINK_EXPIRES_IN,
-  SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
   validateFreeTextForPatientDetails,
-  WEB_APP_EXERCISE_SEARCH_PATH,
-  WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
   type JsonSchema,
 } from "../src/mcp-connector/index.js";
 import {
-  MCP_SAMPLE_BUILD_PROGRAM_OUTPUT,
   MCP_SAMPLE_GET_PROGRAM_BOTH_OUTPUT,
+  MCP_SAMPLE_GET_PROGRAM_BUILDER_FROM_ROUTINE_OUTPUT,
+  MCP_SAMPLE_GET_PROGRAM_BUILDER_OUTPUT,
   MCP_SAMPLE_GET_PROGRAM_DRAFT_ONLY_OUTPUT,
-  MCP_SAMPLE_GET_PROGRAM_PUBLISH_OUTPUT,
   MCP_SAMPLE_GET_PROGRAM_PUBLISHED_OUTPUT,
   MCP_SAMPLE_SEARCH_EXERCISES_OUTPUT,
   MCP_SAMPLE_SEARCH_ROUTINES_OUTPUT,
 } from "./mcp-connector-schema-samples.js";
 import {
+  assertNoOutputPatternProperties,
   collectInputUrlLikeViolations,
   visitSchemaNodes,
 } from "./mcp-connector-schema-test-utils.js";
 
 const MCP_CONNECTOR_DIR = join(process.cwd(), "src/mcp-connector");
+const APP_ROUTES_PATH = join(process.cwd(), "src/app-routes.ts");
 
 const LOCKED_TOOL_NAMES = [
   "search_approved_exercises",
   "search_routines",
-  "build_or_edit_program",
+  "get_program_builder_link",
   "get_program_share_link_or_pdf",
 ] as const;
+
+const FORBIDDEN_WRITE_INPUT_PROPERTY_NAMES = ["publish", "overrides", "rows"] as const;
 
 /** Property names allowed anywhere in each tool's input or output schema (update when schemas change). */
 const ALLOWED_SCHEMA_PROPERTY_NAMES: Record<
@@ -83,71 +84,26 @@ const ALLOWED_SCHEMA_PROPERTY_NAMES: Record<
       "source",
     ],
   },
-  build_or_edit_program: {
-    input: [
-      "program_code",
-      "program_title",
-      "from_routine_id",
-      "rows",
-      "exercise_version_id",
-      "exercise_name",
-      "prescription_type",
-      "params",
-      "row_notes",
-      "reps",
-      "sets",
-      "hold_s",
-      "ascent_s",
-      "descent_s",
-      "rest_s",
-      "per_day",
-      "days_per_week",
-      "min",
-      "max",
-    ],
+  get_program_builder_link: {
+    input: ["program_code", "from_routine_id"],
     output: [
       "summary",
       "share_link",
+      "builder_link",
       "manage_url",
       "program_code",
-      "program_title",
-      "source_routine_id",
-      "rows",
-      "exercises_not_found",
-      "exercise_version_id",
-      "exercise_name",
-      "prescription_type",
-      "params",
-      "row_notes",
-      "reps",
-      "sets",
-      "hold_s",
-      "ascent_s",
-      "descent_s",
-      "rest_s",
-      "per_day",
-      "days_per_week",
-      "min",
-      "max",
-      "requested_exercise_name",
-      "candidate_matches",
-      "web_app_exercise_search_url",
+      "from_routine_id",
     ],
   },
   get_program_share_link_or_pdf: {
-    input: [
-      "program_code",
-      "program_title",
-      "publish",
-      "overrides",
-      "expires_in",
-      "custom_date",
-    ],
+    input: ["program_code", "program_title"],
     output: [
       "summary",
       "share_link",
       "manage_url",
       "pdf_url",
+      "publish_link",
+      "manage_link",
       "expires_at",
       "draft",
       "published",
@@ -245,6 +201,33 @@ describe("Physio MCP connector contract", () => {
     expect(PHYSIO_MCP_TOOLS.map((t) => t.name)).toEqual([...LOCKED_TOOL_NAMES]);
   });
 
+  it("pins readOnlyHint, destructiveHint, and openWorldHint on every tool", () => {
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      expect(tool.annotations, tool.name).toEqual(MCP_TOOL_ANNOTATIONS);
+    }
+  });
+
+  it("has no create, edit, publish, or delete inputs on any tool", () => {
+    for (const tool of PHYSIO_MCP_TOOLS) {
+      const found = new Set<string>();
+      collectPropertyNames(tool.inputSchema, found);
+      for (const forbidden of FORBIDDEN_WRITE_INPUT_PROPERTY_NAMES) {
+        expect(found.has(forbidden), `${tool.name} input ${forbidden}`).toBe(false);
+      }
+    }
+  });
+
+  it("builds connector deep links only through the shared route table", () => {
+    const routeSource = readFileSync(APP_ROUTES_PATH, "utf8");
+    for (const routeName of CONNECTOR_PHYSIO_APP_ROUTE_NAMES) {
+      expect(routeSource).toContain(`${routeName}:`);
+      expect(PHYSIO_APP_ROUTE_PATTERNS[routeName]).toBeTruthy();
+    }
+    expect(
+      buildProgramBuilderLink("https://app.example.com", { program_code: "PRG-7K3Q" }),
+    ).toBe("https://app.example.com/programs/PRG-7K3Q");
+  });
+
   it("requires top-level type object on every input and output schema", () => {
     for (const tool of PHYSIO_MCP_TOOLS) {
       expect(tool.inputSchema.type, `${tool.name} input`).toBe("object");
@@ -287,10 +270,10 @@ describe("Physio MCP connector contract", () => {
         invalid: { summary: "x", share_link: "", manage_url: "", routines: "bad" },
       },
       {
-        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         schema: PHYSIO_MCP_TOOLS[2].outputSchema,
-        valid: MCP_SAMPLE_BUILD_PROGRAM_OUTPUT,
-        invalid: { summary: "x", share_link: "", manage_url: "", rows: "bad" },
+        valid: MCP_SAMPLE_GET_PROGRAM_BUILDER_OUTPUT,
+        invalid: { summary: "x", share_link: "", builder_link: "not-a-url" },
       },
       {
         tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
@@ -307,9 +290,15 @@ describe("Physio MCP connector contract", () => {
     }
   });
 
-  it("accepts empty share_link and pdf_url strings where documented", () => {
+  it("accepts empty share_link, pdf_url, and publish_link where documented", () => {
     const validate = ajv.compile(PHYSIO_MCP_TOOLS[3].outputSchema);
     expect(validate(MCP_SAMPLE_GET_PROGRAM_DRAFT_ONLY_OUTPUT)).toBe(true);
+    expect(validate(MCP_SAMPLE_GET_PROGRAM_BOTH_OUTPUT)).toBe(true);
+    expect(
+      ajv.compile(PHYSIO_MCP_TOOLS[2].outputSchema)(
+        MCP_SAMPLE_GET_PROGRAM_BUILDER_FROM_ROUTINE_OUTPUT,
+      ),
+    ).toBe(true);
   });
 
   it("pins allowed property names per tool and rejects patient-info-like names", () => {
@@ -341,12 +330,16 @@ describe("Physio MCP connector contract", () => {
     for (const tool of PHYSIO_MCP_TOOLS) {
       visitSchemaNodes(tool.inputSchema, (node) => {
         if (node.patternProperties) {
-          throw new Error(`${tool.name}: patternProperties is not allowed`);
+          throw new Error(`${tool.name} input: patternProperties is not allowed`);
         }
       });
       const violations = collectInputUrlLikeViolations(tool.inputSchema);
       expect(violations, `${tool.name} input URL-like violations`).toEqual([]);
     }
+  });
+
+  it("has no patternProperties on any tool output schema", () => {
+    assertNoOutputPatternProperties(PHYSIO_MCP_TOOLS);
   });
 
   it("rejects zero-result exercise search output without search_link", () => {
@@ -360,22 +353,6 @@ describe("Physio MCP connector contract", () => {
         exercises: [],
       }),
     ).toBe(false);
-  });
-
-  it("rejects publish overrides with custom_date expiry but no custom_date field", () => {
-    const validate = ajv.compile(getProgramShareLinkOrPdfInputSchema);
-    expect(
-      validate({
-        program_code: "PRG-TEST1",
-        overrides: { expires_in: "custom_date" },
-      }),
-    ).toBe(false);
-    expect(
-      validate({
-        program_code: "PRG-TEST1",
-        overrides: { expires_in: "custom_date", custom_date: "2026-11-01" },
-      }),
-    ).toBe(true);
   });
 
   it("uses flat object roots on every tool input schema (no root combinators)", () => {
@@ -438,9 +415,14 @@ describe("Physio MCP connector contract", () => {
     }
   });
 
-  it("buildWebAppExerciseSearchUrl uses exported path constant and URL-encodes names", () => {
-    expect(WEB_APP_EXERCISE_SEARCH_PATH).toBe("/exercises/search");
-    expect(WEB_APP_EXERCISE_SEARCH_QUERY_PARAM).toBe("q");
+  it("guards the route table module against platform imports", () => {
+    const source = readFileSync(APP_ROUTES_PATH, "utf8");
+    expect(source).not.toMatch(/\bprocess\./);
+    expect(source).not.toMatch(/from\s+["']node:/);
+  });
+
+  it("buildWebAppExerciseSearchUrl uses the shared exerciseSearch route", () => {
+    expect(PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch).toBe("/exercises/search");
 
     expect(
       buildWebAppExerciseSearchUrl("https://app.example.com/", "Glute bridge"),
@@ -451,6 +433,20 @@ describe("Physio MCP connector contract", () => {
     expect(url.startsWith("https://app.example.com/exercises/search?")).toBe(true);
     const params = new URLSearchParams(url.split("?")[1] ?? "");
     expect(params.get("q")).toBe(tricky);
+
+    const raw201 = "a".repeat(201);
+    const capped = buildWebAppExerciseSearchUrl("https://app.example.com", raw201);
+    const search = new URL(capped).search.slice(1);
+    const encodedQ = search.startsWith("q=") ? search.slice(2) : "";
+    expect(encodedQ.length).toBe(199);
+
+    const flagged = buildWebAppExerciseSearchUrl(
+      "https://app.example.com",
+      "Contact user@example.com",
+    );
+    expect(flagged).toBe(
+      `https://app.example.com${PHYSIO_APP_ROUTE_PATTERNS.exerciseSearch}`,
+    );
   });
 });
 
@@ -492,19 +488,13 @@ describe("validateFreeTextForPatientDetails", () => {
 });
 
 describe("get_program_share_link_or_pdf contract", () => {
-  it("never auto-publishes unless publish is true", () => {
-    expect(GET_PROGRAM_NEVER_AUTO_PUBLISH).toBe(true);
-    const publishProp = getProgramShareLinkOrPdfInputSchema.properties as Record<
+  it("never accepts publish or overrides on the input schema", () => {
+    const props = getProgramShareLinkOrPdfInputSchema.properties as Record<
       string,
-      JsonSchema
+      unknown
     >;
-    expect(publishProp.publish?.default).toBe(false);
-    expect(getProgramShareLinkOrPdfDescription).toMatch(/explicitly confirms/i);
-  });
-
-  it("republishing keeps the same share link", () => {
-    expect(GET_PROGRAM_REPUBLISH_KEEPS_SHARE_LINK).toBe(true);
-    expect(getProgramShareLinkOrPdfDescription).toMatch(/same share link/i);
+    expect(props.publish).toBeUndefined();
+    expect(props.overrides).toBeUndefined();
   });
 
   it("classifies draft only, published only, and published with draft changes", () => {
@@ -530,28 +520,13 @@ describe("get_program_share_link_or_pdf contract", () => {
       publishedLinkFieldsPresent({ version: 1, updated_at: "2026-10-23T10:00:00Z" }),
     ).toBe(true);
   });
-
-  it("validates publish outputs including default and override expiry samples", () => {
-    const validate = ajv.compile(PHYSIO_MCP_TOOLS[3].outputSchema);
-    expect(validate(MCP_SAMPLE_GET_PROGRAM_BOTH_OUTPUT)).toBe(true);
-    expect(validate(MCP_SAMPLE_GET_PROGRAM_PUBLISH_OUTPUT)).toBe(true);
-  });
-
-  it("supports publish with overrides.expires_in enum and custom_date field", () => {
-    const overrides = (
-      getProgramShareLinkOrPdfInputSchema.properties as Record<string, JsonSchema>
-    ).overrides;
-    const expiresIn = (overrides?.properties as Record<string, JsonSchema>).expires_in;
-    expect(expiresIn?.enum).toEqual(SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM);
-    expect(SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM).toContain(SHARE_LINK_EXPIRES_IN.one_year);
-  });
 });
 
 describe("contract regression guards (mutant killers)", () => {
   it("exports locked tool name constants matching registry order", () => {
     expect(SEARCH_APPROVED_EXERCISES_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[0]);
     expect(SEARCH_ROUTINES_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[1]);
-    expect(BUILD_OR_EDIT_PROGRAM_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[2]);
+    expect(GET_PROGRAM_BUILDER_LINK_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[2]);
     expect(GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME).toBe(LOCKED_TOOL_NAMES[3]);
   });
 
@@ -567,10 +542,8 @@ describe("contract regression guards (mutant killers)", () => {
     expect(required).toContain("share_link");
   });
 
-  it("requires rows array on build output schema", () => {
-    const rows = (
-      PHYSIO_MCP_TOOLS[2].outputSchema.properties as Record<string, JsonSchema>
-    ).rows;
-    expect(rows?.type).toBe("array");
+  it("requires builder_link on get_program_builder_link output schema", () => {
+    const required = PHYSIO_MCP_TOOLS[2].outputSchema.required as string[];
+    expect(required).toContain("builder_link");
   });
 });

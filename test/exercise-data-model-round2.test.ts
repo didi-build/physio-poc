@@ -176,11 +176,11 @@ describe("type_defaults practitioner partial unique index (integration)", () => 
     try {
       const practId = await seedPractitioner(storage);
       const repo = new TypeDefaultsRepository(storage);
-      await repo.upsertPractitionerDefaults("td-upsert-1", practId, "concentric", {
+      await repo.upsertPractitionerDefaults(id("td-upsert-1"), practId, "concentric", {
         reps: 8,
         sets: 2,
       });
-      await repo.upsertPractitionerDefaults("td-upsert-2", practId, "concentric", {
+      await repo.upsertPractitionerDefaults(id("td-upsert-2"), practId, "concentric", {
         reps: 12,
         sets: 3,
       });
@@ -298,7 +298,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
         versions.insert({
-          id: "ver-bad-title",
+          id: id("ver-bad-title"),
           exerciseId: exId,
           versionNumber: 1,
           status: "draft",
@@ -313,7 +313,7 @@ describe("repository write validation (integration, SQLite)", () => {
       const aliases = new ExerciseAliasesRepository(storage);
       await expect(
         aliases.insert({
-          id: "alias-bad",
+          id: id("alias-bad"),
           exerciseId: exId,
           alias: "a".repeat(MAX_LENGTH_EXERCISE_ALIAS + 1),
           createdAt: TS,

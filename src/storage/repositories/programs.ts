@@ -30,6 +30,18 @@ import {
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { likeContainsPattern } from "../../domain/sql-like.js";
+import { isSqlDuplicateIdError } from "../errors/sql-duplicate-id-error.js";
+import {
+  loadPublishedRoutineVersionForRoutine,
+  validateProgramRoutineOriginTrio,
+  type ProgramRoutineOrigin,
+} from "./routines.js";
+
+const PROGRAM_SELECT = `id, code, name, created_by, created_at, draft_version, draft_updated_at,
+              published_version, published_name, published_at, published_snapshot_json,
+              deleted_at, link_expires_in, link_expires_on,
+              source_routine_id, source_routine_version_id, source_routine_origin`;
 
 export class ProgramRepositoryError extends Error {
   constructor(message: string) {
@@ -37,6 +49,8 @@ export class ProgramRepositoryError extends Error {
     this.name = "ProgramRepositoryError";
   }
 }
+
+export const PROGRAM_ID_ALREADY_IN_USE = "Program id is already in use";
 
 export type ProgramRow = {
   id: string;
@@ -66,6 +80,9 @@ export type ProgramRecord = {
   deleted_at: string | null;
   link_expires_in: ShareLinkExpiresIn | null;
   link_expires_on: string | null;
+  source_routine_id: string | null;
+  source_routine_version_id: string | null;
+  source_routine_origin: ProgramRoutineOrigin | null;
 };
 
 export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -123,9 +140,39 @@ export class ProgramsRepository {
     createdAt: string;
     name?: string | null;
     code?: string;
+    routineOrigin?: {
+      routineId: string;
+      routineVersionId: string;
+      origin: ProgramRoutineOrigin;
+    } | null;
   }): Promise<ProgramRecord> {
     const id = validateOpaqueEntityId(input.id, "Program id");
     const name = validateOptionalProgramName(input.name ?? null);
+    let sourceRoutineId: string | null = null;
+    let sourceRoutineVersionId: string | null = null;
+    let sourceRoutineOrigin: ProgramRoutineOrigin | null = null;
+    if (input.routineOrigin) {
+      sourceRoutineId = validateOpaqueEntityId(
+        input.routineOrigin.routineId,
+        "Source routine id",
+      );
+      sourceRoutineVersionId = validateOpaqueEntityId(
+        input.routineOrigin.routineVersionId,
+        "Source routine version id",
+      );
+      sourceRoutineOrigin = input.routineOrigin.origin;
+      validateProgramRoutineOriginTrio({
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        sourceRoutineOrigin,
+      });
+      await loadPublishedRoutineVersionForRoutine(
+        this.sql,
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        "routineVersionId",
+      );
+    }
     let code = input.code
       ? programCodeDomain.normalizeProgramCode(input.code)
       : programCodeDomain.generateProgramCode();
@@ -137,9 +184,21 @@ export class ProgramsRepository {
         await this.sql.run(
           `INSERT INTO programs (
             id, code, name, created_by, created_at,
-            draft_version, draft_updated_at
-          ) VALUES (?, ?, ?, ?, ?, 1, ?)`,
-          [id, code, name, input.createdBy, input.createdAt, input.createdAt],
+            draft_version, draft_updated_at,
+            source_routine_id, source_routine_version_id, source_routine_origin
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id,
+            code,
+            name,
+            input.createdBy,
+            input.createdAt,
+            1,
+            input.createdAt,
+            sourceRoutineId,
+            sourceRoutineVersionId,
+            sourceRoutineOrigin,
+          ],
         );
         const created = await this.findById(id);
         if (!created) {
@@ -147,6 +206,9 @@ export class ProgramsRepository {
         }
         return created;
       } catch (error) {
+        if (isSqlDuplicateIdError(error)) {
+          throw new ProgramRepositoryError(PROGRAM_ID_ALREADY_IN_USE);
+        }
         if (input.code) {
           if (isUniqueConstraintError(error)) {
             throw new ProgramRepositoryError("Program code is already in use");
@@ -165,9 +227,7 @@ export class ProgramsRepository {
 
   async findById(id: string): Promise<ProgramRecord | null> {
     return this.sql.first<ProgramRecord>(
-      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-              published_version, published_name, published_at, published_snapshot_json,
-              deleted_at, link_expires_in, link_expires_on
+      `SELECT ${PROGRAM_SELECT}
        FROM programs WHERE id = ? LIMIT 1`,
       [id],
     );
@@ -177,9 +237,7 @@ export class ProgramsRepository {
     const keys = programCodeDomain.programCodeSearchKeys(query);
     for (const key of keys) {
       const row = await this.sql.first<ProgramRecord>(
-        `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-                published_version, published_name, published_at, published_snapshot_json,
-                deleted_at, link_expires_in, link_expires_on
+        `SELECT ${PROGRAM_SELECT}
          FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
         [key],
       );
@@ -190,6 +248,83 @@ export class ProgramsRepository {
     return null;
   }
 
+  async listForPractitioner(input: {
+    practitionerId: string;
+    searchQuery?: string;
+    deletedOnly?: boolean;
+    includeActive?: boolean;
+    originFilter?: "from_routine" | "from_scratch";
+  }): Promise<ProgramRecord[]> {
+    const bindings: (string | number)[] = [input.practitionerId];
+    const where: string[] = ["p.created_by = ?"];
+
+    if (input.deletedOnly) {
+      where.push("p.deleted_at IS NOT NULL");
+    } else if (input.includeActive !== false) {
+      where.push("p.deleted_at IS NULL");
+    }
+
+    if (input.originFilter === "from_routine") {
+      where.push("p.source_routine_id IS NOT NULL");
+    } else if (input.originFilter === "from_scratch") {
+      where.push("p.source_routine_id IS NULL");
+    }
+
+    const trimmed = input.searchQuery?.trim();
+    if (trimmed) {
+      const codeKeys = programCodeDomain.programCodeSearchKeys(trimmed);
+      const nameLike = likeContainsPattern(trimmed);
+      if (codeKeys.length > 0) {
+        where.push(
+          `(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR p.code IN (${codeKeys.map(() => "?").join(", ")}) OR rv.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
+        );
+        bindings.push(nameLike, ...codeKeys, nameLike);
+      } else {
+        where.push(
+          `(p.name LIKE ? ESCAPE '\\' COLLATE NOCASE OR rv.name LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
+        );
+        bindings.push(nameLike, nameLike);
+      }
+    }
+
+    const programSelectAliased = PROGRAM_SELECT.split(",")
+      .map((column) => `p.${column.trim()}`)
+      .join(", ");
+
+    return this.sql.all<ProgramRecord>(
+      `SELECT ${programSelectAliased}
+       FROM programs p
+       LEFT JOIN routine_versions rv ON p.source_routine_version_id = rv.id
+       WHERE ${where.join(" AND ")}
+       ORDER BY p.draft_updated_at DESC`,
+      bindings,
+    );
+  }
+
+  async markRoutineOriginTweakedIfUsedAsIs(programId: string): Promise<void> {
+    await this.sql.run(
+      `UPDATE programs
+       SET source_routine_origin = 'tweaked'
+       WHERE id = ? AND source_routine_origin = 'used_as_is' AND deleted_at IS NULL`,
+      [programId],
+    );
+  }
+
+  async listSentCodesForSourceRoutine(input: {
+    practitionerId: string;
+    routineId: string;
+  }): Promise<string[]> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const rows = await this.sql.all<{ code: string }>(
+      `SELECT code FROM programs
+       WHERE created_by = ? AND source_routine_id = ?
+         AND published_at IS NOT NULL AND deleted_at IS NULL
+       ORDER BY published_at DESC`,
+      [input.practitionerId, routineId],
+    );
+    return rows.map((row) => row.code);
+  }
+
   async updateDraftName(programId: string, name: string | null): Promise<void> {
     const validated = validateOptionalProgramName(name);
     const now = new Date().toISOString();
@@ -197,6 +332,53 @@ export class ProgramsRepository {
       `UPDATE programs SET name = ?, draft_updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
       [validated, now, programId],
     );
+  }
+
+  async setRoutineOrigin(
+    programId: string,
+    origin: {
+      routineId: string;
+      routineVersionId: string;
+      usedAs: ProgramRoutineOrigin;
+    },
+  ): Promise<void> {
+    const sourceRoutineId = validateOpaqueEntityId(
+      origin.routineId,
+      "Source routine id",
+    );
+    const sourceRoutineVersionId = validateOpaqueEntityId(
+      origin.routineVersionId,
+      "Source routine version id",
+    );
+    validateProgramRoutineOriginTrio({
+      sourceRoutineId,
+      sourceRoutineVersionId,
+      sourceRoutineOrigin: origin.usedAs,
+    });
+    await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      sourceRoutineId,
+      sourceRoutineVersionId,
+      "routineVersionId",
+    );
+    const result = await this.sql.run(
+      `UPDATE programs SET
+        source_routine_id = ?,
+        source_routine_version_id = ?,
+        source_routine_origin = ?
+       WHERE id = ? AND deleted_at IS NULL`,
+      [sourceRoutineId, sourceRoutineVersionId, origin.usedAs, programId],
+    );
+    if (result.rowsAffected === 0) {
+      const program = await this.findById(programId);
+      if (!program) {
+        throw new ProgramRepositoryError("Program not found");
+      }
+      if (program.deleted_at) {
+        throw new ProgramRepositoryError("Program is deleted");
+      }
+      throw new ProgramRepositoryError("Program origin update failed");
+    }
   }
 
   async setLinkExpiry(
@@ -302,9 +484,7 @@ export class ProgramsRepository {
   async listPurgeableDeleted(now: Date = new Date()): Promise<ProgramRecord[]> {
     const cutoff = purgeCutoffIso(now);
     return this.sql.all<ProgramRecord>(
-      `SELECT id, code, name, created_by, created_at, draft_version, draft_updated_at,
-              published_version, published_name, published_at, published_snapshot_json,
-              deleted_at, link_expires_in, link_expires_on
+      `SELECT ${PROGRAM_SELECT}
        FROM programs
        WHERE deleted_at IS NOT NULL AND deleted_at < ?`,
       [cutoff],
@@ -412,6 +592,82 @@ export class ProgramRowsRepository {
     );
   }
 
+  /**
+   * Approval batch only. Call from linkApprovedPlaceholders only
+   * (program-builder-service.ts). Allows soft deleted programs and does not
+   * check program ownership; must not be used from user facing row APIs.
+   * Does not accept note or program name changes; prescription_type and note
+   * stay as stored on the row.
+   */
+  async linkPlaceholderRowToApprovedVersion(input: {
+    programId: string;
+    rowId: string;
+    exerciseRequestId: string;
+    exerciseId: string;
+    exerciseVersionId: string;
+    params: ExerciseParams;
+    textSnapshot: ProgramRowTextSnapshot;
+    draftUpdatedAt: string;
+  }): Promise<boolean> {
+    const programId = validateOpaqueEntityId(input.programId, "Program id");
+    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
+    const exerciseRequestId = validateOpaqueEntityId(
+      input.exerciseRequestId,
+      "Exercise request id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const exerciseVersionId = validateOpaqueEntityId(
+      input.exerciseVersionId,
+      "Exercise version id",
+    );
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const row = await this.findById(rowId);
+    if (
+      !row ||
+      row.program_id !== programId ||
+      row.exercise_request_id !== exerciseRequestId ||
+      row.exercise_id ||
+      row.exercise_version_id
+    ) {
+      return false;
+    }
+    const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);
+    const paramsJson = JSON.stringify(validateExerciseParams(input.params));
+    const textJson = JSON.stringify(textSnapshot);
+    const result = await this.sql.run(
+      `UPDATE program_rows SET
+        exercise_id = ?,
+        exercise_version_id = ?,
+        exercise_request_id = NULL,
+        params_json = ?,
+        text_snapshot_json = ?
+      WHERE id = ? AND program_id = ? AND exercise_request_id = ?
+        AND exercise_id IS NULL AND exercise_version_id IS NULL`,
+      [
+        exerciseId,
+        exerciseVersionId,
+        paramsJson,
+        textJson,
+        rowId,
+        programId,
+        exerciseRequestId,
+      ],
+    );
+    if (result.rowsAffected === 0) {
+      return false;
+    }
+    if (!program.deleted_at) {
+      await new ProgramsRepository(this.sql).touchDraft(
+        programId,
+        input.draftUpdatedAt,
+      );
+    }
+    return true;
+  }
+
   async listForProgram(programId: string): Promise<ProgramRow[]> {
     const rows = await this.sql.all<ProgramRow>(
       `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
@@ -423,6 +679,109 @@ export class ProgramRowsRepository {
       ...row,
       prescription_type: assertPrescriptionType(row.prescription_type),
     }));
+  }
+
+  async listForExerciseRequestId(exerciseRequestId: string): Promise<ProgramRow[]> {
+    const rows = await this.sql.all<ProgramRow>(
+      `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+              prescription_type, params_json, text_snapshot_json, note
+       FROM program_rows
+       WHERE exercise_request_id = ?
+       ORDER BY program_id ASC, position ASC`,
+      [exerciseRequestId],
+    );
+    return rows.map((row) => ({
+      ...row,
+      prescription_type: assertPrescriptionType(row.prescription_type),
+    }));
+  }
+
+  async findById(rowId: string): Promise<ProgramRow | null> {
+    const row = await this.sql.first<ProgramRow>(
+      `SELECT id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+              prescription_type, params_json, text_snapshot_json, note
+       FROM program_rows WHERE id = ? LIMIT 1`,
+      [rowId],
+    );
+    if (!row) {
+      return null;
+    }
+    return {
+      ...row,
+      prescription_type: assertPrescriptionType(row.prescription_type),
+    };
+  }
+
+  async deleteRow(
+    programId: string,
+    rowId: string,
+    draftUpdatedAt: string,
+  ): Promise<void> {
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program || program.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const rows = await this.listForProgram(programId);
+    const target = rows.find((row) => row.id === rowId);
+    if (!target) {
+      throw new ProgramRepositoryError("Program row not found");
+    }
+    await this.sql.run(`DELETE FROM program_rows WHERE id = ? AND program_id = ?`, [
+      rowId,
+      programId,
+    ]);
+    const remaining = rows
+      .filter((row) => row.id !== rowId)
+      .sort((a, b) => a.position - b.position);
+    await this.applyPositions(
+      programId,
+      remaining.map((row) => row.id),
+    );
+    await new ProgramsRepository(this.sql).touchDraft(programId, draftUpdatedAt);
+  }
+
+  async reorderRows(
+    programId: string,
+    orderedRowIds: string[],
+    draftUpdatedAt: string,
+  ): Promise<void> {
+    const program = await new ProgramsRepository(this.sql).findById(programId);
+    if (!program || program.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    const rows = await this.listForProgram(programId);
+    if (orderedRowIds.length !== rows.length) {
+      throw new ProgramRepositoryError("Reorder must include every program row");
+    }
+    const idSet = new Set(rows.map((row) => row.id));
+    for (const rowId of orderedRowIds) {
+      if (!idSet.has(rowId)) {
+        throw new ProgramRepositoryError("Reorder includes an unknown row id");
+      }
+    }
+    if (new Set(orderedRowIds).size !== orderedRowIds.length) {
+      throw new ProgramRepositoryError("Reorder row ids must be unique");
+    }
+    await this.applyPositions(programId, orderedRowIds);
+    await new ProgramsRepository(this.sql).touchDraft(programId, draftUpdatedAt);
+  }
+
+  private async applyPositions(
+    programId: string,
+    orderedRowIds: string[],
+  ): Promise<void> {
+    for (let i = 0; i < orderedRowIds.length; i += 1) {
+      await this.sql.run(
+        `UPDATE program_rows SET position = ? WHERE id = ? AND program_id = ?`,
+        [1_000_000 + i, orderedRowIds[i], programId],
+      );
+    }
+    for (let i = 0; i < orderedRowIds.length; i += 1) {
+      await this.sql.run(
+        `UPDATE program_rows SET position = ? WHERE id = ? AND program_id = ?`,
+        [i, orderedRowIds[i], programId],
+      );
+    }
   }
 }
 

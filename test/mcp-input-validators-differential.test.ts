@@ -4,13 +4,13 @@ import AjvModule from "ajv";
 import addFormatsModule from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import {
-  BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+  GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
 } from "../src/mcp-connector/index.js";
 import {
-  build_or_edit_program,
+  get_program_builder_link,
   get_program_share_link_or_pdf,
   search_approved_exercises,
   search_routines,
@@ -42,76 +42,96 @@ for (const tool of goldenTools) {
 const generatedValidators = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
   [SEARCH_ROUTINES_TOOL_NAME]: search_routines,
-  [BUILD_OR_EDIT_PROGRAM_TOOL_NAME]: build_or_edit_program,
+  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: get_program_builder_link,
   [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: get_program_share_link_or_pdf,
 } as const;
 
 function expectAgreement(toolName: string, data: unknown) {
-  const runtimeOk = runtimeValidators[toolName](data);
-  const generatedOk =
-    generatedValidators[toolName as keyof typeof generatedValidators](data);
+  const runtimeValidate = runtimeValidators[toolName];
+  const generatedValidate =
+    generatedValidators[toolName as keyof typeof generatedValidators];
+  const runtimeOk = runtimeValidate(data);
+  const generatedOk = generatedValidate(data);
   expect(generatedOk).toBe(runtimeOk);
+  if (!runtimeOk && !generatedOk) {
+    type ErrorEntry = { keyword?: string };
+    const runtimeKeywords =
+      (runtimeValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    const generatedKeywords =
+      (generatedValidate.errors as ErrorEntry[] | null | undefined)
+        ?.map((entry) => entry.keyword)
+        .filter((keyword): keyword is string => typeof keyword === "string")
+        .sort() ?? [];
+    expect(generatedKeywords).toEqual(runtimeKeywords);
+  }
 }
 
 const emoji = "😀";
+const ninetyEightLetters = "a".repeat(98);
 const ninetyNineLetters = "a".repeat(99);
 const astralQuery = `${ninetyNineLetters}${emoji}`;
-
-const invalidDates = [
-  "2027-13-01",
-  "2027-00-10",
-  "2027-99-99",
-  "2027-04-31",
-  "2027-02-29",
-];
 
 describe("generated MCP validators vs runtime Ajv", () => {
   it("agrees on valid and invalid samples for every tool", () => {
     const cases: { tool: string; data: unknown }[] = [
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "calf stretch" } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: astralQuery } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
+      },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
+      },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "x".repeat(101) } },
       { tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME, data: { query: "" } },
+      {
+        tool: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800x` },
+      },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: "knee" } },
       { tool: SEARCH_ROUTINES_TOOL_NAME, data: { query: astralQuery } },
       {
-        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
-        data: {
-          program_title: `${ninetyNineLetters}${emoji}`,
-          rows: [
-            {
-              exercise_name: `${ninetyNineLetters}${emoji}`,
-              prescription_type: "stretching",
-              params: { sets: 1 },
-            },
-          ],
-        },
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyEightLetters}\uD800x` },
       },
       {
-        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
-        data: {
-          program_title: "Plan",
-          rows: [
-            {
-              exercise_name: "Heel slides",
-              prescription_type: "stretching",
-              params: { sets: 1 },
-              row_notes: `${ninetyNineLetters}${emoji}`,
-            },
-          ],
-        },
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800` },
       },
       {
-        tool: BUILD_OR_EDIT_PROGRAM_TOOL_NAME,
+        tool: SEARCH_ROUTINES_TOOL_NAME,
+        data: { query: `${ninetyNineLetters}\uD800x` },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { program_code: "PRG-STUB01" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "550e8400-e29b-41d4-a716-446655440000" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "rtn-john-smith-knee" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "john-smith-knee" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        data: { from_routine_id: "Knee mobility starter, neck and shoulder" },
+      },
+      {
+        tool: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         data: {
-          program_title: "x".repeat(81),
-          rows: [
-            {
-              exercise_name: "Heel slides",
-              prescription_type: "stretching",
-              params: { sets: 1 },
-            },
-          ],
+          program_code: "PRG-STUB01",
+          from_routine_id: "550e8400-e29b-41d4-a716-446655440000",
         },
       },
       {
@@ -120,20 +140,12 @@ describe("generated MCP validators vs runtime Ajv", () => {
       },
       {
         tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        data: {
-          program_code: "PRG-STUB01",
-          publish: true,
-          overrides: { expires_in: "custom_date", custom_date: "2027-06-15" },
-        },
+        data: { program_title: `${ninetyNineLetters}${emoji}` },
       },
-      ...invalidDates.map((custom_date) => ({
+      {
         tool: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        data: {
-          program_code: "PRG-STUB01",
-          publish: true,
-          overrides: { expires_in: "custom_date", custom_date },
-        },
-      })),
+        data: { program_title: "x".repeat(81) },
+      },
     ];
 
     for (const { tool, data } of cases) {

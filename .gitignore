@@ -14,11 +14,14 @@ out/
 # Test & coverage
 coverage/
 test-results/
+media-test-output/
 
 # Environment (never commit secrets)
 .env
 .env.*
 !.env.example
+.dev.vars
+!.dev.vars.example
 
 # Logs
 logs/
@@ -40,3 +43,4 @@ Thumbs.db
 .eslintcache
 .cache/
 .wrangler/
+wrangler.ci.jsonc

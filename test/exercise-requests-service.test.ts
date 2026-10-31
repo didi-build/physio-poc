@@ -11,6 +11,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
 const BEFORE_FORM = "2026-10-30T09:00:00.000Z";
@@ -40,8 +41,16 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
   it("lists similar library matches and in-progress drafts, excluding unapproved-only rows from library", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const practA = await seedPractitioner(storage, "pract-a", "a@example.com");
-      const practB = await seedPractitioner(storage, "pract-b", "b@example.com");
+      const practA = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("ex-req-similar-a"),
+        "a@example.com",
+      );
+      const practB = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("ex-req-similar-b"),
+        "b@example.com",
+      );
       await seedApprovedTitle(storage, practA, "Copenhagen plank approved");
       await seedExercise(storage, practB, "ex-draft-search");
       await storage.run(VERSION_INSERT_SQL, [
@@ -89,8 +98,16 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
   it("returns conflict on submit when a similar request was created after the form opened", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const requester = await seedPractitioner(storage, "pract-req", "req@example.com");
-      const other = await seedPractitioner(storage, "pract-other", "other@example.com");
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-req"),
+        "req@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("pract-other"),
+        "other@example.com",
+      );
 
       const otherService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
@@ -132,10 +149,14 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
   it("merge adds the requester name and exercise note to the existing draft request", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const owner = await seedPractitioner(storage, "pract-owner", "owner@example.com");
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-owner"),
+        "owner@example.com",
+      );
       const merger = await seedPractitioner(
         storage,
-        "pract-merge",
+        id("pract-merge"),
         "merge@example.com",
       );
 
@@ -186,12 +207,12 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-apr-req",
+        id("pract-apr-req"),
         "apr-req@example.com",
       );
       const approver = await seedPractitioner(
         storage,
-        "pract-apr-app",
+        id("pract-apr-app"),
         "apr-app@example.com",
       );
       const approvedAt = "2026-10-30T15:00:00.000Z";
@@ -285,7 +306,10 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
       await expect(
-        service.listSimilar({ practitionerId: "pract-missing", query: "Heel slide" }),
+        service.listSimilar({
+          practitionerId: id("pract-missing"),
+          query: "Heel slide",
+        }),
       ).rejects.toMatchObject({ code: "practitioner_not_found" });
     } finally {
       storage.close();
@@ -297,12 +321,12 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-req-view",
+        id("pract-req-view"),
         "rv@example.com",
       );
       const reviewer = await seedPractitioner(
         storage,
-        "pract-rev-view",
+        id("pract-rev-view"),
         "vw@example.com",
       );
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
@@ -345,12 +369,12 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-boundary",
+        id("pract-boundary"),
         "bd@example.com",
       );
       const other = await seedPractitioner(
         storage,
-        "pract-boundary-other",
+        id("pract-boundary-other"),
         "bo@example.com",
       );
       const boundary = "2026-10-30T11:00:00.000Z";
@@ -390,12 +414,12 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-after",
+        id("pract-after"),
         "af@example.com",
       );
       const other = await seedPractitioner(
         storage,
-        "pract-after-other",
+        id("pract-after-other"),
         "ao@example.com",
       );
       const formOpened = "2026-10-30T11:00:00.000Z";
@@ -433,10 +457,14 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
   it("keeps edited draft titles out of approved search", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const requester = await seedPractitioner(storage, "pract-edit", "ed@example.com");
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-edit"),
+        "ed@example.com",
+      );
       const reviewer = await seedPractitioner(
         storage,
-        "pract-edit-rev",
+        id("pract-edit-rev"),
         "er@example.com",
       );
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
@@ -473,10 +501,14 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
   it("rejects merge when the target request has no draft yet", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const owner = await seedPractitioner(storage, "pract-open", "open@example.com");
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-open"),
+        "open@example.com",
+      );
       const merger = await seedPractitioner(
         storage,
-        "pract-merge-open",
+        id("pract-merge-open"),
         "mo@example.com",
       );
       await storage.run(
@@ -518,7 +550,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const practId = await seedPractitioner(
         storage,
-        "pract-self-conf",
+        id("pract-self-conf"),
         "sc@example.com",
       );
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
@@ -574,7 +606,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-self-apr",
+        id("pract-self-apr"),
         "sa@example.com",
       );
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
@@ -604,7 +636,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const practId = await seedPractitioner(
         storage,
-        "pract-no-email",
+        id("pract-no-email"),
         "hidden@example.com",
       );
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
@@ -630,12 +662,12 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     try {
       const requester = await seedPractitioner(
         storage,
-        "pract-new-sect",
+        id("pract-new-sect"),
         "ns@example.com",
       );
       const approver = await seedPractitioner(
         storage,
-        "pract-new-sect-app",
+        id("pract-new-sect-app"),
         "na@example.com",
       );
       const approvedAt = "2026-10-30T16:00:00.000Z";
