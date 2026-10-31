@@ -1,6 +1,6 @@
 # DIDI-1140 mutation table (program by-code, origin, sent date, link status, row version)
 
-Verified on head `29f897d67b6f5846c9554ec6275ba65c6915de08`. Each mutant was applied one at a time to production code, run against the **full** suite (`npm test`), then reverted with `git checkout -- src test` and a clean `git status`.
+Verified on branch head `21da22e68411badddad6adcd5d67ce3588347b72` (mutant runs applied to production code at `afde67e8b15b45500c7ffe76b4bb72bc32876361`, before markdown-only commits).
 
 | Id        | Mutant                                                                                | Killing test(s)                                                                                                                                                                                                                                                                                           | Result     |
 | --------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
@@ -44,4 +44,4 @@ Verified on head `29f897d67b6f5846c9554ec6275ba65c6915de08`. Each mutant was app
 | S5        | status derived from the open link only                                                | `program-builder-didi-1140.test.ts` > derives share_link_status from the latest link with a pinned clock                                                                                                                                                                                                  | Killed     |
 | N1        | PATCH-local lookup accepts a draft version                                            | `program-builder-didi-1140.test.ts` > rejects PATCH to a draft exercise version with invalid_input and no row write                                                                                                                                                                                       | Killed     |
 
-**Totals (head `29f897d67b6f5846c9554ec6275ba65c6915de08`):** 35 Killed, 4 Equivalent, 0 Survived across 39 full-suite runs (`npm test`, 1521 passed and 4 skipped at verification time).
+**Totals (head `21da22e68411badddad6adcd5d67ce3588347b72`):** 35 Killed, 4 Equivalent, 0 Survived across 39 full-suite runs (`npm test`, 1521 passed and 4 skipped at verification time).
