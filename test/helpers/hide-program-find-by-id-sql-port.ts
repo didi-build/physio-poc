@@ -29,5 +29,8 @@ export function hideProgramFindByIdSqlPort(
       }
       return inner.first<T>(sql, bindings);
     },
+    batch(statements) {
+      return inner.batch(statements);
+    },
   };
 }

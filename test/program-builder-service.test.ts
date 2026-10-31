@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ProgramBuilderService,
   ProgramBuilderServiceError,
@@ -759,7 +759,7 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
     }
   });
 
-  it("linkApprovedPlaceholders rolls back with the caller transaction", async () => {
+  it("linkApprovedPlaceholders rolls back when the batch fails", async () => {
     const { storage, service } = await openService();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -778,9 +778,20 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
       });
       await markExerciseRequestApproved(storage, id("req-tx"), FIXTURE_EXERCISE_ID);
       const before = await snapshotProgramDbState(storage, id("prog-tx"));
-      await storage.run("BEGIN");
-      await linkApprovedPlaceholders(storage, id("req-tx"), FIXTURE_VERSION_ID);
-      await storage.run("ROLLBACK");
+      const originalBatch = storage.batch.bind(storage);
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        return originalBatch([
+          ...statements,
+          {
+            sql: "UPDATE program_rows SET note = ? WHERE id = ? AND id = ?",
+            bindings: ["broken", id("row-tx"), id("missing-row")],
+            minRowsAffected: 1,
+          },
+        ]);
+      });
+      await expect(
+        linkApprovedPlaceholders(storage, id("req-tx"), FIXTURE_VERSION_ID),
+      ).rejects.toThrow();
       const after = await snapshotProgramDbState(storage, id("prog-tx"));
       expectDbStateUnchanged(before, after);
     } finally {
@@ -1608,7 +1619,7 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
     }
   });
 
-  it("rolls back linked rows when the caller transaction rolls back after a partial link", async () => {
+  it("rolls back linked rows when the batch fails after building statements", async () => {
     const { storage, service } = await openService();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -1636,14 +1647,20 @@ describe("ProgramBuilderService linkApprovedPlaceholders", () => {
         FIXTURE_EXERCISE_ID,
       );
       const before = await snapshotProgramDbState(storage, id("prog-partial"));
-      await storage.run("BEGIN");
-      const skipped = await linkApprovedPlaceholders(
-        storage,
-        id("req-partial"),
-        FIXTURE_VERSION_ID,
-      );
-      expect(skipped).toBe(1);
-      await storage.run("ROLLBACK");
+      const originalBatch = storage.batch.bind(storage);
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        return originalBatch([
+          ...statements,
+          {
+            sql: "UPDATE program_rows SET note = ? WHERE id = ? AND exercise_request_id = ?",
+            bindings: ["fail", id("row-partial-fit"), id("missing-request")],
+            minRowsAffected: 1,
+          },
+        ]);
+      });
+      await expect(
+        linkApprovedPlaceholders(storage, id("req-partial"), FIXTURE_VERSION_ID),
+      ).rejects.toThrow();
       const after = await snapshotProgramDbState(storage, id("prog-partial"));
       expectDbStateUnchanged(before, after);
     } finally {

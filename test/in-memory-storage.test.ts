@@ -140,11 +140,15 @@ describe("InMemorySqlStorage (unit)", () => {
     ).rejects.toThrow(/Only \? placeholders/);
   });
 
-  it("rejects unsupported SQL such as UPDATE", async () => {
+  it("updates a row with UPDATE", async () => {
     const sql = new InMemorySqlStorage();
-    await expect(
-      sql.run("UPDATE items SET label = ? WHERE id = ?", ["x", "item-1"]),
-    ).rejects.toThrow(/Unsupported SQL/);
+    await sql.run("INSERT INTO items (id, label) VALUES (?, ?)", ["item-1", "alpha"]);
+    await sql.run("UPDATE items SET label = ? WHERE id = ?", ["beta", "item-1"]);
+    const row = await sql.first<{ label: string }>(
+      "SELECT * FROM items WHERE id = ? LIMIT 1",
+      ["item-1"],
+    );
+    expect(row?.label).toBe("beta");
   });
 
   it("stores boolean bindings as 1 or 0 like D1", async () => {
