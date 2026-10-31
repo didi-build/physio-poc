@@ -2,7 +2,7 @@ import type { AuthPort } from "./auth-port.js";
 import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 
 /**
- * Worker entry auth until Better Auth on Workers (DIDI-1044).
+ * Worker entry auth when production secrets or D1 are missing (DIDI-1153).
  * Never establishes a session; auth endpoints respond with 503.
  */
 export class FailClosedAuthPort implements AuthPort {

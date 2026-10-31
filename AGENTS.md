@@ -60,6 +60,7 @@ This file is the single source of truth for how agents work in this repository. 
 | `npm run format:check`       | Prettier check                                                                                                                                                         |
 | `npm run typecheck`          | `tsc --noEmit`                                                                                                                                                         |
 | `npm run test`               | Vitest (CI uses JUnit output)                                                                                                                                          |
+| `npm run test:worker`        | Worker auth, wrangler smoke, and production bundle tests                                                                                                               |
 | `npm run secrets`            | Secretlint                                                                                                                                                             |
 | `npm run secret-usage`       | Fail if `BOOTSTRAP_TOKEN` appears outside `bootstrap.yml` workflows                                                                                                    |
 | `npm run init-project`       | Replace `{{…}}` placeholders; optionally run `nodrift init` when the project collects personal data                                                                    |
