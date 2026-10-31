@@ -1,10 +1,12 @@
 import Database from "better-sqlite3";
 import type {
+  SqlBatchStatement,
   SqlBindings,
   SqlRunResult,
   SqlStoragePort,
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 
 export class NestedSqlTransactionError extends Error {
@@ -105,6 +107,27 @@ export class BetterSqliteStorage implements SqlStoragePort {
     const stmt = this.db.prepare(sql);
     const row = stmt.get(...bindings.map(normalizeBinding)) as T | undefined;
     return row ?? null;
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<void> {
+    if (statements.length === 0) {
+      return;
+    }
+    const runBatch = this.db.transaction(() => {
+      for (const statement of statements) {
+        const stmt = this.db.prepare(statement.sql);
+        const result = stmt.run(...(statement.bindings ?? []).map(normalizeBinding));
+        const minRows = statement.minRowsAffected;
+        if (minRows !== undefined && result.changes < minRows) {
+          throw new SqlBatchGuardError();
+        }
+      }
+    });
+    try {
+      runBatch();
+    } catch (error) {
+      throw mapSqliteUniqueIdConstraint(error);
+    }
   }
 
   close(): void {

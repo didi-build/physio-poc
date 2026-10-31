@@ -1088,7 +1088,7 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
     }
   });
 
-  it("rolls back all link writes when a row replace throws mid-link", async () => {
+  it("rolls back all link writes when batch fails mid-link", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -1121,31 +1121,20 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       );
       const before1 = await snapshotProgramDbState(storage, id("prog-write-fail"));
       const before2 = await snapshotProgramDbState(storage, id("prog-write-fail-2"));
-      const rowsRepo = new ProgramRowsRepository(storage);
-      const original =
-        ProgramRowsRepository.prototype.linkPlaceholderRowToApprovedVersion;
-      let calls = 0;
-      vi.spyOn(
-        ProgramRowsRepository.prototype,
-        "linkPlaceholderRowToApprovedVersion",
-      ).mockImplementation(async function (this: ProgramRowsRepository, input) {
-        calls += 1;
-        const linked = await original.call(this, input);
-        if (calls === 1) {
-          expect(linked).toBe(true);
-          const row = await rowsRepo.findById(input.rowId);
-          expect(row?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
-        }
-        if (calls === 2) {
-          throw new Error("simulated mid-link write failure");
-        }
-        return linked;
+      const originalBatch = storage.batch.bind(storage);
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        return originalBatch([
+          ...statements,
+          {
+            sql: "UPDATE program_rows SET note = ? WHERE id = ? AND exercise_request_id = ?",
+            bindings: ["fail", id("row-write-2"), id("missing-request")],
+            minRowsAffected: 1,
+          },
+        ]);
       });
-      await storage.run("BEGIN");
       await expect(
         linkApprovedPlaceholders(storage, id("req-write-fail"), FIXTURE_VERSION_ID),
-      ).rejects.toThrow("simulated mid-link write failure");
-      await storage.run("ROLLBACK");
+      ).rejects.toThrow();
       const after1 = await snapshotProgramDbState(storage, id("prog-write-fail"));
       const after2 = await snapshotProgramDbState(storage, id("prog-write-fail-2"));
       expectDbStateUnchanged(before1, after1);

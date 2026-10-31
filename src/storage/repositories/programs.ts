@@ -1,4 +1,4 @@
-import type { SqlStoragePort } from "../ports/sql-storage.js";
+import type { SqlBatchStatement, SqlStoragePort } from "../ports/sql-storage.js";
 import {
   PRESCRIPTION_TYPES,
   type PrescriptionType,
@@ -223,6 +223,91 @@ export class ProgramsRepository {
       }
     }
     throw new ProgramRepositoryError("Could not allocate a unique program code");
+  }
+
+  async buildCreateBatchStatements(input: {
+    id: string;
+    createdBy: string;
+    createdAt: string;
+    name?: string | null;
+    code?: string;
+    routineOrigin?: {
+      routineId: string;
+      routineVersionId: string;
+      origin: ProgramRoutineOrigin;
+    } | null;
+  }): Promise<SqlBatchStatement[]> {
+    const id = validateOpaqueEntityId(input.id, "Program id");
+    const name = validateOptionalProgramName(input.name ?? null);
+    let sourceRoutineId: string | null = null;
+    let sourceRoutineVersionId: string | null = null;
+    let sourceRoutineOrigin: ProgramRoutineOrigin | null = null;
+    if (input.routineOrigin) {
+      sourceRoutineId = validateOpaqueEntityId(
+        input.routineOrigin.routineId,
+        "Source routine id",
+      );
+      sourceRoutineVersionId = validateOpaqueEntityId(
+        input.routineOrigin.routineVersionId,
+        "Source routine version id",
+      );
+      sourceRoutineOrigin = input.routineOrigin.origin;
+      validateProgramRoutineOriginTrio({
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        sourceRoutineOrigin,
+      });
+      await loadPublishedRoutineVersionForRoutine(
+        this.sql,
+        sourceRoutineId,
+        sourceRoutineVersionId,
+        "routineVersionId",
+      );
+    }
+    let code = input.code
+      ? programCodeDomain.normalizeProgramCode(input.code)
+      : programCodeDomain.generateProgramCode();
+    if (!programCodeDomain.isValidProgramCodeFormat(code)) {
+      throw new ProgramRepositoryError("Program code format is invalid");
+    }
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const statement: SqlBatchStatement = {
+        sql: `INSERT INTO programs (
+            id, code, name, created_by, created_at,
+            draft_version, draft_updated_at,
+            source_routine_id, source_routine_version_id, source_routine_origin
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          id,
+          code,
+          name,
+          input.createdBy,
+          input.createdAt,
+          1,
+          input.createdAt,
+          sourceRoutineId,
+          sourceRoutineVersionId,
+          sourceRoutineOrigin,
+        ],
+      };
+      if (attempt === 7 || input.code) {
+        return [statement];
+      }
+      const existing = await this.findByCode(code);
+      if (!existing) {
+        return [statement];
+      }
+      code = programCodeDomain.generateProgramCode();
+    }
+    throw new ProgramRepositoryError("Could not allocate a unique program code");
+  }
+
+  buildTouchDraftStatement(programId: string, updatedAt: string): SqlBatchStatement {
+    validateOpaqueEntityId(programId, "Program id");
+    return {
+      sql: `UPDATE programs SET draft_updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+      bindings: [updatedAt, programId],
+    };
   }
 
   async findById(id: string): Promise<ProgramRecord | null> {
@@ -592,6 +677,74 @@ export class ProgramRowsRepository {
     );
   }
 
+  buildReplaceRowBatchStatements(input: {
+    id: string;
+    programId: string;
+    position: number;
+    exerciseId?: string | null;
+    exerciseVersionId?: string | null;
+    exerciseRequestId?: string | null;
+    prescriptionType: PrescriptionType;
+    params: ExerciseParams;
+    textSnapshot: ProgramRowTextSnapshot;
+    note?: string | null;
+    draftUpdatedAt: string;
+  }): SqlBatchStatement[] {
+    const rowId = validateOpaqueEntityId(input.id, "Program row id");
+    const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);
+    const paramsJson = JSON.stringify(validateExerciseParams(input.params));
+    const textJson = JSON.stringify(textSnapshot);
+    const note = validateProgramRowNote(input.note ?? null);
+    const hasPlaceholder = Boolean(input.exerciseRequestId);
+    const exerciseRequestId = input.exerciseRequestId
+      ? validateOpaqueEntityId(input.exerciseRequestId, "Exercise request id")
+      : null;
+    if (hasPlaceholder) {
+      if (input.exerciseId || input.exerciseVersionId) {
+        throw new ProgramRepositoryError(
+          "Placeholder rows must not reference an exercise version",
+        );
+      }
+    } else if (!input.exerciseId || !input.exerciseVersionId) {
+      throw new ProgramRepositoryError(
+        "Exercise rows require exercise_id and exercise_version_id",
+      );
+    }
+    const upsert: SqlBatchStatement = {
+      sql: `INSERT INTO program_rows (
+        id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+        prescription_type, params_json, text_snapshot_json, note
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(program_id, position) DO UPDATE SET
+        exercise_id = excluded.exercise_id,
+        exercise_version_id = excluded.exercise_version_id,
+        exercise_request_id = excluded.exercise_request_id,
+        prescription_type = excluded.prescription_type,
+        params_json = excluded.params_json,
+        text_snapshot_json = excluded.text_snapshot_json,
+        note = excluded.note`,
+      bindings: [
+        rowId,
+        input.programId,
+        input.position,
+        input.exerciseId ?? null,
+        input.exerciseVersionId ?? null,
+        exerciseRequestId,
+        input.prescriptionType,
+        paramsJson,
+        textJson,
+        note,
+      ],
+    };
+    return [
+      upsert,
+      new ProgramsRepository(this.sql).buildTouchDraftStatement(
+        input.programId,
+        input.draftUpdatedAt,
+      ),
+    ];
+  }
+
   /**
    * Approval batch only. Call from linkApprovedPlaceholders only
    * (program-builder-service.ts). Allows soft deleted programs and does not
@@ -666,6 +819,63 @@ export class ProgramRowsRepository {
       );
     }
     return true;
+  }
+
+  buildLinkPlaceholderRowBatchStatements(input: {
+    programId: string;
+    rowId: string;
+    exerciseRequestId: string;
+    exerciseId: string;
+    exerciseVersionId: string;
+    params: ExerciseParams;
+    textSnapshot: ProgramRowTextSnapshot;
+    draftUpdatedAt: string;
+    touchDraft: boolean;
+  }): SqlBatchStatement[] {
+    const programId = validateOpaqueEntityId(input.programId, "Program id");
+    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
+    const exerciseRequestId = validateOpaqueEntityId(
+      input.exerciseRequestId,
+      "Exercise request id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const exerciseVersionId = validateOpaqueEntityId(
+      input.exerciseVersionId,
+      "Exercise version id",
+    );
+    const textSnapshot = validateProgramRowTextSnapshot(input.textSnapshot);
+    const paramsJson = JSON.stringify(validateExerciseParams(input.params));
+    const textJson = JSON.stringify(textSnapshot);
+    const update: SqlBatchStatement = {
+      sql: `UPDATE program_rows SET
+        exercise_id = ?,
+        exercise_version_id = ?,
+        exercise_request_id = NULL,
+        params_json = ?,
+        text_snapshot_json = ?
+      WHERE id = ? AND program_id = ? AND exercise_request_id = ?
+        AND exercise_id IS NULL AND exercise_version_id IS NULL`,
+      bindings: [
+        exerciseId,
+        exerciseVersionId,
+        paramsJson,
+        textJson,
+        rowId,
+        programId,
+        exerciseRequestId,
+      ],
+      minRowsAffected: 1,
+    };
+    if (!input.touchDraft) {
+      return [update];
+    }
+    return [
+      update,
+      new ProgramsRepository(this.sql).buildTouchDraftStatement(
+        programId,
+        input.draftUpdatedAt,
+      ),
+    ];
   }
 
   async listForProgram(programId: string): Promise<ProgramRow[]> {

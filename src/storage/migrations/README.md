@@ -4,7 +4,7 @@
 
 `apply.ts` exports `applyMigration`, used only from **Node** tests and local SQLite fixtures (`BetterSqliteStorage`). It is **not** imported from Workers entrypoints or production adapters. Cloudflare D1 receives migrations through **wrangler** (`migrations/` in `wrangler.jsonc`), not through this runner.
 
-Each call runs the migration SQL inside a single SQLite transaction (`BEGIN` / `COMMIT`, with `ROLLBACK` on failure) and records the migration id in `schema_migrations` when it succeeds.
+Each call runs the migration SQL inside a single `SqlStoragePort.batch` (atomic on every adapter) and records the migration id in `schema_migrations` when it succeeds.
 
 Numbered files under `migrations/` (Node test runner and D1 via wrangler when wired):
 
@@ -29,7 +29,7 @@ Local verification (never `--remote`): `test/d1-migrations-out-of-order.test.ts`
 
 ## In-memory SqlStoragePort
 
-`InMemorySqlStorage` ignores `BEGIN`, `COMMIT`, and `ROLLBACK`. It has **no atomicity**: a failed `applyMigration` call does not roll back earlier statements in the same migration.
+`InMemorySqlStorage` ignores ad hoc `BEGIN`, `COMMIT`, and `ROLLBACK`. `batch()` snapshots table state and restores it when a statement fails or a `minRowsAffected` guard misses.
 
 ## Migration 0005 (routines data model)
 

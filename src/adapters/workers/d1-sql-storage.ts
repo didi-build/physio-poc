@@ -1,5 +1,7 @@
 import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import type {
+  SqlBatchStatement,
   SqlBindings,
   SqlRunResult,
   SqlStoragePort,
@@ -7,6 +9,11 @@ import type {
 } from "../../storage/ports/sql-storage.js";
 
 /** Minimal D1 binding surface used by the Workers entry. */
+export type PhysioD1BatchStatement = {
+  sql: string;
+  args?: SqlValue[];
+};
+
 export type PhysioD1Database = {
   prepare(query: string): {
     bind(...values: SqlValue[]): {
@@ -15,6 +22,9 @@ export type PhysioD1Database = {
       first(): Promise<Record<string, SqlValue> | null>;
     };
   };
+  batch(
+    statements: PhysioD1BatchStatement[],
+  ): Promise<{ meta: { changes?: number } }[]>;
 };
 
 function normalizeBinding(value: SqlValue): SqlValue {
@@ -81,6 +91,36 @@ export class D1SqlStorage implements SqlStoragePort {
       const row = await stmt.bind(...bindings.map(normalizeBinding)).first();
       return (row as T | null) ?? null;
     } catch (error) {
+      throw mapD1UniqueIdConstraint(error);
+    }
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<void> {
+    if (statements.length === 0) {
+      return;
+    }
+    const db = this.requireDb();
+    try {
+      const results = await db.batch(
+        statements.map((statement) => ({
+          sql: statement.sql,
+          args: [...(statement.bindings ?? []).map(normalizeBinding)],
+        })),
+      );
+      for (let index = 0; index < statements.length; index += 1) {
+        const minRows = statements[index]?.minRowsAffected;
+        if (minRows === undefined) {
+          continue;
+        }
+        const changes = results[index]?.meta?.changes ?? 0;
+        if (changes < minRows) {
+          throw new SqlBatchGuardError();
+        }
+      }
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        throw error;
+      }
       throw mapD1UniqueIdConstraint(error);
     }
   }

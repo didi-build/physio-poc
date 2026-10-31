@@ -24,7 +24,10 @@ import {
   type ProgramRowTextSnapshot,
 } from "../../domain/program-types.js";
 import * as programCodeDomain from "../../domain/program-code.js";
-import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
+import type {
+  SqlBatchStatement,
+  SqlStoragePort,
+} from "../../storage/ports/sql-storage.js";
 import {
   ExerciseRequestsRepository,
   PractitionersRepository,
@@ -105,11 +108,13 @@ export class ProgramBuilderService {
   private readonly routineVersionRows: RoutineVersionRowsRepository;
   private readonly practitionerRoutines: PractitionerRoutinesRepository;
   private readonly practitionerRoutineRows: PractitionerRoutineRowsRepository;
+  private readonly sql: SqlStoragePort;
 
   constructor(
     sql: SqlStoragePort,
     private readonly now: () => string = () => new Date().toISOString(),
   ) {
+    this.sql = sql;
     this.programs = new ProgramsRepository(sql);
     this.rows = new ProgramRowsRepository(sql);
     this.links = new ShareLinksRepository(sql);
@@ -199,27 +204,15 @@ export class ProgramBuilderService {
     });
   }
 
-  /**
-   * Links placeholder program rows to an approved exercise version.
-   *
-   * Uses the caller's `SqlStoragePort` (or active transaction on that port) only;
-   * does not begin, commit, or roll back a transaction. When not called inside a
-   * caller transaction, each matching row is still written individually (accepted for
-   * this PR; DIDI-1101 tracks a stricter transactional caller shape).
-   *
-   * Replaces matching placeholder rows, including on soft-deleted programs. Returns how
-   * many placeholders were skipped because prescriptionType does not fit the approved
-   * exercise category (those rows stay placeholders).
-   */
-  async linkApprovedPlaceholders(
+  async buildLinkApprovedPlaceholderStatements(
     exerciseRequestId: string,
     approvedVersionId: string,
-  ): Promise<number> {
+  ): Promise<{ statements: SqlBatchStatement[]; skippedCount: number }> {
     const requestId = this.parseOpaqueId(exerciseRequestId, "Exercise request id");
     const versionId = this.parseOpaqueId(approvedVersionId, "Exercise version id");
     const rows = await this.rows.listForExerciseRequestId(requestId);
     if (rows.length === 0) {
-      return 0;
+      return { statements: [], skippedCount: 0 };
     }
     const version = await this.libraryRead.getApprovedVersionById(versionId);
     if (!version) {
@@ -234,6 +227,7 @@ export class ProgramBuilderService {
     }
     const draftUpdatedAt = this.now();
     let skippedCount = 0;
+    const statements: SqlBatchStatement[] = [];
     for (const row of rows) {
       if (row.exercise_request_id !== requestId) {
         continue;
@@ -260,16 +254,34 @@ export class ProgramBuilderService {
         overrides: resolved.overrides,
         prescriptionType: row.prescription_type,
       });
-      await this.rows.linkPlaceholderRowToApprovedVersion({
-        programId: row.program_id,
-        rowId: row.id,
-        exerciseRequestId: requestId,
-        exerciseId: version.exercise_id,
-        exerciseVersionId: version.id,
-        params,
-        textSnapshot,
-        draftUpdatedAt,
-      });
+      statements.push(
+        ...this.rows.buildLinkPlaceholderRowBatchStatements({
+          programId: row.program_id,
+          rowId: row.id,
+          exerciseRequestId: requestId,
+          exerciseId: version.exercise_id,
+          exerciseVersionId: version.id,
+          params,
+          textSnapshot,
+          draftUpdatedAt,
+          touchDraft: !program.deleted_at,
+        }),
+      );
+    }
+    return { statements, skippedCount };
+  }
+
+  async linkApprovedPlaceholders(
+    exerciseRequestId: string,
+    approvedVersionId: string,
+  ): Promise<number> {
+    const { statements, skippedCount } =
+      await this.buildLinkApprovedPlaceholderStatements(
+        exerciseRequestId,
+        approvedVersionId,
+      );
+    if (statements.length > 0) {
+      await this.sql.batch(statements);
     }
     return skippedCount;
   }
@@ -1235,39 +1247,52 @@ export class ProgramBuilderService {
     } catch (err) {
       this.mapFreeTextError(err);
     }
+    const batchStatements: SqlBatchStatement[] = [];
     try {
-      await this.programs.create({
-        id: programId,
-        createdBy: practitionerId,
-        createdAt,
-        name: prefilledName,
-        routineOrigin: {
-          routineId,
-          routineVersionId: version.id,
-          origin: "used_as_is",
-        },
-      });
+      batchStatements.push(
+        ...(await this.programs.buildCreateBatchStatements({
+          id: programId,
+          createdBy: practitionerId,
+          createdAt,
+          name: prefilledName,
+          routineOrigin: {
+            routineId,
+            routineVersionId: version.id,
+            origin: "used_as_is",
+          },
+        })),
+      );
     } catch (err) {
       this.mapRoutineProgramCreateError(err);
     }
     for (const prepared of preparedRows) {
       const { rowId, sourceRow, textSnapshot, position } = prepared;
       try {
-        await this.rows.replaceRow({
-          id: rowId,
-          programId,
-          position,
-          exerciseId: sourceRow.exerciseId,
-          exerciseVersionId: sourceRow.exerciseVersionId,
-          prescriptionType: sourceRow.prescriptionType,
-          params: sourceRow.params,
-          textSnapshot,
-          note: null,
-          draftUpdatedAt: this.now(),
-        });
+        batchStatements.push(
+          ...this.rows.buildReplaceRowBatchStatements({
+            id: rowId,
+            programId,
+            position,
+            exerciseId: sourceRow.exerciseId,
+            exerciseVersionId: sourceRow.exerciseVersionId,
+            prescriptionType: sourceRow.prescriptionType,
+            params: sourceRow.params,
+            textSnapshot,
+            note: null,
+            draftUpdatedAt: this.now(),
+          }),
+        );
       } catch (err) {
         this.mapRowWriteError(err);
       }
+    }
+    try {
+      await this.sql.batch(batchStatements);
+    } catch (err) {
+      if (err instanceof ProgramRepositoryError) {
+        this.mapProgramRepoError(err);
+      }
+      this.mapRoutineProgramCreateError(err);
     }
     return { program: await this.buildProgramView(practitionerId, programId) };
   }
@@ -1525,13 +1550,22 @@ export function detectLibraryUpdate(
 }
 
 /**
+ * Builds placeholder link writes when an exercise request is approved.
+ */
+export async function buildLinkApprovedPlaceholderStatements(
+  sql: SqlStoragePort,
+  exerciseRequestId: string,
+  approvedVersionId: string,
+  now: () => string = () => new Date().toISOString(),
+): Promise<{ statements: SqlBatchStatement[]; skippedCount: number }> {
+  return new ProgramBuilderService(sql, now).buildLinkApprovedPlaceholderStatements(
+    exerciseRequestId,
+    approvedVersionId,
+  );
+}
+
+/**
  * Links placeholder program rows when an exercise request is approved.
- *
- * Uses the caller's `sql` port (including an in-flight transaction on that port) only;
- * does not begin, commit, or roll back a transaction. DIDI-1004 `approveRequest` should
- * call this inside the same transaction as approval when that flow exists. When not called
- * inside a caller transaction, each matching row is still written individually (accepted
- * for this PR; DIDI-1101 tracks a stricter transactional caller shape).
  */
 export async function linkApprovedPlaceholders(
   sql: SqlStoragePort,
