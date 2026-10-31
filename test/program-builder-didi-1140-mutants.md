@@ -1,6 +1,6 @@
 # DIDI-1140 mutation table (program by-code, origin, sent date, link status, row version)
 
-Verified on head `9414fec46cad2f1c82bb49e46dab52106b8abc6b`. Each mutant was applied one at a time to production code, run against the **full** suite (`npm test`), then reverted with `git checkout -- src test` and a clean `git status`.
+Verified on head `3e61724fec8621aecfddcbb527e85fcaf2185572`. Each mutant was applied one at a time to production code, run against the **full** suite (`npm test`), then reverted with `git checkout -- src test` and a clean `git status`.
 
 | Id        | Mutant                                                                                | Killing test(s)                                                                                                                                                                                                                                                                                           | Result     |
 | --------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
@@ -44,4 +44,4 @@ Verified on head `9414fec46cad2f1c82bb49e46dab52106b8abc6b`. Each mutant was app
 | S5        | status derived from the open link only                                                | `program-builder-didi-1140.test.ts` > derives share_link_status from the latest link with a pinned clock                                                                                                                                                                                                  | Killed     |
 | N1        | PATCH-local lookup accepts a draft version                                            | `program-builder-didi-1140.test.ts` > rejects PATCH to a draft exercise version with invalid_input and no row write                                                                                                                                                                                       | Killed     |
 
-**Totals (head `9414fec46cad2f1c82bb49e46dab52106b8abc6b`):** 35 Killed, 4 Equivalent, 0 Survived across 39 full-suite runs (`npm test`, 1521 passed and 4 skipped at verification time).
+**Totals (head `3e61724fec8621aecfddcbb527e85fcaf2185572`):** 35 Killed, 4 Equivalent, 0 Survived across 39 full-suite runs (`npm test`, 1521 passed and 4 skipped at verification time).
