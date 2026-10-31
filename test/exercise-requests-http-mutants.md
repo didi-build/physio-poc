@@ -1,6 +1,6 @@
 # Exercise requests mutants (DIDI-1004 round 3, QA addendum)
 
-Branch head: set at push time in PR body. Each row was applied as a one-file edit on the merged PR tree, then **`npm test`** (full Vitest suite). Temp dir: `TMPDIR=/tmp/physio-npm-tmp`. Only the touched path was reverted with `git checkout HEAD -- <path>` before the next row unless noted.
+Branch head: `ee7d071` (QA addendum guards; merge commit `43daa40` includes main at e369f01). Temp dir: `TMPDIR=/tmp/physio-npm-tmp`. Only the touched path was reverted with `git checkout HEAD -- <path>` before the next row unless noted.
 
 ## Deferred to DIDI-1159 (not in this push)
 
@@ -62,11 +62,11 @@ Branch head: set at push time in PR body. Each row was applied as a one-file edi
 | X11 | Conflict `>` becomes `>=`                                                              | Killed     | Submit conflict timing tests                                                                                                                    |
 | X12 | Conflict check disabled                                                                | Killed     | Submit conflict tests                                                                                                                           |
 | X13 | Alias insert swallows all errors on merge                                              | Killed     | `merge returns alias_conflict with zero writes when the alias already exists on another exercise (X13)`; same-exercise case-insensitive variant |
-| X15 | Query guard stops rejecting `as`                                                       | Killed     | Reverted: `as` is not rejected in `rejectQueryPractitionerId` on this head; row documents prior X15 pin via handler not reading `as`            |
+| X15 | Query guard stops rejecting `as`                                                       | Equivalent | `rejectQueryPractitionerId` on this head matches main (no `as` param); handler does not read `as`                                               |
 | X16 | Merge into another open row (newest)                                                   | Killed     | `merge applies only to conflict_request_id when two similar open requests exist`                                                                |
 | X17 | Merge skips `merge_target_not_ready`                                                   | Killed     | `rejects merge when the target request has no draft yet`                                                                                        |
 | X18 | Approve batch skips My exercises save                                                  | Killed     | HTTP approve A-vs-B My exercises assertion                                                                                                      |
 
-**Totals (excluding deferred):** 52 rows exercised, **50 Killed**, **2 Equivalent** (Q3, Q4), **0 Survived** on this head after the QA addendum push.
+**Totals (excluding deferred):** 52 rows exercised, **49 Killed**, **3 Equivalent** (Q3, Q4, X15), **0 Survived** on this head after the QA addendum push.
 
 Rows marked Equivalent or Deferred **survived** intentional scope limits or unreachable wiring on this head.
