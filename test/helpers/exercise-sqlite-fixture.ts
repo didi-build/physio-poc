@@ -12,6 +12,7 @@ import {
   MIGRATION_0002_ID,
   MIGRATION_0003_ID,
   MIGRATION_0005_ID,
+  MIGRATION_0007_ID,
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
@@ -31,6 +32,10 @@ export const MIGRATION_0005_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0005_routine_data_model.sql"),
   "utf8",
 );
+export const MIGRATION_0007_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0007_sql_batch_min_rows_guard.sql"),
+  "utf8",
+);
 
 /** @deprecated use MIGRATION_0001_SQL */
 export const MIGRATION_SQL = MIGRATION_0001_SQL;
@@ -47,6 +52,7 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
+  await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   return storage;
 }
 
@@ -144,6 +150,13 @@ export async function seedApprovedExerciseVersion(
   practitionerId: string,
 ): Promise<{ exerciseId: string; versionId: string }> {
   const exerciseId = await seedExercise(storage, practitionerId);
-  await storage.run(VERSION_INSERT_SQL, versionInsertBindings());
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+    }),
+  );
   return { exerciseId, versionId: FIXTURE_VERSION_ID };
 }

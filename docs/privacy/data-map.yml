@@ -1159,6 +1159,25 @@ d1_tables:
         whose: operational
       created_at:
         whose: operational
+
+  __sql_batch_min_rows_guard:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: operational
+      source: migrations/0007_sql_batch_min_rows_guard.sql
+      verified: true
+      notes: Internal batch guard only. No rows are stored; CHECK aborts failed minRowsAffected guards.
+    columns:
+      v:
+        whose: operational
+        data: None (table stays empty)
+        purpose: failed batch row-count guard only
+        processors: [Cloudflare]
+        retention: not applicable
+
 other_items:
   - id: d1.physio_db
     binding: PHYSIO_DB

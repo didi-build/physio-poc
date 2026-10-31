@@ -13,6 +13,21 @@ import { jsonUnauthorized } from "../responses.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+const SERVE_JSON_HEADERS = {
+  ...JSON_HEADERS,
+  "cache-control": "no-store",
+};
+
+function serveJson(body: unknown, status: number): Response {
+  return Response.json(body, { status, headers: SERVE_JSON_HEADERS });
+}
+
+function withServeCacheControl(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "no-store");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export type ExerciseMediaHttpRouteCase = {
   method: string;
   path: string;
@@ -127,15 +142,15 @@ export async function handleExerciseMediaRequest(
   if (serveMatch && request.method === "GET") {
     const access = url.searchParams.get("access");
     if (access !== "public" && access !== "internal") {
-      return Response.json(
+      return serveJson(
         { error: "invalid_input", message: "access must be public or internal" },
-        { status: 400, headers: JSON_HEADERS },
+        400,
       );
     }
     try {
       if (access === "internal") {
         if (!sessionPractitioner) {
-          return jsonUnauthorized();
+          return withServeCacheControl(jsonUnauthorized());
         }
       }
       const sessionPractitionerId =
@@ -146,16 +161,16 @@ export async function handleExerciseMediaRequest(
         sessionPractitionerId,
       );
       if (!view) {
-        return Response.json(
+        return serveJson(
           { error: "media_not_found", message: "Media not available" },
-          { status: 404, headers: JSON_HEADERS },
+          404,
         );
       }
-      return Response.json(view, { headers: JSON_HEADERS });
+      return serveJson(view, 200);
     } catch (error) {
       const response = routeErrorResponse(error);
       if (response) {
-        return response;
+        return withServeCacheControl(response);
       }
       throw error;
     }

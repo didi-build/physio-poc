@@ -14,6 +14,7 @@ export type {
   StoredObject,
 } from "./object-storage.js";
 export type {
+  SqlBatchStatement,
   SqlBindings,
   SqlRunResult,
   SqlStoragePort,
