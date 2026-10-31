@@ -22,7 +22,6 @@ export function BuilderPublishPhoneBar({
 }: BuilderPublishPhoneBarProps) {
   return (
     <div className="pg-publish-phone-bar">
-      <p className="pg-publish-phone-bar-note">{AUTO_SAVE_NOTE}</p>
       <button
         type="button"
         className="pg-btn pg-btn--primary pg-publish-phone-bar-btn"

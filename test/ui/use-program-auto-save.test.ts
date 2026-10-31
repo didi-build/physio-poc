@@ -89,4 +89,124 @@ describe("useProgramAutoSave (unit)", () => {
     expect(fail).toHaveBeenCalledTimes(1);
     expect(ok).toHaveBeenCalledTimes(1);
   });
+
+  it("retries every failed save after automatic backoff", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const noteSave = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValue(undefined);
+    const nameSave = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("note:row-1", noteSave);
+    });
+    await act(async () => {
+      await result.current.runSave("name", nameSave);
+    });
+    expect(noteSave).toHaveBeenCalledTimes(1);
+    expect(nameSave).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe("failed");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await waitFor(() => {
+      expect(noteSave).toHaveBeenCalledTimes(2);
+      expect(nameSave).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.state).toBe("saved");
+    });
+    vi.useRealTimers();
+  });
+
+  it("runs every failed save on tryAgain", async () => {
+    const noteSave = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValue(undefined);
+    const nameSave = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("note:row-1", noteSave);
+    });
+    await act(async () => {
+      await result.current.runSave("name", nameSave);
+    });
+    act(() => {
+      result.current.tryAgain();
+    });
+    await waitFor(() => {
+      expect(noteSave).toHaveBeenCalledTimes(2);
+      expect(nameSave).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.state).toBe("saved");
+    });
+  });
+
+  it("stays saving when markSaved runs while a save is still in flight", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishSave: (() => void) | undefined;
+    const slowSave = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishSave = () => {
+            resolve();
+          };
+        }),
+    );
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    act(() => {
+      void result.current.runSave("note:row-1", slowSave);
+    });
+    expect(result.current.state).toBe("saving");
+    act(() => {
+      result.current.markSaved();
+    });
+    expect(result.current.state).toBe("saving");
+    await act(async () => {
+      finishSave!();
+      await Promise.resolve();
+    });
+    expect(result.current.state).toBe("saved");
+    vi.useRealTimers();
+  });
+
+  it("stays saving until every in-flight save finishes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishFirst: (() => void) | undefined;
+    const first = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishFirst = () => {
+            resolve();
+          };
+        }),
+    );
+    const second = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    act(() => {
+      void result.current.runSave("note:a", first);
+    });
+    act(() => {
+      void result.current.runSave("note:b", second);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.state).toBe("saving");
+    await act(async () => {
+      finishFirst!();
+      await Promise.resolve();
+    });
+    expect(result.current.state).toBe("saved");
+    vi.useRealTimers();
+  });
 });

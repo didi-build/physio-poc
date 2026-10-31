@@ -95,6 +95,13 @@
   padding: 1rem;
 }
 
+.pg-autosave-page-note {
+  display: block;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
 .pg-publish-card--desktop {
   display: none;
 }
@@ -127,6 +134,10 @@
   }
 
   .pg-builder-status-card--phone {
+    display: none;
+  }
+
+  .pg-autosave-page-note {
     display: none;
   }
 
@@ -185,16 +196,15 @@
 .pg-row-icon-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0.35rem 0.5rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
   background: #fff;
   cursor: pointer;
-}
-
-.pg-row-icon-btn--text {
-  padding-inline: 0.65rem;
 }
 
 .pg-deleted-item {
@@ -226,14 +236,6 @@
   border-radius: 0.75rem;
   padding: 1rem;
   margin-bottom: 0.75rem;
-}
-
-.pg-sr-only-focusable {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
 }
 
 .pg-deleted {

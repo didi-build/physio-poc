@@ -10,6 +10,7 @@ import { CANCEL } from "../copy/my-defaults.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   ADD_EXERCISE,
+  AUTO_SAVE_NOTE,
   BUILDER_EMPTY_ROWS,
   BUILDER_ROWS_HINT,
   DELETE_PROGRAM,
@@ -329,6 +330,7 @@ export function ProgramBuilderPage() {
               onTryAgain={autoSave.tryAgain}
             />
           </div>
+          <p className="pg-autosave-page-note">{AUTO_SAVE_NOTE}</p>
           {libraryPrompts.map((prompt) => (
             <LibraryUpdatePrompt
               key={prompt.row_id}

@@ -25,6 +25,7 @@ import type {
   ProgramBuilderView,
   ProgramListItem,
 } from "../../src/services/programs/types.js";
+import { AUTO_SAVE_TRY_AGAIN_ARIA } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -416,14 +417,20 @@ describe("Programs builder dev verification", () => {
     expect(within(dialog).getByText("Code PRG-TEST")).toBeInTheDocument();
     expect(within(dialog).getByText("2 exercises")).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        /It moves to Recently deleted\. You can restore it for 30 days/,
-      ),
+      within(dialog).getByText((_, element) => {
+        return (
+          element?.textContent ===
+          "It moves to Recently deleted. You can restore it for 30 days, then it's gone for good."
+        );
+      }),
     ).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        'It also closes its share link, so anyone who opens it sees "This link was closed".',
-      ),
+      within(dialog).getByText((_, element) => {
+        return (
+          element?.textContent ===
+          'It also closes its share link, so anyone who opens it sees "This link was closed".'
+        );
+      }),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByText(
@@ -431,7 +438,12 @@ describe("Programs builder dev verification", () => {
       ),
     ).toBeInTheDocument();
     const card = within(dialog).getByRole("article");
-    const intro = within(dialog).getByText(/It moves to Recently deleted/);
+    const intro = within(dialog).getByText((_, element) => {
+      return (
+        element?.textContent ===
+        "It moves to Recently deleted. You can restore it for 30 days, then it's gone for good."
+      );
+    });
     expect(
       card.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -669,13 +681,17 @@ describe("Programs builder dev verification", () => {
     ) as HTMLElement;
     expect(phoneStatusCard).toBeTruthy();
     expect(within(phoneStatusCard).getByText("Not published yet")).toBeInTheDocument();
-    const bar = document.querySelector(".pg-publish-phone-bar");
-    expect(bar).toBeTruthy();
+    const main = document.querySelector(".pg-builder-main") as HTMLElement;
     expect(
-      within(bar as HTMLElement).getByText(
+      within(main).getByText(
         "Changes save automatically. When you publish, your patient sees them on the same share link. No need to send a new one.",
       ),
     ).toBeInTheDocument();
+    const bar = document.querySelector(".pg-publish-phone-bar");
+    expect(bar).toBeTruthy();
+    expect(
+      within(bar as HTMLElement).queryByText(/Changes save automatically/),
+    ).toBeNull();
     expect(
       within(bar as HTMLElement).getByRole("button", { name: "Publish" }),
     ).toBeTruthy();
@@ -829,6 +845,136 @@ describe("Programs builder dev verification", () => {
         .map((node) => node.textContent ?? "")
         .join(" ");
       expect(after).toContain("Saved");
+    });
+    vi.useRealTimers();
+  });
+
+  it("retries both failed note and name saves after automatic backoff", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const row = exerciseRow("row-1", "Heel raise");
+    let noteAttempts = 0;
+    let nameAttempts = 0;
+    const updateRow = vi.fn().mockImplementation(async (_progId, _rowId, patch) => {
+      noteAttempts += 1;
+      if (noteAttempts === 1) {
+        throw new Error("fail");
+      }
+      return {
+        program: builderView({
+          rows: [{ ...row, note: patch.note ?? null }],
+        }),
+      };
+    });
+    const updateProgramName = vi.fn().mockImplementation(async (_progId, name) => {
+      nameAttempts += 1;
+      if (nameAttempts === 1) {
+        throw new Error("fail");
+      }
+      return {
+        program: builderView({ name, rows: [row] }),
+      };
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+            updateRow,
+            updateProgramName,
+          })}
+        />
+      </MemoryRouter>,
+    );
+    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    await userEvent.type(note, "slow");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() => expect(updateRow).toHaveBeenCalledTimes(1));
+    const nameField = screen.getByRole("textbox", { name: "Program name" });
+    await userEvent.type(nameField, "Knee");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await waitFor(() =>
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-1", { note: "slow" }),
+    );
+    await waitFor(() => {
+      const statusText = Array.from(document.querySelectorAll(".pg-autosave-status"))
+        .map((node) => node.textContent ?? "")
+        .join(" ");
+      expect(statusText).toContain("Saved");
+      expect(statusText).not.toContain("Saving...");
+    });
+    vi.useRealTimers();
+  });
+
+  it("retries both failed note and name saves when Try saving again is pressed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const row = exerciseRow("row-1", "Heel raise");
+    let noteAttempts = 0;
+    let nameAttempts = 0;
+    const updateRow = vi.fn().mockImplementation(async (_progId, _rowId, patch) => {
+      noteAttempts += 1;
+      if (noteAttempts === 1) {
+        throw new Error("fail");
+      }
+      return {
+        program: builderView({
+          rows: [{ ...row, note: patch.note ?? null }],
+        }),
+      };
+    });
+    const updateProgramName = vi.fn().mockImplementation(async (_progId, name) => {
+      nameAttempts += 1;
+      if (nameAttempts === 1) {
+        throw new Error("fail");
+      }
+      return {
+        program: builderView({ name, rows: [row] }),
+      };
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+            updateRow,
+            updateProgramName,
+          })}
+        />
+      </MemoryRouter>,
+    );
+    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    await userEvent.type(note, "slow");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() => expect(updateRow).toHaveBeenCalledTimes(1));
+    const nameField = screen.getByRole("textbox", { name: "Program name" });
+    await userEvent.type(nameField, "Knee");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
+    await userEvent.click(
+      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
+    );
+    await waitFor(() =>
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-1", { note: "slow" }),
+    );
+    await waitFor(() => {
+      const statusText = Array.from(document.querySelectorAll(".pg-autosave-status"))
+        .map((node) => node.textContent ?? "")
+        .join(" ");
+      expect(statusText).toContain("Saved");
+      expect(statusText).not.toContain("Saving...");
     });
     vi.useRealTimers();
   });

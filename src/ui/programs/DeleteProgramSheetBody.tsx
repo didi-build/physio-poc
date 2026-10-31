@@ -19,10 +19,6 @@ export type DeleteProgramSheetBodyProps = {
 
 export function DeleteProgramSheetBody({ program }: DeleteProgramSheetBodyProps) {
   const title = program.name?.trim() ? program.name.trim() : UNTITLED_PROGRAM;
-  const intro = `${DELETE_SHEET_MOVES_TO} ${RECENTLY_DELETED}${DELETE_SHEET_RESTORE_SUFFIX}`;
-  const shareLine = program.open_share_link
-    ? `${DELETE_SHEET_ALSO} ${DELETE_SHEET_CLOSES_LINK}${DELETE_SHEET_LINK_CLOSED_SUFFIX}`
-    : DELETE_SHEET_ALREADY_CLOSED;
 
   return (
     <div className="pg-delete-sheet-body">
@@ -33,8 +29,18 @@ export function DeleteProgramSheetBody({ program }: DeleteProgramSheetBodyProps)
         </p>
         <p className="pg-card-count">{cardExerciseCountLine(program.exercise_count)}</p>
       </article>
-      <p>{intro}</p>
-      <p>{shareLine}</p>
+      <p>
+        {DELETE_SHEET_MOVES_TO} <strong>{RECENTLY_DELETED}</strong>
+        {DELETE_SHEET_RESTORE_SUFFIX}
+      </p>
+      {program.open_share_link ? (
+        <p>
+          {DELETE_SHEET_ALSO} <strong>{DELETE_SHEET_CLOSES_LINK}</strong>
+          {DELETE_SHEET_LINK_CLOSED_SUFFIX}
+        </p>
+      ) : (
+        <p>{DELETE_SHEET_ALREADY_CLOSED}</p>
+      )}
       <p>{DELETE_SHEET_SHARE_HINT}</p>
     </div>
   );
