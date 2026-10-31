@@ -1,8 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { summarizeVitestJUnitXml } from "../scripts/lib/parse-vitest-junit.mjs";
+
+const FIXTURE_JUNIT = join(
+  import.meta.dirname,
+  "fixtures/vitest-junit-from-ci-run.xml",
+);
 
 function runSummary(env: Record<string, string>) {
   const out = execFileSync("node", ["scripts/ci-test-summary.mjs"], {
@@ -38,24 +43,21 @@ describe("ci-test-summary (unit)", () => {
     expect(body).toContain("attribution");
   });
 
-  it("excludes skipped tests from the Vitest passed total", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ci-test-summary-junit-"));
-    const fakeJunit = join(dir, "junit.xml");
-    writeFileSync(
-      fakeJunit,
-      '<?xml version="1.0"?><testsuites tests="10" failures="0" errors="0" skipped="4"></testsuites>',
+  it("excludes skipped tests using per-testsuite skipped counts from real Vitest JUnit", () => {
+    const fixtureXml = readFileSync(FIXTURE_JUNIT, "utf8");
+    const summary = summarizeVitestJUnitXml(fixtureXml);
+    expect(summary.skipped).toBeGreaterThan(0);
+    expect(summary.executed).toBe(summary.tests - summary.skipped);
+
+    const body = runSummary({
+      INSTALL_OUTCOME: "success",
+      CHECK_OUTCOME: "success",
+      PR_HEAD_SHA: "deadbeef00000000",
+      VITEST_JUNIT_PATH: FIXTURE_JUNIT,
+    });
+    expect(body).toContain(
+      `${summary.passed}/${summary.executed} passed (${summary.failed} failed)`,
     );
-    try {
-      const body = runSummary({
-        INSTALL_OUTCOME: "success",
-        CHECK_OUTCOME: "success",
-        PR_HEAD_SHA: "deadbeef00000000",
-        VITEST_JUNIT_PATH: fakeJunit,
-      });
-      expect(body).toContain("6/6 passed");
-      expect(body).not.toContain("6/10 passed");
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    expect(body).not.toContain(`${summary.passed}/${summary.tests} passed`);
   });
 });

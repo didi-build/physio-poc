@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { summarizeVitestJUnitXml } from "./lib/parse-vitest-junit.mjs";
 
 const marker = "<!-- launchpad-vitest-results -->";
 const checkOutcome = process.env.CHECK_OUTCOME ?? "unknown";
@@ -19,13 +20,7 @@ if (installOutcome !== "success") {
   const junitPath = process.env.VITEST_JUNIT_PATH ?? "test-results/junit.xml";
   if (existsSync(junitPath)) {
     const xml = readFileSync(junitPath, "utf8");
-    const tests = Number(xml.match(/tests="(\d+)"/)?.[1] ?? 0);
-    const skipped = Number(xml.match(/skipped="(\d+)"/)?.[1] ?? 0);
-    const failures = Number(xml.match(/failures="(\d+)"/)?.[1] ?? 0);
-    const errors = Number(xml.match(/errors="(\d+)"/)?.[1] ?? 0);
-    const failed = failures + errors;
-    const executed = Math.max(0, tests - skipped);
-    const passed = Math.max(0, executed - failed);
+    const { executed, passed, failed } = summarizeVitestJUnitXml(xml);
     const icon = failed === 0 ? "✅" : "❌";
     testLine = `${icon} **Vitest** — ${passed}/${executed} passed (${failed} failed)`;
   }
