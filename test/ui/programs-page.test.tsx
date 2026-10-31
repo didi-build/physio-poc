@@ -332,6 +332,8 @@ describe("Programs UI (integration, jsdom)", () => {
   });
 
   it("auto-saves program name and disables Publish while saving", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    expect(vi.isFakeTimers()).toBe(true);
     let resolveSave: ((value: { program: ProgramBuilderView }) => void) | undefined;
     const updateProgramName = vi.fn().mockImplementation(
       () =>
@@ -357,16 +359,19 @@ describe("Programs UI (integration, jsdom)", () => {
     const nameField = await screen.findByRole("textbox", { name: "Program name" });
     const publish = screen.getAllByRole("button", { name: PUBLISH })[0]!;
     await userEvent.type(nameField, "Knee program A");
-    await waitFor(() => {
-      expect(updateProgramName).toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
     });
+    expect(updateProgramName).toHaveBeenCalled();
     expect(screen.getAllByText(AUTO_SAVE_SAVING).length).toBeGreaterThan(0);
     expect(publish).toBeDisabled();
     resolveSave?.({ program: builderView({ name: "Knee program A" }) });
-    await waitFor(() => {
-      expect(screen.getAllByText(AUTO_SAVE_SAVED).length).toBeGreaterThan(0);
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(screen.getAllByText(AUTO_SAVE_SAVED).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
+    vi.useRealTimers();
   });
 
   it("shows save failure, Try again, and keeps Publish disabled", async () => {
@@ -414,6 +419,7 @@ describe("Programs UI (integration, jsdom)", () => {
   });
 
   it("warns before leaving with unsaved edits", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
@@ -431,12 +437,14 @@ describe("Programs UI (integration, jsdom)", () => {
     );
     const nameField = await screen.findByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Draft name");
-    await waitFor(() => {
-      expect(screen.getAllByText(AUTO_SAVE_SAVING).length).toBeGreaterThan(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
     });
+    expect(screen.getAllByText(AUTO_SAVE_SAVING).length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("button", { name: PROGRAMS_PAGE_TITLE }));
     expect(await screen.findByRole("dialog")).toHaveAccessibleName(LEAVE_TITLE);
     expect(screen.getByText(LEAVE_KEEP_EDITING)).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("deletes with confirm toast and restores without link action", async () => {
