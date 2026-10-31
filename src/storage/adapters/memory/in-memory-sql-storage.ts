@@ -8,9 +8,11 @@ import type {
 import { SqlBatchGuardError } from "../../errors/sql-batch-error.js";
 import { SqlDuplicateIdError } from "../../errors/sql-duplicate-id-error.js";
 import {
-  SQL_BATCH_MIN_ROWS_GUARD_ENSURE,
-  SQL_BATCH_MIN_ROWS_GUARD_SQL,
   expandSqlBatchStatementsWithMinRowsGuards,
+  isSqlBatchGuardAbortError,
+  SQL_BATCH_MIN_ROWS_GUARD_CHECK,
+  SQL_BATCH_MIN_ROWS_GUARD_SQL,
+  SQL_BATCH_MIN_ROWS_GUARD_TABLE,
 } from "../../sql-batch-min-rows-guard.js";
 
 type Row = Record<string, SqlValue>;
@@ -80,7 +82,7 @@ function parseWhereClause(whereClause: string): WherePredicate[] {
       continue;
     }
     const existsMatch =
-      /^EXISTS \(SELECT 1 FROM exercise_requests er WHERE er\.id = \? AND \(er\.exercise_id IS NULL OR er\.exercise_id = \?\)\)$/i.exec(
+      /^EXISTS \(SELECT 1 FROM exercise_requests er WHERE er\.id = \? AND er\.exercise_id = \? AND er\.status = 'approved'\)$/i.exec(
         part,
       );
     if (existsMatch) {
@@ -127,7 +129,6 @@ export class InMemorySqlStorage implements SqlStoragePort {
     }
     return this.withStorageLock(() => {
       const snapshot = this.snapshotTables();
-      this.executeStatement(SQL_BATCH_MIN_ROWS_GUARD_ENSURE, []);
       const expanded = expandSqlBatchStatementsWithMinRowsGuards(statements);
       try {
         for (const statement of expanded) {
@@ -136,6 +137,9 @@ export class InMemorySqlStorage implements SqlStoragePort {
         }
       } catch (error) {
         this.restoreTables(snapshot);
+        if (isSqlBatchGuardAbortError(error)) {
+          throw new SqlBatchGuardError();
+        }
         throw error;
       }
     });
@@ -206,19 +210,12 @@ export class InMemorySqlStorage implements SqlStoragePort {
   private executeStatement(sql: string, bindings: SqlBindings): SqlRunResult {
     const normalized = normalizeSql(sql);
     if (normalized === normalizeSql(SQL_BATCH_MIN_ROWS_GUARD_SQL)) {
+      if (!this.tables.has(SQL_BATCH_MIN_ROWS_GUARD_TABLE)) {
+        throw new Error(`no such table: ${SQL_BATCH_MIN_ROWS_GUARD_TABLE}`);
+      }
       const minRows = Number(bindings[0] ?? 0);
       if (this.lastRowsAffected < minRows) {
-        throw new SqlBatchGuardError();
-      }
-      const table = this.tables.get("__sql_batch_min_rows_guard") ?? [];
-      table.push({ v: 1 });
-      this.tables.set("__sql_batch_min_rows_guard", table);
-      return { rowsAffected: 1 };
-    }
-
-    if (normalized === normalizeSql(SQL_BATCH_MIN_ROWS_GUARD_ENSURE)) {
-      if (!this.tables.has("__sql_batch_min_rows_guard")) {
-        this.tables.set("__sql_batch_min_rows_guard", []);
+        throw new Error(`CHECK constraint failed: ${SQL_BATCH_MIN_ROWS_GUARD_CHECK}`);
       }
       return { rowsAffected: 0 };
     }
@@ -229,7 +226,9 @@ export class InMemorySqlStorage implements SqlStoragePort {
       return { rowsAffected: 0 };
     }
 
-    const createMatch = /^CREATE TABLE (\w+) \(.+\)$/i.exec(normalized);
+    const createMatch = /^CREATE TABLE(?: IF NOT EXISTS)? (\w+) \(.+\)$/i.exec(
+      normalized,
+    );
     if (createMatch) {
       if (!this.tables.has(createMatch[1])) {
         this.tables.set(createMatch[1], []);
@@ -373,12 +372,10 @@ export class InMemorySqlStorage implements SqlStoragePort {
         if (!request) {
           return false;
         }
-        const storedExerciseId = request.exercise_id;
-        if (
-          storedExerciseId !== null &&
-          storedExerciseId !== undefined &&
-          storedExerciseId !== exerciseId
-        ) {
+        if (request.status !== "approved") {
+          return false;
+        }
+        if (request.exercise_id !== exerciseId) {
           return false;
         }
         continue;

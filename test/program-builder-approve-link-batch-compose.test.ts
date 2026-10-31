@@ -1,22 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
 import {
   ProgramBuilderService,
   buildLinkApprovedPlaceholderStatements,
 } from "../src/services/programs/program-builder-service.js";
 import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
+import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
+import {
+  applyMigration,
+  MIGRATION_0001_ID,
+  MIGRATION_0002_ID,
+  MIGRATION_0003_ID,
+  MIGRATION_0005_ID,
+  MIGRATION_0007_ID,
+} from "../src/storage/migrations/apply.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
+  MIGRATION_0001_SQL,
+  MIGRATION_0002_SQL,
+  MIGRATION_0003_SQL,
+  MIGRATION_0005_SQL,
+  MIGRATION_0007_SQL,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { createFakePhysioD1Database } from "./helpers/fake-physio-d1-database.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 
 async function seedOpenExerciseRequest(
-  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  storage: SqlStoragePort,
   practitionerId: string,
   requestId: string,
   requestedName: string,
@@ -32,9 +48,36 @@ async function seedOpenExerciseRequest(
   });
 }
 
-describe("approve and link in one batch", () => {
+async function openMigratedD1SqlStorage(): Promise<D1SqlStorage> {
+  const d1 = createFakePhysioD1Database();
+  const sql = new D1SqlStorage(d1);
+  await applyMigration(sql, MIGRATION_0001_ID, MIGRATION_0001_SQL);
+  await applyMigration(sql, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+  await applyMigration(sql, MIGRATION_0003_ID, MIGRATION_0003_SQL);
+  await applyMigration(sql, MIGRATION_0005_ID, MIGRATION_0005_SQL);
+  await applyMigration(sql, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+  return sql;
+}
+
+type StorageCase = {
+  label: string;
+  open: () => Promise<SqlStoragePort & { close?: () => void }>;
+};
+
+const STORAGE_CASES: StorageCase[] = [
+  {
+    label: "BetterSqliteStorage",
+    open: () => openMigratedDatabase(),
+  },
+  {
+    label: "D1SqlStorage fake",
+    open: () => openMigratedD1SqlStorage(),
+  },
+];
+
+describe.each(STORAGE_CASES)("approve and link in one batch ($label)", ({ open }) => {
   it("composes exercise approval with placeholder linking atomically", async () => {
-    const storage = await openMigratedDatabase();
+    const storage = await open();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseVersion(storage, practitionerId);
@@ -68,12 +111,14 @@ describe("approve and link in one batch", () => {
       expect(view.rows[0]?.kind).toBe("exercise");
       expect(view.rows[0]?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
     } finally {
-      storage.close();
+      if ("close" in storage && typeof storage.close === "function") {
+        storage.close();
+      }
     }
   });
 
   it("rolls back approval and link when a later guarded link statement matches zero rows", async () => {
-    const storage = await openMigratedDatabase();
+    const storage = await open();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseVersion(storage, practitionerId);
@@ -121,7 +166,9 @@ describe("approve and link in one batch", () => {
       );
       expect(request?.exercise_id).toBeNull();
     } finally {
-      storage.close();
+      if ("close" in storage && typeof storage.close === "function") {
+        storage.close();
+      }
     }
   });
 });

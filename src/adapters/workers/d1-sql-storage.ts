@@ -3,7 +3,6 @@ import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import {
   expandSqlBatchStatementsWithMinRowsGuards,
   isSqlBatchGuardAbortError,
-  SQL_BATCH_MIN_ROWS_GUARD_ENSURE,
 } from "../../storage/sql-batch-min-rows-guard.js";
 import type {
   SqlBatchStatement,
@@ -112,7 +111,6 @@ export class D1SqlStorage implements SqlStoragePort {
       return;
     }
     const db = this.requireDb();
-    await this.run(SQL_BATCH_MIN_ROWS_GUARD_ENSURE);
     const expanded = expandSqlBatchStatementsWithMinRowsGuards(statements);
     const prepared = expanded.map((statement) =>
       db.prepare(statement.sql).bind(...statement.bindings.map(normalizeBinding)),

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -10,11 +10,16 @@ import { SqlDuplicateIdError } from "../src/storage/errors/sql-duplicate-id-erro
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
 import {
+  expandSqlBatchStatementsWithMinRowsGuards,
+  SQL_BATCH_MIN_ROWS_GUARD_TABLE,
+} from "../src/storage/sql-batch-min-rows-guard.js";
+import { splitSqlStatements } from "../src/storage/migrations/apply.js";
+import { MIGRATION_0007_SQL } from "./helpers/exercise-sqlite-fixture.js";
+import {
   createFakePhysioD1Database,
   runFakeD1Statements,
 } from "./helpers/fake-physio-d1-database.js";
 import {
-  TRANSACTION_GUARD_SCAN_ROOTS,
   findRawSqlTransactionControlViolations,
   listTransactionGuardScanFiles,
   rawSqlTransactionControlPattern,
@@ -46,22 +51,6 @@ describe("service and repository SQL transaction guard", () => {
     expect(pattern.test('await sql.run("SAVEPOINT link_tx");')).toBe(true);
     expect(pattern.test('await this.sql.run("rollback");')).toBe(true);
     expect(pattern.test('await sql.run("SELECT 1");')).toBe(false);
-  });
-
-  it("pins BEGIN IMMEDIATE, savepoint, backtick, batch, and variable forms in guard patterns", () => {
-    const guardSource = readFileSync(
-      join(import.meta.dirname, "sql-storage-transaction-guard.ts"),
-      "utf8",
-    );
-    expect(guardSource).toContain("IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION");
-    expect(guardSource).toContain("SAVEPOINT");
-    expect(guardSource).toContain("batch\\s*\\(\\s*\\[\\s*\\{");
-    expect(guardSource).toContain("run\\(\\s*[a-zA-Z_$]");
-    expect(guardSource.match(/"`" \+/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
-  });
-
-  it("pins the scanned root directories", () => {
-    expect(TRANSACTION_GUARD_SCAN_ROOTS.length).toBe(2);
   });
 
   it("end-to-end scan reports planted fixture violations outside the repo", () => {
@@ -124,6 +113,12 @@ const ADAPTERS: AdapterCase[] = [
   },
 ];
 
+async function ensureBatchGuardTable(sql: SqlStoragePort): Promise<void> {
+  for (const statement of splitSqlStatements(MIGRATION_0007_SQL)) {
+    await sql.run(statement);
+  }
+}
+
 describe.each(ADAPTERS)("SqlStoragePort.batch contract ($label)", ({ create }) => {
   async function seedContractTables(sql: SqlStoragePort): Promise<void> {
     if (sql instanceof BetterSqliteStorage || sql instanceof D1SqlStorage) {
@@ -135,6 +130,7 @@ describe.each(ADAPTERS)("SqlStoragePort.batch contract ($label)", ({ create }) =
       await sql.run(
         "CREATE TABLE approvals (id TEXT PRIMARY KEY, status TEXT, exercise_id TEXT)",
       );
+      await ensureBatchGuardTable(sql);
       return;
     }
     if (sql instanceof InMemorySqlStorage) {
@@ -146,8 +142,97 @@ describe.each(ADAPTERS)("SqlStoragePort.batch contract ($label)", ({ create }) =
       await sql.run(
         "CREATE TABLE approvals (id TEXT PRIMARY KEY, status TEXT, exercise_id TEXT)",
       );
+      await ensureBatchGuardTable(sql);
     }
   }
+
+  it("never expands batch statements to CREATE TABLE DDL", () => {
+    const expanded = expandSqlBatchStatementsWithMinRowsGuards([
+      {
+        sql: "UPDATE guarded SET status = ? WHERE id = ?",
+        bindings: ["closed", "g-1"],
+        minRowsAffected: 1,
+      },
+    ]);
+    for (const statement of expanded) {
+      expect(statement.sql.toUpperCase()).not.toContain("CREATE TABLE");
+    }
+  });
+
+  it("leaves the guard table empty after a successful guarded batch", async () => {
+    const sql = await create();
+    await seedContractTables(sql);
+    await sql.run("INSERT INTO guarded (id, status) VALUES (?, ?)", ["g-ok", "open"]);
+    await sql.batch([
+      {
+        sql: "UPDATE guarded SET status = ? WHERE id = ? AND status = ?",
+        bindings: ["closed", "g-ok", "open"],
+        minRowsAffected: 1,
+      },
+    ]);
+    const rows = await sql.all<{ v: number }>(
+      `SELECT v FROM ${SQL_BATCH_MIN_ROWS_GUARD_TABLE} WHERE v = ?`,
+      [1],
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it("does not map a missing guard table to SqlBatchGuardError", async () => {
+    const sql = await create();
+    if (sql instanceof BetterSqliteStorage || sql instanceof D1SqlStorage) {
+      await sql.run("CREATE TABLE guarded (id TEXT PRIMARY KEY, status TEXT)");
+    } else if (sql instanceof InMemorySqlStorage) {
+      await sql.run("CREATE TABLE guarded (id TEXT PRIMARY KEY, status TEXT)");
+    }
+    await sql.run("INSERT INTO guarded (id, status) VALUES (?, ?)", ["g-1", "open"]);
+    await expect(
+      sql.batch([
+        {
+          sql: "UPDATE guarded SET status = ? WHERE id = ? AND status = ?",
+          bindings: ["closed", "g-1", "drafting"],
+          minRowsAffected: 1,
+        },
+      ]),
+    ).rejects.not.toBeInstanceOf(SqlBatchGuardError);
+  });
+
+  it("passes unrelated constraint errors through without SqlBatchGuardError", async () => {
+    const sql = await create();
+    await seedContractTables(sql);
+    if (sql instanceof BetterSqliteStorage || sql instanceof D1SqlStorage) {
+      await sql.run("CREATE TABLE programs (id TEXT PRIMARY KEY, label TEXT)");
+      await ensureBatchGuardTable(sql);
+      await sql.run("INSERT INTO programs (id, label) VALUES (?, ?)", ["dup", "one"]);
+      await expect(
+        sql.batch([
+          {
+            sql: "INSERT INTO programs (id, label) VALUES (?, ?)",
+            bindings: ["other", "two"],
+          },
+          {
+            sql: "INSERT INTO programs (id, label) VALUES (?, ?)",
+            bindings: ["dup", "three"],
+          },
+        ]),
+      ).rejects.toBeInstanceOf(SqlDuplicateIdError);
+      return;
+    }
+    await sql.run("CREATE TABLE programs (id TEXT PRIMARY KEY, label TEXT)");
+    await ensureBatchGuardTable(sql);
+    await sql.run("INSERT INTO programs (id, label) VALUES (?, ?)", ["dup", "one"]);
+    await expect(
+      sql.batch([
+        {
+          sql: "INSERT INTO programs (id, label) VALUES (?, ?)",
+          bindings: ["other", "two"],
+        },
+        {
+          sql: "INSERT INTO programs (id, label) VALUES (?, ?)",
+          bindings: ["dup", "three"],
+        },
+      ]),
+    ).rejects.toBeInstanceOf(SqlDuplicateIdError);
+  });
 
   it("rolls back when a later statement throws", async () => {
     const sql = await create();
@@ -256,23 +341,6 @@ describe.each(ADAPTERS)("SqlStoragePort.batch contract ($label)", ({ create }) =
 });
 
 describe("InMemorySqlStorage batch concurrency", () => {
-  it("pins mutex serialization on the storage lock tail", () => {
-    const source = readFileSync(
-      join(
-        import.meta.dirname,
-        "..",
-        "src",
-        "storage",
-        "adapters",
-        "memory",
-        "in-memory-sql-storage.ts",
-      ),
-      "utf8",
-    );
-    expect(source).toMatch(/this\.tail = new Promise/);
-    expect(source).toMatch(/await wait;/);
-  });
-
   it("serializes concurrent run with batch via the storage lock", async () => {
     const sql = new InMemorySqlStorage();
     await sql.run("CREATE TABLE widgets (id TEXT PRIMARY KEY, label TEXT)");

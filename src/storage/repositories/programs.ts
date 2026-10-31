@@ -821,6 +821,12 @@ export class ProgramRowsRepository {
     return true;
   }
 
+  /**
+   * Batch link statements require the exercise_requests row to already show
+   * status approved and exercise_id matching the approved version when each
+   * UPDATE runs. For approve plus link in one batch, run the approval UPDATE
+   * before these statements in the same batch.
+   */
   buildLinkPlaceholderRowBatchStatements(input: {
     programId: string;
     rowId: string;
@@ -857,7 +863,7 @@ export class ProgramRowsRepository {
         AND exercise_id IS NULL AND exercise_version_id IS NULL
         AND EXISTS (
           SELECT 1 FROM exercise_requests er
-          WHERE er.id = ? AND (er.exercise_id IS NULL OR er.exercise_id = ?)
+          WHERE er.id = ? AND er.exercise_id = ? AND er.status = 'approved'
         )`,
       bindings: [
         exerciseId,

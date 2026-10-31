@@ -4,7 +4,6 @@ import type {
   PhysioD1PreparedStatement,
 } from "../../src/adapters/workers/d1-sql-storage.js";
 import type { SqlValue } from "../../src/storage/ports/sql-storage.js";
-import { SQL_BATCH_MIN_ROWS_GUARD_ENSURE } from "../../src/storage/sql-batch-min-rows-guard.js";
 
 const PHYSIO_D1_PREPARED = Symbol("PhysioD1PreparedStatement");
 
@@ -80,7 +79,6 @@ export function createFakePhysioD1Database(): PhysioD1Database {
       for (const statement of statements) {
         assertPreparedStatement(statement);
       }
-      db.exec(SQL_BATCH_MIN_ROWS_GUARD_ENSURE);
       const runBatch = db.transaction(() => {
         const results: { meta: { changes?: number } }[] = [];
         for (const statement of statements) {

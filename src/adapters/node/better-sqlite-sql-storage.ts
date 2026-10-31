@@ -9,8 +9,6 @@ import type {
 import {
   expandSqlBatchStatementsWithMinRowsGuards,
   isSqlBatchGuardAbortError,
-  SQL_BATCH_MIN_ROWS_GUARD_ENSURE,
-  SQL_BATCH_MIN_ROWS_GUARD_TABLE,
 } from "../../storage/sql-batch-min-rows-guard.js";
 import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
@@ -24,12 +22,6 @@ export class NestedSqlTransactionError extends Error {
 
 function mapSqliteUniqueIdConstraint(error: unknown): unknown {
   if (error instanceof Database.SqliteError) {
-    if (
-      error.code === "SQLITE_CONSTRAINT_NOTNULL" &&
-      error.message.includes(SQL_BATCH_MIN_ROWS_GUARD_TABLE)
-    ) {
-      return new SqlBatchGuardError();
-    }
     const isUnique =
       error.code === "SQLITE_CONSTRAINT_UNIQUE" ||
       error.code === "SQLITE_CONSTRAINT_PRIMARYKEY";
@@ -125,7 +117,6 @@ export class BetterSqliteStorage implements SqlStoragePort {
     if (statements.length === 0) {
       return;
     }
-    this.db.exec(SQL_BATCH_MIN_ROWS_GUARD_ENSURE);
     const expanded = expandSqlBatchStatementsWithMinRowsGuards(statements);
     const runBatch = this.db.transaction(() => {
       for (const statement of expanded) {

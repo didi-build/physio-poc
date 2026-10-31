@@ -20,7 +20,16 @@ export function isExcludedFromTransactionGuardScan(absolutePath: string): boolea
   return normalized === migrationsRoot || normalized.startsWith(`${migrationsRoot}/`);
 }
 
-/** Case-insensitive forbidden transaction control inside sql.run(...) string literals. */
+/**
+ * Static scan for raw transaction control in services and repositories.
+ * This is defence in depth only: runtime batch adapters reject BEGIN, COMMIT,
+ * ROLLBACK, and SAVEPOINT inside batch() regardless of this scan.
+ *
+ * Known gaps (not flagged today): run(beginVar, []), batch(stmts) with a
+ * variable array, template interpolation in sql strings, and END /
+ * END TRANSACTION (SQLite COMMIT aliases). False positives: comments containing
+ * run("BEGIN"), any single-argument run(identifier), and trigger SQL with BEGIN.
+ */
 export function rawSqlTransactionControlPatterns(): RegExp[] {
   const keyword =
     "(BEGIN(?:\\s+(?:IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION))?|COMMIT|ROLLBACK|SAVEPOINT\\b|RELEASE\\s+SAVEPOINT)";
