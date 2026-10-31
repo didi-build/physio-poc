@@ -20,10 +20,10 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 | State | What it shows |
 | -- | -- |
-| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "N library updates to review"). Recently deleted: "Restore a deleted program for 30 days. After that it's gone for good. Its old share link stays closed." When empty: "No deleted programs." |
+| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "1 library update to review" for one or "{n} library updates to review" for more, as in mockups 01, 29 and 05). Recently deleted: "Restore a deleted program for 30 days. After that it's gone for good. Its old share link stays closed." When empty: "No deleted programs." |
 | Search | By name, code (with or without "PRG-") or routine name; the matching code is highlighted. No match: "No program matches ..." with "Clear search" |
 | New program | Sheet "New program": "From a routine" (pick a routine, then Create program from routine) or "From scratch" |
-| Builder | Code chip, required "Program name", origin banner when made from a routine ("From routine: {name}, version {N}" with "View routine"), status card, exercise rows (type, doses, notes, reorder, duplicate, remove, version), Add exercise sheet (My exercises first, then the full library), Delete program |
+| Builder | Code chip, required "Program name", origin banner when made from a routine ("From routine: {name}, version {N}" with "View routine"), status card, exercise rows (type, doses, notes, reorder by dragging the dots grip or Shift with the up and down arrow keys, duplicate, remove, version; see Builder reorder), Add exercise sheet (My exercises first, then the full library), Delete program |
 | Auto-save | No Save button. "Saving..." then "Saved". Save failure (same spot as saving status on phone status card and desktop publish card): status "Not saved", helper "Your latest changes aren't saved yet.", one alert "Not saved. Your latest changes aren't saved yet.", button "Try again" (accessible name "Try saving again"). A failed save retries automatically; "Try again" stays available. While retrying, "Saving..."; on success, "Saved". Publish stays disabled until the latest changes are saved. Unsaved edits when leaving the builder show a warning first (see leave warning). Status: "Not published yet" / "Unpublished changes" / "Published {time}" |
 | Sticky publish card | On tablet landscape and desktop (1024 px and up) the publish card floats in the right column; on phones actions sit in the bottom bar |
 | Library update prompt | "Library update for {exercise}": "Programs aren't updated on their own. Update it, or keep your original." with "Update to vN" / "Keep my original" |
@@ -53,6 +53,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 - Program card exercise count: "1 exercise · Sent {date}" / "{n} exercises · Sent {date}". Accessible: "1 exercise, sent {date}" for one exercise; "{n} exercises, sent {date}" otherwise (the middle dot is hidden from screen readers). Zero-exercise draft card: "No exercises yet".
 - Auto-save failure: status "Not saved"; helper "Your latest changes aren't saved yet."; alert once "Not saved. Your latest changes aren't saved yet."; "Try again" (accessible name "Try saving again"). Failed saves retry automatically; publish stays disabled until saved.
 - Leave with unsaved edits: "Leave without saving?"; "Your latest changes aren't saved yet. If you leave now, you'll lose them."; "Keep editing" / "Leave".
+- Builder reorder: hint "Press and hold the dots to reorder. Use copy to add the same exercise again, for example in a second version." (approved, unchanged); while dragging "Moving {name}. Release to drop it in place {n}." (approved v12 source). Approved by Diadem (Oct 31, 2026, 1:28 PM ET, DIDI-1152): grip "Reorder {name}, position {n}. Press and hold, then drag. Or hold Shift and use the arrow keys."; after any move, read out politely: "{name} moved to position {n} of {total}". Screen reader only actions "Move {name} up" / "Move {name} down" (approved 1:30 PM ET); no visible up and down buttons. See Builder reorder.
 
 The full verbatim copy is in the inventory at the end.
 
@@ -80,9 +81,102 @@ Approved with v12 (Diadem, Oct 25, 2026, 7:22 PM ET, "v12 is approved", includin
 6. "Use for a patient" uses My copy when the routine is saved, and the community version otherwise. The toggle on the routine switches it.
 7. "Remove from My routines" has no confirm, only Undo, the same as "Remove from My exercises".
 
+## Builder reorder (DIDI-1152)
+
+**Ruling (Diadem, Oct 31, 2026, 1:19 PM ET, DIDI-1152):** "keep drag and drop and add a keyboard only way to drag and drop (hold shift while using the up/down arrow keys)"
+
+This is locked in DIDI-594's Product direction block (is/was in DIDI-1152 comment f3140a23, https://linear.app/didi-build/issue/DIDI-1152). **Is:** drag and drop stays, with the dots grip as the drag handle, and Shift plus Up or Down moves the focused row. **Was:** no locked direction; Designer's earlier no-drag proposal is dropped.
+
+**Approval (Diadem, Oct 31, 2026, 1:28 PM ET, DIDI-1152):** "yes it is only for screen reader. I approve for drag and drop but let's remove the up/down buttons (visual clutter)." This approves the grip name and the move read-out below, and removes the up and down buttons from the builder row. The hint stays as approved.
+
+**Matches Product direction: yes.** It follows the DIDI-1152 lock above. The locked scope also asks for "Create an exercise program from selected approved exercises (sets, reps, notes)." (DIDI-594 description, section "MVP scope (Diadem, Oct 23, 2026", quoted under Locked Product direction below) and doesn't say how rows are reordered. Drag with the dots grip is in the approved v12 source, and this ruling keeps it. Reorder in the connector (DIDI-594 comment, 2026-10-24 22:58 UTC, Q6) is not affected.
+
+Rows move three ways: drag the dots grip (touch or mouse), hold Shift and press Up or Down while the grip has focus, or, for screen reader users only, the hidden "Move {name} up" and "Move {name} down" actions (Diadem, 1:30 PM ET). There are no visible up and down buttons on the row (removed, Diadem, 1:28 PM ET: "visual clutter").
+
+### Renders (390 px phone)
+
+| State | Phone |
+| -- | -- |
+| Builder reorder rest | [phone](mockups/didi-1152-01-reorder-rest-phone.png) |
+| Builder reorder rest annotated | [phone](mockups/didi-1152-02-reorder-rest-annotated-phone.png) |
+| Builder reorder dragging | [phone](mockups/didi-1152-03-reorder-dragging-phone.png) |
+
+### Grip
+
+- The six-dot grip at the left of the row header is a real control: a native button, focusable, 44 by 44 px, not hidden from screen readers. Its accessible name is the approved grip name below.
+- Pressing or clicking it without dragging does nothing. Enter and Space do nothing.
+- Look: slate dots as in v12; on hover and while lifted, teal dots on a light teal tile; a visible teal focus ring. Mouse cursor "grab", and "grabbing" while lifted.
+
+### Touch (390 px phone first)
+
+- Only the grip starts a drag. The rest of the row scrolls the page as usual.
+- The grip never scrolls the page (`touch-action: none` on the grip only), so a swipe that starts on the grip can't be read as both a scroll and a drag.
+- Hold delay: the row lifts after 280 ms of pressing the grip (the v12 timing). If the finger moves more than 8 px before then, nothing lifts. A short buzz when it lifts, where the phone supports it.
+- While lifted, the row follows the finger. Lifting the finger drops it where the drop line is. If the touch is cancelled (a call, the browser takes the gesture), the row goes back where it was and nothing saves.
+- Auto-scroll: when the finger is within 48 px of the top of the screen, or of the top of the phone's bottom action bar, the list scrolls that way, faster the closer it gets.
+
+### Mouse
+
+- Press on the grip and move 4 px to lift (no hold delay). Release to drop. Escape while dragging puts the row back and nothing saves.
+
+### While dragging
+
+- **Lifted row:** raised with a strong shadow and a 2 px teal ring, slightly larger (102%) and tilted 1 degree, as in v12.
+- **Other rows:** compact, as in v12: only the grip, name and type line show, at 80% opacity, so the whole list fits on a phone screen while dragging. Duplicate and Remove hide until the drop.
+- **Drop line:** a 2 px teal line, full row width, with a small dot at each end, in the gap where the row will land. Only one drop line shows at a time.
+- **Status line:** the hint is replaced by the v12 status "Moving {name}. Release to drop it in place {n}." (approved source), read politely.
+- **Reduced motion:** when the device asks for reduced motion, no tilt, no scaling and no animated movement of the other rows. The lifted row keeps its shadow and ring, and the drop line still shows. Auto-scroll still works.
+
+### Keyboard
+
+- Rule (CTO, Oct 31, 2026, 1:21 PM ET): Shift+Up and Shift+Down apply only when the row card or its drag handle has focus, never inside a text field or select, so they never take over text selection (Shift+arrow selects text in the notes field).
+- Designer's choice within that rule: keys work on the **grip**, not the row card. Why: the grip is the control that moves the row, its accessible name explains the keys, and it is the v12 pattern. Today the row card (`article`, focusable) listens for the arrow keys, and because the key events bubble up from the notes field and the type control, pressing Up or Down while typing a note or choosing a type also moves the row. The row card stops being focusable and stops listening for keys, which fixes that bug.
+- With the grip focused, Shift+Up moves the row up one place and Shift+Down moves it down one place. Plain Up and Down do nothing. Keys only count when the grip itself has focus.
+- On the first row Shift+Up does nothing, and on the last row Shift+Down does nothing. No sound, no message.
+- After a move, focus stays on the moved row's grip.
+- While a move is saving, Shift+arrow is ignored and the grip stays focusable (it is not disabled), so focus never drops.
+
+### After any move
+
+- After a drag, Shift+arrow or screen reader action move is saved, a polite, visually hidden message says where the row is now (approved read-out below). Today only "Saving..." then "Saved" is heard.
+- If the save fails, the existing auto-save failure state applies; the row stays where it was dropped.
+
+### Screen reader actions: Move up and Move down (Diadem, Oct 31, 2026, 1:30 PM ET)
+
+Designer asked: "Without the buttons, someone using a phone screen reader can only reorder by dragging. Add hidden "Move up" and "Move down" actions that only screen readers see, with nothing on screen?" Diadem's answer, verbatim: "Yes, add screen reader only Move up and Move down actions".
+
+- Each grip has two screen-reader-only actions, "Move {name} up" and "Move {name} down". Nothing shows on screen and nothing changes in the layout.
+- How they are exposed is Developer's choice: accessibility custom actions on the grip, or visually hidden buttons next to the grip that only screen readers reach. Requirement: VoiceOver (iOS and macOS) and TalkBack (Android) can find and trigger them. Note: web pages have no shipped ARIA custom-actions attribute today, so visually hidden buttons are the likely route. If they are buttons, take them out of the Tab order (`tabindex="-1"`) so sighted keyboard users never land on something invisible; screen reader swipe navigation still reaches them, and keyboard users have Shift+Up and Shift+Down.
+- Not offered at the ends: no "Move {name} up" on the first row and no "Move {name} down" on the last row (left out, not just disabled).
+- They call the same shared reorder action as drag and Shift+arrow, and end with the same read-out.
+- After one, screen reader focus stays on the moved row (its grip, or the same action if it is still offered).
+- Dragging the grip with the platform's double-tap-and-hold gesture still works too; the grip must receive pointer events during that gesture.
+
+### Approved strings (Diadem, Oct 31, 2026, 1:28 PM ET)
+
+| Where | Was (approved v12) | Now (approved) |
+| -- | -- | -- |
+| Grip, accessible name | Reorder {r.name}, position {i + 1}. Press and hold, then drag. Or use the arrow keys. | Reorder {name}, position {n}. Press and hold, then drag. Or hold Shift and use the arrow keys. |
+| Read-out after any move (not visible) | none | {name} moved to position {n} of {total} |
+| Screen reader only action, up (approved Oct 31, 2026, 1:30 PM ET) | none | Move {name} up |
+| Screen reader only action, down (approved Oct 31, 2026, 1:30 PM ET) | none | Move {name} down |
+
+`{name}` is the row's exercise title. In the grip name `{n}` is the row's current position. In the read-out `{n}` is its new position and `{total}` the number of rows, counting from 1.
+
+Unchanged approved copy: the hint "Press and hold the dots to reorder. Use copy to add the same exercise again, for example in a second version." It doesn't mention the keys (Designer's recommendation, accepted by Diadem at 1:28 PM ET): Kojo is mostly on a phone, and screen reader users hear the keys in the grip's name.
+
+Removed: the visible up and down buttons. Their names live on only as the screen reader only actions above. `reorderRowAriaLabel` ("Reorder {name}, position {n}. Press and hold, then drag. Or use the arrow keys.") is replaced by the approved grip name and is no longer on any button.
+
+### Notes for Developer
+
+- **One reorder action (CTO, Oct 31, 2026, 1:21 PM ET):** drag, Shift+Up or Down and the screen reader only Move up and Move down actions all call the same reorder action, so they share one save path and one auto-save key, and all end with the same read-out.
+- **Remove:** the visible up and down buttons in `src/ui/programs/ProgramBuilderRowCard.tsx` (lines 187 to 204 on main f4c0ab1), their icons (lines 41 to 71), the row card's `tabIndex` and arrow-key handler (lines 126 to 139). Change `reorderRowAriaLabel` in `src/ui/copy/programs.ts` (lines 236 to 237) to the approved grip name, with `{n}` as the current position.
+- **Tests that reference the up and down buttons or the old label** (on main f4c0ab1): `test/ui/programs-builder-dev-verify.test.tsx` lines 183, 536, 539 and 770 (name `/Reorder Alpha move, position .../`) and line 534 (checks the decorative grip `.pg-row-grip svg`); `test/ui/programs-qa-round1.test.tsx` line 502; `test/ui/programs-builder-actions.test.tsx` lines 178 and 212. They find the buttons by the old label and click them, so they need to move to the screen reader only actions ("Move {name} up" / "Move {name} down"), Shift+arrow on the grip, or the shared reorder action.
+- **Drag library (a note, not a decision):** package.json has no drag library (dependencies are react, react-dom, react-router-dom and the Better Auth and MCP packages). The v12 source does drag with native pointer events, a 280 ms timer and pointer capture, in about 30 lines, and Shift+arrow is a few lines on the grip's key handler. Native pointer events look like the smaller path. dnd-kit (@dnd-kit/core plus @dnd-kit/sortable) would add packages and its keyboard sensor uses Space to pick up and plain arrows to move, which would need changing to match Shift+arrow. Developer's call.
+
 ## Mockups
 
-Changed in v12 (the approved v12 previews): 21 to 25. Rendered from the approved revision for the rest (v11 states 01 to 08 and 26, and earlier states unchanged since v10).
+Changed in DIDI-1152 (approved Oct 31, 2026): builder reorder, 35 to 37 below. Changed in v12 (the approved v12 previews): 21 to 25. Rendered from the approved revision for the rest (v11 states 01 to 08 and 26, and earlier states unchanged since v10).
 
 | State | Phone (390 px) | Desktop (1280 px) |
 | -- | -- | -- |
@@ -121,6 +215,9 @@ Changed in v12 (the approved v12 previews): 21 to 25. Rendered from the approved
 | 32 close link confirm | [phone](mockups/32-close-link-confirm-phone.png) | [desktop](mockups/32-close-link-confirm-desktop.png) |
 | 33 link closed program kept | [phone](mockups/33-link-closed-program-kept-phone.png) | [desktop](mockups/33-link-closed-program-kept-desktop.png) |
 | 34 patient link page | [phone](mockups/34-patient-link-page-phone.png) | [desktop](mockups/34-patient-link-page-desktop.png) |
+| 35 builder reorder rest (DIDI-1152) | [phone](mockups/didi-1152-01-reorder-rest-phone.png) | n/a |
+| 36 builder reorder rest annotated (DIDI-1152) | [phone](mockups/didi-1152-02-reorder-rest-annotated-phone.png) | n/a |
+| 37 builder reorder dragging (DIDI-1152) | [phone](mockups/didi-1152-03-reorder-dragging-phone.png) | n/a |
 
 ## Locked Product direction (verbatim from DIDI-594)
 
@@ -418,7 +515,7 @@ Every user-facing string in the parts of the approved source that render this fe
 - Exercises
 - Press and hold the dots to reorder. Use copy to add the same exercise again, for example in a second version.
 - No exercises yet. Add exercises from My exercises or the full library.
-- Reorder {r.name}, position {i + 1}. Press and hold, then drag. Or use the arrow keys.
+- Reorder {r.name}, position {i + 1}. Press and hold, then drag. Or use the arrow keys. (Replaced by the approved grip name, DIDI-1152; see Builder reorder)
 - Pending review
 - Duplicate {r.name}
 - Duplicate
@@ -568,8 +665,21 @@ Every user-facing string in the parts of the approved source that render this fe
 - Programs that used it keep working
 
 
+### Missing from the inventory above (approved v12 source, WebAppClickableConcept.tsx line 1305)
+
+- Moving {name}. Release to drop it in place {n}.
+
+### Approved Oct 31, 2026, 1:28 PM and 1:30 PM ET (DIDI-1152)
+
+- Reorder {name}, position {n}. Press and hold, then drag. Or hold Shift and use the arrow keys.
+- {name} moved to position {n} of {total}
+- Move {name} up (screen reader only)
+- Move {name} down (screen reader only)
+
 ## Changes
 
+- **Oct 31, 2026**: DIDI-1152. Diadem (1:19 PM ET): keep drag and drop, add Shift with the up and down arrow keys. Diadem (1:28 PM ET): approved the grip name and the move read-out, removed the up and down buttons, hint unchanged. Diadem (1:30 PM ET): screen reader only "Move {name} up" and "Move {name} down" actions on the grip. https://linear.app/didi-build/issue/DIDI-1152
+- **Oct 31, 2026**: Spec alignment: the library updates flag reads "1 library update to review" for one and "{n} library updates to review" for more, as in approved mockups 01, 29 and 05. https://linear.app/didi-build/issue/DIDI-1144
 - **Oct 30, 2026**: DIDI-1134. Diadem approved the copy for empty states, save failure and singular counts (1:39 PM ET) and the leave warning (1:41 PM ET). https://linear.app/didi-build/issue/DIDI-1134
 - **Oct 23, 2026**: First concept: builder, share with PDF preview and delete. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Per-program expiry with Never; closing a link keeps the program; link page with Save as PDF. https://linear.app/didi-build/issue/DIDI-809
