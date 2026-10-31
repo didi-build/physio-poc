@@ -8,6 +8,8 @@ import {
   programRowsPath,
   programRowsReorderPath,
   programsDeletedListPath,
+  programsFromRoutinePath,
+  routineSentProgramsPath,
   PROGRAMS_API_BASE,
 } from "./program-builder-http-paths.js";
 import { testOpaqueEntityId } from "./opaque-test-ids.js";
@@ -19,15 +21,19 @@ export type ProgramBuilderHttpRouteCase = {
 
 const EXAMPLE_PROGRAM_ID = testOpaqueEntityId("route-table-program");
 const EXAMPLE_ROW_ID = testOpaqueEntityId("route-table-row");
+const EXAMPLE_ROUTINE_ID = testOpaqueEntityId("route-table-routine");
 
 export function programBuilderHttpRouteCases(
   programId: string = EXAMPLE_PROGRAM_ID,
   rowId: string = EXAMPLE_ROW_ID,
+  routineId: string = EXAMPLE_ROUTINE_ID,
 ): readonly ProgramBuilderHttpRouteCase[] {
   return [
     { method: "GET", path: PROGRAMS_API_BASE },
     { method: "POST", path: PROGRAMS_API_BASE },
+    { method: "POST", path: programsFromRoutinePath() },
     { method: "GET", path: programsDeletedListPath() },
+    { method: "GET", path: routineSentProgramsPath(routineId) },
     { method: "GET", path: programPath(programId) },
     { method: "PATCH", path: programPath(programId) },
     { method: "DELETE", path: programPath(programId) },
@@ -73,6 +79,8 @@ export type ProgramBuilderHttpProbeContext = {
   readonly exerciseId: string;
   readonly orderedRowIds: readonly string[];
   readonly duplicateNewRowId: string;
+  readonly routineId: string;
+  readonly fromRoutineRowIds: readonly string[];
 };
 
 export function programBuilderMutatingJsonBodyRouteCases(
@@ -102,6 +110,14 @@ export function programBuilderHttpJsonBody(
 ): string {
   if (routeCase.path === PROGRAMS_API_BASE && routeCase.method === "POST") {
     return JSON.stringify({ program_id: ctx.createProgramId });
+  }
+  if (routeCase.path === programsFromRoutinePath() && routeCase.method === "POST") {
+    return JSON.stringify({
+      program_id: ctx.createProgramId,
+      routine_id: ctx.routineId,
+      source: "community",
+      row_ids: [...ctx.fromRoutineRowIds],
+    });
   }
   if (routeCase.method === "PATCH" && routeCase.path.endsWith("/reorder")) {
     return JSON.stringify({ ordered_row_ids: [...ctx.orderedRowIds] });

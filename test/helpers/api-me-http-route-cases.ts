@@ -50,6 +50,8 @@ export function defaultApiMeHttpProbeContext(): ProgramBuilderHttpProbeContext {
     exerciseId: testOpaqueEntityId("api-me-table-exercise"),
     orderedRowIds: [testOpaqueEntityId("api-me-table-row-order-a")],
     duplicateNewRowId: testOpaqueEntityId("api-me-table-dup-row"),
+    routineId: testOpaqueEntityId("api-me-table-routine"),
+    fromRoutineRowIds: [testOpaqueEntityId("api-me-table-from-routine-row")],
   };
 }
 
