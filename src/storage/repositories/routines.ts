@@ -1,4 +1,4 @@
-import type { SqlStoragePort } from "../ports/sql-storage.js";
+import type { SqlBatchStatement, SqlStoragePort } from "../ports/sql-storage.js";
 import {
   PRESCRIPTION_TYPES,
   type PrescriptionType,
@@ -16,11 +16,32 @@ import {
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { SqlBatchGuardError } from "../errors/sql-batch-error.js";
 
 export class RoutineRepositoryError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly code?: string;
+
+  constructor(message: string, options?: { code?: string; cause?: unknown }) {
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = "RoutineRepositoryError";
+    this.code = options?.code;
+  }
+}
+
+async function runRoutineWriteBatch(
+  sql: SqlStoragePort,
+  statements: readonly SqlBatchStatement[],
+): Promise<void> {
+  try {
+    await sql.batch(statements);
+  } catch (error) {
+    if (error instanceof SqlBatchGuardError) {
+      throw new RoutineRepositoryError("Stale write", {
+        code: "stale_write",
+        cause: error,
+      });
+    }
+    throw error;
   }
 }
 
@@ -216,33 +237,78 @@ export class RoutinesRepository {
     const whoItsFor = validateRoutineWhoItsFor(input.whoItsFor ?? null);
     const name = validateOptionalRoutineName(input.name ?? null);
 
-    await this.sql.run(
-      `INSERT INTO routines (
-        id, created_by, created_at, condition_id, body_region_id, who_its_for,
-        published_version, draft_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-      [
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildCreateDraftBatchStatements({
         routineId,
-        input.createdBy,
-        input.createdAt,
+        draftVersionId,
+        createdBy: input.createdBy,
+        createdAt: input.createdAt,
         conditionId,
         bodyRegionId,
         whoItsFor,
-        input.createdAt,
-      ],
-    );
-    await this.sql.run(
-      `INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, 0, 'draft', ?, NULL, NULL, ?, ?)`,
-      [draftVersionId, routineId, name, input.createdBy, input.createdAt],
+        name,
+      }),
     );
     const created = await this.findById(routineId);
     if (!created) {
       throw new RoutineRepositoryError("Routine insert failed");
     }
     return created;
+  }
+
+  buildCreateDraftBatchStatements(input: {
+    routineId: string;
+    draftVersionId: string;
+    createdBy: string;
+    createdAt: string;
+    conditionId: string | null;
+    bodyRegionId: string;
+    whoItsFor: string | null;
+    name: string | null;
+  }): SqlBatchStatement[] {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Routine version id",
+    );
+    return [
+      {
+        sql: `INSERT INTO routines (
+        id, created_by, created_at, condition_id, body_region_id, who_its_for,
+        published_version, draft_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          routineId,
+          input.createdBy,
+          input.createdAt,
+          input.conditionId,
+          input.bodyRegionId,
+          input.whoItsFor,
+          null,
+          input.createdAt,
+        ],
+        minRowsAffected: 1,
+      },
+      {
+        sql: `INSERT INTO routine_versions (
+        id, routine_id, version_number, status, name, change_summary,
+        restored_from_version_id, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          draftVersionId,
+          routineId,
+          0,
+          "draft",
+          input.name,
+          null,
+          null,
+          input.createdBy,
+          input.createdAt,
+        ],
+        minRowsAffected: 1,
+      },
+    ];
   }
 
   async updateDraftMetadata(input: {
@@ -366,20 +432,51 @@ export class RoutineVersionsRepository {
       throw new RoutineRepositoryError("Add at least one exercise before publish");
     }
 
-    await this.sql.run(
-      `UPDATE routine_versions SET status = 'published', version_number = 1, name = ?
-       WHERE id = ? AND status = 'draft'`,
-      [name, draft.id],
-    );
-    await this.sql.run(
-      `UPDATE routines SET published_version = 1, draft_updated_at = ? WHERE id = ?`,
-      [input.publishedAt, input.routineId],
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildPublishDraftBatchStatements({
+        draftVersionId: draft.id,
+        name,
+        routineId: input.routineId,
+        publishedAt: input.publishedAt,
+        authorId: input.authorId,
+      }),
     );
     const published = await this.findPublishedVersion(input.routineId, 1);
     if (!published) {
       throw new RoutineRepositoryError("Publish failed");
     }
     return published;
+  }
+
+  buildPublishDraftBatchStatements(input: {
+    draftVersionId: string;
+    name: string;
+    routineId: string;
+    publishedAt: string;
+    authorId: string;
+  }): SqlBatchStatement[] {
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Routine version id",
+    );
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const authorId = validateOpaqueEntityId(input.authorId, "Author id");
+    const name = validateRoutineName(input.name);
+    return [
+      {
+        sql: `UPDATE routine_versions SET status = ?, version_number = ?, name = ?
+       WHERE id = ? AND status = ?`,
+        bindings: ["published", 1, name, draftVersionId, "draft"],
+        minRowsAffected: 1,
+      },
+      {
+        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ?
+       WHERE id = ? AND published_version IS NULL AND created_by = ?`,
+        bindings: [1, input.publishedAt, routineId, authorId],
+        minRowsAffected: 1,
+      },
+    ];
   }
 
   async savePublishedVersion(input: {
@@ -424,25 +521,9 @@ export class RoutineVersionsRepository {
       throw new RoutineRepositoryError("Cannot save an empty routine version");
     }
 
-    await this.sql.run(
-      `INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, ?, 'published', ?, ?, ?, ?, ?)`,
-      [
-        versionId,
-        input.routineId,
-        nextVersion,
-        name,
-        changeSummary,
-        restoredFrom,
-        input.createdBy,
-        input.createdAt,
-      ],
-    );
     const rowRepo = new RoutineVersionRowsRepository(this.sql);
-    for (const row of sourceRows) {
-      await rowRepo.insertRow({
+    const rowStatements = sourceRows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
         id: crypto.randomUUID(),
         routineVersionId: versionId,
         position: row.position,
@@ -450,17 +531,74 @@ export class RoutineVersionsRepository {
         exerciseVersionId: row.exercise_version_id,
         prescriptionType: row.prescription_type,
         params: parseExerciseParamsJson(row.params_json),
-      });
-    }
-    await this.sql.run(
-      `UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ?`,
-      [nextVersion, input.createdAt, input.routineId],
+      }),
+    );
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildSavePublishedVersionBatchStatements({
+        versionId,
+        routineId: input.routineId,
+        nextVersion,
+        expectedPublishedVersion: routine.published_version,
+        name,
+        changeSummary,
+        restoredFrom,
+        createdBy: input.createdBy,
+        createdAt: input.createdAt,
+        rowStatements,
+      }),
     );
     const saved = await this.findPublishedVersion(input.routineId, nextVersion);
     if (!saved) {
       throw new RoutineRepositoryError("Save published version failed");
     }
     return saved;
+  }
+
+  buildSavePublishedVersionBatchStatements(input: {
+    versionId: string;
+    routineId: string;
+    nextVersion: number;
+    expectedPublishedVersion: number;
+    name: string;
+    changeSummary: string | null;
+    restoredFrom: string | null;
+    createdBy: string;
+    createdAt: string;
+    rowStatements: SqlBatchStatement[];
+  }): SqlBatchStatement[] {
+    const versionId = validateOpaqueEntityId(input.versionId, "Routine version id");
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    return [
+      {
+        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 1,
+      },
+      {
+        sql: `INSERT INTO routine_versions (
+        id, routine_id, version_number, status, name, change_summary,
+        restored_from_version_id, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          versionId,
+          routineId,
+          input.nextVersion,
+          "published",
+          input.name,
+          input.changeSummary,
+          input.restoredFrom,
+          input.createdBy,
+          input.createdAt,
+        ],
+      },
+      ...input.rowStatements,
+    ];
   }
 }
 
@@ -482,7 +620,7 @@ export class RoutineVersionRowsRepository {
     }));
   }
 
-  async insertRow(input: {
+  buildInsertRowBatchStatement(input: {
     id: string;
     routineVersionId: string;
     position: number;
@@ -490,7 +628,7 @@ export class RoutineVersionRowsRepository {
     exerciseVersionId: string;
     prescriptionType: PrescriptionType;
     params: ExerciseParams;
-  }): Promise<void> {
+  }): SqlBatchStatement {
     const rowId = validateOpaqueEntityId(input.id, "Routine version row id");
     const routineVersionId = validateOpaqueEntityId(
       input.routineVersionId,
@@ -502,13 +640,12 @@ export class RoutineVersionRowsRepository {
       "Exercise version id",
     );
     const paramsJson = JSON.stringify(validateExerciseParams(input.params));
-
-    await this.sql.run(
-      `INSERT INTO routine_version_rows (
+    return {
+      sql: `INSERT INTO routine_version_rows (
         id, routine_version_id, position, exercise_id, exercise_version_id,
         prescription_type, params_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
+      bindings: [
         rowId,
         routineVersionId,
         input.position,
@@ -517,7 +654,20 @@ export class RoutineVersionRowsRepository {
         input.prescriptionType,
         paramsJson,
       ],
-    );
+    };
+  }
+
+  async insertRow(input: {
+    id: string;
+    routineVersionId: string;
+    position: number;
+    exerciseId: string;
+    exerciseVersionId: string;
+    prescriptionType: PrescriptionType;
+    params: ExerciseParams;
+  }): Promise<void> {
+    const statement = this.buildInsertRowBatchStatement(input);
+    await this.sql.run(statement.sql, statement.bindings);
   }
 
   async replaceDraftRow(input: {
@@ -626,23 +776,9 @@ export class PractitionerRoutinesRepository {
       throw new RoutineRepositoryError("Cannot save an empty routine copy");
     }
 
-    await this.sql.run(
-      `INSERT INTO practitioner_routines (
-        id, practitioner_id, routine_id, source_routine_version_id,
-        source_version_number, saved_at, last_used_at, edited
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0)`,
-      [
-        copyId,
-        input.practitionerId,
-        routineId,
-        sourceVersion.id,
-        sourceVersion.version_number,
-        input.savedAt,
-      ],
-    );
     const rowRepo = new PractitionerRoutineRowsRepository(this.sql);
-    for (const row of input.rows) {
-      await rowRepo.insertRow({
+    const rowStatements = input.rows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
         id: row.id,
         practitionerRoutineId: copyId,
         position: row.position,
@@ -650,13 +786,62 @@ export class PractitionerRoutinesRepository {
         exerciseVersionId: row.exerciseVersionId,
         prescriptionType: row.prescriptionType,
         params: row.params,
-      });
-    }
+      }),
+    );
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildSaveFrozenCopyBatchStatements({
+        copyId,
+        practitionerId: input.practitionerId,
+        routineId,
+        sourceRoutineVersionId: sourceVersion.id,
+        sourceVersionNumber: sourceVersion.version_number,
+        savedAt: input.savedAt,
+        rowStatements,
+      }),
+    );
     const saved = await this.findForPractitioner(input.practitionerId, routineId);
     if (!saved) {
       throw new RoutineRepositoryError("Save frozen copy failed");
     }
     return saved;
+  }
+
+  buildSaveFrozenCopyBatchStatements(input: {
+    copyId: string;
+    practitionerId: string;
+    routineId: string;
+    sourceRoutineVersionId: string;
+    sourceVersionNumber: number;
+    savedAt: string;
+    rowStatements: SqlBatchStatement[];
+  }): SqlBatchStatement[] {
+    const copyId = validateOpaqueEntityId(input.copyId, "Practitioner routine id");
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const sourceRoutineVersionId = validateOpaqueEntityId(
+      input.sourceRoutineVersionId,
+      "Source routine version id",
+    );
+    return [
+      {
+        sql: `INSERT INTO practitioner_routines (
+        id, practitioner_id, routine_id, source_routine_version_id,
+        source_version_number, saved_at, last_used_at, edited
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          copyId,
+          input.practitionerId,
+          routineId,
+          sourceRoutineVersionId,
+          input.sourceVersionNumber,
+          input.savedAt,
+          null,
+          0,
+        ],
+        minRowsAffected: 1,
+      },
+      ...input.rowStatements,
+    ];
   }
 
   hasCommunityUpdateFlag(
@@ -688,7 +873,7 @@ export class PractitionerRoutineRowsRepository {
     }));
   }
 
-  async insertRow(input: {
+  buildInsertRowBatchStatement(input: {
     id: string;
     practitionerRoutineId: string;
     position: number;
@@ -696,7 +881,7 @@ export class PractitionerRoutineRowsRepository {
     exerciseVersionId: string;
     prescriptionType: PrescriptionType;
     params: ExerciseParams;
-  }): Promise<void> {
+  }): SqlBatchStatement {
     const rowId = validateOpaqueEntityId(input.id, "Practitioner routine row id");
     const practitionerRoutineId = validateOpaqueEntityId(
       input.practitionerRoutineId,
@@ -708,13 +893,12 @@ export class PractitionerRoutineRowsRepository {
       "Exercise version id",
     );
     const paramsJson = JSON.stringify(validateExerciseParams(input.params));
-
-    await this.sql.run(
-      `INSERT INTO practitioner_routine_rows (
+    return {
+      sql: `INSERT INTO practitioner_routine_rows (
         id, practitioner_routine_id, position, exercise_id, exercise_version_id,
         prescription_type, params_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
+      bindings: [
         rowId,
         practitionerRoutineId,
         input.position,
@@ -723,7 +907,20 @@ export class PractitionerRoutineRowsRepository {
         input.prescriptionType,
         paramsJson,
       ],
-    );
+    };
+  }
+
+  async insertRow(input: {
+    id: string;
+    practitionerRoutineId: string;
+    position: number;
+    exerciseId: string;
+    exerciseVersionId: string;
+    prescriptionType: PrescriptionType;
+    params: ExerciseParams;
+  }): Promise<void> {
+    const statement = this.buildInsertRowBatchStatement(input);
+    await this.sql.run(statement.sql, statement.bindings);
   }
 
   async replaceRow(input: {
