@@ -10,6 +10,7 @@ import {
   MIGRATION_0003_ID,
   MIGRATION_0004_ID,
   MIGRATION_0006_ID,
+  MIGRATION_0007_ID,
 } from "../../storage/migrations/apply.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
@@ -39,6 +40,10 @@ const MIGRATION_0004_SQL = readFileSync(
 );
 const MIGRATION_0006_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0006_mcp_oauth.sql"),
+  "utf8",
+);
+const MIGRATION_0007_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0007_sql_batch_min_rows_guard.sql"),
   "utf8",
 );
 
@@ -77,6 +82,7 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
+  await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   const sqlPort = wrapSqlPort(storage);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
     cimdMetadataFetch,
