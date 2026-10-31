@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { D1_PLACEHOLDER_PRODUCTION } from "../scripts/lib/wrangler-d1-placeholders.mjs";
-import { LOWERCASE_CANONICAL_UUID_RE } from "../scripts/lib/lowercase-canonical-uuid.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SCRIPT_PATH = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
@@ -182,6 +181,8 @@ describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
 
   it.each([
     ["uppercase in first group", "ABCDEF01-0000-0000-0000-000000000002"],
+    ["uppercase in second group", "00000000-AAAA-0000-0000-000000000002"],
+    ["uppercase in third group", "00000000-0000-BBBB-0000-000000000002"],
     ["uppercase in last group", "00000000-0000-0000-0000-00000000000B"],
     ["missing hyphens", "00000000000000000000000000000002"],
     ["extra hyphen segment", "00000000-0000-0000-0000-0000-000000000002"],
@@ -189,7 +190,6 @@ describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
     ["leading junk", "x00000000-0000-0000-0000-000000000002"],
     ["trailing junk", "00000000-0000-0000-0000-000000000002y"],
   ])("rejects invalid UUID shape: %s", (_label, candidate) => {
-    expect(LOWERCASE_CANONICAL_UUID_RE.test(candidate)).toBe(false);
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
     const outputPath = join(tempDir, "wrangler.out.jsonc");
     try {

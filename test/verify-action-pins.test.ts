@@ -229,6 +229,84 @@ describe("verify-action-pins.mjs (DIDI-1146)", () => {
     expect(result.stdout).toContain("skipped tag verification");
   });
 
+  it("fails on docker digest with wrong hex length", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-"));
+    try {
+      writeFileSync(
+        join(tempDir, "bad.yml"),
+        [
+          "jobs:",
+          "  x:",
+          "    steps:",
+          "      - uses: docker://ghcr.io/org/app@sha256:123456789012345678901234567890123456789012345678901234567890123",
+        ].join("\n"),
+      );
+      const result = runVerifyActionPins({ workflowsDir: tempDir });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("sha256");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed without a token for unpinned refs in .yaml workflows", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-"));
+    try {
+      writeFileSync(
+        join(tempDir, "scan-me.yaml"),
+        ["jobs:", "  x:", "    uses: org/repo/.github/workflows/x.yml@main"].join("\n"),
+      );
+      const result = runVerifyActionPins({ workflowsDir: tempDir });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("@main");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed without a token for 39-character short SHA refs", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-"));
+    const shortSha = "123456789012345678901234567890123456789";
+    expect(shortSha).toHaveLength(39);
+    try {
+      writeFileSync(
+        join(tempDir, "bad.yml"),
+        [
+          "jobs:",
+          "  x:",
+          "    steps:",
+          `      - uses: actions/checkout@${shortSha}`,
+        ].join("\n"),
+      );
+      const result = runVerifyActionPins({ workflowsDir: tempDir });
+      expect(result.status).toBe(1);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("collects every remote SHA pin for token verification, including lines without tag comments", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-collect-"));
+    try {
+      const shaA = "1234567890123456789012345678901234567890";
+      const shaB = "abcdefabcdefabcdefabcdefabcdefabcdefabcd";
+      writeFileSync(
+        join(tempDir, "mix.yml"),
+        [
+          "jobs:",
+          "  x:",
+          "    steps:",
+          `      - uses: actions/checkout@${shaA} # v4.4.0`,
+          `      - uses: actions/cache@${shaB}`,
+        ].join("\n"),
+      );
+      const refs = collectAllRemoteShaUses({ workflowsDir: tempDir, actionsDir: null });
+      expect(refs.map((entry) => entry.sha).sort()).toEqual([shaA, shaB].sort());
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("fails when the workflows directory is missing", () => {
     const result = runVerifyActionPins({
       workflowsDir: join(tmpdir(), "physio-missing-workflows-dir-never-created"),

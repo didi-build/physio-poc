@@ -329,6 +329,7 @@ describe("Programs UI (integration, jsdom)", () => {
 
   it("auto-saves program name and disables Publish while saving", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    expect(vi.isFakeTimers()).toBe(true);
     let resolveSave: ((value: { program: ProgramBuilderView }) => void) | undefined;
     const updateProgramName = vi.fn().mockImplementation(
       () =>

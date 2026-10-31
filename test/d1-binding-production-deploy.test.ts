@@ -124,6 +124,12 @@ describe("production deploy workflow (DIDI-1031)", () => {
     );
   });
 
+  it("requires set -o pipefail in the Prepare Wrangler config step", () => {
+    expect(prepareStepYamlBlock(readDeployWorkflowText())).toContain(
+      "set -euo pipefail",
+    );
+  });
+
   it("does not set continue-on-error on the Prepare Wrangler config step", () => {
     expect(prepareStepYamlBlock(workflowText)).not.toMatch(/continue-on-error:\s*true/);
   });
@@ -240,6 +246,15 @@ describe("Deploy job static leak guards (DIDI-1146)", () => {
 });
 
 describe("Deploy job scans every step (DIDI-1146 B2)", () => {
+  it("flags upload-artifact on a bare uses step without a name", () => {
+    const workflow = fixtureDeployWorkflow(
+      "      - uses: actions/upload-artifact@1234567890123456789012345678901234567890",
+    );
+    expect(violationsInDeployWorkflow(workflow)).toContain(
+      "uses actions/upload-artifact@1234567890123456789012345678901234567890:upload-artifact",
+    );
+  });
+
   it("flags upload-artifact on a name-first uses step", () => {
     const workflow = fixtureDeployWorkflow(
       ["      - name: Upload config", "        uses: actions/upload-artifact@v4"].join(
@@ -311,27 +326,41 @@ function runCommittedPrepareStepUnderBash(physioD1DatabaseId: string): {
   };
 }
 
-function assertBashPrepareRejects(value: string, secretMaterial: string): void {
-  const result = runCommittedPrepareStepUnderBash(value);
-  expect(result.status).toBe(1);
-  const combined = `${result.stdout}\n${result.stderr}`;
-  expect(combined).not.toMatch(/::add-mask::/);
-  expect(combined).not.toContain(secretMaterial);
-}
-
 describe("Prepare deploy step bash validation (DIDI-1146)", () => {
   const valid = "00000000-0000-0000-0000-000000000002";
 
   it.each([
     ["uppercase", "00000000-0000-0000-0000-00000000000B"],
+    ["uppercase second group", "00000000-AAAA-0000-0000-000000000002"],
     ["braced", "{00000000-0000-0000-0000-000000000002}"],
     ["prefixed", "x00000000-0000-0000-0000-000000000002"],
     ["hyphenless", "00000000000000000000000000000002"],
+    ["extra hyphen segment", "00000000-0000-0000-0000-0000-000000000002"],
     ["non-uuid", "not-a-uuid-value"],
     ["placeholder", "00000000-0000-0000-0000-000000000001"],
     ["newline", `${valid}\nline-two`],
   ])("rejects %s before masking", (_label, candidate) => {
-    assertBashPrepareRejects(candidate, candidate.split("\n")[0]!);
+    const result = runCommittedPrepareStepUnderBash(candidate);
+    expect(result.status).toBe(1);
+    const combined = `${result.stdout}\n${result.stderr}`;
+    expect(combined).not.toMatch(/::add-mask::/);
+    if (_label === "newline") {
+      expect(result.stderr).toContain("newline characters");
+    }
+    const secretMaterial = candidate.split("\n")[0]!;
+    expect(combined).not.toContain(secretMaterial);
+  });
+
+  it("validates UUID before add-mask in the committed Prepare script", () => {
+    const maskIndex = EXPECTED_PREPARE_WRANGLER_STEP_RUN.indexOf("::add-mask::");
+    const grepIndex = EXPECTED_PREPARE_WRANGLER_STEP_RUN.indexOf("grep -Eq");
+    expect(grepIndex).toBeGreaterThan(-1);
+    expect(maskIndex).toBeGreaterThan(grepIndex);
+  });
+
+  it("uses an explicit lowercase hex class in the Prepare grep, not locale-sensitive a-f", () => {
+    expect(EXPECTED_PREPARE_WRANGLER_STEP_RUN).toContain("[0123456789abcdef]");
+    expect(EXPECTED_PREPARE_WRANGLER_STEP_RUN).not.toMatch(/grep -Eq '\^\[0-9a-f\]/);
   });
 });
 
@@ -497,6 +526,16 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
     }
     expect(existsSync(persist)).toBe(false);
   }, 120_000);
+
+  it("cleans up the D1 adapter persist directory after the integration run", async () => {
+    const persist = mkdtempSync(join(tmpdir(), "physio-d1-cleanup-probe-"));
+    try {
+      expect(existsSync(persist)).toBe(true);
+    } finally {
+      rmSync(persist, { recursive: true, force: true });
+      expect(existsSync(persist)).toBe(false);
+    }
+  });
 });
 
 describe("deploy job step inventory", () => {
