@@ -1,0 +1,29 @@
+# Program from routine HTTP mutants (DIDI-1133)
+
+Totals: **17 rows**, **14 killed**, **3 equivalent**.
+
+Re-run on branch after verification fixes: each row below was applied as a one-file production or route-table edit, then **`npx vitest run`** (full suite, 134 files). Temp dir: `TMPDIR=/tmp/didi-1133-tmp`. Production edits were reverted with `git checkout` on the touched file only before the next row.
+
+| Mutant                                                                                          | Killing test or equivalence                                                                                                                              | Result     |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `from-routine` passes a fixed practitioner id into `createProgramFromRoutine`                   | `returns 201 with program view on POST /api/me/programs/from-routine` (and related create tests)                                                         | Killed     |
+| `from-routine` route skips `requirePractitioner` null check                                     | Equivalent: `guardAndRun` in `app.ts` returns 401 on unauthenticated `/api/` before handlers; route-table 401 tests do not observe handler-level binding | Equivalent |
+| `from-routine` skips `rejectBodyPractitionerId`                                                 | Equivalent: strict body keys reject unknown fields; nested `practitioner_id` uses unknown key `meta` (same 400 without the recursive guard)              | Equivalent |
+| `parseFromRoutineBody` hard-codes `source` to `community`                                       | `my_copy uses B saved copy rows, not the latest community version`                                                                                       | Killed     |
+| `parseFromRoutineBody` hard-codes `source` to `my_copy`                                         | `community source uses latest community rows when the caller has a saved my_copy`                                                                        | Killed     |
+| HTTP handler sets `published_at` after create                                                   | `does not publish or create a share link after create from routine`                                                                                      | Killed     |
+| `sent-programs` passes a fixed practitioner id into `getRoutineSentProgramStats`                | `returns sent_count and codes only for the caller published programs`                                                                                    | Killed     |
+| `sent-programs` route skips `requirePractitioner` null check                                    | Equivalent: `guardAndRun` in `app.ts` returns 401 on unauthenticated `/api/` before handlers; route-table 401 tests do not observe handler-level binding | Equivalent |
+| `getRoutineSentProgramStats` counts another practitioner's published programs                   | `returns sent_count and codes only for the caller published programs`                                                                                    | Killed     |
+| Foreign draft routine returns different JSON than missing routine                               | `returns identical program_not_found for missing routine and foreign draft-only routine`                                                                 | Killed     |
+| `sent-programs` omits GET method guard (any method hits stats)                                  | `returns not_found for non-GET methods on sent-programs without stats in the body`                                                                       | Killed     |
+| Remove `/api/me/routines/` dispatch from `app.ts`                                               | `serves GET sent-programs through the Worker entry with session`                                                                                         | Killed     |
+| `parseFromRoutineBody` accepts unknown keys                                                     | `rejects invalid from-routine bodies with canonical invalid_input`                                                                                       | Killed     |
+| Remove `row_ids` array shape validation in `parseFromRoutineBody`                               | `rejects invalid from-routine bodies with canonical invalid_input` (string, object, non-string element)                                                  | Killed     |
+| Remove `POST /api/me/programs/from-routine` from `programBuilderHttpRouteCases`                 | `pins DIDI-1133 routes in programBuilderHttpRouteCases test helper list`                                                                                 | Killed     |
+| Remove `GET .../sent-programs` from `programBuilderHttpRouteCases`                              | `pins DIDI-1133 routes in programBuilderHttpRouteCases test helper list`                                                                                 | Killed     |
+| Exclude `POST /api/me/programs/from-routine` from `programBuilderMutatingHttpRouteCases` filter | `pins POST from-routine in programBuilderMutatingHttpRouteCases for CSRF registry`                                                                       | Killed     |
+
+Rows marked Equivalent were confirmed to **survive** the full suite under the stated mutant; behavior is already enforced elsewhere as described.
+
+Undecodable percent-encoded routine id segments return **404** `program_not_found` (parity with missing id). A decodable path segment that is not a valid opaque entity id returns **400** `invalid_input` from the service validator; that is not an existence leak.
