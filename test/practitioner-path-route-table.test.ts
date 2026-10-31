@@ -70,11 +70,12 @@ async function seedRoutesFixture(
   ]);
 }
 
-function samplePathFor403(
+function samplePathForPractitioner(
   sample: (typeof PRACTITIONER_PATH_ROUTE_SAMPLES)[number],
+  practitionerId: string,
 ): string {
   return sample.samplePath
-    .replace("11111111-1111-4111-8111-111111111111", PRACT_B)
+    .replace("11111111-1111-4111-8111-111111111111", practitionerId)
     .replace("ex-example", EXERCISE_ID)
     .replace("ver-example", FIXTURE_VERSION_ID);
 }
@@ -156,7 +157,7 @@ describe("HTTP route table (practitioner path session binding)", () => {
       };
 
       for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
-        const path = samplePathFor403(sample);
+        const path = samplePathForPractitioner(sample, PRACT_B);
         const body = practitionerPathProbeRequestBody(path, sample.method);
         const url = `${BASE}${path}`;
         const response = await handleRequest(
@@ -175,14 +176,64 @@ describe("HTTP route table (practitioner path session binding)", () => {
         expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(403);
         await expect(response.json()).resolves.toEqual({ error: "forbidden" });
       }
+    } finally {
+      storage.close();
+    }
+  });
 
-      const foreignPath = `${BASE}/api/practitioners/${PRACT_FOREIGN}/my-exercises`;
-      const foreignResponse = await handleRequest(
-        new Request(foreignPath, { headers: { cookie } }),
-        deps,
+  it("returns 403 when session targets an unknown practitioner id on every practitioner path route", async () => {
+    expect(PRACTITIONER_PATH_ROUTE_SAMPLES.length).toBeGreaterThan(0);
+    expect(
+      PRACTITIONER_PATH_ROUTE_SAMPLES.map(practitionerPathRouteSampleKey).sort(),
+    ).toEqual(practitionerPathRouteSampleKeysFromHandlerTables());
+
+    const storage = await openMigratedDatabase();
+    try {
+      const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+      await seedRoutesFixture(storage, practA);
+
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practA,
+          email: "a@example.com",
+          displayName: "A",
+        },
+      });
+      const cookie = auth.createSessionCookieHeader();
+      const deps = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
+      };
+
+      const probedKeys: string[] = [];
+      for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
+        const path = samplePathForPractitioner(sample, PRACT_FOREIGN);
+        const body = practitionerPathProbeRequestBody(path, sample.method);
+        const url = `${BASE}${path}`;
+        const response = await handleRequest(
+          new Request(
+            url,
+            mutatingAppApiRequestInit(url, {
+              method: sample.method,
+              headers: body
+                ? { cookie, "content-type": "application/json" }
+                : { cookie },
+              body,
+            }),
+          ),
+          deps,
+        );
+        expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(403);
+        await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+        probedKeys.push(practitionerPathRouteSampleKey(sample));
+      }
+      expect(probedKeys.sort()).toEqual(
+        PRACTITIONER_PATH_ROUTE_SAMPLES.map(practitionerPathRouteSampleKey).sort(),
       );
-      expect(foreignResponse.status).toBe(403);
-      await expect(foreignResponse.json()).resolves.toEqual({ error: "forbidden" });
     } finally {
       storage.close();
     }
