@@ -3,10 +3,12 @@
  */
 import "./setup.js";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProgramAutoSave } from "../../src/ui/programs/use-program-auto-save.js";
 
 describe("useProgramAutoSave (unit)", () => {
+  afterEach(() => {});
+
   it("retries the same failed task after automatic backoff", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const nameSave = vi
@@ -28,7 +30,6 @@ describe("useProgramAutoSave (unit)", () => {
     await waitFor(() => {
       expect(nameSave).toHaveBeenCalledTimes(2);
     });
-    vi.useRealTimers();
   });
 
   it("keeps pending keys separate so one field does not cancel another", async () => {
@@ -48,7 +49,6 @@ describe("useProgramAutoSave (unit)", () => {
       expect(second).toHaveBeenCalledTimes(1);
     });
     expect(result.current.state).toBe("saved");
-    vi.useRealTimers();
   });
 
   it("does not show saved while another key is still pending", async () => {
@@ -71,7 +71,6 @@ describe("useProgramAutoSave (unit)", () => {
     });
     expect(nameSave).toHaveBeenCalled();
     expect(result.current.state).toBe("saving");
-    vi.useRealTimers();
   });
 
   it("does not clear a failure when a different key saves successfully", async () => {
@@ -120,7 +119,6 @@ describe("useProgramAutoSave (unit)", () => {
     await waitFor(() => {
       expect(result.current.state).toBe("saved");
     });
-    vi.useRealTimers();
   });
 
   it("runs every failed save on tryAgain", async () => {
@@ -176,7 +174,6 @@ describe("useProgramAutoSave (unit)", () => {
       await Promise.resolve();
     });
     expect(result.current.state).toBe("saved");
-    vi.useRealTimers();
   });
 
   it("stays saving until every in-flight save finishes", async () => {
@@ -207,7 +204,6 @@ describe("useProgramAutoSave (unit)", () => {
       await Promise.resolve();
     });
     expect(result.current.state).toBe("saved");
-    vi.useRealTimers();
   });
 
   it("runs a failed save only once when Try again is pressed twice while retry is in flight", async () => {
@@ -248,7 +244,6 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(1500);
     });
     expect(save).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
   });
 
   it("keeps the failure alert while another key is still failed after a different key saves", async () => {
@@ -308,7 +303,6 @@ describe("useProgramAutoSave (unit)", () => {
     });
     expect(result.current.state).toBe("saved");
     expect(result.current.hasUnsavedEdits).toBe(false);
-    vi.useRealTimers();
   });
 
   it("clears only the key that succeeded on retry and keeps other failed saves", async () => {
@@ -367,7 +361,6 @@ describe("useProgramAutoSave (unit)", () => {
       expect(save).toHaveBeenCalledTimes(3);
     });
     expect(save.mock.calls[2]).toEqual(["second"]);
-    vi.useRealTimers();
   });
 
   it("clears failures and blocks auto retry after markSaved", async () => {
@@ -387,7 +380,6 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
     expect(save).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
   });
 
   it("does not auto retry after unmount", async () => {
@@ -404,11 +396,10 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
     expect(save).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
   });
 
   it("uses exponential auto retry delays of 1.5s doubling up to a 30s cap", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.useFakeTimers();
     const save = vi.fn().mockRejectedValue(new Error("fail"));
     const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
     const expectedDelays = [1500, 3000, 6000, 12000, 24000, 30000, 30000] as const;
@@ -429,7 +420,6 @@ describe("useProgramAutoSave (unit)", () => {
       });
       expect(save).toHaveBeenCalledTimes(i + 2);
     }
-    vi.useRealTimers();
   });
 
   it("resets auto retry backoff after a failed save succeeds", async () => {
@@ -472,7 +462,6 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     await waitFor(() => expect(save).toHaveBeenCalledTimes(6));
-    vi.useRealTimers();
   });
 
   it("resets auto retry backoff when Try again is pressed", async () => {
@@ -508,7 +497,6 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     await waitFor(() => expect(save).toHaveBeenCalledTimes(5));
-    vi.useRealTimers();
   });
 
   it("does not overlap auto retries while a retry save is still in flight", async () => {
@@ -556,6 +544,269 @@ describe("useProgramAutoSave (unit)", () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
     expect(save).toHaveBeenCalledTimes(3);
-    vi.useRealTimers();
+  });
+
+  it("D03: sends the latest value after several debounced edits while a save is in flight", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishFirst: (() => void) | undefined;
+    const saved: string[] = [];
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        await new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        });
+        saved.push("a");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        saved.push("ab");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        saved.push("abc");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    await act(async () => {
+      finishFirst!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(saved).toEqual(["a", "abc"]);
+    });
+    expect(result.current.state).toBe("saved");
+  });
+
+  it("D08 and D09: saves the deferred newer value after an in-flight failure without re-sending stale data", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishV2: (() => void) | undefined;
+    const order: string[] = [];
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("reorder-rows", async () => {
+        order.push("v1");
+        throw new Error("fail v1");
+      });
+    });
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v2");
+        await new Promise<void>((resolve) => {
+          finishV2 = () => {
+            resolve();
+          };
+        });
+        throw new Error("fail v2");
+      });
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v3");
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(order).toEqual(["v1", "v2"]);
+    await act(async () => {
+      finishV2!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(order).toEqual(["v1", "v2", "v3"]);
+    });
+    expect(result.current.state).toBe("saved");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(order).toEqual(["v1", "v2", "v3"]);
+  });
+
+  it("R61c: does not duplicate the latest debounced save when auto retry fires during an in-flight save", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishAb: (() => void) | undefined;
+    const sent: string[] = [];
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        sent.push("a");
+        throw new Error("fail a");
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    expect(sent).toEqual(["a"]);
+    act(() => {
+      result.current.scheduleDebouncedSave("name", async () => {
+        sent.push("ab");
+        await new Promise<void>((resolve) => {
+          finishAb = resolve;
+        });
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(sent).toEqual(["a", "ab"]);
+    await act(async () => {
+      finishAb!();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(sent).toEqual(["a", "ab"]);
+    });
+  });
+
+  it("kills stale auto retry overwriting a deferred newer direct save (D8)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let finishV2: (() => void) | undefined;
+    const order: string[] = [];
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("reorder-rows", async () => {
+        order.push("v1");
+        throw new Error("fail");
+      });
+    });
+    act(() => {
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v2");
+        await new Promise<void>((resolve) => {
+          finishV2 = resolve;
+        });
+        throw new Error("fail v2");
+      });
+      void result.current.runSave("reorder-rows", async () => {
+        order.push("v3");
+      });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await act(async () => {
+      finishV2!();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(order).toEqual(["v1", "v2", "v3"]);
+    });
+    expect(order.at(-1)).toBe("v3");
+  });
+
+  it("N4 and N5: runs exactly one retry when Try again is pressed twice during an in-flight retry that then succeeds", async () => {
+    let finishRetry: (() => void) | undefined;
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishRetry = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("name", save);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    act(() => {
+      result.current.tryAgain();
+      result.current.tryAgain();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      finishRetry!();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(result.current.state).toBe("saved");
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets auto retry backoff after markSaved", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const save = vi.fn().mockRejectedValue(new Error("fail"));
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("name", save);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+    act(() => {
+      result.current.markSaved();
+    });
+    await act(async () => {
+      await result.current.runSave("name", save);
+    });
+    const callsBeforeBackoff = save.mock.calls.length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1499);
+    });
+    expect(save).toHaveBeenCalledTimes(callsBeforeBackoff);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(callsBeforeBackoff + 1));
+  });
+
+  it("does not schedule auto retry after unmount when an in-flight save fails", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let failInFlight: (() => void) | undefined;
+    const save = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          failInFlight = () => {
+            reject(new Error("fail"));
+          };
+        }),
+    );
+    const { result, unmount } = renderHook(() =>
+      useProgramAutoSave({ debounceMs: 10 }),
+    );
+    act(() => {
+      void result.current.runSave("name", save);
+    });
+    unmount();
+    await act(async () => {
+      failInFlight!();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
   });
 });

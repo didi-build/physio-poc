@@ -25,10 +25,7 @@ import type {
   ProgramBuilderView,
   ProgramListItem,
 } from "../../src/services/programs/types.js";
-import {
-  AUTO_SAVE_TRY_AGAIN_ARIA,
-  builderPublishedStatus,
-} from "../../src/ui/copy/programs.js";
+import { AUTO_SAVE_TRY_AGAIN_ARIA } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -622,33 +619,42 @@ describe("Programs builder dev verification", () => {
   });
 
   it("formats published status with the viewer local time", async () => {
-    const publishedAt = "2026-10-24T18:10:00.000Z";
-    const expectedStatus = builderPublishedStatus(publishedAt);
-    render(
-      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          programsClient={builderStubs({
-            getProgram: vi.fn().mockResolvedValue(
-              builderView({
-                auto_save_status: {
-                  kind: "published",
-                  published_at: "2026-10-24T18:10:00.000Z",
-                },
-              }),
-            ),
-          })}
-        />
-      </MemoryRouter>,
-    );
-    await screen.findByRole("textbox", { name: "Program name" });
-    await waitFor(() => {
-      const lines = document.querySelectorAll(".pg-publish-card-status");
-      expect(lines.length).toBeGreaterThan(0);
-      for (const node of lines) {
-        expect(node.textContent).toBe(expectedStatus);
+    const expectedStatus = "Published Oct 24, 2:10 PM";
+    const previousTz = process.env.TZ;
+    process.env.TZ = "America/Toronto";
+    try {
+      render(
+        <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            programsClient={builderStubs({
+              getProgram: vi.fn().mockResolvedValue(
+                builderView({
+                  auto_save_status: {
+                    kind: "published",
+                    published_at: "2026-10-24T18:10:00.000Z",
+                  },
+                }),
+              ),
+            })}
+          />
+        </MemoryRouter>,
+      );
+      await screen.findByRole("textbox", { name: "Program name" });
+      await waitFor(() => {
+        const lines = document.querySelectorAll(".pg-publish-card-status");
+        expect(lines.length).toBeGreaterThan(0);
+        for (const node of lines) {
+          expect(node.textContent).toBe(expectedStatus);
+        }
+      });
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
       }
-    });
+    }
   });
 
   it("mounts the failure alert on the phone status block below 1024px", async () => {

@@ -34,6 +34,7 @@ export function useProgramAutoSave({
   const failedSavesRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryDelayMsRef = useRef(AUTO_SAVE_RETRY_INITIAL_MS);
+  const activeRef = useRef(true);
 
   const resetRetryBackoff = useCallback(() => {
     retryDelayMsRef.current = AUTO_SAVE_RETRY_INITIAL_MS;
@@ -70,16 +71,25 @@ export function useProgramAutoSave({
   >(undefined);
 
   const scheduleFailedRetries = useCallback(() => {
+    if (!activeRef.current) {
+      return;
+    }
     clearRetryTimer();
     const delay = retryDelayMsRef.current;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
+      if (!activeRef.current) {
+        return;
+      }
       retryDelayMsRef.current = Math.min(
         retryDelayMsRef.current * 2,
         AUTO_SAVE_RETRY_MAX_MS,
       );
       for (const [key, run] of failedSavesRef.current.entries()) {
         if (inFlightKeysRef.current.has(key)) {
+          continue;
+        }
+        if (deferredTaskRef.current.has(key)) {
           continue;
         }
         void runSaveRef.current?.(key, run);
@@ -91,6 +101,9 @@ export function useProgramAutoSave({
     async (key: string, task: () => Promise<void>) => {
       if (inFlightKeysRef.current.has(key)) {
         deferredTaskRef.current.set(key, task);
+        if (failedSavesRef.current.has(key)) {
+          failedSavesRef.current.set(key, task);
+        }
         pendingKeysRef.current.add(key);
         syncUi();
         return;
@@ -117,17 +130,21 @@ export function useProgramAutoSave({
           }
         }
       } catch {
-        failedSavesRef.current.set(key, task);
-        setFailureAlertShown(true);
-        scheduleFailedRetries();
+        if (activeRef.current) {
+          failedSavesRef.current.set(key, task);
+          setFailureAlertShown(true);
+          scheduleFailedRetries();
+        }
       } finally {
         inFlightKeysRef.current.delete(key);
         inFlightRef.current = Math.max(0, inFlightRef.current - 1);
         syncUi();
-        const deferred = deferredTaskRef.current.get(key);
-        if (deferred) {
-          deferredTaskRef.current.delete(key);
-          void runSave(key, deferred);
+        if (activeRef.current) {
+          const deferred = deferredTaskRef.current.get(key);
+          if (deferred) {
+            deferredTaskRef.current.delete(key);
+            void runSave(key, deferred);
+          }
         }
       }
     },
@@ -184,10 +201,13 @@ export function useProgramAutoSave({
   }, [clearRetryTimer, resetRetryBackoff, runSave]);
 
   useEffect(() => {
+    activeRef.current = true;
     return () => {
+      activeRef.current = false;
       for (const timer of timersRef.current.values()) {
         clearTimeout(timer);
       }
+      timersRef.current.clear();
       clearRetryTimer();
     };
   }, [clearRetryTimer]);
