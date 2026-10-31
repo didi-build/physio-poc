@@ -299,6 +299,29 @@ describe("DIDI-1140 program API fields and routes", () => {
     }
   });
 
+  it("keeps share_link_status open for an expired but unclosed link matching open_share_link", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-expired-link");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      const links = new ShareLinksRepository(storage);
+      const expiredAt = new Date(Date.now() - 60_000).toISOString();
+      await links.createOpenLink({
+        id: id("link-expired-1140"),
+        programId,
+        createdAt: TS,
+        expiresAt: expiredAt,
+      });
+      const view = await service.getProgram(practitionerId, programId);
+      expect(view.open_share_link).toBe(true);
+      expect(view.share_link_status).toBe("open");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("filters list programs by origin query parameter", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -374,6 +397,50 @@ describe("DIDI-1140 program API fields and routes", () => {
       ).toEqual([
         expect.objectContaining({ program_id: id("prog-scratch-only-1140") }),
       ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects PATCH exercise_version_id for another exercise with invalid_input unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const otherExerciseId = id("ex-other-1140");
+      const otherVersionId = id("ex-ver-other-1140");
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [otherExerciseId, "stretch", practitionerId, TS],
+      );
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: otherVersionId,
+          exercise_id: otherExerciseId,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+          title: "Other exercise",
+        }),
+      );
+      const programId = id("prog-wrong-ex-ver");
+      const rowId = id("row-wrong-ex-ver");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      const before = await new ProgramRowsRepository(storage).findById(rowId);
+      await expect(
+        service.updateRow(practitionerId, programId, rowId, {
+          exerciseVersionId: otherVersionId,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const after = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(after).toEqual(before);
     } finally {
       storage.close();
     }
@@ -479,6 +546,7 @@ describe("DIDI-1140 program API fields and routes", () => {
       ).rejects.toMatchObject({ code: "invalid_input" });
       const after = await new ProgramRowsRepository(storage).findById(rowId);
       expect(after).toEqual(before);
+      expect(after?.exercise_request_id).toBe(requestId);
     } finally {
       storage.close();
     }
