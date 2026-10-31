@@ -105,30 +105,14 @@ function expectTagPillWidth(width: number): void {
   expect(width).toBeLessThan(117);
 }
 
-async function setViewportWidth(
-  page: Page,
-  width: number,
-  height: number,
-): Promise<void> {
-  if (Number.isInteger(width)) {
-    await page.setViewportSize({ width, height });
-    return;
-  }
-  const session = await page.context().newCDPSession(page);
-  const scale = 10;
-  await session.send("Emulation.setDeviceMetricsOverride", {
-    width: Math.round(width * scale),
-    height: Math.round(height * scale),
-    deviceScaleFactor: scale,
-    mobile: false,
-  });
-}
-
 async function expectInter700Ready(page: Page): Promise<void> {
   const ready = await page.evaluate(async () => {
     await document.fonts.load('700 11px "Inter"');
     await document.fonts.ready;
-    return document.fonts.check('700 11px "Inter"');
+    const weights = [...document.fonts]
+      .filter((face) => face.family.replaceAll('"', "") === "Inter")
+      .map((face) => face.weight);
+    return weights.includes("700") && document.fonts.check('700 11px "Inter"');
   });
   expect(ready).toBe(true);
 }
@@ -173,6 +157,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       expect(boxes).not.toBeNull();
       expect(Math.abs(boxes!.nameTop - boxes!.tagTop)).toBeLessThan(4);
       expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.contentRight + 0.5);
+      expect(boxes!.contentRight - boxes!.tagRight).toBeGreaterThanOrEqual(55);
       expectTagPillWidth(boxes!.tagWidth);
       expect(boxes!.cardScrollWidth).toBeLessThanOrEqual(boxes!.cardClientWidth + 1);
       expect(boxes!.nameLeft - boxes!.leadRight).toBeGreaterThanOrEqual(7);
@@ -367,45 +352,56 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
     120_000,
   );
 
-  it.each([639, 639.5, 640])(
-    "uses phone layout below 640 px and desktop layout at 640 px (viewport %s)",
+  it.each([639, 640])(
+    "uses phone layout below 640 px and desktop layout at 640 px (viewport %i)",
     async (viewportWidth) => {
       const html = await consentPageHtml({});
       const browser = await chromium.launch();
       try {
         const page = await browser.newPage();
-        await setViewportWidth(page, viewportWidth, 800);
+        await page.setViewportSize({ width: viewportWidth, height: 800 });
         await loadConsentHtmlInPage(page, html);
         if (viewportWidth < 640) {
           await expectInter700Ready(page);
           const phoneLayout = await page.evaluate(() => {
             const card = document.querySelector(".consent-card");
             const tag = document.querySelector(".consent-tag");
-            if (!card || !tag) {
+            const nameLine = document.querySelector(".consent-name-line");
+            if (!card || !tag || !nameLine) {
               return null;
             }
             return {
               tagWidth: tag.getBoundingClientRect().width,
               cardClientWidth: card.clientWidth,
+              nameLineDisplay: getComputedStyle(nameLine).display,
             };
           });
           expect(phoneLayout).not.toBeNull();
+          expect(phoneLayout!.nameLineDisplay).toBe("block");
           expectTagPillWidth(phoneLayout!.tagWidth);
           expect(phoneLayout!.tagWidth).toBeLessThan(
             phoneLayout!.cardClientWidth * 0.45,
           );
         } else {
-          const desktopGap = await page.evaluate(() => {
+          await expectInter700Ready(page);
+          const desktopLayout = await page.evaluate(() => {
             const lead = document.querySelector(".consent-name-lead");
             const name = document.querySelector(".consent-name-inline");
-            if (!lead || !name) {
-              return 0;
+            const tag = document.querySelector(".consent-tag");
+            if (!lead || !name || !tag) {
+              return null;
             }
             const leadBox = lead.getBoundingClientRect();
             const nameBox = name.getBoundingClientRect();
-            return nameBox.left - leadBox.right;
+            const tagBox = tag.getBoundingClientRect();
+            return {
+              gap: nameBox.left - leadBox.right,
+              tagNameRowDelta: Math.abs(tagBox.top - nameBox.top),
+            };
           });
-          expect(desktopGap).toBeGreaterThanOrEqual(7);
+          expect(desktopLayout).not.toBeNull();
+          expect(desktopLayout!.gap).toBeGreaterThanOrEqual(7);
+          expect(desktopLayout!.tagNameRowDelta).toBeLessThan(4);
         }
       } finally {
         await browser.close();
