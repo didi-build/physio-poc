@@ -986,7 +986,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0006_mcp_oauth.sql
       verified: true
-      notes: Better Auth OAuth consent rows; cleared after each Allow so consent is never skipped (DIDI-1043)
+      notes: Better Auth OAuth consent rows; cleared after each Allow so Better Auth does not skip the Physio consent UI (DIDI-1043); remembered skip uses physio_mcp_practitioner_consent (DIDI-1126)
     columns:
       id:
         whose: operational
@@ -1141,7 +1141,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0006_mcp_oauth.sql
       verified: true
-      notes: Allow audit rows; not used to skip consent (DIDI-1043)
+      notes: Remembered-consent audit and skip key (practitioner_id, client_id, redirect_uri, scope set) per DIDI-1126
     columns:
       id:
         whose: operational

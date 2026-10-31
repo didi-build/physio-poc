@@ -14,6 +14,7 @@ import { PHYSIO_MCP_OAUTH_SCOPES } from "../../src/adapters/node/physio-mcp-oaut
 import { createNodeAppDependencies } from "../../src/adapters/node/create-node-app-dependencies.js";
 import { BetterAuthPort } from "../../src/adapters/node/better-auth-port.js";
 import type { PhysioMcpConsentClock } from "../../src/auth/mcp-oauth/consent-routes.js";
+import { extractRedirectTargetFromConsentHtml } from "../../src/auth/mcp-oauth/consent-redirect-from-html.js";
 import {
   PHYSIO_MCP_CONSENT_CSRF_COOKIE,
   PHYSIO_MCP_CONSENT_CSRF_HEADER,
@@ -339,18 +340,25 @@ export async function allowConsent(
     jar,
     { method: "POST" },
   );
-  expect(response.status).toBe(302);
-  const location = response.headers.get("location");
-  expect(location).toBeTruthy();
-  return new URL(location!);
+  return redirectUrlFromConsentActionResponse(response);
 }
 
 export async function denyConsent(deps: AppDependencies, jar: CookieJar): Promise<URL> {
   const response = await postConsentDeny(deps, jar);
-  expect(response.status).toBe(302);
-  const location = response.headers.get("location");
-  expect(location).toBeTruthy();
-  return new URL(location!);
+  return redirectUrlFromConsentActionResponse(response);
+}
+
+async function redirectUrlFromConsentActionResponse(response: Response): Promise<URL> {
+  if (response.status === 302) {
+    const location = response.headers.get("location");
+    expect(location).toBeTruthy();
+    return new URL(location!);
+  }
+  expect(response.status).toBe(200);
+  const html = await response.text();
+  const target = extractRedirectTargetFromConsentHtml(html);
+  expect(target).toBeTruthy();
+  return new URL(target!);
 }
 
 export type ConsentPostOptions = {
@@ -421,17 +429,25 @@ export function mcpOAuthExactOriginAttackOrigins(base = MCP_OAUTH_TEST_BASE): st
   ];
 }
 
-export function authorizationCodeFromConsentRedirect(
+export async function authorizationCodeFromConsentRedirect(
   response: Response,
-): string | null {
-  if (response.status !== 302) {
-    return null;
+): Promise<string | null> {
+  if (response.status === 302) {
+    const location = response.headers.get("location");
+    if (!location) {
+      return null;
+    }
+    return new URL(location, MCP_OAUTH_TEST_BASE).searchParams.get("code");
   }
-  const location = response.headers.get("location");
-  if (!location) {
-    return null;
+  if (response.status === 200) {
+    const html = await response.text();
+    const target = extractRedirectTargetFromConsentHtml(html);
+    if (!target) {
+      return null;
+    }
+    return new URL(target, MCP_OAUTH_TEST_BASE).searchParams.get("code");
   }
-  return new URL(location, MCP_OAUTH_TEST_BASE).searchParams.get("code");
+  return null;
 }
 
 export async function countStoredAuthorizationCodes(
