@@ -47,6 +47,7 @@ import {
   ShareLinksRepository,
   type ProgramRecord,
   type ProgramRow,
+  type ShareLinkRecord,
 } from "../../storage/repositories/programs.js";
 import { TypeDefaultsRepository } from "../../storage/repositories/type-defaults.js";
 import {
@@ -75,6 +76,7 @@ import type {
   ProgramSearchResult,
   RoutineProgramSource,
   RoutineSentProgramStats,
+  ShareLinkStatus,
 } from "./types.js";
 
 export class ProgramBuilderServiceError extends Error {
@@ -202,6 +204,28 @@ export class ProgramBuilderService {
     return this.buildProgramView(practitionerId, validatedProgramId, {
       allowDeleted: true,
     });
+  }
+
+  async getProgramByCode(
+    practitionerId: string,
+    programCode: string,
+  ): Promise<ProgramBuilderView> {
+    await this.requirePractitioner(practitionerId);
+    let normalized: string;
+    try {
+      normalized = programCodeDomain.trimUppercaseProgramCode(programCode);
+    } catch {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    if (!programCodeDomain.isCanonicalProgramCodeFormat(normalized)) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    const program = await this.programs.findByExactCode(normalized);
+    if (!program) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+    this.assertProgramAccess(practitionerId, program);
+    return this.buildProgramView(practitionerId, program.id);
   }
 
   async buildLinkApprovedPlaceholderStatements(
@@ -526,12 +550,82 @@ export class ProgramBuilderService {
       prescriptionType?: PrescriptionType;
       params?: ExerciseParams;
       note?: string | null;
+      exerciseVersionId?: string;
     },
   ): Promise<ProgramMutationResult> {
     const validatedProgramId = this.parseOpaqueId(programId, "Program id");
     const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
     await this.requireOwnedProgram(practitionerId, validatedProgramId);
     const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
+    if (input.exerciseVersionId !== undefined) {
+      if (row.exercise_request_id) {
+        throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+      }
+      const pinnedVersionId = this.parseOpaqueId(
+        input.exerciseVersionId,
+        "Exercise version id",
+      );
+      const version = await this.libraryRead.getApprovedVersionById(pinnedVersionId);
+      if (!version || version.exercise_id !== row.exercise_id) {
+        throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+      }
+      const targetPrescriptionType = input.prescriptionType
+        ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
+        : row.prescription_type;
+      this.assertPrescriptionAllowed(version, targetPrescriptionType);
+      const prescriptionTypeChanging =
+        input.prescriptionType !== undefined &&
+        targetPrescriptionType !== row.prescription_type;
+      let params = parseExerciseParamsJson(row.params_json);
+      if (prescriptionTypeChanging) {
+        params = filterExerciseParamsForPrescriptionType(
+          params,
+          targetPrescriptionType,
+        );
+      }
+      if (input.params) {
+        try {
+          params = validateExerciseParamsForPrescriptionType(
+            input.params,
+            targetPrescriptionType,
+          );
+        } catch (err) {
+          this.mapParamError(err);
+        }
+      }
+      const myRow = await this.practitionerExercises.find(
+        practitionerId,
+        row.exercise_id!,
+      );
+      const overrides = myRow
+        ? myRow.textOverrides
+        : parsePractitionerTextOverrides("{}");
+      const textSnapshot = buildProgramRowTextSnapshot({
+        version,
+        overrides,
+        prescriptionType: targetPrescriptionType,
+      });
+      try {
+        await this.rows.replaceRow({
+          id: row.id,
+          programId: validatedProgramId,
+          position: row.position,
+          exerciseId: row.exercise_id,
+          exerciseVersionId: version.id,
+          prescriptionType: targetPrescriptionType,
+          params,
+          textSnapshot,
+          note: input.note !== undefined ? input.note : row.note,
+          draftUpdatedAt: this.now(),
+        });
+        await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
+      } catch (err) {
+        this.mapRowWriteError(err);
+      }
+      return {
+        program: await this.buildProgramView(practitionerId, validatedProgramId),
+      };
+    }
     const targetPrescriptionType = input.prescriptionType
       ? this.parsePrescriptionTypeLiteral(input.prescriptionType)
       : row.prescription_type;
@@ -841,6 +935,8 @@ export class ProgramBuilderService {
     const openLink = program.deleted_at
       ? null
       : await this.links.findOpenByProgramId(programId);
+    const openShareLink = openLink !== null;
+    const latestLink = await this.links.findLatestByProgramId(programId);
     const routineOrigin = await this.buildRoutineOriginView(program);
     return {
       program_id: program.id,
@@ -853,7 +949,12 @@ export class ProgramBuilderService {
       exercise_count: builderRows.length,
       library_updates_to_review: libraryUpdates,
       rows: builderRows,
-      open_share_link: openLink !== null,
+      open_share_link: openShareLink,
+      share_link_status: computeShareLinkStatus({
+        latestLink,
+        requestTimeIso: this.now(),
+      }),
+      last_sent_at: program.published_at,
       deleted_at: program.deleted_at,
       routine_origin: routineOrigin,
     };
@@ -874,6 +975,8 @@ export class ProgramBuilderService {
       draft_updated_at: view.draft_updated_at,
       auto_save_status: view.auto_save_status,
       library_updates_to_review: view.library_updates_to_review,
+      share_link_status: view.share_link_status,
+      last_sent_at: view.last_sent_at,
       deleted_at: view.deleted_at,
       routine_origin: view.routine_origin,
     };
@@ -1512,6 +1615,30 @@ export class ProgramBuilderService {
     }
     throw err;
   }
+}
+
+export function computeShareLinkStatus(input: {
+  latestLink: ShareLinkRecord | null;
+  requestTimeIso: string;
+}): ShareLinkStatus {
+  if (!input.latestLink) {
+    return "none";
+  }
+  if (input.latestLink.closed_at !== null) {
+    return "closed";
+  }
+  if (input.latestLink.expires_at !== null) {
+    const expiresMs = Date.parse(input.latestLink.expires_at);
+    const requestMs = Date.parse(input.requestTimeIso);
+    if (
+      !Number.isNaN(expiresMs) &&
+      !Number.isNaN(requestMs) &&
+      expiresMs <= requestMs
+    ) {
+      return "closed";
+    }
+  }
+  return "open";
 }
 
 export function computeAutoSaveStatus(program: ProgramRecord): ProgramAutoSaveStatus {
