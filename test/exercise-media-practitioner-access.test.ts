@@ -255,6 +255,137 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
     return { practA, practB, approvedVersionId };
   }
 
+  async function seedApprovedByAOwnedByBWithPublicMedia(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  ): Promise<{ practA: string; practB: string; approvedVersionId: string }> {
+    const practA = await seedPractitioner(
+      storage,
+      testOpaqueEntityId("media-approver-a"),
+      "a@example.com",
+    );
+    const practB = await seedPractitioner(
+      storage,
+      testOpaqueEntityId("media-creator-b"),
+      "b@example.com",
+    );
+    const exerciseId = await seedExercise(storage, practB);
+    const approvedVersionId = testOpaqueEntityId("media-approved-by-a");
+    const mediaSetId = testOpaqueEntityId("media-approved-by-a-set");
+    await storage.run(VERSION_INSERT_SQL, [
+      ...versionInsertBindings({
+        id: approvedVersionId,
+        exercise_id: exerciseId,
+        status: "approved",
+        approved_by: practA,
+        approved_at: TS,
+        title: "Approver is not owner",
+        starting_position: "Supine",
+      }),
+    ]);
+    await storage.run(
+      `INSERT INTO exercise_media_sets (
+        id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        mediaSetId,
+        `media-sets/${mediaSetId}/start.png`,
+        `media-sets/${mediaSetId}/end.png`,
+        null,
+        "public",
+        TS,
+      ],
+    );
+    await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+      mediaSetId,
+      approvedVersionId,
+    ]);
+    return { practA, practB, approvedVersionId };
+  }
+
+  it("POST generate: exercise owner B succeeds on B approved version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practB, approvedVersionId } =
+        await seedPractitionerBApprovedWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practB,
+        email: "b@example.com",
+        displayName: "B",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const url = `${BASE}/api/practitioners/${practB}/exercise-versions/${approvedVersionId}/media/generate`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(201);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST regenerate: exercise owner B succeeds on B approved version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practB, approvedVersionId } =
+        await seedPractitionerBApprovedWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practB,
+        email: "b@example.com",
+        displayName: "B",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const url = `${BASE}/api/practitioners/${practB}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ scope: "both", note: null }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET internal serve: exercise owner B succeeds on B approved version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practB, approvedVersionId } =
+        await seedPractitionerBApprovedWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practB,
+        email: "b@example.com",
+        displayName: "B",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const response = await handleRequest(
+        new Request(
+          `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
+          { headers: { cookie } },
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { mediaSetId?: string };
+      expect(body.mediaSetId).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
   it("POST generate: practitioner A on B approved matches missing version response", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -381,6 +512,165 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
       );
       expect(response.status).toBe(200);
       const body = (await response.json()) as { mediaSetId?: string };
+      expect(body.mediaSetId).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST generate: approver A on B-owned approved matches missing version response", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practA, approvedVersionId } =
+        await seedApprovedByAOwnedByBWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practA,
+        email: "a@example.com",
+        displayName: "A",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/generate`;
+      const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/generate`;
+      const init = (url: string) =>
+        mutatingAppApiRequestInit(url, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+      const missing = await responseSnapshot(
+        await handleRequest(new Request(missingUrl, init(missingUrl)), deps),
+      );
+      const foreign = await responseSnapshot(
+        await handleRequest(new Request(foreignUrl, init(foreignUrl)), deps),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST regenerate: approver A on B-owned approved matches missing version response", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practA, approvedVersionId } =
+        await seedApprovedByAOwnedByBWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practA,
+        email: "a@example.com",
+        displayName: "A",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const body = JSON.stringify({ scope: "both", note: null });
+      const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/regenerate`;
+      const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const init = (url: string) =>
+        mutatingAppApiRequestInit(url, {
+          method: "POST",
+          headers: { cookie, "content-type": "application/json" },
+          body,
+        });
+      const missing = await responseSnapshot(
+        await handleRequest(new Request(missingUrl, init(missingUrl)), deps),
+      );
+      const foreign = await responseSnapshot(
+        await handleRequest(new Request(foreignUrl, init(foreignUrl)), deps),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET internal serve: approver A on B-owned approved matches missing version response", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practA, approvedVersionId } =
+        await seedApprovedByAOwnedByBWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practA,
+        email: "a@example.com",
+        displayName: "A",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const missing = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=internal`,
+            { headers: { cookie } },
+          ),
+          deps,
+        ),
+      );
+      const foreign = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
+            { headers: { cookie } },
+          ),
+          deps,
+        ),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(foreign).toEqual(missing);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("owner B succeeds on generate, regenerate and internal when approver is A", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practB, approvedVersionId } =
+        await seedApprovedByAOwnedByBWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practB,
+        email: "b@example.com",
+        displayName: "B",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const apiB = `${BASE}/api/practitioners/${practB}`;
+      const generateUrl = `${apiB}/exercise-versions/${approvedVersionId}/media/generate`;
+      const generateResponse = await handleRequest(
+        new Request(
+          generateUrl,
+          mutatingAppApiRequestInit(generateUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(generateResponse.status).toBe(201);
+      const regenerateUrl = `${apiB}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const regenerateResponse = await handleRequest(
+        new Request(
+          regenerateUrl,
+          mutatingAppApiRequestInit(regenerateUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ scope: "both", note: null }),
+          }),
+        ),
+        deps,
+      );
+      expect(regenerateResponse.status).toBe(200);
+      const internalResponse = await handleRequest(
+        new Request(
+          `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
+          { headers: { cookie } },
+        ),
+        deps,
+      );
+      expect(internalResponse.status).toBe(200);
+      const body = (await internalResponse.json()) as { mediaSetId?: string };
       expect(body.mediaSetId).toBeTruthy();
     } finally {
       storage.close();
