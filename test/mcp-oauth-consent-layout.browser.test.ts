@@ -105,7 +105,11 @@ function expectTagPillWidth(width: number): void {
   expect(width).toBeLessThan(117);
 }
 
-async function setViewportWidth(page: Page, width: number, height: number): Promise<void> {
+async function setViewportWidth(
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
   if (Number.isInteger(width)) {
     await page.setViewportSize({ width, height });
     return;
@@ -366,45 +370,47 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
   it.each([639, 639.5, 640])(
     "uses phone layout below 640 px and desktop layout at 640 px (viewport %s)",
     async (viewportWidth) => {
-    const html = await consentPageHtml({});
-    const browser = await chromium.launch();
-    try {
-      const page = await browser.newPage();
-      await setViewportWidth(page, viewportWidth, 800);
-      await loadConsentHtmlInPage(page, html);
-      if (viewportWidth < 640) {
-        await expectInter700Ready(page);
-        const phoneLayout = await page.evaluate(() => {
-          const card = document.querySelector(".consent-card");
-          const tag = document.querySelector(".consent-tag");
-          if (!card || !tag) {
-            return null;
-          }
-          return {
-            tagWidth: tag.getBoundingClientRect().width,
-            cardClientWidth: card.clientWidth,
-          };
-        });
-        expect(phoneLayout).not.toBeNull();
-        expectTagPillWidth(phoneLayout!.tagWidth);
-        expect(phoneLayout!.tagWidth).toBeLessThan(phoneLayout!.cardClientWidth * 0.45);
-      } else {
-        const desktopGap = await page.evaluate(() => {
-          const lead = document.querySelector(".consent-name-lead");
-          const name = document.querySelector(".consent-name-inline");
-          if (!lead || !name) {
-            return 0;
-          }
-          const leadBox = lead.getBoundingClientRect();
-          const nameBox = name.getBoundingClientRect();
-          return nameBox.left - leadBox.right;
-        });
-        expect(desktopGap).toBeGreaterThanOrEqual(7);
+      const html = await consentPageHtml({});
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await setViewportWidth(page, viewportWidth, 800);
+        await loadConsentHtmlInPage(page, html);
+        if (viewportWidth < 640) {
+          await expectInter700Ready(page);
+          const phoneLayout = await page.evaluate(() => {
+            const card = document.querySelector(".consent-card");
+            const tag = document.querySelector(".consent-tag");
+            if (!card || !tag) {
+              return null;
+            }
+            return {
+              tagWidth: tag.getBoundingClientRect().width,
+              cardClientWidth: card.clientWidth,
+            };
+          });
+          expect(phoneLayout).not.toBeNull();
+          expectTagPillWidth(phoneLayout!.tagWidth);
+          expect(phoneLayout!.tagWidth).toBeLessThan(
+            phoneLayout!.cardClientWidth * 0.45,
+          );
+        } else {
+          const desktopGap = await page.evaluate(() => {
+            const lead = document.querySelector(".consent-name-lead");
+            const name = document.querySelector(".consent-name-inline");
+            if (!lead || !name) {
+              return 0;
+            }
+            const leadBox = lead.getBoundingClientRect();
+            const nameBox = name.getBoundingClientRect();
+            return nameBox.left - leadBox.right;
+          });
+          expect(desktopGap).toBeGreaterThanOrEqual(7);
+        }
+      } finally {
+        await browser.close();
       }
-    } finally {
-      await browser.close();
-    }
-  },
-  120_000,
+    },
+    120_000,
   );
 });
