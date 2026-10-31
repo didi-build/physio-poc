@@ -2,9 +2,13 @@
 
 QA mutation and guard coverage notes for `src/storage/repositories/routines.ts`, routine validators in `src/domain/exercise-free-text.ts`, program origin updates in `src/storage/repositories/programs.ts`, and migration `0005_routine_data_model.sql`.
 
-## Known gaps (not fixed in this PR)
+## Atomic writes (DIDI-1098)
 
-- **Partial `createDraft` writes:** If the `routines` insert succeeds and the `routine_versions` insert fails (for example duplicate `draftVersionId`), the database can hold a routine row with no draft version. That orphan cannot be published, edited, or retried with the same ids (`publishDraft` and `replaceDraftRow` return `Draft version not found`). Atomic multi-statement writes for `createDraft` (alongside publish, save version, and save copy) are tracked in **DIDI-1098**; the transactional port work is **DIDI-1101**. Tests live in `test/routine-data-model-qa-round2.test.ts`.
+`createDraft`, `publishDraft`, `savePublishedVersion` and `saveFrozenCopy` each submit one guarded `SqlStoragePort.batch()`. A guard that matches too few rows rolls the whole batch back and surfaces as `RoutineRepositoryError` with `code: "stale_write"` (the `SqlBatchGuardError` is kept as `cause`). Tests live in `test/routine-batch-didi-1098-atomicity.test.ts`.
+
+- **Frozen copies pin the current published version.** `saveFrozenCopy` only succeeds when `sourceRoutineVersionId` is the routine's current `published_version`; copying an older version fails with `stale_write` and writes nothing.
+- **`InMemorySqlStorage` limits:** it cannot run `INSERT ... SELECT` or several of the read queries, so repository-path atomicity tests run on better-sqlite3 and the D1 fake only.
+- **Still non-atomic:** `updateDraftMetadata` and `replaceDraftRow` make two writes each (not covered by DIDI-1098).
 
 ## Unreachable post-insert re-reads (mutation survivors by design)
 
@@ -15,9 +19,9 @@ These branches re-load a row that the statement immediately before wrote with th
 - `routines.ts:460` after `savePublishedVersion` insert path
 - `routines.ts:656` after `saveFrozenCopy` insert
 
-## Formerly claimed unreachable (now tested)
+## Now unreachable through the API
 
-- **`routines.ts:358` and `:548`:** `publishDraft` and `replaceDraftRow` when no draft version exists. Reachable after a partial `createDraft` write; covered by `test/routine-data-model-qa-round2.test.ts`.
+- **`routines.ts` `publishDraft` and `replaceDraftRow` "Draft version not found" branches:** these were reachable only after a partial `createDraft` write. Since `createDraft` is atomic (DIDI-1098), no test reaches them and they are defensive guards.
 
 ## Mutation targets killed by tests (representative)
 
