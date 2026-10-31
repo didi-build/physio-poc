@@ -35,8 +35,8 @@ const FIXTURE_SECRET_VALUES = {
   PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
 };
 
-const FIXTURE_BETTER_AUTH_SECRET_31_CHARS = "fixture-better-auth-secret-31c";
-const FIXTURE_BETTER_AUTH_SECRET_32_CHARS = "fixture-better-auth-secret-32ch";
+const FIXTURE_BETTER_AUTH_SECRET_31_CHARS = "fixture-better-auth-secret-31ch";
+const FIXTURE_BETTER_AUTH_SECRET_32_CHARS = "fixture-better-auth-secret-32chx";
 
 function assertStderrNamesVariablesOnly(stderr: string, forbiddenSubstrings: string[]) {
   for (const fragment of forbiddenSubstrings) {
