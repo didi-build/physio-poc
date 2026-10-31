@@ -221,6 +221,49 @@ function addRegexRouteKeys(
   }
 }
 
+function isExerciseLibraryPathPredicate(regexFragment: string): boolean {
+  return (
+    regexFragment.includes("approved\\/search|exercises") &&
+    regexFragment.includes("my-exercises")
+  );
+}
+
+function addPractitionerPathTestPredicates(
+  source: string,
+  relPath: string,
+  skipRanges: { start: number; end: number }[],
+  issues: string[],
+  keys: Set<string>,
+  covered: { start: number; end: number }[],
+): void {
+  for (const hit of source.matchAll(
+    /\/\^\\\/api\\\/practitioners\\\/[\s\S]*?\$\/\.test\(\s*[\s\S]*?\)/g,
+  )) {
+    const index = hit.index ?? 0;
+    if (inExcludedRange(index, skipRanges)) {
+      continue;
+    }
+    const fragment = hit[0];
+    covered.push({ start: index, end: index + fragment.length });
+    if (isExerciseLibraryPathPredicate(fragment)) {
+      for (const key of keysForLibraryPathPredicate()) {
+        keys.add(key);
+      }
+      continue;
+    }
+    issues.push(
+      `${relPath}: unmapped practitioner path .test() regex (not exercise-library predicate)`,
+    );
+  }
+}
+
+function materializeTemplatePractitionerPrefix(templateBody: string): string | null {
+  if (templateBody.includes("${")) {
+    return templateBody.replace(/\$\{[^}]+\}/g, EXAMPLE_PRACTITIONER_ID);
+  }
+  return templateBody;
+}
+
 function addStartsWithEndsWithKeys(
   source: string,
   relPath: string,
@@ -228,23 +271,62 @@ function addStartsWithEndsWithKeys(
   keys: Set<string>,
   covered: { start: number; end: number }[],
 ): void {
-  for (const hit of source.matchAll(
+  const guardPatterns = [
     /if\s*\(\s*path\.startsWith\(([^)]*\/api\/practitioners\/[^)]*)\)([\s\S]{0,500}?)\)\s*\{/g,
-  )) {
-    const block = hit[0];
-    const index = hit.index ?? 0;
-    covered.push({ start: index, end: index + block.length });
-    const methods = [...block.matchAll(/request\.method\s*===\s*"([^"]+)"/g)].map(
-      (m) => m[1] ?? "",
-    );
-    if (methods.length === 0) {
-      issues.push(`${relPath}: startsWith practitioner path guard has no HTTP method`);
-      continue;
-    }
-    const suffix = block.match(/path\.endsWith\(["'`]([^"'`]+)["'`]\)/)?.[1] ?? "";
-    const samplePath = `/api/practitioners/${EXAMPLE_PRACTITIONER_ID}${suffix}`;
-    for (const method of methods) {
-      keys.add(`${method} ${samplePath}`);
+    /if\s*\(\s*path\.startsWith\(\s*`([^`]*\/api\/practitioners\/[^`]*)`\s*\)([\s\S]{0,500}?)\)\s*\{/g,
+  ];
+  for (const guardPattern of guardPatterns) {
+    for (const hit of source.matchAll(guardPattern)) {
+      const block = hit[0];
+      const index = hit.index ?? 0;
+      covered.push({ start: index, end: index + block.length });
+      const methods = [...block.matchAll(/request\.method\s*===\s*"([^"]+)"/g)].map(
+        (m) => m[1] ?? "",
+      );
+      if (methods.length === 0) {
+        issues.push(
+          `${relPath}: startsWith practitioner path guard has no HTTP method`,
+        );
+        continue;
+      }
+      const prefixRaw = (hit[1] ?? "").trim();
+      let samplePrefix: string;
+      if (prefixRaw.startsWith("`")) {
+        const materialized = materializeTemplatePractitionerPrefix(
+          prefixRaw.slice(1, -1),
+        );
+        if (!materialized) {
+          issues.push(`${relPath}: could not materialize startsWith template prefix`);
+          continue;
+        }
+        samplePrefix = materialized.replace(/\/$/, "");
+      } else {
+        const literal = prefixRaw.replace(/^["']|["']$/g, "");
+        samplePrefix = literal.includes(EXAMPLE_PRACTITIONER_ID)
+          ? literal.replace(/\/$/, "")
+          : `${literal.replace(/\/$/, "")}/${EXAMPLE_PRACTITIONER_ID}`;
+      }
+      const suffix = block.match(/path\.endsWith\(["'`]([^"'`]+)["'`]\)/)?.[1] ?? "";
+      const samplePath = `${samplePrefix}${suffix}`.replace(/\/\/+/g, "/");
+      if (!samplePath.startsWith("/api/practitioners/")) {
+        issues.push(
+          `${relPath}: startsWith guard did not materialize to a practitioner path`,
+        );
+        continue;
+      }
+      const expectedKeys = new Set(
+        PRACTITIONER_PATH_ROUTE_SAMPLES.map(practitionerPathRouteSampleKey),
+      );
+      for (const method of methods) {
+        const key = `${method} ${samplePath}`;
+        if (!expectedKeys.has(key)) {
+          issues.push(
+            `${relPath}: startsWith/endsWith guard maps to unregistered route ${key}`,
+          );
+          continue;
+        }
+        keys.add(key);
+      }
     }
   }
 }
@@ -292,18 +374,7 @@ function analyzeFile(filePath: string, issues: string[]): Set<string> {
   const keys = new Set<string>();
   const covered: { start: number; end: number }[] = [];
 
-  for (const hit of source.matchAll(
-    /\/\^\\\/api\\\/practitioners\\\/[\s\S]*?\$\/\.test\(\s*[\s\S]*?\)/g,
-  )) {
-    const index = hit.index ?? 0;
-    if (inExcludedRange(index, skipRanges)) {
-      continue;
-    }
-    covered.push({ start: index, end: index + hit[0].length });
-    for (const key of keysForLibraryPathPredicate()) {
-      keys.add(key);
-    }
-  }
+  addPractitionerPathTestPredicates(source, relPath, skipRanges, issues, keys, covered);
 
   for (const route of practitionerRouteRegexesInSource(source)) {
     if (inExcludedRange(route.index, skipRanges)) {
