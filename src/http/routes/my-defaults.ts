@@ -8,7 +8,8 @@ import {
   MyDefaultsServiceError,
 } from "../../services/my-defaults/index.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
-import { jsonUnauthorized } from "../responses.js";
+import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
+import { requirePractitioner } from "../require-practitioner.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -30,28 +31,6 @@ function errorResponse(error: unknown): Response {
     );
   }
   throw error;
-}
-
-function practitionerIdFromSession(
-  sessionPractitioner: PractitionerSession | null | undefined,
-): string | Response {
-  if (!sessionPractitioner) {
-    return jsonUnauthorized();
-  }
-  return sessionPractitioner.practitionerId;
-}
-
-function rejectBodyPractitionerId(body: Record<string, unknown>): Response | null {
-  if (
-    Object.prototype.hasOwnProperty.call(body, "practitionerId") ||
-    Object.prototype.hasOwnProperty.call(body, "practitioner_id")
-  ) {
-    return Response.json(
-      { error: "invalid_input", message: "invalid_input" },
-      { status: 400, headers: JSON_HEADERS },
-    );
-  }
-  return null;
 }
 
 async function readJsonObjectBody(
@@ -107,7 +86,7 @@ export async function handleMyDefaultsRequest(
     return null;
   }
 
-  const practitionerId = practitionerIdFromSession(options.sessionPractitioner);
+  const practitionerId = requirePractitioner(options.sessionPractitioner);
   if (practitionerId instanceof Response) {
     return practitionerId;
   }

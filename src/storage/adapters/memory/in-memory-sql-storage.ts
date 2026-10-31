@@ -4,6 +4,7 @@ import type {
   SqlStoragePort,
   SqlValue,
 } from "../../ports/sql-storage.js";
+import { SqlDuplicateIdError } from "../../errors/sql-duplicate-id-error.js";
 
 type Row = Record<string, SqlValue>;
 
@@ -25,13 +26,13 @@ function copyRow(row: Row): Row {
 function parseSelectWhere(
   normalized: string,
 ): { tableName: string; column: string; limitOne: boolean } | null {
-  const withLimit = /^SELECT \* FROM (\w+) WHERE (\w+) = \?(?: LIMIT 1)?$/i.exec(
+  const match = /^SELECT .+ FROM (\w+) WHERE (\w+) = \?(?: LIMIT 1)?$/i.exec(
     normalized,
   );
-  if (withLimit) {
+  if (match) {
     return {
-      tableName: withLimit[1],
-      column: withLimit[2],
+      tableName: match[1],
+      column: match[2],
       limitOne: /LIMIT 1$/i.test(normalized),
     };
   }
@@ -83,6 +84,9 @@ export class InMemorySqlStorage implements SqlStoragePort {
         if (idValue !== null && idValue !== undefined) {
           const duplicate = table.some((existing) => existing.id === idValue);
           if (duplicate) {
+            if (tableName === "programs") {
+              throw new SqlDuplicateIdError(tableName, String(idValue));
+            }
             throw new Error(`Duplicate id in ${tableName}: ${String(idValue)}`);
           }
         }
