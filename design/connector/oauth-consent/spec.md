@@ -59,7 +59,7 @@ Quoted from CTO's DIDI-1125 comment 44795ea9, the DIDI-594 locked block, and app
 | 7 | 2:35 AM | "Keep the Go to Didi Physio button" | The invalid-client and expired pages keep "Go to Didi Physio". |
 | 8 | 2:50 AM | "Approve the consent page as drawn" | Covers the placement of the patient-details line and the safety line between the It can't list and the buttons. |
 | 9 | 2:52 AM | "Keep: Go back to the app you were connecting and start again." | The expired-request next-step line stays as in option C. |
-| 10 | 2:53 AM | "Approve the tab title: Connect an app · Didi Physio" | Browser tab title for the consent, invalid-client and expired pages. |
+| 10 | 2:53 AM | "Approve the tab title: Connect an app · Didi Physio" | Browser tab title for the consent, invalid-client, expired, After Allow and After Deny pages. |
 
 Also applied (not Diadem's Oct 31 words):
 - No gallery component. physio-poc has no gallery step (Diadem, Oct 29, 2026, 2:59 PM ET: "for the physio-poc gallery components and preview. its ok; it shouldnt block the work. the reason is because this is a poc. i think once the whole system is set up we will do a redesign"). Recorded as a CTO decision in comment 44795ea9.
@@ -162,7 +162,7 @@ Browser tab title: "Connect an app · Didi Physio" (Diadem, 2:53 AM).
 ## Layout
 
 - Inside the existing sign-in chrome (`src/ui/styles/sign-in.css`): slate-50 page, centred white card, max width 24rem, 2rem padding, 1rem radius, faint shadow, teal pill buttons. 390 px first.
-- Consent (from C): wordmark top left; "Request from {host}" (host in bold mono) above the heading; name line with tag; the two lists, each with a small uppercase heading; Deny and Allow in a two-column row (Deny outlined on the left, Allow teal on the right); account line centred below.
+- Consent (from C): wordmark top left; "Request from {host}" ({host} in bold in the regular body font) above the heading; name line with tag; the two lists, each with a small uppercase heading; Deny and Allow in a two-column row (Deny outlined on the left, Allow teal on the right); account line centred below.
 - Diadem's additions (approved 2:50 AM): the patient details line and A's safety line sit between the "It can't" list and the buttons, in that order, in small slate text as in A. "Not you? Sign out" is a teal text link on its own line under "Signed in as {email}", with a 44 px tap target.
 - Invalid and expired (from C): everything centred; 56 px round icon (amber for invalid, slate for expired); next step in a grey rounded box; full-width "Go to Didi Physio".
 - Sign-in: the same wordmark as the consent page at the top of the card, above "Sign in with Google".
@@ -192,7 +192,7 @@ Browser tab title: "Connect an app · Didi Physio" (Diadem, 2:53 AM).
 1. **After Sign out** (CTO, DIDI-1126): where does Kojo land? **Resolved (CTO, DIDI-1126):** sign-out ends the Google session only; the pending request survives keyed by its own id; the user returns to sign-in with the same request, then consent for whichever allowlisted account signs in, or the expired page if the request is past 10 minutes or already used; non-allowlisted accounts never reach consent (see Behaviour).
 2. **Expired wording** (Diadem): Option C says "Go back to the app you were connecting and start again." **Resolved (Diadem, 2:52 AM):** keep that line.
 3. **Placement** (Diadem): the patient details line and the safety line between the lists and the buttons. **Resolved (Diadem, 2:50 AM):** approve the consent page as drawn (see Layout).
-4. **Browser tab title:** **Resolved (Diadem, 2:53 AM):** "Connect an app · Didi Physio" for the consent, invalid-client and expired pages.
+4. **Browser tab title:** **Resolved (Diadem, 2:53 AM):** "Connect an app · Didi Physio" for the consent, invalid-client, expired, After Allow and After Deny pages.
 
 ## Locked Product direction (DIDI-594, quoted)
 
@@ -258,7 +258,7 @@ Every user-facing string, in screen order. `{...}` is a runtime value.
 ### Existing, unchanged
 - This Google account isn't allowed
 
-### Browser tab title (consent, invalid client, expired request)
+### Browser tab title (consent, invalid client, expired request, After Allow, After Deny)
 - Connect an app · Didi Physio
 
 ## Changes
