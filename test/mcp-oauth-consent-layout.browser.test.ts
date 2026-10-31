@@ -23,6 +23,8 @@ const LONG_CLIENT_NAME_DISPLAY = sanitizeOAuthClientDisplayName(
   LONG_CLIENT_NAME_RAW,
   "chatgpt.com",
 );
+const LONG_NO_SPACE_NAME =
+  "ChatGPTConnectorForClinicsAndPractitionersExtendedEdition2026BetaBuild";
 
 const FONT_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -38,43 +40,40 @@ const INTER_400_B64 = interWoff2Base64(400);
 const INTER_600_B64 = interWoff2Base64(600);
 const INTER_700_B64 = interWoff2Base64(700);
 
-async function loadConsentHtmlInPage(page: Page, html: string): Promise<void> {
-  const fontFace = `<style>
-@font-face {
+type InterWeights = readonly (400 | 600 | 700)[];
+
+async function loadConsentHtmlInPage(
+  page: Page,
+  html: string,
+  interWeights: InterWeights = [400, 600, 700],
+): Promise<void> {
+  const faces = interWeights
+    .map(
+      (weight) => `@font-face {
   font-family: Inter;
   font-style: normal;
-  font-weight: 400;
+  font-weight: ${weight};
   font-display: swap;
-  src: url(data:font/woff2;base64,${INTER_400_B64}) format("woff2");
-}
-@font-face {
-  font-family: Inter;
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(data:font/woff2;base64,${INTER_600_B64}) format("woff2");
-}
-@font-face {
-  font-family: Inter;
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url(data:font/woff2;base64,${INTER_700_B64}) format("woff2");
-}
-</style>`;
+  src: url(data:font/woff2;base64,${
+    weight === 400 ? INTER_400_B64 : weight === 600 ? INTER_600_B64 : INTER_700_B64
+  }) format("woff2");
+}`,
+    )
+    .join("\n");
+  const fontFace = `<style>${faces}</style>`;
   const withFont = html.includes("<head>")
     ? html.replace("<head>", `<head>${fontFace}`)
     : `${fontFace}${html}`;
   await page.setContent(withFont, { waitUntil: "domcontentloaded" });
-  await page.evaluate(async () => {
-    await Promise.all([
-      document.fonts.load('400 16px "Inter"'),
-      document.fonts.load('600 16px "Inter"'),
-      document.fonts.load('700 16px "Inter"'),
-      document.fonts.load('700 11px "Inter"'),
-    ]);
+  await page.evaluate(async (weights) => {
+    await Promise.all(
+      weights.flatMap((weight) => [
+        document.fonts.load(`${weight} 16px "Inter"`),
+        document.fonts.load(`${weight} 11px "Inter"`),
+      ]),
+    );
     await document.fonts.ready;
-  });
+  }, interWeights as number[]);
 }
 
 async function consentPageHtml(options: { clientName?: string }): Promise<string> {
@@ -101,8 +100,13 @@ async function consentPageHtml(options: { clientName?: string }): Promise<string
   return response.text();
 }
 
+function expectTagPillWidth(width: number): void {
+  expect(width).toBeGreaterThan(95);
+  expect(width).toBeLessThan(125);
+}
+
 describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
-  it("keeps the Self-reported tag on the name row inside the card at 1280 px", async () => {
+  it("keeps the Self-reported tag on the name row inside the content box at 1280 px", async () => {
     const html = await consentPageHtml({});
     const browser = await chromium.launch();
     try {
@@ -111,12 +115,17 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       await loadConsentHtmlInPage(page, html);
       const boxes = await page.evaluate(() => {
         const card = document.querySelector(".consent-card");
+        const lead = document.querySelector(".consent-name-lead");
         const name = document.querySelector(".consent-name-inline");
         const tag = document.querySelector(".consent-tag");
-        if (!card || !name || !tag) {
+        if (!card || !lead || !name || !tag) {
           return null;
         }
+        const cardStyle = getComputedStyle(card);
         const cardBox = card.getBoundingClientRect();
+        const padLeft = Number.parseFloat(cardStyle.paddingLeft);
+        const contentRight = cardBox.left + padLeft + card.clientWidth;
+        const leadBox = lead.getBoundingClientRect();
         const nameBox = name.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
         return {
@@ -124,17 +133,21 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           tagTop: tagBox.top,
           tagRight: tagBox.right,
           tagWidth: tagBox.width,
-          cardRight: cardBox.right,
-          cardClientWidth: card.clientWidth,
+          contentRight,
           cardScrollWidth: card.scrollWidth,
+          cardClientWidth: card.clientWidth,
+          leadRight: leadBox.right,
+          nameLeft: nameBox.left,
+          tagFontWeight: getComputedStyle(tag).fontWeight,
         };
       });
       expect(boxes).not.toBeNull();
       expect(Math.abs(boxes!.nameTop - boxes!.tagTop)).toBeLessThan(4);
-      expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.cardRight + 0.5);
-      expect(boxes!.tagWidth).toBeGreaterThan(95);
-      expect(boxes!.tagWidth).toBeLessThan(130);
+      expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.contentRight + 0.5);
+      expectTagPillWidth(boxes!.tagWidth);
       expect(boxes!.cardScrollWidth).toBeLessThanOrEqual(boxes!.cardClientWidth + 1);
+      expect(boxes!.nameLeft - boxes!.leadRight).toBeGreaterThanOrEqual(7);
+      expect(boxes!.tagFontWeight).toBe("700");
       const leadWhiteSpace = await page.evaluate(() => {
         const lead = document.querySelector(".consent-name-lead");
         return lead ? getComputedStyle(lead).whiteSpace : null;
@@ -144,7 +157,33 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         const line = document.querySelector(".consent-name-line");
         return line ? getComputedStyle(line).flexWrap : null;
       });
-      expect(nameLineFlexWrap).toBe("wrap");
+      expect(nameLineFlexWrap).toBe("nowrap");
+    } finally {
+      await browser.close();
+    }
+  }, 120_000);
+
+  it("requires Inter 700 to be loaded for the Self-reported tag", async () => {
+    const html = await consentPageHtml({});
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await loadConsentHtmlInPage(page, html, [400]);
+      const weightsOnly400 = await page.evaluate(async () => {
+        await document.fonts.ready;
+        return [...document.fonts]
+          .filter((face) => face.family.replaceAll('"', "") === "Inter")
+          .map((face) => face.weight);
+      });
+      expect(weightsOnly400).not.toContain("700");
+      await loadConsentHtmlInPage(page, html, [400, 600, 700]);
+      const weightsAll = await page.evaluate(async () => {
+        await document.fonts.ready;
+        return [...document.fonts]
+          .filter((face) => face.family.replaceAll('"', "") === "Inter")
+          .map((face) => face.weight);
+      });
+      expect(weightsAll).toContain("700");
     } finally {
       await browser.close();
     }
@@ -172,11 +211,18 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           nameTop: nameBox.top,
           nameBottom: nameBox.bottom,
           tagTop: tagBox.top,
+          tagWidth: tagBox.width,
+          leadRight: leadBox.right,
+          nameLeft: nameBox.left,
+          tagFontWeight: getComputedStyle(tag).fontWeight,
         };
       });
       expect(layout).not.toBeNull();
       expect(Math.abs(layout!.leadTop - layout!.nameTop)).toBeLessThan(4);
+      expect(layout!.nameLeft - layout!.leadRight).toBeGreaterThanOrEqual(5);
       expect(layout!.tagTop).toBeGreaterThanOrEqual(layout!.nameBottom - 2);
+      expectTagPillWidth(layout!.tagWidth);
+      expect(layout!.tagFontWeight).toBe("700");
     } finally {
       await browser.close();
     }
@@ -196,7 +242,6 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         if (!lead || !name || !tag) {
           return null;
         }
-        const leadBox = lead.getBoundingClientRect();
         const nameBox = name.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
         const nameText = name.textContent ?? "";
@@ -208,7 +253,6 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           nameBottom: nameBox.bottom,
           tagTop: tagBox.top,
           tagWidth: tagBox.width,
-          leadBottom: leadBox.bottom,
         };
       }, LONG_CLIENT_NAME_DISPLAY);
       expect(layout).not.toBeNull();
@@ -218,7 +262,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       const metrics = layout;
       expect(metrics.tagTop).toBeGreaterThanOrEqual(metrics.nameBottom - 2);
       expect(metrics.tagTop - metrics.nameTop).toBeGreaterThan(12);
-      expect(metrics.tagWidth).toBeGreaterThan(95);
+      expectTagPillWidth(metrics.tagWidth);
     } finally {
       await browser.close();
     }
@@ -250,6 +294,66 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         return name ? getComputedStyle(name).whiteSpace : null;
       });
       expect(nameWhiteSpace).toBe("normal");
+    } finally {
+      await browser.close();
+    }
+  }, 120_000);
+
+  it.each([390, 1280])(
+    "keeps a long no-space client name inside the card at %i px",
+    async (width) => {
+      const html = await consentPageHtml({ clientName: LONG_NO_SPACE_NAME });
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width, height: 900 });
+        await loadConsentHtmlInPage(page, html);
+        const cardMetrics = await page.evaluate(() => {
+          const card = document.querySelector(".consent-card") as HTMLElement | null;
+          if (!card) {
+            return null;
+          }
+          return {
+            clientWidth: card.clientWidth,
+            scrollWidth: card.scrollWidth,
+          };
+        });
+        expect(cardMetrics).not.toBeNull();
+        expect(cardMetrics!.scrollWidth).toBeLessThanOrEqual(
+          cardMetrics!.clientWidth + 1,
+        );
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
+
+  it("uses phone layout below 640 px and desktop layout at 640 px", async () => {
+    const html = await consentPageHtml({});
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.setViewportSize({ width: 639, height: 800 });
+      await loadConsentHtmlInPage(page, html);
+      const phoneTagWidth = await page.evaluate(() => {
+        const tag = document.querySelector(".consent-tag");
+        return tag ? tag.getBoundingClientRect().width : 0;
+      });
+      expectTagPillWidth(phoneTagWidth);
+      await page.setViewportSize({ width: 640, height: 800 });
+      await loadConsentHtmlInPage(page, html);
+      const desktopGap = await page.evaluate(() => {
+        const lead = document.querySelector(".consent-name-lead");
+        const name = document.querySelector(".consent-name-inline");
+        if (!lead || !name) {
+          return 0;
+        }
+        const leadBox = lead.getBoundingClientRect();
+        const nameBox = name.getBoundingClientRect();
+        return nameBox.left - leadBox.right;
+      });
+      expect(desktopGap).toBeGreaterThanOrEqual(7);
     } finally {
       await browser.close();
     }

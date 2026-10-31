@@ -115,9 +115,9 @@ body {
 @media (min-width: 640px) {
   .consent-name-line {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: baseline;
-    column-gap: 0.15rem;
+    column-gap: 0.5rem;
     row-gap: 0.25rem;
     font-size: 0.875rem;
   }
@@ -140,29 +140,29 @@ body {
   }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 639.98px) {
   .consent-name-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
+    display: block;
   }
 
   .consent-name-lead {
-    flex: 0 0 auto;
+    display: inline;
+    white-space: nowrap;
+    margin-right: 0.375rem;
   }
 
   .consent-name-inline {
-    flex: 1 1 auto;
-    min-width: 0;
+    display: inline;
     overflow-wrap: anywhere;
     white-space: normal;
   }
 
   .consent-tag {
-    flex: 0 0 100%;
+    display: inline-block;
     margin-left: 0;
     margin-top: 0.35rem;
     width: fit-content;
+    max-width: 100%;
   }
 }
 
