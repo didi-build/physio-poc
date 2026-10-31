@@ -8,6 +8,8 @@ export type ProgramAutoSaveStatus =
   | { kind: "unpublished_changes" }
   | { kind: "published"; published_at: string };
 
+export type ShareLinkStatus = "none" | "open" | "closed";
+
 export type ProgramLibraryUpdatePrompt = {
   row_id: string;
   exercise_id: string;
@@ -52,6 +54,8 @@ export type ProgramBuilderView = {
   library_updates_to_review: number;
   rows: ProgramBuilderRow[];
   open_share_link: boolean;
+  share_link_status: ShareLinkStatus;
+  last_sent_at: string | null;
   deleted_at: string | null;
   routine_origin: ProgramRoutineOriginView | null;
 };
@@ -64,6 +68,8 @@ export type ProgramListItem = {
   draft_updated_at: string;
   auto_save_status: ProgramAutoSaveStatus;
   library_updates_to_review: number;
+  share_link_status: ShareLinkStatus;
+  last_sent_at: string | null;
   deleted_at: string | null;
   routine_origin: ProgramRoutineOriginView | null;
 };
