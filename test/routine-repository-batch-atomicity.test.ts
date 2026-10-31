@@ -293,7 +293,7 @@ async function expectNoFrozenCopy(
   copyId: string,
 ): Promise<void> {
   const copies = await storage.all<{ id: string; routine_id: string }>(
-    "SELECT id, routine_id FROM practitioner_routines WHERE practitioner_id = ?",
+    "SELECT id FROM practitioner_routines WHERE practitioner_id = ?",
     [practitionerId],
   );
   expect(copies.some((row) => row.routine_id === routineId)).toBe(false);
@@ -345,6 +345,47 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
           [draftVersionId],
         );
         expect(draft?.status).toBe("published");
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("never leaves the draft row published while routines.published_version stays null (Q12)", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        await Promise.allSettled([
+          versions.publishDraft({
+            routineId,
+            authorId: author,
+            publishedAt: TS,
+            name: "Race A",
+          }),
+          versions.publishDraft({
+            routineId,
+            authorId: author,
+            publishedAt: TS,
+            name: "Race B",
+          }),
+        ]);
+        const routine = await new RoutinesRepository(storage).findById(routineId);
+        const draft = await storage.first<{ status: string }>(
+          "SELECT status FROM routine_versions WHERE id = ? LIMIT 1",
+          [draftVersionId],
+        );
+        expect(
+          draft?.status === "published" && routine?.published_version === null,
+        ).toBe(false);
       } finally {
         if ("close" in storage && typeof storage.close === "function") {
           storage.close();
@@ -743,6 +784,78 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
   },
 );
 
+describe("batch statement guard contracts (builder)", () => {
+  const sql = new InMemorySqlStorage();
+  const routines = new RoutinesRepository(sql);
+  const versions = new RoutineVersionsRepository(sql);
+  const my = new PractitionerRoutinesRepository(sql);
+  const routineId = id("guard-contract-routine");
+  const draftVersionId = id("guard-contract-draft");
+  const author = id("guard-contract-author");
+
+  it("createDraft statements require minRowsAffected on both inserts", () => {
+    const batch = routines.buildCreateDraftBatchStatements({
+      routineId,
+      draftVersionId,
+      createdBy: author,
+      createdAt: TS,
+      conditionId: null,
+      bodyRegionId: BODY_REGION_KNEE,
+      whoItsFor: null,
+      name: null,
+    });
+    expect(batch).toHaveLength(2);
+    expect(batch[0]?.minRowsAffected).toBe(1);
+    expect(batch[1]?.minRowsAffected).toBe(1);
+  });
+
+  it("publishDraft statements require minRows and publish guards in SQL", () => {
+    const batch = versions.buildPublishDraftBatchStatements({
+      draftVersionId,
+      name: "Named",
+      routineId,
+      publishedAt: TS,
+      authorId: author,
+    });
+    expect(batch).toHaveLength(2);
+    expect(batch[0]?.minRowsAffected).toBe(1);
+    expect(batch[0]?.sql).toContain("status = ?");
+    expect(batch[1]?.minRowsAffected).toBe(1);
+    expect(batch[1]?.sql).toContain("published_version IS NULL");
+    expect(batch[1]?.sql).toContain("created_by = ?");
+  });
+
+  it("savePublishedVersion statements require optimistic published_version guard", () => {
+    const batch = versions.buildSavePublishedVersionBatchStatements({
+      versionId: id("guard-v2"),
+      routineId,
+      nextVersion: 2,
+      expectedPublishedVersion: 1,
+      name: "V2",
+      changeSummary: null,
+      restoredFrom: null,
+      createdBy: author,
+      createdAt: TS,
+      rowStatements: [],
+    });
+    expect(batch[0]?.minRowsAffected).toBe(1);
+    expect(batch[0]?.sql).toContain("published_version = ?");
+  });
+
+  it("saveFrozenCopy header insert requires minRowsAffected", () => {
+    const batch = my.buildSaveFrozenCopyBatchStatements({
+      copyId: id("guard-copy"),
+      practitionerId: author,
+      routineId,
+      sourceRoutineVersionId: id("guard-src-ver"),
+      sourceVersionNumber: 1,
+      savedAt: TS,
+      rowStatements: [],
+    });
+    expect(batch[0]?.minRowsAffected).toBe(1);
+  });
+});
+
 describe("createDraft batch atomicity (BetterSqliteStorage)", () => {
   it("leaves no routine row when draftVersionId collides", async () => {
     const storage = await openMigratedDatabase();
@@ -804,13 +917,9 @@ describe("expect helper regression", () => {
           },
         ],
       });
-      let assertionFailed = false;
-      try {
-        await expectNoFrozenCopy(storage, author, routineId, copyId);
-      } catch {
-        assertionFailed = true;
-      }
-      expect(assertionFailed).toBe(true);
+      await expect(
+        expectNoFrozenCopy(storage, author, routineId, copyId),
+      ).rejects.toThrow();
     } finally {
       storage.close();
     }
@@ -826,19 +935,26 @@ describe("expect helper regression", () => {
         author,
         "helper-published-check",
       );
-      await new RoutineVersionsRepository(storage).publishDraft({
-        routineId,
-        authorId: author,
-        publishedAt: TS,
-        name: "Published draft",
-      });
-      let assertionFailed = false;
-      try {
-        await expectUnpublishedDraftIntact(storage, routineId, draftVersionId);
-      } catch {
-        assertionFailed = true;
-      }
-      expect(assertionFailed).toBe(true);
+      await storage.run(
+        `INSERT INTO routine_versions (
+          id, routine_id, version_number, status, name, change_summary,
+          restored_from_version_id, created_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id("helper-leaked-published"),
+          routineId,
+          99,
+          "published",
+          "Leaked published row",
+          null,
+          null,
+          author,
+          TS,
+        ],
+      );
+      await expect(
+        expectUnpublishedDraftIntact(storage, routineId, draftVersionId),
+      ).rejects.toThrow();
     } finally {
       storage.close();
     }
