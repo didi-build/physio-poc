@@ -1159,4 +1159,11 @@ d1_tables:
         whose: operational
       created_at:
         whose: operational
-other_items: []
+other_items:
+  - id: d1.physio_db
+    binding: PHYSIO_DB
+    whose: operational
+    data: D1 SQL access for practitioner-owned tables defined in migrations (no patient records)
+    purpose: persist and query app state for the physio-poc Worker
+    processors: [Cloudflare]
+    retention: indefinite

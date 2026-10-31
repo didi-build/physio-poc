@@ -43,3 +43,4 @@ Thumbs.db
 .eslintcache
 .cache/
 .wrangler/
+wrangler.ci.jsonc

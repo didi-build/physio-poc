@@ -88,6 +88,7 @@ function parseWranglerJsonc(text: string): Record<string, unknown> {
 
 const EXPECTED_WRANGLER_TOP_LEVEL_KEYS = [
   "compatibility_date",
+  "d1_databases",
   "main",
   "name",
   "observability",
@@ -517,7 +518,7 @@ describe("wrangler worker name pin", () => {
     expect(parsed.name).toBe("physio-poc");
   });
 
-  it("allows only expected top-level keys (no bindings)", () => {
+  it("allows only expected top-level keys", () => {
     const wranglerPath = join(process.cwd(), "wrangler.jsonc");
     const text = readFileSync(wranglerPath, "utf8");
     const parsed = parseWranglerJsonc(text);
