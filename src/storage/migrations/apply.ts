@@ -1,4 +1,4 @@
-import type { SqlBatchStatement, SqlStoragePort } from "../ports/sql-storage.js";
+import type { SqlStoragePort } from "../ports/sql-storage.js";
 
 /** See src/storage/migrations/README.md (Node test runner only; not used on Workers/D1). */
 export const MIGRATION_0001_ID = "0001_exercise_data_model";
@@ -37,12 +37,22 @@ export async function applyMigration(
     return;
   }
 
-  const statements: SqlBatchStatement[] = [
-    ...splitSqlStatements(sql).map((statement) => ({ sql: statement })),
-    {
-      sql: "INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)",
-      bindings: [migrationId, new Date().toISOString()],
-    },
-  ];
-  await storage.batch(statements);
+  await storage.run("BEGIN");
+  try {
+    for (const statement of splitSqlStatements(sql)) {
+      await storage.run(statement);
+    }
+    await storage.run("INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)", [
+      migrationId,
+      new Date().toISOString(),
+    ]);
+    await storage.run("COMMIT");
+  } catch (error) {
+    try {
+      await storage.run("ROLLBACK");
+    } catch {
+      // Rollback may fail if the adapter does not support transactions.
+    }
+    throw error;
+  }
 }

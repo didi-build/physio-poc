@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
@@ -11,116 +9,38 @@ import {
   createFakePhysioD1Database,
   runFakeD1Statements,
 } from "./helpers/fake-physio-d1-database.js";
-
-const SERVICE_REPO_ROOTS = [
-  join(import.meta.dirname, "..", "src", "services"),
-  join(import.meta.dirname, "..", "src", "storage", "repositories"),
-] as const;
-
-const SERVICE_REPO_FILES = [
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "services",
-    "exercise-library",
-    "exercise-library-service.ts",
-  ),
-  join(import.meta.dirname, "..", "src", "services", "exercise-library", "index.ts"),
-  join(import.meta.dirname, "..", "src", "services", "exercise-library", "types.ts"),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "services",
-    "exercise-media",
-    "exercise-media-service.ts",
-  ),
-  join(import.meta.dirname, "..", "src", "services", "exercise-media", "index.ts"),
-  join(import.meta.dirname, "..", "src", "services", "health.ts"),
-  join(import.meta.dirname, "..", "src", "services", "index.ts"),
-  join(import.meta.dirname, "..", "src", "services", "mcp", "stub-tool-handler.ts"),
-  join(import.meta.dirname, "..", "src", "services", "mcp", "validate-tool-input.ts"),
-  join(import.meta.dirname, "..", "src", "services", "my-defaults", "index.ts"),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "services",
-    "my-defaults",
-    "my-defaults-service.ts",
-  ),
-  join(import.meta.dirname, "..", "src", "services", "my-defaults", "types.ts"),
-  join(import.meta.dirname, "..", "src", "services", "programs", "index.ts"),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "services",
-    "programs",
-    "program-builder-service.ts",
-  ),
-  join(import.meta.dirname, "..", "src", "services", "programs", "row-resolution.ts"),
-  join(import.meta.dirname, "..", "src", "services", "programs", "types.ts"),
-  join(import.meta.dirname, "..", "src", "storage", "repositories", "exercise-data.ts"),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "storage",
-    "repositories",
-    "exercise-library-read.ts",
-  ),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "storage",
-    "repositories",
-    "exercise-media.ts",
-  ),
-  join(
-    import.meta.dirname,
-    "..",
-    "src",
-    "storage",
-    "repositories",
-    "practitioner-auth.ts",
-  ),
-  join(import.meta.dirname, "..", "src", "storage", "repositories", "programs.ts"),
-  join(import.meta.dirname, "..", "src", "storage", "repositories", "routines.ts"),
-  join(import.meta.dirname, "..", "src", "storage", "repositories", "type-defaults.ts"),
-] as const;
-
-function readServiceRepoSources(): string[] {
-  return SERVICE_REPO_FILES.map((file) => readFileSync(file, "utf8"));
-}
+import {
+  TRANSACTION_GUARD_SCAN_ROOTS,
+  findRawSqlTransactionControlViolations,
+  listTransactionGuardScanFiles,
+  rawSqlTransactionControlPattern,
+  relativeFromRepoRoot,
+} from "./sql-storage-transaction-guard.js";
 
 describe("service and repository SQL transaction guard", () => {
-  it("does not use raw BEGIN, COMMIT, or ROLLBACK in pinned service and repository files", () => {
-    const forbidden =
-      /\b(await\s+)?(this\.)?(sql\.)?run\(\s*["'](BEGIN|COMMIT|ROLLBACK)["']/i;
-    for (const source of readServiceRepoSources()) {
-      expect(source).not.toMatch(forbidden);
-    }
+  it("does not use raw BEGIN, COMMIT, or ROLLBACK under scanned service and repository trees", () => {
+    const violations = findRawSqlTransactionControlViolations();
+    expect(violations).toEqual([]);
   });
 
-  it("pins the scanned service and repository file list", () => {
-    expect(SERVICE_REPO_ROOTS.length).toBe(2);
-    expect(SERVICE_REPO_FILES.length).toBe(23);
+  it("recursively scans nested TypeScript under services and repositories", () => {
+    const files = listTransactionGuardScanFiles();
+    const relativePaths = files.map((file) => relativeFromRepoRoot(file));
+    expect(relativePaths).toContain("src/services/programs/program-builder-service.ts");
+    expect(relativePaths).toContain("src/storage/repositories/programs.ts");
+    expect(relativePaths.some((path) => path.includes("/migrations/"))).toBe(false);
   });
 
-  it("guard scan reads every pinned nested service path, not a shallow directory listing", () => {
-    const shallow: string[] = [];
-    for (const root of SERVICE_REPO_ROOTS) {
-      for (const name of readdirSync(root)) {
-        if (name.endsWith(".ts")) {
-          shallow.push(join(root, name));
-        }
-      }
-    }
-    expect(shallow.length).toBeLessThan(SERVICE_REPO_FILES.length);
-    expect(readServiceRepoSources().length).toBe(SERVICE_REPO_FILES.length);
+  it("positive control: matcher detects transaction keywords case-insensitively in run strings", () => {
+    const pattern = rawSqlTransactionControlPattern();
+    expect(pattern.test('await sql.run("BEGIN");')).toBe(true);
+    expect(pattern.test('await sql.run("begin");')).toBe(true);
+    expect(pattern.test('await this.sql.run("rollback");')).toBe(true);
+    expect(pattern.test('await sql.run("SELECT 1");')).toBe(false);
+  });
+
+  it("pins the scanned root directories", () => {
+    expect(TRANSACTION_GUARD_SCAN_ROOTS.length).toBe(2);
   });
 });
 
