@@ -17,6 +17,7 @@ import {
   isFakeGoogleOAuthPath,
 } from "../../auth/fake-google-http.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
+import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { createMcpBearerAuthHandler, createNodeAuthPort } from "./create-auth-port.js";
 import { createDistUiStaticPort } from "./dist-ui-static-port.js";
@@ -63,12 +64,20 @@ export type NodeEnvInput = WorkerEnv & {
   NODE_ENV?: string;
 };
 
+export type CreateNodeAppDependenciesOptions = {
+  cimdMetadataFetch?: ClientMetadataResourceFetch;
+  consentClock?: PhysioMcpConsentClock;
+  /** Test-only DI hook; defaults to identity. Not used in production wiring. */
+  wrapSqlPort?: (sql: SqlStoragePort) => SqlStoragePort;
+};
+
 export async function createNodeAppDependencies(
   env: NodeEnvInput,
-  options: {
-    cimdMetadataFetch?: ClientMetadataResourceFetch;
-    consentClock?: PhysioMcpConsentClock;
-  } = {},
+  {
+    cimdMetadataFetch = defaultCimdMetadataFetch,
+    consentClock,
+    wrapSqlPort = (sql) => sql,
+  }: CreateNodeAppDependenciesOptions = {},
 ): Promise<AppDependencies> {
   const config = resolveNodePhysioServerConfig(env, "127.0.0.1:8787");
   const storage = BetterSqliteStorage.openInMemory();
@@ -78,13 +87,14 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
-  const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config, {
-    cimdMetadataFetch: options.cimdMetadataFetch ?? defaultCimdMetadataFetch,
-    consentClock: options.consentClock,
+  const sqlPort = wrapSqlPort(storage);
+  const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
+    cimdMetadataFetch,
+    consentClock,
   });
   const mcpHandler = createPhysioMcpHttpHandler(config);
   return {
-    sql: storage,
+    sql: sqlPort,
     objects: new InMemoryObjectStorage(),
     config,
     auth: authBundle.auth,
