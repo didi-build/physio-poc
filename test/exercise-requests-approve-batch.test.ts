@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  ExerciseRequestsRepository,
+  ExerciseVersionsRepository,
+  PractitionerExercisesRepository,
+} from "../src/storage/repositories/exercise-data.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
+import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import {
   openMigratedDatabase,
   seedApprovedExerciseVersion,
@@ -184,6 +190,139 @@ describe("Exercise request approve batch (integration)", () => {
         [created.request_id],
       );
       expect(requestRow?.status).toBe("open");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("approveRequest commits approve and link through one sql.batch call", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-batch-once-req"),
+        "bor@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-batch-once-app"),
+        "boa@example.com",
+      );
+      let batchCalls = 0;
+      let approveVersionRunCalls = 0;
+      const tracking: SqlStoragePort = {
+        run: async (sql, bindings) => {
+          const normalized = sql.trim().replace(/\s+/g, " ");
+          if (
+            normalized.includes("UPDATE exercise_versions") &&
+            normalized.includes("status = 'approved'")
+          ) {
+            approveVersionRunCalls += 1;
+          }
+          return storage.run(sql, bindings);
+        },
+        all: (sql, bindings) => storage.all(sql, bindings),
+        first: (sql, bindings) => storage.first(sql, bindings),
+        batch: async (statements) => {
+          batchCalls += 1;
+          return storage.batch(statements);
+        },
+      };
+      const service = new ExerciseRequestsService(tracking, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Single batch move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await service.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      expect(batchCalls).toBe(1);
+      expect(approveVersionRunCalls).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rolls back earlier approve writes when a guarded batch statement fails", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-batch-rollback-req"),
+        "brr@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-batch-rollback-app"),
+        "bra@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Batch rollback move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created" || !created.exercise_id) {
+        return;
+      }
+      const versions = new ExerciseVersionsRepository(storage);
+      const draft = await versions.findDraftForExercise(created.exercise_id);
+      expect(draft).not.toBeNull();
+      if (!draft) {
+        return;
+      }
+      const requestsRepo = new ExerciseRequestsRepository(storage);
+      const myExercises = new PractitionerExercisesRepository(storage);
+      const programBuilder = new ProgramBuilderService(storage);
+      const { statements: linkStatements } =
+        await programBuilder.buildLinkApprovedPlaceholderStatements(
+          created.request_id,
+          draft.id,
+        );
+      const batchStatements = [
+        versions.buildApproveDraftBatchStatement({
+          versionId: draft.id,
+          approvedBy: approver,
+          approvedAt: AFTER_FORM,
+        }),
+        requestsRepo.buildUpdateStatusBatchStatement({
+          id: created.request_id,
+          status: "approved",
+          updatedAt: AFTER_FORM,
+          allowedFromStatuses: ["drafting"],
+        }),
+        myExercises.buildSaveExerciseBatchStatement({
+          practitionerId: requester,
+          exerciseId: created.exercise_id,
+          savedAt: AFTER_FORM,
+        }),
+        ...linkStatements,
+      ];
+      const failing = [...batchStatements];
+      failing[1] = { ...failing[1]!, minRowsAffected: 999 };
+      await expect(storage.batch(failing)).rejects.toThrow();
+
+      const versionRow = await storage.first<{ status: string }>(
+        "SELECT status FROM exercise_versions WHERE id = ?",
+        [draft.id],
+      );
+      expect(versionRow?.status).toBe("draft");
+      const requestRow = await storage.first<{ status: string }>(
+        "SELECT status FROM exercise_requests WHERE id = ?",
+        [created.request_id],
+      );
+      expect(requestRow?.status).toBe("drafting");
     } finally {
       storage.close();
     }

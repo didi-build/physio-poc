@@ -28,7 +28,6 @@ import {
 import { apiMeHttpRouteCases } from "./helpers/api-me-http-route-cases.js";
 import {
   EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID,
-  EXERCISE_REQUESTS_HTTP_ROUTE_TABLE,
   exerciseRequestsHttpJsonBody,
   exerciseRequestsHttpRouteCases,
   exerciseRequestsMutatingHttpRouteCases,
@@ -173,7 +172,7 @@ describe("Exercise requests HTTP routes (integration)", () => {
 
   it("includes all seven exercise request routes in the api/me route table helper", () => {
     const apiMe = apiMeHttpRouteCases();
-    for (const routeCase of EXERCISE_REQUESTS_HTTP_ROUTE_TABLE) {
+    for (const routeCase of exerciseRequestsHttpRouteCases()) {
       expect(apiMe).toContainEqual(routeCase);
     }
   });
