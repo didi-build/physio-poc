@@ -115,6 +115,9 @@ jobs:
         id: install
         run: npm ci
         continue-on-error: true
+      - name: Install Playwright Chromium for layout tests
+        if: steps.install.outcome == 'success'
+        run: npx playwright install chromium
       - name: npm run check
         id: check
         if: steps.install.outcome == 'success'

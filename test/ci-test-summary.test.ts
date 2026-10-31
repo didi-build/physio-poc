@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 function runSummary(env: Record<string, string>) {
@@ -33,5 +34,24 @@ describe("ci-test-summary (unit)", () => {
     expect(body).toContain("**check**");
     expect(body).toContain("`success`");
     expect(body).toContain("attribution");
+  });
+
+  it("excludes skipped tests from the Vitest passed total", () => {
+    mkdirSync("test-results", { recursive: true });
+    writeFileSync(
+      "test-results/junit.xml",
+      '<?xml version="1.0"?><testsuites tests="10" failures="0" errors="0" skipped="4"></testsuites>',
+    );
+    try {
+      const body = runSummary({
+        INSTALL_OUTCOME: "success",
+        CHECK_OUTCOME: "success",
+        PR_HEAD_SHA: "deadbeef00000000",
+      });
+      expect(body).toContain("6/6 passed");
+      expect(body).not.toContain("6/10 passed");
+    } finally {
+      rmSync("test-results/junit.xml", { force: true });
+    }
   });
 });

@@ -20,12 +20,14 @@ if (installOutcome !== "success") {
   if (existsSync(junitPath)) {
     const xml = readFileSync(junitPath, "utf8");
     const tests = Number(xml.match(/tests="(\d+)"/)?.[1] ?? 0);
+    const skipped = Number(xml.match(/skipped="(\d+)"/)?.[1] ?? 0);
     const failures = Number(xml.match(/failures="(\d+)"/)?.[1] ?? 0);
     const errors = Number(xml.match(/errors="(\d+)"/)?.[1] ?? 0);
     const failed = failures + errors;
-    const passed = Math.max(0, tests - failed);
+    const executed = Math.max(0, tests - skipped);
+    const passed = Math.max(0, executed - failed);
     const icon = failed === 0 ? "✅" : "❌";
-    testLine = `${icon} **Vitest** — ${passed}/${tests} passed (${failed} failed)`;
+    testLine = `${icon} **Vitest** — ${passed}/${executed} passed (${failed} failed)`;
   }
   lines.push(testLine);
 
