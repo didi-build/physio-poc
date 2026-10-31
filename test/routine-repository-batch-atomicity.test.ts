@@ -10,6 +10,8 @@ import {
   MIGRATION_0007_ID,
   splitSqlStatements,
 } from "../src/storage/migrations/apply.js";
+import { parseExerciseParamsJson } from "../src/domain/exercise-params.js";
+import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import {
   PractitionerRoutinesRepository,
@@ -265,6 +267,78 @@ async function expectNoFrozenCopy(
   expect(rows).toHaveLength(0);
 }
 
+describe.each(STORAGE_CASES)("publishDraft batch guards ($label)", ({ open }) => {
+  it("does not bump published_version when the draft row fails to transition", async () => {
+    const storage = await open();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const label = storage.constructor.name;
+      const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+        storage,
+        author,
+        label,
+      );
+      const versions = new RoutineVersionsRepository(storage);
+      const statements = versions.buildPublishDraftBatchStatements({
+        draftVersionId,
+        name: "Guard check",
+        routineId,
+        publishedAt: TS,
+      });
+      const first = statements[0]!;
+      const statusBinding = [...(first.bindings ?? [])];
+      statusBinding[4] = "published";
+      first.bindings = statusBinding;
+      await expect(storage.batch(statements)).rejects.toBeInstanceOf(
+        SqlBatchGuardError,
+      );
+      await expectUnpublishedDraftIntact(storage, routineId, draftVersionId);
+    } finally {
+      if ("close" in storage && typeof storage.close === "function") {
+        storage.close();
+      }
+    }
+  });
+
+  it("does not leave a published version row when the routine row fails to update", async () => {
+    const storage = await open();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const label = storage.constructor.name;
+      const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+        storage,
+        author,
+        label,
+      );
+      await storage.run("UPDATE routines SET published_version = ? WHERE id = ?", [
+        1,
+        routineId,
+      ]);
+      const versions = new RoutineVersionsRepository(storage);
+      const statements = versions.buildPublishDraftBatchStatements({
+        draftVersionId,
+        name: "Guard check two",
+        routineId,
+        publishedAt: TS,
+      });
+      await expect(storage.batch(statements)).rejects.toBeInstanceOf(
+        SqlBatchGuardError,
+      );
+      const draft = await storage.first<{ status: string }>(
+        "SELECT status FROM routine_versions WHERE id = ? LIMIT 1",
+        [draftVersionId],
+      );
+      expect(draft?.status).toBe("draft");
+    } finally {
+      if ("close" in storage && typeof storage.close === "function") {
+        storage.close();
+      }
+    }
+  });
+});
+
 describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open }) => {
   it("leaves draft unpublished when batch fails mid write", async () => {
     const storage = await open();
@@ -310,6 +384,79 @@ describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open })
     }
   });
 });
+
+describe.each(STORAGE_CASES)(
+  "savePublishedVersion batch guards ($label)",
+  ({ open }) => {
+    it("does not insert a new version row when the routine published_version bump fails", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const attemptedVersionId = id(`save-guard-${label}`);
+        const versions = new RoutineVersionsRepository(storage);
+        const rowRepo = new RoutineVersionRowsRepository(storage);
+        const rowStatements =
+          storage instanceof InMemorySqlStorage
+            ? [
+                rowRepo.buildInsertRowBatchStatement({
+                  id: id(`save-guard-row-${label}`),
+                  routineVersionId: attemptedVersionId,
+                  position: 0,
+                  exerciseId: FIXTURE_EXERCISE_ID,
+                  exerciseVersionId: FIXTURE_VERSION_ID,
+                  prescriptionType: "stretching",
+                  params: VALID_PARAMS,
+                }),
+              ]
+            : (
+                await new RoutineVersionRowsRepository(storage).listForVersion(
+                  publishedVersionId,
+                )
+              ).map((row) =>
+                rowRepo.buildInsertRowBatchStatement({
+                  id: id(`save-guard-row-${label}-${row.position}`),
+                  routineVersionId: attemptedVersionId,
+                  position: row.position,
+                  exerciseId: row.exercise_id,
+                  exerciseVersionId: row.exercise_version_id,
+                  prescriptionType: row.prescription_type,
+                  params: parseExerciseParamsJson(row.params_json),
+                }),
+              );
+        const statements = versions.buildSavePublishedVersionBatchStatements({
+          versionId: attemptedVersionId,
+          routineId,
+          nextVersion: 2,
+          name: "Guarded save",
+          changeSummary: null,
+          restoredFrom: null,
+          createdBy: author,
+          createdAt: TS,
+          rowStatements,
+        });
+        const routineUpdate = statements[statements.length - 1]!;
+        const updateBindings = [...(routineUpdate.bindings ?? [])];
+        updateBindings[2] = id("missing-routine-id");
+        routineUpdate.bindings = updateBindings;
+        await expect(storage.batch(statements)).rejects.toBeInstanceOf(
+          SqlBatchGuardError,
+        );
+        await expectNoSavedPublishedVersion(storage, routineId, 1, attemptedVersionId);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+  },
+);
 
 describe.each(STORAGE_CASES)(
   "savePublishedVersion batch atomicity ($label)",
