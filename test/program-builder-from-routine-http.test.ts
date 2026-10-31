@@ -347,7 +347,7 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
     }
   });
 
-  it("returns identical program_not_found for missing, foreign, and draft-only routines", async () => {
+  it("returns identical program_not_found for missing routine and foreign draft-only routine", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
@@ -358,12 +358,6 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
         createdBy: practitionerA,
         createdAt: TS,
         bodyRegionId: "br-knee",
-      });
-      await publishRoutine(storage, practitionerA, {
-        routine: "http-visible-routine",
-        draftVersion: "http-visible-draft",
-        row: "http-visible-row",
-        name: "Visible routine",
       });
       const missingId = id("http-missing-routine");
       const { deps: depsB, cookie: cookieB } = apiDeps(storage, practitionerB);
@@ -391,21 +385,6 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
         expect(sent.status).toBe(404);
         await expect(sent.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
       }
-
-      const draftOwn = await handleRequest(
-        authedMutatingRequest(programsFromRoutinePath(), cookieB, {
-          method: "POST",
-          body: fromRoutineBody({
-            programId: id("prog-draft-own"),
-            routineId: id("http-draft-only"),
-            source: "community",
-            rowIds: [id("row-draft-own")],
-          }),
-        }),
-        depsB,
-      );
-      expect(draftOwn.status).toBe(404);
-      await expect(draftOwn.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
     } finally {
       storage.close();
     }
@@ -444,6 +423,16 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
       expect(await new ProgramsRepository(storage).findById(programId)).toBeNull();
       expect(await new ProgramRowsRepository(storage).findById(rowId)).toBeNull();
       expect(await programCount(storage, practitionerA)).toBe(beforePrograms);
+
+      const sent = await handleRequest(
+        authedRequest(
+          `${BASE}${routineSentProgramsPath(id("http-author-draft"))}`,
+          cookie,
+        ),
+        deps,
+      );
+      expect(sent.status).toBe(400);
+      await expect(sent.json()).resolves.toEqual(INVALID_INPUT_BODY);
     } finally {
       storage.close();
     }
