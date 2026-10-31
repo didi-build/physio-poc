@@ -119,6 +119,33 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
   } as unknown as ProgramsClient;
 }
 
+function libraryClientWithHeel(): ExerciseLibraryClient {
+  return {
+    listMyExercises: vi.fn().mockResolvedValue({
+      list_state: "ok",
+      sections: {
+        new_from_requests: [],
+        pinned: [
+          {
+            exercise_id: "ex-heel",
+            exercise_name: "Heel raise",
+            category: "Strengthening",
+            body_regions: ["Ankle"],
+            section: "pinned",
+          },
+        ],
+        recently_used_and_saved: [],
+      },
+    }),
+    searchApproved: vi.fn().mockResolvedValue({
+      exercises: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+    }),
+  } as unknown as ExerciseLibraryClient;
+}
+
 describe("Programs builder dev verification", () => {
   it("retries a failed reorder instead of the name save", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -976,6 +1003,99 @@ describe("Programs builder dev verification", () => {
       expect(statusText).toContain("Saved");
       expect(statusText).not.toContain("Saving...");
     });
+    vi.useRealTimers();
+  });
+
+  it("runs a failed add exercise only once when Try saving again is pressed twice", async () => {
+    mockMinWidth1024(true);
+    vi.stubGlobal("crypto", { randomUUID: () => "stable-add-row-id" });
+    let addCalls = 0;
+    const addExerciseRow = vi.fn().mockImplementation(async () => {
+      addCalls += 1;
+      if (addCalls === 1) {
+        throw new Error("fail");
+      }
+      return new Promise(() => {});
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={libraryClientWithHeel()}
+          programsClient={builderStubs({
+            addExerciseRow,
+            getProgram: vi.fn().mockResolvedValue(builderView()),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Add exercise" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+      ).toBeGreaterThan(0);
+    });
+    const tryAgain = screen.getAllByRole("button", {
+      name: AUTO_SAVE_TRY_AGAIN_ARIA,
+    })[0]!;
+    await act(async () => {
+      fireEvent.click(tryAgain);
+      fireEvent.click(tryAgain);
+    });
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(2));
+    expect(addExerciseRow).toHaveBeenNthCalledWith(1, "prog-1", {
+      row_id: "stable-add-row-id",
+      exercise_id: "ex-heel",
+    });
+    expect(addExerciseRow).toHaveBeenNthCalledWith(2, "prog-1", {
+      row_id: "stable-add-row-id",
+      exercise_id: "ex-heel",
+    });
+  });
+
+  it("runs a failed add exercise only once when Try saving again and auto retry overlap", async () => {
+    mockMinWidth1024(true);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.stubGlobal("crypto", { randomUUID: () => "stable-add-row-id" });
+    let addCalls = 0;
+    const addExerciseRow = vi.fn().mockImplementation(async () => {
+      addCalls += 1;
+      if (addCalls === 1) {
+        throw new Error("fail");
+      }
+      return new Promise(() => {});
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={libraryClientWithHeel()}
+          programsClient={builderStubs({
+            addExerciseRow,
+            getProgram: vi.fn().mockResolvedValue(builderView()),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Add exercise" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+      ).toBeGreaterThan(0);
+    });
+    await userEvent.click(
+      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(addExerciseRow).toHaveBeenCalledTimes(2);
     vi.useRealTimers();
   });
 });

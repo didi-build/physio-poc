@@ -26,8 +26,16 @@ export function useProgramAutoSave({
   const pendingKeysRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inFlightRef = useRef(0);
+  const inFlightKeysRef = useRef<Set<string>>(new Set());
   const failedSavesRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRetryTimer = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }, []);
 
   const syncUi = useCallback(() => {
     const hasPending = pendingKeysRef.current.size > 0;
@@ -53,24 +61,29 @@ export function useProgramAutoSave({
   >(undefined);
 
   const scheduleFailedRetries = useCallback(() => {
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-    }
+    clearRetryTimer();
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
       for (const [key, run] of failedSavesRef.current.entries()) {
+        if (inFlightKeysRef.current.has(key)) {
+          continue;
+        }
         void runSaveRef.current?.(key, run);
       }
     }, 1500);
-  }, []);
+  }, [clearRetryTimer]);
 
   const runSave = useCallback(
     async (key: string, task: () => Promise<void>) => {
+      if (inFlightKeysRef.current.has(key)) {
+        return;
+      }
       const timer = timersRef.current.get(key);
       if (timer) {
         clearTimeout(timer);
         timersRef.current.delete(key);
       }
+      inFlightKeysRef.current.add(key);
       inFlightRef.current += 1;
       syncUi();
       try {
@@ -84,6 +97,7 @@ export function useProgramAutoSave({
         setFailureAlertShown(true);
         scheduleFailedRetries();
       } finally {
+        inFlightKeysRef.current.delete(key);
         inFlightRef.current = Math.max(0, inFlightRef.current - 1);
         syncUi();
       }
@@ -95,6 +109,9 @@ export function useProgramAutoSave({
 
   const scheduleDebouncedSave = useCallback(
     (key: string, task: () => Promise<void>) => {
+      if (failedSavesRef.current.has(key)) {
+        failedSavesRef.current.set(key, task);
+      }
       pendingKeysRef.current.add(key);
       syncUi();
       const existing = timersRef.current.get(key);
@@ -120,29 +137,28 @@ export function useProgramAutoSave({
     pendingKeysRef.current.clear();
     failedSavesRef.current.clear();
     setFailureAlertShown(false);
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
+    clearRetryTimer();
     syncUi();
-  }, [syncUi]);
+  }, [clearRetryTimer, syncUi]);
 
   const tryAgain = useCallback(() => {
+    clearRetryTimer();
     for (const [key, run] of failedSavesRef.current.entries()) {
+      if (inFlightKeysRef.current.has(key)) {
+        continue;
+      }
       void runSave(key, run);
     }
-  }, [runSave]);
+  }, [clearRetryTimer, runSave]);
 
   useEffect(() => {
     return () => {
       for (const timer of timersRef.current.values()) {
         clearTimeout(timer);
       }
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-      }
+      clearRetryTimer();
     };
-  }, []);
+  }, [clearRetryTimer]);
 
   const publishAllowed = state === "saved" && !hasUnsavedEdits;
 
