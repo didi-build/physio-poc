@@ -73,4 +73,20 @@ describe("useProgramAutoSave (unit)", () => {
     expect(result.current.state).toBe("saving");
     vi.useRealTimers();
   });
+
+  it("does not clear a failure when a different key saves successfully", async () => {
+    const fail = vi.fn().mockRejectedValue(new Error("fail"));
+    const ok = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useProgramAutoSave({ debounceMs: 10 }));
+    await act(async () => {
+      await result.current.runSave("reorder", fail);
+    });
+    expect(result.current.state).toBe("failed");
+    await act(async () => {
+      await result.current.runSave("name", ok);
+    });
+    expect(result.current.state).toBe("failed");
+    expect(fail).toHaveBeenCalledTimes(1);
+    expect(ok).toHaveBeenCalledTimes(1);
+  });
 });

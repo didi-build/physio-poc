@@ -82,14 +82,6 @@ export const DELETE_SHEET_ALREADY_CLOSED = "Its share link is already closed.";
 export const DELETE_SHEET_SHARE_HINT =
   "To stop sharing but keep the program, close the link on the Share screen instead.";
 
-export function deleteProgramSheetBody(openShareLink: boolean): string {
-  const intro = `${DELETE_SHEET_MOVES_TO} ${RECENTLY_DELETED}${DELETE_SHEET_RESTORE_SUFFIX}`;
-  if (openShareLink) {
-    return `${intro} ${DELETE_SHEET_ALSO} ${DELETE_SHEET_CLOSES_LINK}${DELETE_SHEET_LINK_CLOSED_SUFFIX}`;
-  }
-  return `${intro} ${DELETE_SHEET_ALREADY_CLOSED}`;
-}
-
 export function formatProgramPublishedAt(iso: string): string {
   const instant = Date.parse(iso);
   if (Number.isNaN(instant)) {
@@ -111,7 +103,6 @@ export const BUILDER_ROWS_HINT =
 export const BUILDER_EMPTY_ROWS =
   "No exercises yet. Add exercises from My exercises or the full library.";
 
-export const DUPLICATE = "Duplicate";
 export const PLACEHOLDER_ROW_NOTE =
   "Placeholder. It links to the real exercise once you approve the draft.";
 

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { ensureMatchMediaStub } from "./setup.js";
+import { ensureMatchMediaStub, mockMinWidth1024 } from "./setup.js";
 import {
   act,
   cleanup,
@@ -269,8 +269,11 @@ describe("Programs builder dev verification", () => {
     });
     await waitFor(() => expect(updateRow).toHaveBeenCalled());
     await userEvent.type(note, "c");
-    resolveRow?.({
-      program: builderView({ rows: [{ ...row, note: "ab" }] }),
+    await act(async () => {
+      resolveRow?.({
+        program: builderView({ rows: [{ ...row, note: "ab" }] }),
+      });
+      await Promise.resolve();
     });
     await waitFor(() => {
       expect(note).toHaveValue("abc");
@@ -342,7 +345,9 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const typeSelect = await screen.findByRole("combobox");
+    const typeSelect = within(
+      await screen.findByRole("article", { name: /Heel raise/i }),
+    ).getByRole("combobox", { name: "Heel raise" });
     await userEvent.selectOptions(typeSelect, "stretching");
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalled();
@@ -383,7 +388,7 @@ describe("Programs builder dev verification", () => {
     vi.useRealTimers();
   });
 
-  it("renders delete sheet copy and card in mockup order", async () => {
+  it("renders delete sheet copy and card in mockup order when share link is open", async () => {
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
@@ -415,6 +420,9 @@ describe("Programs builder dev verification", () => {
         /It moves to Recently deleted\. You can restore it for 30 days/,
       ),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/so anyone who opens it sees "This link was closed"\./),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText(/closes its share link/)).toBeInTheDocument();
     expect(
       within(dialog).getByText(
@@ -426,6 +434,31 @@ describe("Programs builder dev verification", () => {
     expect(
       card.compareDocumentPosition(intro) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("renders delete sheet copy when the share link is already closed", async () => {
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi.fn().mockResolvedValue(
+              builderView({
+                name: "Knee program A",
+                open_share_link: false,
+              }),
+            ),
+          })}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Delete program" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Delete this program?" });
+    expect(
+      within(dialog).getByText("Its share link is already closed."),
+    ).toBeInTheDocument();
   });
 
   it("exposes copy and trash row controls that fire actions", async () => {
@@ -450,9 +483,34 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     expect(screen.queryByText("Exercise types")).not.toBeInTheDocument();
-    await screen.findByRole("article", { name: /Alpha move/i });
+    const rowCard = await screen.findByRole("article", { name: /Alpha move/i });
+    expect(
+      within(rowCard).getByRole("combobox", { name: "Alpha move" }),
+    ).toBeInTheDocument();
+    expect(rowCard.querySelector(".pg-row-grip svg")).toBeTruthy();
+    const up = within(rowCard).getByRole("button", {
+      name: /Reorder Alpha move, position 1/,
+    });
+    const down = within(rowCard).getByRole("button", {
+      name: /Reorder Alpha move, position 2/,
+    });
+    expect(up.getAttribute("data-pg-reorder")).toBe("up");
+    expect(down.getAttribute("data-pg-reorder")).toBe("down");
+    expect(up.querySelector("svg path")?.getAttribute("d")).not.toBe(
+      down.querySelector("svg path")?.getAttribute("d"),
+    );
+    expect(
+      within(rowCard)
+        .getByRole("button", { name: "Duplicate Alpha move" })
+        .querySelector("svg"),
+    ).toBeTruthy();
+    expect(
+      within(rowCard)
+        .getByRole("button", { name: "Remove Alpha move" })
+        .querySelector("svg"),
+    ).toBeTruthy();
     await userEvent.click(
-      await screen.findByRole("button", { name: "Duplicate Alpha move" }),
+      within(rowCard).getByRole("button", { name: "Duplicate Alpha move" }),
     );
     await waitFor(() => expect(duplicateRow).toHaveBeenCalled());
     await userEvent.click(
@@ -543,6 +601,153 @@ describe("Programs builder dev verification", () => {
         .join(" ");
       expect(text).toMatch(/Published Oct 24, 2:10 PM/);
     });
+  });
+
+  it("mounts the failure alert on the phone status block below 1024px", async () => {
+    mockMinWidth1024(false);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const updateProgramName = vi.fn().mockRejectedValue(new Error("fail"));
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({ updateProgramName })}
+        />
+      </MemoryRouter>,
+    );
+    const nameField = await screen.findByRole("textbox", { name: "Program name" });
+    await userEvent.type(nameField, "Knee program A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
+    expect(document.querySelector(".pg-autosave--phone [role=alert]")).toBeTruthy();
+    expect(document.querySelector(".pg-autosave--desktop [role=alert]")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("mounts the failure alert on the desktop publish card at 1024px and up", async () => {
+    mockMinWidth1024(true);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const updateProgramName = vi.fn().mockRejectedValue(new Error("fail"));
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({ updateProgramName })}
+        />
+      </MemoryRouter>,
+    );
+    const nameField = await screen.findByRole("textbox", { name: "Program name" });
+    await userEvent.type(nameField, "Knee program A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
+    expect(document.querySelector(".pg-autosave--desktop [role=alert]")).toBeTruthy();
+    expect(document.querySelector(".pg-autosave--phone [role=alert]")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("shows the phone status card and fixed publish bar below 1024px", async () => {
+    mockMinWidth1024(false);
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs()}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole("textbox", { name: "Program name" });
+    expect(document.querySelector(".pg-builder-status-card--phone")).toBeTruthy();
+    const bar = document.querySelector(".pg-publish-phone-bar");
+    expect(bar).toBeTruthy();
+    expect(
+      within(bar as HTMLElement).getByText(
+        "Changes save automatically. When you publish, your patient sees them on the same share link. No need to send a new one.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(bar as HTMLElement).getByRole("button", { name: "Publish" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps Not saved when another field saves after a reorder failure", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const rows = [
+      exerciseRow("row-a", "Alpha move"),
+      exerciseRow("row-b", "Beta move"),
+    ];
+    rows[1]!.position = 2;
+    const reorderRows = vi.fn().mockRejectedValue(new Error("fail"));
+    const updateProgramName = vi.fn().mockResolvedValue({
+      program: builderView({ name: "Knee program A", rows }),
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi
+              .fn()
+              .mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+            reorderRows,
+            updateProgramName,
+          })}
+        />
+      </MemoryRouter>,
+    );
+    const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
+    await userEvent.click(
+      within(alphaCard).getByRole("button", {
+        name: /Reorder Alpha move, position 2/,
+      }),
+    );
+    await waitFor(() => expect(reorderRows).toHaveBeenCalled());
+    const nameField = screen.getByRole("textbox", { name: "Program name" });
+    await userEvent.type(nameField, "Knee program A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
+    expect(screen.getAllByText("Not saved").length).toBeGreaterThan(0);
+    vi.useRealTimers();
+  });
+
+  it("does not show Saved while a row note save is still in flight", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const row = exerciseRow("row-1", "Heel raise");
+    const updateRow = vi.fn().mockImplementation(
+      () =>
+        new Promise<{ program: ProgramBuilderView }>(() => {
+          /* pending */
+        }),
+    );
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+            updateRow,
+          })}
+        />
+      </MemoryRouter>,
+    );
+    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    await userEvent.type(note, "x");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() => expect(updateRow).toHaveBeenCalled());
+    const statusLines = document.querySelectorAll(".pg-autosave-status");
+    const statusText = Array.from(statusLines)
+      .map((node) => node.textContent ?? "")
+      .join(" ");
+    expect(statusText).toContain("Saving...");
+    expect(statusText).not.toContain("Saved");
+    vi.useRealTimers();
   });
 });
 

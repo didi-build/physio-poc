@@ -83,7 +83,8 @@
 }
 
 .pg-builder {
-  padding-bottom: 6rem;
+  /* Phone tab bar plus fixed publish bar so Delete program stays reachable at scroll end */
+  padding-bottom: calc(var(--shell-nav-height, 4rem) + 7.5rem);
 }
 
 .pg-builder-status-card--phone {
@@ -105,7 +106,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 3.5rem;
+  bottom: var(--shell-nav-height, 4rem);
   z-index: 10;
   padding: 0.75rem 1rem;
   background: #fff;
