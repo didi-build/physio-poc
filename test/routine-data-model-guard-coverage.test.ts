@@ -300,6 +300,12 @@ describe("routine repository guard coverage (QA mutation gaps)", () => {
         }),
       ).resolves.toBeDefined();
 
+      const publishedV2 = await versions.findPublishedVersion(
+        id("guard-params-routine"),
+        2,
+      );
+      expect(publishedV2).not.toBeNull();
+
       const draft = await versions.findDraftForRoutine(id("guard-params-routine"));
       expect(draft).toBeNull();
 
@@ -329,7 +335,7 @@ describe("routine repository guard coverage (QA mutation gaps)", () => {
         id: id("guard-my-copy"),
         practitionerId: author,
         routineId: id("guard-params-routine"),
-        sourceRoutineVersionId: published.id,
+        sourceRoutineVersionId: publishedV2!.id,
         savedAt: TS,
         rows: [
           {
@@ -1208,7 +1214,7 @@ describe("opaque id normalization on write paths", () => {
         id: id("norm-my-copy"),
         practitionerId: author,
         routineId: upperRoutineId,
-        sourceRoutineVersionId: upperVersionId,
+        sourceRoutineVersionId: savedV2.id,
         savedAt: TS,
         rows: [
           {
@@ -1222,7 +1228,7 @@ describe("opaque id normalization on write paths", () => {
         ],
       });
       expect(savedCopy.routine_id).toBe(id("norm-routine"));
-      expect(savedCopy.source_routine_version_id).toBe(published.id);
+      expect(savedCopy.source_routine_version_id).toBe(savedV2.id);
       const readBack = await my.findForPractitioner(author, id("norm-routine"));
       expect(readBack).toMatchObject({
         id: savedCopy.id,

@@ -4,7 +4,6 @@ import {
   ProgramsRepository,
 } from "../src/storage/repositories/programs.js";
 import {
-  RoutineRepositoryError,
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
   RoutinesRepository,
@@ -26,18 +25,18 @@ const VALID_PARAMS = {
   days_per_week: 7,
 } as const;
 
-describe("QA round 2: partial createDraft writes (known gap DIDI-1098 / DIDI-1101)", () => {
-  it("leaves a routine without a draft when draftVersionId collides, then publish and replace reject", async () => {
+describe("QA round 2: createDraft batch (DIDI-1098)", () => {
+  it("leaves no routine row when draftVersionId is reused on a second createDraft", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(storage);
       await seedApprovedExerciseVersion(storage, author);
       const routines = new RoutinesRepository(storage);
-      const rows = new RoutineVersionRowsRepository(storage);
-      const versions = new RoutineVersionsRepository(storage);
       const sharedVersionId = id("partial-shared-rv");
+      const routineAId = id("partial-routine-a");
+      const routineBId = id("partial-routine-b");
       await routines.createDraft({
-        id: id("partial-routine-a"),
+        id: routineAId,
         draftVersionId: sharedVersionId,
         createdBy: author,
         createdAt: TS,
@@ -45,37 +44,15 @@ describe("QA round 2: partial createDraft writes (known gap DIDI-1098 / DIDI-110
       });
       await expect(
         routines.createDraft({
-          id: id("partial-routine-b"),
+          id: routineBId,
           draftVersionId: sharedVersionId,
           createdBy: author,
           createdAt: TS,
           bodyRegionId: BODY_REGION_KNEE,
         }),
       ).rejects.toThrow(/UNIQUE constraint failed/i);
-      const orphanId = id("partial-routine-b");
-      const orphan = await routines.findById(orphanId);
-      expect(orphan?.published_version).toBeNull();
-      await expect(
-        versions.publishDraft({
-          routineId: orphanId,
-          authorId: author,
-          publishedAt: TS,
-          name: "Should not publish",
-        }),
-      ).rejects.toThrow(new RoutineRepositoryError("Draft version not found"));
-      await expect(
-        rows.replaceDraftRow({
-          id: id("partial-orphan-row"),
-          routineId: orphanId,
-          authorId: author,
-          position: 0,
-          exerciseId: FIXTURE_EXERCISE_ID,
-          exerciseVersionId: FIXTURE_VERSION_ID,
-          prescriptionType: "stretching",
-          params: VALID_PARAMS,
-          draftUpdatedAt: TS,
-        }),
-      ).rejects.toThrow(new RoutineRepositoryError("Draft version not found"));
+      expect(await routines.findById(routineBId)).toBeNull();
+      expect(await routines.findById(routineAId)).not.toBeNull();
     } finally {
       storage.close();
     }
