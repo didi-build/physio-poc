@@ -355,6 +355,93 @@ describe("ExerciseMediaService (integration)", () => {
     }
   });
 
+  async function seedApprovedVersionOwnedByB(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  ) {
+    const ownerId = await seedPractitioner(
+      storage,
+      testOpaqueEntityId("media-svc-owner-b"),
+    );
+    const exerciseId = await seedExercise(storage, ownerId);
+    const approvedVersionId = testOpaqueEntityId("media-svc-b-approved");
+    const mediaSetId = testOpaqueEntityId("media-svc-b-approved-set");
+    await storage.run(
+      `INSERT INTO exercise_versions (
+        id, exercise_id, version_number, status, approved_by, approved_at,
+        title, description, equipment, starting_position, steps,
+        common_mistakes, regressions, progressions, precautions,
+        cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+        media_set_id, change_summary, created_at
+      ) VALUES (${Array(22).fill("?").join(", ")})`,
+      versionInsertBindings({
+        id: approvedVersionId,
+        exercise_id: exerciseId,
+        status: "approved",
+        approved_by: ownerId,
+        approved_at: TS,
+        title: "Published move",
+        starting_position: "Supine",
+      }),
+    );
+    await storage.run(
+      `INSERT INTO exercise_media_sets (
+        id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        mediaSetId,
+        `media-sets/${mediaSetId}/start.png`,
+        `media-sets/${mediaSetId}/end.png`,
+        null,
+        "public",
+        TS,
+      ],
+    );
+    await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+      mediaSetId,
+      approvedVersionId,
+    ]);
+    return { ownerId, approvedVersionId };
+  }
+
+  it("rejects owner-only internal serve and mutations when practitioner id is missing on an approved version owned by another practitioner", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { ownerId, approvedVersionId } = await seedApprovedVersionOwnedByB(storage);
+      const { service } = await createService(storage);
+      const versionNotFound = {
+        code: "version_not_found",
+        message: "Exercise version not found",
+      };
+      await expect(
+        service.getMediaForServing(approvedVersionId, "internal", undefined),
+      ).rejects.toMatchObject(versionNotFound);
+      await expect(
+        service.getMediaForServing(approvedVersionId, "internal", ""),
+      ).rejects.toMatchObject(versionNotFound);
+      await expect(
+        service.regenerateMedia({
+          practitionerId: "",
+          exerciseVersionId: approvedVersionId,
+          scope: "start",
+        }),
+      ).rejects.toMatchObject(versionNotFound);
+      await expect(
+        service.generateInitialMediaForVersion({
+          practitionerId: "",
+          exerciseVersionId: approvedVersionId,
+        }),
+      ).rejects.toMatchObject(versionNotFound);
+      const ownerView = await service.getMediaForServing(
+        approvedVersionId,
+        "internal",
+        ownerId,
+      );
+      expect(ownerView?.mediaSetId).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects notes longer than 200 characters", async () => {
     const storage = await openMigratedDatabase();
     try {
