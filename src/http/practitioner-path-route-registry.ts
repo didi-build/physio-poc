@@ -73,3 +73,29 @@ export function practitionerPathRouteSampleKey(
 ): string {
   return `${sample.method} ${sample.samplePath}`;
 }
+
+function routeCaseKey(routeCase: { method: string; path: string }): string {
+  return `${routeCase.method} ${routeCase.path}`;
+}
+
+/** Route case keys derived directly from handler-owned route case helpers (not via the merge tables). */
+export function canonicalPractitionerPathRouteCaseKeys(
+  practitionerId: string = EXAMPLE_PRACTITIONER_ID,
+  exerciseId: string = EXAMPLE_EXERCISE_ID,
+  versionId: string = EXAMPLE_VERSION_ID,
+): string[] {
+  const keys: string[] = [];
+  for (const routeCase of exerciseLibraryPractitionerPathHttpRouteCases(
+    practitionerId,
+    exerciseId,
+  )) {
+    keys.push(routeCaseKey(routeCase));
+  }
+  for (const routeCase of exerciseMediaHttpRouteCases(practitionerId, versionId)) {
+    if (!routeCase.path.startsWith("/api/practitioners/")) {
+      continue;
+    }
+    keys.push(routeCaseKey(routeCase));
+  }
+  return keys.sort();
+}

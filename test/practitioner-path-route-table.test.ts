@@ -4,6 +4,7 @@ import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-m
 import { handleRequest } from "../src/http/app.js";
 import {
   PRACTITIONER_PATH_ROUTE_SAMPLES,
+  canonicalPractitionerPathRouteCaseKeys,
   practitionerPathRouteSampleKey,
   practitionerPathRouteSampleKeysFromHandlerTables,
 } from "../src/http/practitioner-path-route-registry.js";
@@ -86,7 +87,9 @@ describe("HTTP route table (practitioner path session binding)", () => {
       practitionerPathRouteSampleKey,
     ).sort();
     const fromTables = practitionerPathRouteSampleKeysFromHandlerTables();
+    const canonical = canonicalPractitionerPathRouteCaseKeys();
     expect(fromSamples).toEqual(fromTables);
+    expect(fromSamples).toEqual(canonical);
     expect(fromSamples.length).toBeGreaterThan(0);
   });
 
@@ -117,12 +120,12 @@ describe("HTTP route table (practitioner path session binding)", () => {
         FIXTURE_VERSION_ID,
         BASE,
       );
-      const fromTables = practitionerPathRouteSampleKeysFromHandlerTables(
+      const canonical = canonicalPractitionerPathRouteCaseKeys(
         practId,
         EXERCISE_ID,
         FIXTURE_VERSION_ID,
       );
-      expect(probed).toEqual(fromTables);
+      expect(probed).toEqual(canonical);
     } finally {
       storage.close();
     }

@@ -1,10 +1,7 @@
 import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import { handleRequest } from "../../src/http/app.js";
-import {
-  buildPractitionerPathRouteSamples,
-  practitionerPathRouteSampleKey,
-} from "../../src/http/practitioner-path-route-registry.js";
+import { canonicalPractitionerPathRouteCaseKeys } from "../../src/http/practitioner-path-route-registry.js";
 import { mutatingAppApiRequestInit } from "./mutating-app-api-request.js";
 
 function probeRequestBody(path: string, method: string): string | undefined {
@@ -36,7 +33,7 @@ function probeRequestHeaders(
   return headers;
 }
 
-/** Test-only: keys where `handleRequest` returns non-404 on registry practitioner path samples. */
+/** Test-only: keys where `handleRequest` returns non-404 on canonical practitioner path routes. */
 export async function probedPractitionerPathRouteKeys(
   deps: AppDependencies,
   practitionerId: string,
@@ -47,29 +44,30 @@ export async function probedPractitionerPathRouteKeys(
   const auth = deps.auth as FakeAuthPort;
   const cookie = auth.createSessionCookieHeader();
   const keys: string[] = [];
-  for (const sample of buildPractitionerPathRouteSamples(
+  for (const key of canonicalPractitionerPathRouteCaseKeys(
     practitionerId,
     exerciseId,
     versionId,
   )) {
-    const init = mutatingAppApiRequestInit(`${baseUrl}${sample.samplePath}`, {
-      method: sample.method,
-      headers: probeRequestHeaders(baseUrl, cookie, sample.method),
-      body: probeRequestBody(sample.samplePath, sample.method),
+    const space = key.indexOf(" ");
+    const method = key.slice(0, space);
+    const samplePath = key.slice(space + 1);
+    const init = mutatingAppApiRequestInit(`${baseUrl}${samplePath}`, {
+      method,
+      headers: probeRequestHeaders(baseUrl, cookie, method),
+      body: probeRequestBody(samplePath, method),
     });
     const response = await handleRequest(
-      new Request(`${baseUrl}${sample.samplePath}`, init),
+      new Request(`${baseUrl}${samplePath}`, init),
       deps,
     );
-    if (response.status !== 404) {
-      keys.push(
-        practitionerPathRouteSampleKey({
-          ruleId: sample.ruleId,
-          method: sample.method,
-          samplePath: sample.samplePath,
-        }),
-      );
+    if (response.status === 404) {
+      const body = (await response.clone().json()) as { error?: string };
+      if (body.error === "not_found") {
+        continue;
+      }
     }
+    keys.push(key);
   }
   return keys.sort();
 }
