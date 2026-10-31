@@ -23,6 +23,7 @@ import {
   programsFromRoutinePath,
   routineSentProgramsPath,
 } from "./helpers/program-builder-http-paths.js";
+import { programBuilderHttpRouteCases } from "./helpers/program-builder-http-route-cases.js";
 import {
   publishRoutine,
   seedTwoPractitioners,
@@ -47,6 +48,71 @@ const PROGRAM_NOT_FOUND_BODY = {
   error: "program_not_found",
   message: "Program not found",
 } as const;
+
+const NOT_FOUND_BODY = {
+  error: "not_found",
+  message: "Not found",
+} as const;
+
+const MALFORMED_PERCENT_ROUTINE_SEGMENT = "%E0%A4%A";
+
+async function seedCommunityNewerThanSavedMyCopy(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerA: string,
+  practitionerB: string,
+): Promise<{ routineId: string; communityHoldS: number; savedCopyHoldS: number }> {
+  const v1 = await publishRoutine(storage, practitionerA, {
+    routine: "http-source-split-routine",
+    draftVersion: "http-source-split-draft",
+    row: "http-source-split-row",
+    name: "Source split v1",
+    hold_s: 20,
+  });
+  const my = new PractitionerRoutinesRepository(storage);
+  await my.saveFrozenCopy({
+    id: id("http-source-split-pr"),
+    practitionerId: practitionerB,
+    routineId: id("http-source-split-routine"),
+    sourceRoutineVersionId: v1.id,
+    savedAt: TS,
+    rows: [
+      {
+        id: id("http-source-split-pr-row"),
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 20, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+      },
+    ],
+  });
+  const versions = new RoutineVersionsRepository(storage);
+  await versions.savePublishedVersion({
+    id: id("http-source-split-rv2"),
+    routineId: id("http-source-split-routine"),
+    createdBy: practitionerA,
+    createdAt: TS,
+    name: "Source split v2",
+    copyFromVersionId: v1.id,
+  });
+  const communityHoldS = 99;
+  await storage.run(
+    `UPDATE routine_version_rows SET params_json = ? WHERE routine_version_id = ?`,
+    [
+      JSON.stringify({
+        hold_s: communityHoldS,
+        per_day: { min: 1, max: 2 },
+        days_per_week: 7,
+      }),
+      id("http-source-split-rv2"),
+    ],
+  );
+  return {
+    routineId: id("http-source-split-routine"),
+    communityHoldS,
+    savedCopyHoldS: 20,
+  };
+}
 
 function authedRequest(url: string, cookie: string, init: RequestInit = {}): Request {
   const headers = new Headers(init.headers);
@@ -226,6 +292,51 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
       );
       expect(nestedPractitioner.status).toBe(400);
       await expect(nestedPractitioner.json()).resolves.toEqual(INVALID_INPUT_BODY);
+
+      const rowIdsString = await handleRequest(
+        authedMutatingRequest(programsFromRoutinePath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            program_id: base.programId,
+            routine_id: base.routineId,
+            source: "community",
+            row_ids: id("validate-row"),
+          }),
+        }),
+        deps,
+      );
+      expect(rowIdsString.status).toBe(400);
+      await expect(rowIdsString.json()).resolves.toEqual(INVALID_INPUT_BODY);
+
+      const rowIdsObject = await handleRequest(
+        authedMutatingRequest(programsFromRoutinePath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            program_id: base.programId,
+            routine_id: base.routineId,
+            source: "community",
+            row_ids: { id: id("validate-row") },
+          }),
+        }),
+        deps,
+      );
+      expect(rowIdsObject.status).toBe(400);
+      await expect(rowIdsObject.json()).resolves.toEqual(INVALID_INPUT_BODY);
+
+      const rowIdsNonStringElement = await handleRequest(
+        authedMutatingRequest(programsFromRoutinePath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            program_id: base.programId,
+            routine_id: base.routineId,
+            source: "community",
+            row_ids: [123],
+          }),
+        }),
+        deps,
+      );
+      expect(rowIdsNonStringElement.status).toBe(400);
+      await expect(rowIdsNonStringElement.json()).resolves.toEqual(INVALID_INPUT_BODY);
 
       expect(await programCount(storage, practitionerA)).toBe(beforeCount);
     } finally {
@@ -561,54 +672,117 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
     }
   });
 
+  it("pins DIDI-1133 routes in the program builder HTTP route table", () => {
+    const cases = programBuilderHttpRouteCases();
+    expect(cases).toContainEqual({
+      method: "POST",
+      path: programsFromRoutinePath(),
+    });
+    expect(
+      cases.some(
+        (routeCase) =>
+          routeCase.method === "GET" && routeCase.path.endsWith("/sent-programs"),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns not_found for non-GET methods on sent-programs without stats in the body", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "http-sent-method-routine",
+        draftVersion: "http-sent-method-draft",
+        row: "http-sent-method-row",
+        name: "Sent method guard routine",
+      });
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const path = routineSentProgramsPath(id("http-sent-method-routine"));
+      for (const method of ["POST", "PUT", "PATCH", "DELETE"] as const) {
+        const response = await handleRequest(
+          authedMutatingRequest(path, cookie, {
+            method,
+            body: method === "DELETE" ? undefined : JSON.stringify({}),
+          }),
+          deps,
+        );
+        expect(response.status, method).toBe(404);
+        const json = (await response.json()) as Record<string, unknown>;
+        expect(json, method).toEqual(NOT_FOUND_BODY);
+        expect(json, method).not.toHaveProperty("sent_count");
+        expect(json, method).not.toHaveProperty("codes");
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns program_not_found for malformed percent-encoded routine id on sent-programs", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA } = await seedTwoPractitioners(storage);
+      const missingId = id("http-malformed-sent-missing");
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const malformedPath = `/api/me/routines/${MALFORMED_PERCENT_ROUTINE_SEGMENT}/sent-programs`;
+      const malformed = await handleRequest(
+        authedRequest(`${BASE}${malformedPath}`, cookie),
+        deps,
+      );
+      const missing = await handleRequest(
+        authedRequest(`${BASE}${routineSentProgramsPath(missingId)}`, cookie),
+        deps,
+      );
+      expect(malformed.status).toBe(404);
+      expect(missing.status).toBe(404);
+      const malformedJson = await malformed.json();
+      const missingJson = await missing.json();
+      expect(malformedJson).toEqual(missingJson);
+      expect(malformedJson).toEqual(PROGRAM_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("community source uses latest community rows when the caller has a saved my_copy", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const { routineId, communityHoldS } = await seedCommunityNewerThanSavedMyCopy(
+        storage,
+        practitionerA,
+        practitionerB,
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerB);
+      const response = await handleRequest(
+        authedMutatingRequest(programsFromRoutinePath(), cookie, {
+          method: "POST",
+          body: fromRoutineBody({
+            programId: id("prog-b-community-http"),
+            routineId,
+            source: "community",
+            rowIds: [id("row-b-community-http")],
+          }),
+        }),
+        deps,
+      );
+      expect(response.status).toBe(201);
+      const body = (await response.json()) as {
+        program: { rows: { params: { hold_s?: number } }[] };
+      };
+      expect(body.program.rows[0]?.params.hold_s).toBe(communityHoldS);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("my_copy uses B saved copy rows, not the latest community version", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
-      const v1 = await publishRoutine(storage, practitionerA, {
-        routine: "http-my-copy-routine",
-        draftVersion: "http-my-copy-draft",
-        row: "http-my-copy-row",
-        name: "My copy source v1",
-        hold_s: 20,
-      });
-      const my = new PractitionerRoutinesRepository(storage);
-      await my.saveFrozenCopy({
-        id: id("http-pr-copy"),
-        practitionerId: practitionerB,
-        routineId: id("http-my-copy-routine"),
-        sourceRoutineVersionId: v1.id,
-        savedAt: TS,
-        rows: [
-          {
-            id: id("http-pr-row"),
-            position: 0,
-            exerciseId: FIXTURE_EXERCISE_ID,
-            exerciseVersionId: FIXTURE_VERSION_ID,
-            prescriptionType: "stretching",
-            params: { hold_s: 20, per_day: { min: 1, max: 2 }, days_per_week: 7 },
-          },
-        ],
-      });
-      const versions = new RoutineVersionsRepository(storage);
-      await versions.savePublishedVersion({
-        id: id("http-my-copy-rv2"),
-        routineId: id("http-my-copy-routine"),
-        createdBy: practitionerA,
-        createdAt: TS,
-        name: "My copy source v2",
-        copyFromVersionId: v1.id,
-      });
-      await storage.run(
-        `UPDATE routine_version_rows SET params_json = ? WHERE routine_version_id = ?`,
-        [
-          JSON.stringify({
-            hold_s: 99,
-            per_day: { min: 1, max: 2 },
-            days_per_week: 7,
-          }),
-          id("http-my-copy-rv2"),
-        ],
+      const { routineId, savedCopyHoldS } = await seedCommunityNewerThanSavedMyCopy(
+        storage,
+        practitionerA,
+        practitionerB,
       );
       const { deps, cookie } = apiDeps(storage, practitionerB);
       const response = await handleRequest(
@@ -616,7 +790,7 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
           method: "POST",
           body: fromRoutineBody({
             programId: id("prog-b-my-copy-http"),
-            routineId: id("http-my-copy-routine"),
+            routineId,
             source: "my_copy",
             rowIds: [id("row-b-my-copy-http")],
           }),
@@ -627,7 +801,7 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
       const body = (await response.json()) as {
         program: { rows: { params: { hold_s?: number } }[] };
       };
-      expect(body.program.rows[0]?.params.hold_s).toBe(20);
+      expect(body.program.rows[0]?.params.hold_s).toBe(savedCopyHoldS);
     } finally {
       storage.close();
     }
