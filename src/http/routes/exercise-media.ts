@@ -89,14 +89,10 @@ async function readJsonBody(request: Request): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
-export type HandleExerciseMediaOptions = {
-  sessionPractitioner?: PractitionerSession | null;
-};
-
 export async function handleExerciseMediaRequest(
   request: Request,
   deps: AppDependencies,
-  options: HandleExerciseMediaOptions = {},
+  options: { sessionPractitioner?: PractitionerSession | null } = {},
 ): Promise<Response | null> {
   const sessionPractitioner = options.sessionPractitioner;
   const url = new URL(request.url);
