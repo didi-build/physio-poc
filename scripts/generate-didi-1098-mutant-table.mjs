@@ -294,16 +294,21 @@ const MUTANTS = [
         sql: \`INSERT INTO practitioner_routines (
         id, practitioner_id, routine_id, source_routine_version_id,
         source_version_number, saved_at, last_used_at, edited
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\`,
+      )
+      SELECT ?, ?, r.id, ?, ?, ?, ?, ?
+      FROM routines r
+      WHERE r.id = ? AND r.published_version = ? AND r.created_by = ?\`,
         bindings: [
           copyId,
           input.practitionerId,
-          routineId,
           sourceRoutineVersionId,
           input.sourceVersionNumber,
           input.savedAt,
           null,
           0,
+          routineId,
+          input.sourceVersionNumber,
+          routineCreatedBy,
         ],
         minRowsAffected: 1,
       },
@@ -315,16 +320,21 @@ const MUTANTS = [
         sql: \`INSERT INTO practitioner_routines (
         id, practitioner_id, routine_id, source_routine_version_id,
         source_version_number, saved_at, last_used_at, edited
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\`,
+      )
+      SELECT ?, ?, r.id, ?, ?, ?, ?, ?
+      FROM routines r
+      WHERE r.id = ? AND r.published_version = ? AND r.created_by = ?\`,
         bindings: [
           copyId,
           input.practitionerId,
-          routineId,
           sourceRoutineVersionId,
           input.sourceVersionNumber,
           input.savedAt,
           null,
           0,
+          routineId,
+          input.sourceVersionNumber,
+          routineCreatedBy,
         ],
         minRowsAffected: 1,
       },
@@ -365,14 +375,14 @@ const MUTANTS = [
     ];
   }
 
-  async findById`,
+  async updateDraftMetadata`,
           `          input.createdAt,
         ],
       },
     ];
   }
 
-  async findById`,
+  async updateDraftMetadata`,
         ),
       ),
   },
@@ -972,12 +982,14 @@ const MUTANTS = [
           `      ...input.rowStatements,
     ];
   }
+}
 
-  async findPublishedVersion`,
+export class RoutineVersionRowsRepository`,
           `    ];
   }
+}
 
-  async findPublishedVersion`,
+export class RoutineVersionRowsRepository`,
         ),
       ),
   },
@@ -1159,7 +1171,7 @@ export type ConditionRow`,
           "    return [\n      {\n        sql: `UPDATE routines SET published_version",
         );
         const end = s.indexOf(
-          "      ...input.rowStatements,\n    ];\n  }\n\n  async findPublishedVersion",
+          "      ...input.rowStatements,\n    ];\n  }\n}\n\nexport class RoutineVersionRowsRepository",
         );
         if (start < 0 || end < 0) throw new Error("C9 block missing");
         const block = s.slice(
@@ -1324,6 +1336,12 @@ let equivalent = 0;
 console.log("Running mutants (full vitest each)...");
 
 for (const mutant of MUTANTS) {
+  const filter = process.env.MUTANT_FILTER?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (filter?.length && !filter.includes(mutant.id)) {
+    continue;
+  }
   revertAll();
   try {
     mutant.apply();
