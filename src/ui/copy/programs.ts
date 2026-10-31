@@ -189,8 +189,6 @@ export function libraryUpdatesToReviewFlag(count: number): string | null {
   return `${count} library updates to review`;
 }
 
-export const CARD_LINK_NO_LINK_YET = "No link yet";
-
 export const ROW_VERSION_LABEL = "Version";
 export const ROW_VERSION_PICKER_HINT =
   "Pick a version. You can switch it on the row later.";

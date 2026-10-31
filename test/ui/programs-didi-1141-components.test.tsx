@@ -75,6 +75,27 @@ describe("ProgramOriginFilterPills (unit, literal spec copy)", () => {
       "false",
     );
   });
+
+  it("selects from_scratch when From scratch is clicked, not from_routine", async () => {
+    const onSelect = vi.fn<(filter: ProgramOriginFilter) => void>();
+    render(<ProgramOriginFilterPills active="all" onSelect={onSelect} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: SPEC_FILTER_FROM_SCRATCH }),
+    );
+    expect(onSelect).toHaveBeenCalledWith("from_scratch");
+    expect(onSelect).not.toHaveBeenCalledWith("from_routine");
+  });
+
+  it("marks From a routine pressed when active is from_routine", () => {
+    render(<ProgramOriginFilterPills active="from_routine" onSelect={() => {}} />);
+    expect(
+      screen.getByRole("button", { name: SPEC_FILTER_FROM_ROUTINE }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: SPEC_FILTER_ALL })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
 });
 
 describe("ProgramCardOriginLine (unit, literal spec copy)", () => {
