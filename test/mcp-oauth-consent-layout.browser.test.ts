@@ -140,6 +140,11 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         return lead ? getComputedStyle(lead).whiteSpace : null;
       });
       expect(leadWhiteSpace).toBe("nowrap");
+      const nameLineFlexWrap = await page.evaluate(() => {
+        const line = document.querySelector(".consent-name-line");
+        return line ? getComputedStyle(line).flexWrap : null;
+      });
+      expect(nameLineFlexWrap).toBe("wrap");
     } finally {
       await browser.close();
     }
