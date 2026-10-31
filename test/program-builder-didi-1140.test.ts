@@ -18,7 +18,10 @@ import {
 } from "../src/storage/repositories/routines.js";
 
 const BODY_REGION_KNEE = "br-knee";
-import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import {
+  ExerciseRequestsRepository,
+  PractitionerExercisesRepository,
+} from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   FIXTURE_EXERCISE_ID,
@@ -59,6 +62,9 @@ const INVALID_INPUT_BODY = {
   error: "invalid_input",
   message: "invalid_input",
 } as const;
+
+const PINNED_NOW = "2026-10-31T12:00:00.000Z";
+const PINNED_EXPIRED = "2026-10-31T11:59:59.999Z";
 
 const JSON_HEADERS: ReadonlyArray<[string, string]> = [
   ["content-type", "application/json"],
@@ -155,13 +161,6 @@ describe("DIDI-1140 program API fields and routes", () => {
       const programId = id("prog-1140-code");
       const service = new ProgramBuilderService(storage);
       const created = await service.createProgram(practitionerA, { programId });
-      await new ProgramsRepository(storage).create({
-        id: id("prog-lenient-trap"),
-        createdBy: practitionerA,
-        createdAt: TS,
-        code: "PRG-PRG7",
-        name: "Lenient trap",
-      });
       await service.deleteProgram(practitionerA, programId);
 
       const { deps: depsA, cookie: cookieA } = apiDeps(storage, practitionerA);
@@ -171,7 +170,10 @@ describe("DIDI-1140 program API fields and routes", () => {
         { cookie: cookieB, code: created.program.code, label: "foreign" },
         { cookie: cookieA, code: "PRG-NOMATCH", label: "missing" },
         { cookie: cookieA, code: created.program.code, label: "soft-deleted" },
-        { cookie: cookieA, code: "PRG7", label: "lenient-only-code" },
+        { cookie: cookieA, code: "AB12", label: "bare-suffix" },
+        { cookie: cookieA, code: "PRGAB12", label: "dashless" },
+        { cookie: cookieA, code: "prgab12", label: "lowercase-dashless" },
+        { cookie: cookieA, code: "PRG7", label: "lenient-list-only" },
         { cookie: cookieA, code: "not-a-code", label: "invalid-format" },
       ];
 
@@ -197,6 +199,71 @@ describe("DIDI-1140 program API fields and routes", () => {
           expect(headers).toEqual(reference.headers);
         }
       }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET by-code matches only trim and uppercase canonical codes", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-exact-code");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-AB12",
+        name: "Exact code program",
+      });
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const trimmed = await handleRequest(
+        authedGet(`${BASE}${programByCodePath(" prg-ab12 ")}`, cookie),
+        deps,
+      );
+      expect(trimmed.status).toBe(200);
+      const canonical = await handleRequest(
+        authedGet(`${BASE}${programByCodePath("PRG-AB12")}`, cookie),
+        deps,
+      );
+      expect(await trimmed.json()).toEqual(await canonical.json());
+
+      for (const code of ["AB12", "PRGAB12", "prgab12"]) {
+        const response = await handleRequest(
+          authedGet(`${BASE}${programByCodePath(code)}`, cookie),
+          deps,
+        );
+        expect(response.status).toBe(404);
+        expect(JSON.parse(await response.text())).toEqual(PROGRAM_NOT_FOUND_BODY);
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns program_not_found for by-code when stored code is non-canonical PRG-PRG7", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await new ProgramsRepository(storage).create({
+        id: id("prog-lenient-trap"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-PRG7",
+        name: "Lenient trap",
+      });
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const response = await handleRequest(
+        authedGet(`${BASE}${programByCodePath("PRG-PRG7")}`, cookie),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const wrong = await handleRequest(
+        authedGet(`${BASE}${programByCodePath("PRG7")}`, cookie),
+        deps,
+      );
+      expect(wrong.status).toBe(404);
+      expect(JSON.parse(await wrong.text())).toEqual(PROGRAM_NOT_FOUND_BODY);
     } finally {
       storage.close();
     }
@@ -264,12 +331,12 @@ describe("DIDI-1140 program API fields and routes", () => {
     }
   });
 
-  it("derives share_link_status from share_links without replacing open_share_link", async () => {
+  it("derives share_link_status from the latest link with a pinned clock", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       const programId = id("prog-link-status");
-      const service = new ProgramBuilderService(storage);
+      const service = new ProgramBuilderService(storage, () => PINNED_NOW);
       const created = await service.createProgram(practitionerId, { programId });
       let view = created.program;
       expect(view.open_share_link).toBe(false);
@@ -277,10 +344,10 @@ describe("DIDI-1140 program API fields and routes", () => {
 
       const links = new ShareLinksRepository(storage);
       await links.createOpenLink({
-        id: id("link-open-1140"),
+        id: id("link-live-1140"),
         programId,
         createdAt: TS,
-        expiresAt: null,
+        expiresAt: "2026-10-31T12:00:01.000Z",
       });
       view = await service.getProgram(practitionerId, programId);
       expect(view.open_share_link).toBe(true);
@@ -291,37 +358,67 @@ describe("DIDI-1140 program API fields and routes", () => {
       expect(view.open_share_link).toBe(false);
       expect(view.share_link_status).toBe("closed");
 
-      await service.deleteProgram(practitionerId, programId);
-      view = await service.getProgram(practitionerId, programId);
+      const programExpired = id("prog-expired-status");
+      await service.createProgram(practitionerId, { programId: programExpired });
+      await links.createOpenLink({
+        id: id("link-expired-status"),
+        programId: programExpired,
+        createdAt: TS,
+        expiresAt: PINNED_EXPIRED,
+      });
+      view = await service.getProgram(practitionerId, programExpired);
+      expect(view.open_share_link).toBe(true);
+      expect(view.share_link_status).toBe("closed");
+
+      const programExact = id("prog-expiry-exact");
+      await service.createProgram(practitionerId, { programId: programExact });
+      await links.createOpenLink({
+        id: id("link-expiry-exact"),
+        programId: programExact,
+        createdAt: TS,
+        expiresAt: PINNED_NOW,
+      });
+      view = await service.getProgram(practitionerId, programExact);
       expect(view.share_link_status).toBe("closed");
     } finally {
       storage.close();
     }
   });
 
-  it("keeps share_link_status open for an expired but unclosed link matching open_share_link", async () => {
+  it("does not let another program's link history change share_link_status", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const practitionerId = await seedPractitioner(storage);
-      const programId = id("prog-expired-link");
-      const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerId, { programId });
-      const links = new ShareLinksRepository(storage);
-      const expiredAt = new Date(Date.now() - 60_000).toISOString();
-      await links.createOpenLink({
-        id: id("link-expired-1140"),
-        programId,
-        createdAt: TS,
-        expiresAt: expiredAt,
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("1140-link-b");
+      await seedPractitioner(storage, practitionerB, "linkb@example.com");
+      const service = new ProgramBuilderService(storage, () => PINNED_NOW);
+      const programA1 = await service.createProgram(practitionerA, {
+        programId: id("prog-a1-link"),
       });
-      const view = await service.getProgram(practitionerId, programId);
-      expect(view.open_share_link).toBe(true);
-      expect(view.share_link_status).toBe("open");
+      await service.createProgram(practitionerA, { programId: id("prog-a2-link") });
+      const programB = await service.createProgram(practitionerB, {
+        programId: id("prog-b-link"),
+      });
+      const links = new ShareLinksRepository(storage);
+      await links.createOpenLink({
+        id: id("link-b-closed"),
+        programId: programB.program.program_id,
+        createdAt: TS,
+        expiresAt: PINNED_EXPIRED,
+      });
+      await links.closeOpenLinksForProgram(programB.program.program_id, TS);
+
+      const viewA1 = await service.getProgram(
+        practitionerA,
+        programA1.program.program_id,
+      );
+      expect(viewA1.share_link_status).toBe("none");
+      const listA = await service.listPrograms(practitionerA);
+      expect(listA.items.every((item) => item.share_link_status === "none")).toBe(true);
     } finally {
       storage.close();
     }
   });
-
   it("filters list programs by origin query parameter", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -515,10 +612,11 @@ describe("DIDI-1140 program API fields and routes", () => {
     }
   });
 
-  it("PATCH exercise_version_id on placeholder rows returns invalid_input", async () => {
+  it("PATCH exercise_version_id on placeholder rows returns canonical invalid_input unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
       const programId = id("prog-ph-ver");
       const rowId = id("row-ph-ver");
       const requestId = id("req-ph-ver");
@@ -538,20 +636,332 @@ describe("DIDI-1140 program API fields and routes", () => {
         exerciseRequestId: requestId,
         prescriptionType: "stretching",
       });
+      const programBefore = await new ProgramsRepository(storage).findById(programId);
       const before = await new ProgramRowsRepository(storage).findById(rowId);
-      await expect(
-        service.updateRow(practitionerId, programId, rowId, {
-          exerciseVersionId: FIXTURE_VERSION_ID,
-        }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const url = `${BASE}${programRowPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ exercise_version_id: FIXTURE_VERSION_ID }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(INVALID_INPUT_BODY);
       const after = await new ProgramRowsRepository(storage).findById(rowId);
       expect(after).toEqual(before);
-      expect(after?.exercise_request_id).toBe(requestId);
+      const programAfter = await new ProgramsRepository(storage).findById(programId);
+      expect(programAfter?.draft_updated_at).toBe(programBefore?.draft_updated_at);
+      expect(programAfter?.source_routine_origin).toBe(
+        programBefore?.source_routine_origin,
+      );
     } finally {
       storage.close();
     }
   });
 
+  it("rejects non-string exercise_version_id on PATCH with invalid_input and no draft edit", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const programId = id("prog-bad-ver-type");
+      const rowId = id("row-bad-ver-type");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      const programBefore = await new ProgramsRepository(storage).findById(programId);
+      const rowBefore = await new ProgramRowsRepository(storage).findById(rowId);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const url = `${BASE}${programRowPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ exercise_version_id: 7 }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(INVALID_INPUT_BODY);
+      const programAfter = await new ProgramsRepository(storage).findById(programId);
+      expect(programAfter?.draft_updated_at).toBe(programBefore?.draft_updated_at);
+      expect(await new ProgramRowsRepository(storage).findById(rowId)).toEqual(
+        rowBefore,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH exercise_version_id re-validates prescription type against the new version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const versionV2 = id("ex-ver-v2-prescription");
+      await seedSecondApprovedVersion(storage, practitionerId, versionV2, 2);
+      const programId = id("prog-prescription-revalidate");
+      const rowId = id("row-prescription-revalidate");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      await storage.run(`UPDATE program_rows SET prescription_type = ? WHERE id = ?`, [
+        "isometric",
+        rowId,
+      ]);
+      const before = await new ProgramRowsRepository(storage).findById(rowId);
+      await expect(
+        service.updateRow(practitionerId, programId, rowId, {
+          exerciseVersionId: versionV2,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      expect(await new ProgramRowsRepository(storage).findById(rowId)).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH exercise_version_id marks routine_origin tweaked when used_as_is", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [practitionerId, TS, FIXTURE_VERSION_ID],
+      );
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const routineId = id("routine-tweak-ver");
+      const draftVersionId = id("rv-tweak-ver-draft");
+      await routines.createDraft({
+        id: routineId,
+        draftVersionId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await rows.replaceDraftRow({
+        id: id("rvr-tweak-ver"),
+        routineId,
+        authorId: practitionerId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: {
+          hold_s: 30,
+          per_day: { min: 1, max: 2 },
+          days_per_week: 7,
+        },
+        draftUpdatedAt: TS,
+      });
+      await versions.publishDraft({
+        routineId,
+        authorId: practitionerId,
+        publishedAt: TS,
+        name: "Tweak ver routine",
+      });
+      const versionV2 = id("ex-ver-v2-tweak");
+      await seedSecondApprovedVersion(storage, practitionerId, versionV2, 2);
+      const programId = id("prog-routine-tweak-ver");
+      const rowId = id("row-routine-tweak-ver");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgramFromRoutine(practitionerId, {
+        programId,
+        routineId,
+        source: "community",
+        rowIds: [rowId],
+      });
+      expect(
+        (await service.getProgram(practitionerId, programId)).routine_origin?.used_as,
+      ).toBe("used_as_is");
+      const viewRow = (await service.getProgram(practitionerId, programId)).rows[0]!;
+      await service.updateRow(practitionerId, programId, viewRow.id, {
+        exerciseVersionId: versionV2,
+      });
+      expect(
+        (await service.getProgram(practitionerId, programId)).routine_origin?.used_as,
+      ).toBe("tweaked");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH exercise_version_id rebuilds snapshot with practitioner text overrides", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const versionV2 = id("ex-ver-v2-override");
+      await seedSecondApprovedVersion(storage, practitionerId, versionV2, 2);
+      const pe = new PractitionerExercisesRepository(storage);
+      await pe.upsert({
+        practitionerId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        savedAt: TS,
+        textOverrides: {
+          title: { value: "My row title", base: "Lib title" },
+        },
+      });
+      const programId = id("prog-override-ver");
+      const rowId = id("row-override-ver");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      await service.updateRow(practitionerId, programId, rowId, {
+        exerciseVersionId: versionV2,
+      });
+      const view = await service.getProgram(practitionerId, programId);
+      expect(view.rows[0]?.text_snapshot.title).toBe("My row title");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH exercise_version_id keeps existing note and params when omitted", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const versionV2 = id("ex-ver-v2-keep-fields");
+      await seedSecondApprovedVersion(storage, practitionerId, versionV2, 2);
+      const programId = id("prog-keep-fields");
+      const rowId = id("row-keep-fields");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      await service.updateRow(practitionerId, programId, rowId, {
+        note: "Keep this note",
+        params: { hold_s: 30, per_day: 2, days_per_week: 4 },
+      });
+      const paramsBefore = (await new ProgramRowsRepository(storage).findById(rowId))
+        ?.params_json;
+      const noteBefore = (await new ProgramRowsRepository(storage).findById(rowId))
+        ?.note;
+      await service.updateRow(practitionerId, programId, rowId, {
+        exerciseVersionId: versionV2,
+      });
+      const rowAfter = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(rowAfter?.params_json).toBe(paramsBefore);
+      expect(rowAfter?.note).toBe(noteBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH exercise_version_id keeps every row when the program has multiple rows", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const versionV2 = id("ex-ver-v2-multi");
+      await seedSecondApprovedVersion(storage, practitionerId, versionV2, 2);
+      const programId = id("prog-multi-row-ver");
+      const row0 = id("row-multi-0");
+      const row1 = id("row-multi-1");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId: row0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId: row1,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      const rowsBefore = await new ProgramRowsRepository(storage).listForProgram(
+        programId,
+      );
+      await service.updateRow(practitionerId, programId, row1, {
+        exerciseVersionId: versionV2,
+      });
+      const rowsAfter = await new ProgramRowsRepository(storage).listForProgram(
+        programId,
+      );
+      expect(rowsAfter.map((row) => row.id).sort()).toEqual(
+        rowsBefore.map((row) => row.id).sort(),
+      );
+      const untouched = rowsAfter.find((row) => row.id === row0);
+      const before0 = rowsBefore.find((row) => row.id === row0);
+      expect(untouched?.exercise_version_id).toBe(before0?.exercise_version_id);
+      expect(untouched?.text_snapshot_json).toBe(before0?.text_snapshot_json);
+      expect(untouched?.position).toBe(before0?.position);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("A last_sent_at and share_link_status ignore B program state", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("1140-field-b");
+      await seedPractitioner(storage, practitionerB, "fieldb@example.com");
+      await seedApprovedForBuilder(storage, practitionerB);
+      const service = new ProgramBuilderService(storage, () => PINNED_NOW);
+      const programA = await service.createProgram(practitionerA, {
+        programId: id("prog-field-a"),
+      });
+      const programB = id("prog-field-b");
+      await service.createProgram(practitionerB, {
+        programId: programB,
+        name: "Program B",
+      });
+      await service.addExerciseRow(practitionerB, programB, {
+        rowId: id("row-field-b"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+      });
+      await new ProgramsRepository(storage).publish(programB, TS);
+      const links = new ShareLinksRepository(storage);
+      await links.createOpenLink({
+        id: id("link-field-b"),
+        programId: programB,
+        createdAt: TS,
+        expiresAt: PINNED_EXPIRED,
+      });
+      await links.closeOpenLinksForProgram(programB, TS);
+
+      const viewA = await service.getProgram(
+        practitionerA,
+        programA.program.program_id,
+      );
+      expect(viewA.last_sent_at).toBeNull();
+      expect(viewA.share_link_status).toBe("none");
+      const listA = await service.listPrograms(practitionerA);
+      expect(listA.items[0]?.last_sent_at).toBeNull();
+      expect(listA.items[0]?.share_link_status).toBe("none");
+    } finally {
+      storage.close();
+    }
+  });
   it("A cannot PATCH B row with exercise_version_id", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -649,15 +1059,48 @@ describe("DIDI-1140 program API fields and routes", () => {
 });
 
 describe("DIDI-1140 computeShareLinkStatus (unit)", () => {
-  it("maps open, closed, and none from open_share_link and link history", () => {
-    expect(computeShareLinkStatus({ openShareLink: true, hadAnyLink: true })).toBe(
-      "open",
-    );
-    expect(computeShareLinkStatus({ openShareLink: false, hadAnyLink: true })).toBe(
-      "closed",
-    );
-    expect(computeShareLinkStatus({ openShareLink: false, hadAnyLink: false })).toBe(
-      "none",
-    );
+  const link = (
+    partial: Partial<{
+      expires_at: string | null;
+      closed_at: string | null;
+    }> = {},
+  ) => ({
+    id: "link-1",
+    program_id: "prog-1",
+    token: "tok",
+    created_at: TS,
+    expires_at: null as string | null,
+    closed_at: null as string | null,
+    ...partial,
+  });
+
+  it("maps latest link state with request time", () => {
+    expect(
+      computeShareLinkStatus({ latestLink: null, requestTimeIso: PINNED_NOW }),
+    ).toBe("none");
+    expect(
+      computeShareLinkStatus({
+        latestLink: link({ expires_at: "2026-10-31T12:00:01.000Z" }),
+        requestTimeIso: PINNED_NOW,
+      }),
+    ).toBe("open");
+    expect(
+      computeShareLinkStatus({
+        latestLink: link({ expires_at: PINNED_EXPIRED }),
+        requestTimeIso: PINNED_NOW,
+      }),
+    ).toBe("closed");
+    expect(
+      computeShareLinkStatus({
+        latestLink: link({ expires_at: PINNED_NOW }),
+        requestTimeIso: PINNED_NOW,
+      }),
+    ).toBe("closed");
+    expect(
+      computeShareLinkStatus({
+        latestLink: link({ closed_at: TS }),
+        requestTimeIso: PINNED_NOW,
+      }),
+    ).toBe("closed");
   });
 });

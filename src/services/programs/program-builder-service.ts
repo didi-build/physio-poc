@@ -44,6 +44,7 @@ import {
   ShareLinksRepository,
   type ProgramRecord,
   type ProgramRow,
+  type ShareLinkRecord,
 } from "../../storage/repositories/programs.js";
 import { TypeDefaultsRepository } from "../../storage/repositories/type-defaults.js";
 import {
@@ -207,11 +208,11 @@ export class ProgramBuilderService {
     await this.requirePractitioner(practitionerId);
     let normalized: string;
     try {
-      normalized = programCodeDomain.normalizeProgramCode(programCode);
+      normalized = programCodeDomain.trimUppercaseProgramCode(programCode);
     } catch {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
     }
-    if (!programCodeDomain.isValidProgramCodeFormat(normalized)) {
+    if (!programCodeDomain.isCanonicalProgramCodeFormat(normalized)) {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
     }
     const program = await this.programs.findByExactCode(normalized);
@@ -918,7 +919,7 @@ export class ProgramBuilderService {
       ? null
       : await this.links.findOpenByProgramId(programId);
     const openShareLink = openLink !== null;
-    const hadAnyLink = await this.links.hasAnyLinkForProgram(programId);
+    const latestLink = await this.links.findLatestByProgramId(programId);
     const routineOrigin = await this.buildRoutineOriginView(program);
     return {
       program_id: program.id,
@@ -932,7 +933,10 @@ export class ProgramBuilderService {
       library_updates_to_review: libraryUpdates,
       rows: builderRows,
       open_share_link: openShareLink,
-      share_link_status: computeShareLinkStatus({ openShareLink, hadAnyLink }),
+      share_link_status: computeShareLinkStatus({
+        latestLink,
+        requestTimeIso: this.now(),
+      }),
       last_sent_at: program.published_at,
       deleted_at: program.deleted_at,
       routine_origin: routineOrigin,
@@ -1584,16 +1588,27 @@ export class ProgramBuilderService {
 }
 
 export function computeShareLinkStatus(input: {
-  openShareLink: boolean;
-  hadAnyLink: boolean;
+  latestLink: ShareLinkRecord | null;
+  requestTimeIso: string;
 }): ShareLinkStatus {
-  if (input.openShareLink) {
-    return "open";
+  if (!input.latestLink) {
+    return "none";
   }
-  if (input.hadAnyLink) {
+  if (input.latestLink.closed_at !== null) {
     return "closed";
   }
-  return "none";
+  if (input.latestLink.expires_at !== null) {
+    const expiresMs = Date.parse(input.latestLink.expires_at);
+    const requestMs = Date.parse(input.requestTimeIso);
+    if (
+      !Number.isNaN(expiresMs) &&
+      !Number.isNaN(requestMs) &&
+      expiresMs <= requestMs
+    ) {
+      return "closed";
+    }
+  }
+  return "open";
 }
 
 export function computeAutoSaveStatus(program: ProgramRecord): ProgramAutoSaveStatus {

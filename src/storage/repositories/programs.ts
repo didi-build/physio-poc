@@ -824,6 +824,17 @@ export class ShareLinksRepository {
     return (row?.c ?? 0) > 0;
   }
 
+  async findLatestByProgramId(programId: string): Promise<ShareLinkRecord | null> {
+    return this.sql.first<ShareLinkRecord>(
+      `SELECT id, program_id, token, expires_at, closed_at, created_at
+       FROM share_links
+       WHERE program_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [programId],
+    );
+  }
+
   async createOpenLink(input: {
     id: string;
     programId: string;
