@@ -16,11 +16,32 @@ import {
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { SqlBatchGuardError } from "../errors/sql-batch-error.js";
 
 export class RoutineRepositoryError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly code?: string;
+
+  constructor(message: string, options?: { code?: string; cause?: unknown }) {
+    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = "RoutineRepositoryError";
+    this.code = options?.code;
+  }
+}
+
+async function runRoutineWriteBatch(
+  sql: SqlStoragePort,
+  statements: readonly SqlBatchStatement[],
+): Promise<void> {
+  try {
+    await sql.batch(statements);
+  } catch (error) {
+    if (error instanceof SqlBatchGuardError) {
+      throw new RoutineRepositoryError("Stale write", {
+        code: "stale_write",
+        cause: error,
+      });
+    }
+    throw error;
   }
 }
 
@@ -216,33 +237,78 @@ export class RoutinesRepository {
     const whoItsFor = validateRoutineWhoItsFor(input.whoItsFor ?? null);
     const name = validateOptionalRoutineName(input.name ?? null);
 
-    await this.sql.run(
-      `INSERT INTO routines (
-        id, created_by, created_at, condition_id, body_region_id, who_its_for,
-        published_version, draft_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
-      [
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildCreateDraftBatchStatements({
         routineId,
-        input.createdBy,
-        input.createdAt,
+        draftVersionId,
+        createdBy: input.createdBy,
+        createdAt: input.createdAt,
         conditionId,
         bodyRegionId,
         whoItsFor,
-        input.createdAt,
-      ],
-    );
-    await this.sql.run(
-      `INSERT INTO routine_versions (
-        id, routine_id, version_number, status, name, change_summary,
-        restored_from_version_id, created_by, created_at
-      ) VALUES (?, ?, 0, 'draft', ?, NULL, NULL, ?, ?)`,
-      [draftVersionId, routineId, name, input.createdBy, input.createdAt],
+        name,
+      }),
     );
     const created = await this.findById(routineId);
     if (!created) {
       throw new RoutineRepositoryError("Routine insert failed");
     }
     return created;
+  }
+
+  buildCreateDraftBatchStatements(input: {
+    routineId: string;
+    draftVersionId: string;
+    createdBy: string;
+    createdAt: string;
+    conditionId: string | null;
+    bodyRegionId: string;
+    whoItsFor: string | null;
+    name: string | null;
+  }): SqlBatchStatement[] {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Routine version id",
+    );
+    return [
+      {
+        sql: `INSERT INTO routines (
+        id, created_by, created_at, condition_id, body_region_id, who_its_for,
+        published_version, draft_updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          routineId,
+          input.createdBy,
+          input.createdAt,
+          input.conditionId,
+          input.bodyRegionId,
+          input.whoItsFor,
+          null,
+          input.createdAt,
+        ],
+        minRowsAffected: 1,
+      },
+      {
+        sql: `INSERT INTO routine_versions (
+        id, routine_id, version_number, status, name, change_summary,
+        restored_from_version_id, created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          draftVersionId,
+          routineId,
+          0,
+          "draft",
+          input.name,
+          null,
+          null,
+          input.createdBy,
+          input.createdAt,
+        ],
+        minRowsAffected: 1,
+      },
+    ];
   }
 
   async updateDraftMetadata(input: {
@@ -366,12 +432,14 @@ export class RoutineVersionsRepository {
       throw new RoutineRepositoryError("Add at least one exercise before publish");
     }
 
-    await this.sql.batch(
+    await runRoutineWriteBatch(
+      this.sql,
       this.buildPublishDraftBatchStatements({
         draftVersionId: draft.id,
         name,
         routineId: input.routineId,
         publishedAt: input.publishedAt,
+        authorId: input.authorId,
       }),
     );
     const published = await this.findPublishedVersion(input.routineId, 1);
@@ -386,12 +454,14 @@ export class RoutineVersionsRepository {
     name: string;
     routineId: string;
     publishedAt: string;
+    authorId: string;
   }): SqlBatchStatement[] {
     const draftVersionId = validateOpaqueEntityId(
       input.draftVersionId,
       "Routine version id",
     );
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const authorId = validateOpaqueEntityId(input.authorId, "Author id");
     const name = validateRoutineName(input.name);
     return [
       {
@@ -402,8 +472,8 @@ export class RoutineVersionsRepository {
       },
       {
         sql: `UPDATE routines SET published_version = ?, draft_updated_at = ?
-       WHERE id = ? AND published_version IS NULL`,
-        bindings: [1, input.publishedAt, routineId],
+       WHERE id = ? AND published_version IS NULL AND created_by = ?`,
+        bindings: [1, input.publishedAt, routineId, authorId],
         minRowsAffected: 1,
       },
     ];
@@ -463,11 +533,13 @@ export class RoutineVersionsRepository {
         params: parseExerciseParamsJson(row.params_json),
       }),
     );
-    await this.sql.batch(
+    await runRoutineWriteBatch(
+      this.sql,
       this.buildSavePublishedVersionBatchStatements({
         versionId,
         routineId: input.routineId,
         nextVersion,
+        expectedPublishedVersion: routine.published_version,
         name,
         changeSummary,
         restoredFrom,
@@ -487,6 +559,7 @@ export class RoutineVersionsRepository {
     versionId: string;
     routineId: string;
     nextVersion: number;
+    expectedPublishedVersion: number;
     name: string;
     changeSummary: string | null;
     restoredFrom: string | null;
@@ -497,6 +570,16 @@ export class RoutineVersionsRepository {
     const versionId = validateOpaqueEntityId(input.versionId, "Routine version id");
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
     return [
+      {
+        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?`,
+        bindings: [
+          input.nextVersion,
+          input.createdAt,
+          routineId,
+          input.expectedPublishedVersion,
+        ],
+        minRowsAffected: 1,
+      },
       {
         sql: `INSERT INTO routine_versions (
         id, routine_id, version_number, status, name, change_summary,
@@ -515,11 +598,6 @@ export class RoutineVersionsRepository {
         ],
       },
       ...input.rowStatements,
-      {
-        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ?`,
-        bindings: [input.nextVersion, input.createdAt, routineId],
-        minRowsAffected: 1,
-      },
     ];
   }
 }
@@ -710,7 +788,8 @@ export class PractitionerRoutinesRepository {
         params: row.params,
       }),
     );
-    await this.sql.batch(
+    await runRoutineWriteBatch(
+      this.sql,
       this.buildSaveFrozenCopyBatchStatements({
         copyId,
         practitionerId: input.practitionerId,
@@ -759,6 +838,7 @@ export class PractitionerRoutinesRepository {
           null,
           0,
         ],
+        minRowsAffected: 1,
       },
       ...input.rowStatements,
     ];

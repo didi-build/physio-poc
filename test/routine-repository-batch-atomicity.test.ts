@@ -10,15 +10,20 @@ import {
   MIGRATION_0007_ID,
   splitSqlStatements,
 } from "../src/storage/migrations/apply.js";
-import { parseExerciseParamsJson } from "../src/domain/exercise-params.js";
 import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
-import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
+import type {
+  SqlBatchStatement,
+  SqlStoragePort,
+} from "../src/storage/ports/sql-storage.js";
 import {
+  PractitionerRoutineRowsRepository,
   PractitionerRoutinesRepository,
+  RoutineRepositoryError,
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
   RoutinesRepository,
 } from "../src/storage/repositories/routines.js";
+import { SQL_BATCH_MIN_ROWS_GUARD_TABLE } from "../src/storage/sql-batch-min-rows-guard.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -167,6 +172,7 @@ async function seedPublishedRoutineV1(
         name: publishName,
         routineId,
         publishedAt: TS,
+        authorId: author,
       }),
     );
     return { routineId, publishedVersionId: draftVersionId };
@@ -190,6 +196,37 @@ function batchFailureGuardStatement(routineId: string): {
     bindings: [TS, routineId, -1],
     minRowsAffected: 1,
   };
+}
+
+function expectStaleWrite(error: unknown): void {
+  expect(error).toBeInstanceOf(RoutineRepositoryError);
+  const repoError = error as RoutineRepositoryError;
+  expect(repoError.code).toBe("stale_write");
+  expect(repoError.cause).toBeInstanceOf(SqlBatchGuardError);
+}
+
+function spyBatchCalls(storage: SqlStoragePort): SqlBatchStatement[][] {
+  const calls: SqlBatchStatement[][] = [];
+  const originalBatch = storage.batch.bind(storage);
+  vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+    calls.push(
+      statements.map((statement) => ({
+        sql: statement.sql,
+        bindings: statement.bindings ? [...statement.bindings] : undefined,
+        minRowsAffected: statement.minRowsAffected,
+      })),
+    );
+    return originalBatch(statements);
+  });
+  return calls;
+}
+
+async function assertGuardTableEmpty(storage: SqlStoragePort): Promise<void> {
+  const rows = await storage.all<{ v: number }>(
+    `SELECT v FROM ${SQL_BATCH_MIN_ROWS_GUARD_TABLE} WHERE v = ?`,
+    [1],
+  );
+  expect(rows).toEqual([]);
 }
 
 function poisonBatchAfterIndex(
@@ -222,7 +259,7 @@ async function expectUnpublishedDraftIntact(
   expect(draft?.status).toBe("draft");
   expect(draft?.version_number).toBe(0);
   const versionRows = await storage.all<{ id: string; status: string }>(
-    "SELECT id FROM routine_versions WHERE routine_id = ?",
+    "SELECT id, status FROM routine_versions WHERE routine_id = ?",
     [routineId],
   );
   const published = versionRows.filter((row) => row.status === "published");
@@ -256,7 +293,7 @@ async function expectNoFrozenCopy(
   copyId: string,
 ): Promise<void> {
   const copies = await storage.all<{ id: string; routine_id: string }>(
-    "SELECT id FROM practitioner_routines WHERE practitioner_id = ?",
+    "SELECT id, routine_id FROM practitioner_routines WHERE practitioner_id = ?",
     [practitionerId],
   );
   expect(copies.some((row) => row.routine_id === routineId)).toBe(false);
@@ -267,77 +304,112 @@ async function expectNoFrozenCopy(
   expect(rows).toHaveLength(0);
 }
 
-describe.each(STORAGE_CASES)("publishDraft batch guards ($label)", ({ open }) => {
-  it("does not bump published_version when the draft row fails to transition", async () => {
-    const storage = await open();
-    try {
-      const author = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, author);
-      const label = storage.constructor.name;
-      const { routineId, draftVersionId } = await seedDraftReadyToPublish(
-        storage,
-        author,
-        label,
-      );
-      const versions = new RoutineVersionsRepository(storage);
-      const statements = versions.buildPublishDraftBatchStatements({
-        draftVersionId,
-        name: "Guard check",
-        routineId,
-        publishedAt: TS,
-      });
-      const first = statements[0]!;
-      const statusBinding = [...(first.bindings ?? [])];
-      statusBinding[4] = "published";
-      first.bindings = statusBinding;
-      await expect(storage.batch(statements)).rejects.toBeInstanceOf(
-        SqlBatchGuardError,
-      );
-      await expectUnpublishedDraftIntact(storage, routineId, draftVersionId);
-    } finally {
-      if ("close" in storage && typeof storage.close === "function") {
-        storage.close();
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
+  "publishDraft stale_write guards ($label)",
+  ({ open }) => {
+    it("concurrent publishDraft calls leave one winner and stale_write on the loser", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        const results = await Promise.allSettled([
+          versions.publishDraft({
+            routineId,
+            authorId: author,
+            publishedAt: TS,
+            name: "Winner",
+          }),
+          versions.publishDraft({
+            routineId,
+            authorId: author,
+            publishedAt: TS,
+            name: "Loser",
+          }),
+        ]);
+        const fulfilled = results.filter((result) => result.status === "fulfilled");
+        const rejected = results.filter((result) => result.status === "rejected");
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expectStaleWrite((rejected[0] as PromiseRejectedResult).reason);
+        const routine = await new RoutinesRepository(storage).findById(routineId);
+        expect(routine?.published_version).toBe(1);
+        const draft = await storage.first<{ status: string }>(
+          "SELECT status FROM routine_versions WHERE id = ? LIMIT 1",
+          [draftVersionId],
+        );
+        expect(draft?.status).toBe("published");
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
       }
-    }
-  });
+    });
+  },
+);
 
-  it("does not leave a published version row when the routine row fails to update", async () => {
-    const storage = await open();
-    try {
-      const author = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, author);
-      const label = storage.constructor.name;
-      const { routineId, draftVersionId } = await seedDraftReadyToPublish(
-        storage,
-        author,
-        label,
-      );
-      await storage.run("UPDATE routines SET published_version = ? WHERE id = ?", [
-        1,
-        routineId,
-      ]);
-      const versions = new RoutineVersionsRepository(storage);
-      const statements = versions.buildPublishDraftBatchStatements({
-        draftVersionId,
-        name: "Guard check two",
-        routineId,
-        publishedAt: TS,
-      });
-      await expect(storage.batch(statements)).rejects.toBeInstanceOf(
-        SqlBatchGuardError,
-      );
-      const draft = await storage.first<{ status: string }>(
-        "SELECT status FROM routine_versions WHERE id = ? LIMIT 1",
-        [draftVersionId],
-      );
-      expect(draft?.status).toBe("draft");
-    } finally {
-      if ("close" in storage && typeof storage.close === "function") {
-        storage.close();
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
+  "savePublishedVersion stale_write guards ($label)",
+  ({ open }) => {
+    it("concurrent savePublishedVersion leaves one v2 and stale_write with no partial v2 row", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        const v2a = id(`conc-v2-a-${label}`);
+        const v2b = id(`conc-v2-b-${label}`);
+        const results = await Promise.allSettled([
+          versions.savePublishedVersion({
+            id: v2a,
+            routineId,
+            createdBy: author,
+            createdAt: TS,
+            name: "Concurrent A",
+            copyFromVersionId: publishedVersionId,
+          }),
+          versions.savePublishedVersion({
+            id: v2b,
+            routineId,
+            createdBy: author,
+            createdAt: TS,
+            name: "Concurrent B",
+            copyFromVersionId: publishedVersionId,
+          }),
+        ]);
+        const fulfilled = results.filter((result) => result.status === "fulfilled");
+        const rejected = results.filter((result) => result.status === "rejected");
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        expectStaleWrite((rejected[0] as PromiseRejectedResult).reason);
+        const routine = await new RoutinesRepository(storage).findById(routineId);
+        expect(routine?.published_version).toBe(2);
+        const winnerRecord = (fulfilled[0] as PromiseFulfilledResult<{ id: string }>)
+          .value;
+        const winnerId = winnerRecord.id;
+        const loserId = winnerId === v2a ? v2b : v2a;
+        expect(await versions.findById(loserId)).toBeNull();
+        await expectNoSavedPublishedVersion(storage, routineId, 2, loserId);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
       }
-    }
-  });
-});
+    });
+  },
+);
 
 describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open }) => {
   it("leaves draft unpublished when batch fails mid write", async () => {
@@ -362,6 +434,7 @@ describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open })
               name: "Should not stick",
               routineId,
               publishedAt: TS,
+              authorId: author,
             }),
           );
         } else {
@@ -375,7 +448,11 @@ describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open })
       } catch (error) {
         caught = error;
       }
-      expect(caught).toBeDefined();
+      if (storage instanceof InMemorySqlStorage) {
+        expect(caught).toBeInstanceOf(SqlBatchGuardError);
+      } else {
+        expectStaleWrite(caught);
+      }
       await expectUnpublishedDraftIntact(storage, routineId, draftVersionId);
     } finally {
       if ("close" in storage && typeof storage.close === "function") {
@@ -385,80 +462,7 @@ describe.each(STORAGE_CASES)("publishDraft batch atomicity ($label)", ({ open })
   });
 });
 
-describe.each(STORAGE_CASES)(
-  "savePublishedVersion batch guards ($label)",
-  ({ open }) => {
-    it("does not insert a new version row when the routine published_version bump fails", async () => {
-      const storage = await open();
-      try {
-        const author = await seedPractitioner(storage);
-        await seedApprovedExerciseVersion(storage, author);
-        const label = storage.constructor.name;
-        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
-          storage,
-          author,
-          label,
-        );
-        const attemptedVersionId = id(`save-guard-${label}`);
-        const versions = new RoutineVersionsRepository(storage);
-        const rowRepo = new RoutineVersionRowsRepository(storage);
-        const rowStatements =
-          storage instanceof InMemorySqlStorage
-            ? [
-                rowRepo.buildInsertRowBatchStatement({
-                  id: id(`save-guard-row-${label}`),
-                  routineVersionId: attemptedVersionId,
-                  position: 0,
-                  exerciseId: FIXTURE_EXERCISE_ID,
-                  exerciseVersionId: FIXTURE_VERSION_ID,
-                  prescriptionType: "stretching",
-                  params: VALID_PARAMS,
-                }),
-              ]
-            : (
-                await new RoutineVersionRowsRepository(storage).listForVersion(
-                  publishedVersionId,
-                )
-              ).map((row) =>
-                rowRepo.buildInsertRowBatchStatement({
-                  id: id(`save-guard-row-${label}-${row.position}`),
-                  routineVersionId: attemptedVersionId,
-                  position: row.position,
-                  exerciseId: row.exercise_id,
-                  exerciseVersionId: row.exercise_version_id,
-                  prescriptionType: row.prescription_type,
-                  params: parseExerciseParamsJson(row.params_json),
-                }),
-              );
-        const statements = versions.buildSavePublishedVersionBatchStatements({
-          versionId: attemptedVersionId,
-          routineId,
-          nextVersion: 2,
-          name: "Guarded save",
-          changeSummary: null,
-          restoredFrom: null,
-          createdBy: author,
-          createdAt: TS,
-          rowStatements,
-        });
-        const routineUpdate = statements[statements.length - 1]!;
-        const updateBindings = [...(routineUpdate.bindings ?? [])];
-        updateBindings[2] = id("missing-routine-id");
-        routineUpdate.bindings = updateBindings;
-        await expect(storage.batch(statements)).rejects.toBeInstanceOf(
-          SqlBatchGuardError,
-        );
-        await expectNoSavedPublishedVersion(storage, routineId, 1, attemptedVersionId);
-      } finally {
-        if ("close" in storage && typeof storage.close === "function") {
-          storage.close();
-        }
-      }
-    });
-  },
-);
-
-describe.each(STORAGE_CASES)(
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
   "savePublishedVersion batch atomicity ($label)",
   ({ open }) => {
     it("leaves prior published version when batch fails mid write", async () => {
@@ -488,7 +492,7 @@ describe.each(STORAGE_CASES)(
         } catch (error) {
           caught = error;
         }
-        expect(caught).toBeDefined();
+        expectStaleWrite(caught);
         await expectNoSavedPublishedVersion(storage, routineId, 1, attemptedVersionId);
       } finally {
         if ("close" in storage && typeof storage.close === "function") {
@@ -537,12 +541,359 @@ describe.each(STORAGE_CASES)("saveFrozenCopy batch atomicity ($label)", ({ open 
       } catch (error) {
         caught = error;
       }
-      expect(caught).toBeDefined();
+      expectStaleWrite(caught);
       await expectNoFrozenCopy(storage, author, routineId, copyId);
     } finally {
       if ("close" in storage && typeof storage.close === "function") {
         storage.close();
       }
+    }
+  });
+});
+
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
+  "routine repository single batch contract ($label)",
+  ({ open }) => {
+    it("createDraft issues exactly one batch with the expected statements", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        const routines = new RoutinesRepository(storage);
+        const routineId = id("contract-create-routine");
+        const draftVersionId = id("contract-create-draft");
+        const calls = spyBatchCalls(storage);
+        await routines.createDraft({
+          id: routineId,
+          draftVersionId,
+          createdBy: author,
+          createdAt: TS,
+          bodyRegionId: BODY_REGION_KNEE,
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toEqual(
+          routines.buildCreateDraftBatchStatements({
+            routineId,
+            draftVersionId,
+            createdBy: author,
+            createdAt: TS,
+            conditionId: null,
+            bodyRegionId: BODY_REGION_KNEE,
+            whoItsFor: null,
+            name: null,
+          }),
+        );
+        await assertGuardTableEmpty(storage);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("publishDraft issues exactly one batch with the expected statements", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        const calls = spyBatchCalls(storage);
+        await versions.publishDraft({
+          routineId,
+          authorId: author,
+          publishedAt: TS,
+          name: "Contract publish",
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toEqual(
+          versions.buildPublishDraftBatchStatements({
+            draftVersionId,
+            name: "Contract publish",
+            routineId,
+            publishedAt: TS,
+            authorId: author,
+          }),
+        );
+        await assertGuardTableEmpty(storage);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("savePublishedVersion issues exactly one batch with the expected statements", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        const rowRepo = new RoutineVersionRowsRepository(storage);
+        const sourceRows = await rowRepo.listForVersion(publishedVersionId);
+        const versionId = id("contract-save-v2");
+        const calls = spyBatchCalls(storage);
+        await versions.savePublishedVersion({
+          id: versionId,
+          routineId,
+          createdBy: author,
+          createdAt: TS,
+          name: "Contract v2",
+          copyFromVersionId: publishedVersionId,
+        });
+        expect(calls).toHaveLength(1);
+        const batch = calls[0]!;
+        const template = versions.buildSavePublishedVersionBatchStatements({
+          versionId,
+          routineId,
+          nextVersion: 2,
+          expectedPublishedVersion: 1,
+          name: "Contract v2",
+          changeSummary: null,
+          restoredFrom: null,
+          createdBy: author,
+          createdAt: TS,
+          rowStatements: [],
+        });
+        expect(batch[0]).toEqual(template[0]);
+        expect(batch[1]).toEqual(template[1]);
+        expect(batch.length).toBe(2 + sourceRows.length);
+        await assertGuardTableEmpty(storage);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("saveFrozenCopy issues exactly one batch with the expected statements", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const my = new PractitionerRoutinesRepository(storage);
+        const copyId = id("contract-copy");
+        const rowId = id("contract-copy-row");
+        const rowRepo = new PractitionerRoutineRowsRepository(storage);
+        const rowStatements = [
+          rowRepo.buildInsertRowBatchStatement({
+            id: rowId,
+            practitionerRoutineId: copyId,
+            position: 0,
+            exerciseId: FIXTURE_EXERCISE_ID,
+            exerciseVersionId: FIXTURE_VERSION_ID,
+            prescriptionType: "stretching",
+            params: VALID_PARAMS,
+          }),
+        ];
+        const calls = spyBatchCalls(storage);
+        await my.saveFrozenCopy({
+          id: copyId,
+          practitionerId: author,
+          routineId,
+          sourceRoutineVersionId: publishedVersionId,
+          savedAt: TS,
+          rows: [
+            {
+              id: rowId,
+              position: 0,
+              exerciseId: FIXTURE_EXERCISE_ID,
+              exerciseVersionId: FIXTURE_VERSION_ID,
+              prescriptionType: "stretching",
+              params: VALID_PARAMS,
+            },
+          ],
+        });
+        expect(calls).toHaveLength(1);
+        expect(calls[0]![0]?.minRowsAffected).toBe(1);
+        expect(calls[0]).toEqual(
+          my.buildSaveFrozenCopyBatchStatements({
+            copyId,
+            practitionerId: author,
+            routineId,
+            sourceRoutineVersionId: publishedVersionId,
+            sourceVersionNumber: 1,
+            savedAt: TS,
+            rowStatements,
+          }),
+        );
+        await assertGuardTableEmpty(storage);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+  },
+);
+
+describe("createDraft batch atomicity (BetterSqliteStorage)", () => {
+  it("leaves no routine row when draftVersionId collides", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const routines = new RoutinesRepository(storage);
+      const sharedVersionId = id("batch-create-shared-rv");
+      const routineAId = id("batch-create-a");
+      const routineBId = id("batch-create-b");
+      await routines.createDraft({
+        id: routineAId,
+        draftVersionId: sharedVersionId,
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await expect(
+        routines.createDraft({
+          id: routineBId,
+          draftVersionId: sharedVersionId,
+          createdBy: author,
+          createdAt: TS,
+          bodyRegionId: BODY_REGION_KNEE,
+        }),
+      ).rejects.toThrow(/UNIQUE constraint failed/i);
+      expect(await routines.findById(routineBId)).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("expect helper regression", () => {
+  it("expectNoFrozenCopy fails when a practitioner copy row exists", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+        storage,
+        author,
+        "helper-copy-exists",
+      );
+      const copyId = id("helper-copy-id");
+      await new PractitionerRoutinesRepository(storage).saveFrozenCopy({
+        id: copyId,
+        practitionerId: author,
+        routineId,
+        sourceRoutineVersionId: publishedVersionId,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("helper-copy-row"),
+            position: 0,
+            exerciseId: FIXTURE_EXERCISE_ID,
+            exerciseVersionId: FIXTURE_VERSION_ID,
+            prescriptionType: "stretching",
+            params: VALID_PARAMS,
+          },
+        ],
+      });
+      let assertionFailed = false;
+      try {
+        await expectNoFrozenCopy(storage, author, routineId, copyId);
+      } catch {
+        assertionFailed = true;
+      }
+      expect(assertionFailed).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("expectUnpublishedDraftIntact fails when the draft is published", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const { routineId, draftVersionId } = await seedDraftReadyToPublish(
+        storage,
+        author,
+        "helper-published-check",
+      );
+      await new RoutineVersionsRepository(storage).publishDraft({
+        routineId,
+        authorId: author,
+        publishedAt: TS,
+        name: "Published draft",
+      });
+      let assertionFailed = false;
+      try {
+        await expectUnpublishedDraftIntact(storage, routineId, draftVersionId);
+      } catch {
+        assertionFailed = true;
+      }
+      expect(assertionFailed).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("publishDraft read guards (BetterSqliteStorage)", () => {
+  it("rejects a missing routine before any batch write", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const calls = spyBatchCalls(storage);
+      await expect(
+        new RoutineVersionsRepository(storage).publishDraft({
+          routineId: id("missing-routine-id"),
+          authorId: author,
+          publishedAt: TS,
+          name: "Nope",
+        }),
+      ).rejects.toMatchObject({
+        name: "RoutineRepositoryError",
+        message: "Routine not found",
+      });
+      expect(calls).toHaveLength(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a foreign author before any batch write", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const other = await seedPractitioner(storage, undefined, "other@example.com");
+      await seedApprovedExerciseVersion(storage, author);
+      const { routineId } = await seedDraftReadyToPublish(
+        storage,
+        author,
+        "foreign-author",
+      );
+      const calls = spyBatchCalls(storage);
+      await expect(
+        new RoutineVersionsRepository(storage).publishDraft({
+          routineId,
+          authorId: other,
+          publishedAt: TS,
+          name: "Nope",
+        }),
+      ).rejects.toMatchObject({
+        name: "RoutineRepositoryError",
+        message: "Only the author can publish this draft",
+      });
+      expect(calls).toHaveLength(0);
+    } finally {
+      storage.close();
     }
   });
 });
