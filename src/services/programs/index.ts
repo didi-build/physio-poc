@@ -3,6 +3,7 @@ export {
   ProgramBuilderServiceError,
   buildLinkApprovedPlaceholderStatements,
   computeAutoSaveStatus,
+  computeShareLinkStatus,
   detectLibraryUpdate,
   linkApprovedPlaceholders,
 } from "./program-builder-service.js";
@@ -19,4 +20,5 @@ export type {
   ProgramSearchResult,
   RoutineProgramSource,
   RoutineSentProgramStats,
+  ShareLinkStatus,
 } from "./types.js";

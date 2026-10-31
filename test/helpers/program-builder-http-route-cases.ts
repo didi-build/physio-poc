@@ -1,5 +1,6 @@
 import {
   programPath,
+  programByCodePath,
   programRestorePath,
   programRowDuplicatePath,
   programRowLibraryUpdateApplyPath,
@@ -27,6 +28,7 @@ export function programBuilderHttpRouteCases(
   programId: string = EXAMPLE_PROGRAM_ID,
   rowId: string = EXAMPLE_ROW_ID,
   routineId: string = EXAMPLE_ROUTINE_ID,
+  programCode: string = "PRG-ROUTE",
 ): readonly ProgramBuilderHttpRouteCase[] {
   return [
     { method: "GET", path: PROGRAMS_API_BASE },
@@ -34,6 +36,7 @@ export function programBuilderHttpRouteCases(
     { method: "POST", path: programsFromRoutinePath() },
     { method: "GET", path: programsDeletedListPath() },
     { method: "GET", path: routineSentProgramsPath(routineId) },
+    { method: "GET", path: programByCodePath(programCode) },
     { method: "GET", path: programPath(programId) },
     { method: "PATCH", path: programPath(programId) },
     { method: "DELETE", path: programPath(programId) },
@@ -61,8 +64,14 @@ export function programBuilderMutatingHttpRouteCases(
 export function programBuilderProgram404ParityRouteCases(
   programId: string = EXAMPLE_PROGRAM_ID,
   rowId: string = EXAMPLE_ROW_ID,
+  programCode?: string,
 ): readonly ProgramBuilderHttpRouteCase[] {
-  return programBuilderHttpRouteCases(programId, rowId).filter((routeCase) => {
+  const scoped = programBuilderHttpRouteCases(
+    programId,
+    rowId,
+    EXAMPLE_ROUTINE_ID,
+    programCode ?? "PRG-ROUTE",
+  ).filter((routeCase) => {
     if (routeCase.path === PROGRAMS_API_BASE) {
       return false;
     }
@@ -71,6 +80,10 @@ export function programBuilderProgram404ParityRouteCases(
     }
     return routeCase.path.includes(encodeURIComponent(programId));
   });
+  if (programCode) {
+    return [...scoped, { method: "GET", path: programByCodePath(programCode) }];
+  }
+  return scoped;
 }
 
 export type ProgramBuilderHttpProbeContext = {

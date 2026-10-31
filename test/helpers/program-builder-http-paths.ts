@@ -24,6 +24,10 @@ export function programPath(programId: string): string {
   return `${PROGRAMS_API_BASE}/${encodeURIComponent(programId)}`;
 }
 
+export function programByCodePath(programCode: string): string {
+  return `${PROGRAMS_API_BASE}/by-code/${encodeURIComponent(programCode)}`;
+}
+
 export function programRestorePath(programId: string): string {
   return `${programPath(programId)}/restore`;
 }

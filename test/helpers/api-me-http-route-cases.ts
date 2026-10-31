@@ -5,12 +5,17 @@ import {
   myDefaultsTypePath,
 } from "../../src/my-defaults-api-paths.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
+import { EXERCISE_REQUESTS_API_BASE } from "../../src/exercise-requests-api-paths.js";
 import {
   programBuilderHttpJsonBody,
   programBuilderHttpRouteCases,
   type ProgramBuilderHttpProbeContext,
   type ProgramBuilderHttpRouteCase,
 } from "./program-builder-http-route-cases.js";
+import {
+  exerciseRequestsHttpJsonBody,
+  exerciseRequestsHttpRouteCases,
+} from "./exercise-requests-http-route-cases.js";
 import { testOpaqueEntityId } from "./opaque-test-ids.js";
 
 export type ApiMeHttpRouteCase = ProgramBuilderHttpRouteCase;
@@ -36,10 +41,12 @@ export function apiMeHttpRouteCases(
   programId?: string,
   rowId?: string,
   myDefaultsType: PrescriptionType = DEFAULT_MY_DEFAULTS_TYPE,
+  exerciseRequestId?: string,
 ): readonly ApiMeHttpRouteCase[] {
   return [
     ...programBuilderHttpRouteCases(programId, rowId),
     ...myDefaultsHttpRouteCases(myDefaultsType),
+    ...exerciseRequestsHttpRouteCases(exerciseRequestId),
   ];
 }
 
@@ -74,6 +81,9 @@ export function apiMeHttpJsonBody(
       }
     }
     return undefined;
+  }
+  if (routeCase.path.startsWith(EXERCISE_REQUESTS_API_BASE)) {
+    return exerciseRequestsHttpJsonBody(routeCase);
   }
   if (routeCase.method === "DELETE") {
     return undefined;
