@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -351,7 +351,7 @@ describe("Programs UI (integration, jsdom)", () => {
       </MemoryRouter>,
     );
     const nameField = await screen.findByRole("textbox", { name: "Program name" });
-    const publish = screen.getByRole("button", { name: PUBLISH });
+    const publish = screen.getAllByRole("button", { name: PUBLISH })[0]!;
     await userEvent.type(nameField, "Knee program A");
     await waitFor(() => {
       expect(updateProgramName).toHaveBeenCalled();
@@ -362,10 +362,11 @@ describe("Programs UI (integration, jsdom)", () => {
     await waitFor(() => {
       expect(screen.getAllByText(AUTO_SAVE_SAVED).length).toBeGreaterThan(0);
     });
-    expect(screen.getByRole("button", { name: PUBLISH })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
   });
 
   it("shows save failure, Try again, and keeps Publish disabled", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const updateProgramName = vi
       .fn()
       .mockRejectedValueOnce(new Error("fail"))
@@ -387,18 +388,25 @@ describe("Programs UI (integration, jsdom)", () => {
     );
     const nameField = await screen.findByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
     await waitFor(() => {
       expect(updateProgramName).toHaveBeenCalled();
     });
     expect(screen.getAllByText(AUTO_SAVE_NOT_SAVED).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: PUBLISH })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
     await userEvent.click(
       screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
     );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
     await waitFor(() => {
       expect(updateProgramName).toHaveBeenCalledTimes(2);
     });
+    vi.useRealTimers();
   });
 
   it("warns before leaving with unsaved edits", async () => {

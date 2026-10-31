@@ -81,7 +81,6 @@ export const DELETE_SHEET_LINK_CLOSED_SUFFIX =
 export const DELETE_SHEET_ALREADY_CLOSED = "Its share link is already closed.";
 export const DELETE_SHEET_SHARE_HINT =
   "To stop sharing but keep the program, close the link on the Share screen instead.";
-export const THIS_LINK_WAS_CLOSED = "This link was closed";
 
 export function deleteProgramSheetBody(openShareLink: boolean): string {
   const intro = `${DELETE_SHEET_MOVES_TO} ${RECENTLY_DELETED}${DELETE_SHEET_RESTORE_SUFFIX}`;
@@ -100,7 +99,8 @@ export function formatProgramPublishedAt(iso: string): string {
     timeZone: "America/Toronto",
     month: "short",
     day: "numeric",
-    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
   }).format(new Date(instant));
 }
 
@@ -118,8 +118,6 @@ export const PLACEHOLDER_ROW_NOTE =
 export const ROW_NOTES_LABEL = "Notes for this exercise (optional)";
 export const ROW_DEFAULTS_FOOTNOTE =
   "Each row keeps the values it was added with. Changes to My exercises or My defaults apply to new rows only.";
-
-export const TIMES_PER_DAY = "Times per day";
 
 export const PUBLISH = "Publish";
 
@@ -162,22 +160,6 @@ export const CARD_NO_EXERCISES_YET = "No exercises yet";
 export function cardExerciseCountLine(count: number): string {
   if (count === 0) {
     return CARD_NO_EXERCISES_YET;
-  }
-  if (count === 1) {
-    return "1 exercise";
-  }
-  return `${count} exercises`;
-}
-
-export function cardExerciseCountAccessible(count: number, sentDate?: string): string {
-  if (count === 0) {
-    return CARD_NO_EXERCISES_YET;
-  }
-  if (sentDate) {
-    if (count === 1) {
-      return `1 exercise, sent ${sentDate}`;
-    }
-    return `${count} exercises, sent ${sentDate}`;
   }
   if (count === 1) {
     return "1 exercise";

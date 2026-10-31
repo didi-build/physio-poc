@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import "./setup.js";
+import { ensureMatchMediaStub } from "./setup.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -28,6 +28,7 @@ afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   vi.unstubAllGlobals();
+  ensureMatchMediaStub();
 });
 
 const LIST_ITEM: ProgramListItem = {

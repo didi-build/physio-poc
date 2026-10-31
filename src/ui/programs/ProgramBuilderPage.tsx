@@ -4,6 +4,7 @@ import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { useProgramsApi } from "../api/programs-context.js";
+import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
 import { useToast } from "../components/Toast.js";
 import { CANCEL } from "../copy/my-defaults.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
@@ -20,11 +21,12 @@ import {
   builderNameHelpText,
   deletedProgramToast,
   duplicatedRowToast,
+  formatAutoSaveStatus,
   programCodeChipLabel,
 } from "../copy/programs.js";
 import { AddExerciseSheet } from "./AddExerciseSheet.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
-import { BuilderPublishCard } from "./BuilderPublishCard.js";
+import { BuilderPublishCard, BuilderPublishPhoneBar } from "./BuilderPublishCard.js";
 import { DeleteProgramSheetBody } from "./DeleteProgramSheetBody.js";
 import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
@@ -86,9 +88,10 @@ export function ProgramBuilderPage() {
     }
   }, [client]);
 
-  const autoSave = useProgramAutoSave({ save: saveName });
+  const autoSave = useProgramAutoSave({});
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
+  const isDesktopLayout = useMinWidth1024();
   const { setGuard } = useProgramLeaveGuard();
 
   useEffect(() => {
@@ -179,24 +182,24 @@ export function ProgramBuilderPage() {
 
   const onNameChange = (value: string) => {
     setNameDraft(value);
-    autoSave.markDirty();
+    autoSave.scheduleDebouncedSave("name", saveName);
   };
 
   const onNoteChange = (rowId: string, note: string) => {
     setNoteDrafts((prev) => ({ ...prev, [rowId]: note }));
-    autoSave.markDirty();
-    autoSave.scheduleDebouncedSave(async () => {
+    autoSave.scheduleDebouncedSave(`note:${rowId}`, async () => {
       const current = programRef.current;
       if (!current) {
         return;
       }
+      const noteAtSave = noteDraftsRef.current[rowId] ?? "";
       const result = await client.updateRow(current.program_id, rowId, {
-        note: note.length > 0 ? note : null,
+        note: noteAtSave.length > 0 ? noteAtSave : null,
       });
       applyProgram(result.program);
       setNoteDrafts((prev) => {
         const serverNote = result.program.rows.find((r) => r.id === rowId)?.note ?? "";
-        if (prev[rowId] === note) {
+        if (prev[rowId] === noteAtSave) {
           return { ...prev, [rowId]: serverNote };
         }
         return prev;
@@ -211,7 +214,7 @@ export function ProgramBuilderPage() {
     setAddExerciseOpen(false);
     setRowMutationBusy(true);
     void autoSave
-      .runSave(async () => {
+      .runSave("add-exercise", async () => {
         const rowId = crypto.randomUUID();
         const result = await client.addExerciseRow(program.program_id, {
           row_id: rowId,
@@ -237,7 +240,7 @@ export function ProgramBuilderPage() {
     ids.splice(toIndex, 0, moved);
     setRowMutationBusy(true);
     void autoSave
-      .runSave(async () => {
+      .runSave("reorder-rows", async () => {
         const result = await client.reorderRows(program.program_id, ids);
         applyProgram(result.program);
       })
@@ -287,6 +290,7 @@ export function ProgramBuilderPage() {
   }
 
   const rowActionsDisabled = rowMutationBusy;
+  const publishStatusLine = formatAutoSaveStatus(program.auto_save_status, publishedAt);
 
   return (
     <section className="pg-builder" aria-busy={rowMutationBusy ? true : undefined}>
@@ -315,12 +319,16 @@ export function ProgramBuilderPage() {
 
       <div className="pg-builder-layout">
         <div className="pg-builder-main">
-          <AutoSaveStatus
-            className="pg-autosave--phone"
-            state={autoSave.state}
-            failureAlertShown={autoSave.failureAlertShown}
-            onTryAgain={autoSave.tryAgain}
-          />
+          <div className="pg-builder-status-card pg-builder-status-card--phone">
+            <p className="pg-publish-card-status">{publishStatusLine}</p>
+            <AutoSaveStatus
+              className="pg-autosave--phone"
+              state={autoSave.state}
+              failureAlertShown={autoSave.failureAlertShown}
+              showFailureAlert={!isDesktopLayout}
+              onTryAgain={autoSave.tryAgain}
+            />
+          </div>
           {libraryPrompts.map((prompt) => (
             <LibraryUpdatePrompt
               key={prompt.row_id}
@@ -329,7 +337,7 @@ export function ProgramBuilderPage() {
               onApply={() => {
                 setRowMutationBusy(true);
                 void autoSave
-                  .runSave(async () => {
+                  .runSave(`apply-library:${prompt.row_id}`, async () => {
                     const result = await client.applyLibraryUpdate(
                       program.program_id,
                       prompt.row_id,
@@ -343,7 +351,7 @@ export function ProgramBuilderPage() {
               onKeep={() => {
                 setRowMutationBusy(true);
                 void autoSave
-                  .runSave(async () => {
+                  .runSave(`keep-library:${prompt.row_id}`, async () => {
                     const result = await client.keepLibraryUpdate(
                       program.program_id,
                       prompt.row_id,
@@ -380,7 +388,7 @@ export function ProgramBuilderPage() {
                     setRowMutationBusy(true);
                     const newRowId = crypto.randomUUID();
                     void autoSave
-                      .runSave(async () => {
+                      .runSave(`duplicate-row:${row.id}`, async () => {
                         const result = await client.duplicateRow(
                           program.program_id,
                           row.id,
@@ -399,7 +407,7 @@ export function ProgramBuilderPage() {
                   onRemove={() => {
                     setRowMutationBusy(true);
                     void autoSave
-                      .runSave(async () => {
+                      .runSave(`delete-row:${row.id}`, async () => {
                         const result = await client.deleteRow(
                           program.program_id,
                           row.id,
@@ -417,7 +425,7 @@ export function ProgramBuilderPage() {
                   onTypeChange={(type: PrescriptionType) => {
                     setRowMutationBusy(true);
                     void autoSave
-                      .runSave(async () => {
+                      .runSave(`row-type:${row.id}`, async () => {
                         const result = await client.updateRow(
                           program.program_id,
                           row.id,
@@ -460,10 +468,13 @@ export function ProgramBuilderPage() {
           publishedAt={publishedAt}
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
+          showFailureAlert={isDesktopLayout}
           publishAllowed={false}
           onTryAgain={autoSave.tryAgain}
         />
       </div>
+
+      <BuilderPublishPhoneBar publishAllowed={false} />
 
       <AddExerciseSheet
         open={addExerciseOpen}

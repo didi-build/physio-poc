@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -266,7 +266,10 @@ describe("Programs builder save UX (QA round 1)", () => {
       expect(updateProgramName).toHaveBeenCalled();
     });
     await userEvent.type(nameField, "ee");
-    resolveSave?.({ program: builderView({ name: "Kn" }) });
+    expect(nameField).toHaveValue("Knee");
+    await act(async () => {
+      resolveSave?.({ program: builderView({ name: "Kn" }) });
+    });
     await waitFor(() => {
       expect(nameField).toHaveValue("Knee");
     });
@@ -305,6 +308,7 @@ describe("Programs builder save UX (QA round 1)", () => {
   });
 
   it("shows exactly one alert after a failed name save", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const updateProgramName = vi.fn().mockRejectedValue(new Error("fail"));
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
@@ -316,13 +320,16 @@ describe("Programs builder save UX (QA round 1)", () => {
     );
     const nameField = await screen.findByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
     await waitFor(() => {
       expect(updateProgramName).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
     });
-    expect(screen.getAllByText(AUTO_SAVE_NOT_SAVED).length).toBeGreaterThan(0);
+    vi.useRealTimers();
   });
 
   it("shows Not saved when updateRow fails", async () => {

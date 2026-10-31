@@ -3,13 +3,13 @@ import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import {
-  DUPLICATE,
+  PLACEHOLDER_ROW_NOTE,
   duplicateRowAriaLabel,
   removeRowAriaLabel,
   reorderRowAriaLabel,
   ROW_NOTES_LABEL,
 } from "../copy/programs.js";
-import { EXERCISE_TYPES_HEADING, TYPE_LABELS } from "../copy/my-defaults.js";
+import { TYPE_LABELS } from "../copy/my-defaults.js";
 
 export type ProgramBuilderRowCardProps = {
   row: ProgramBuilderRow;
@@ -34,6 +34,38 @@ function RowGripIcon() {
       <circle cx="15" cy="12" r="1.5" />
       <circle cx="9" cy="17" r="1.5" />
       <circle cx="15" cy="17" r="1.5" />
+    </svg>
+  );
+}
+
+function RowArrowUpIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M12 19V5M7 10l5-5 5 5" />
+    </svg>
+  );
+}
+
+function RowArrowDownIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M12 5v14M7 14l5 5 5-5" />
     </svg>
   );
 }
@@ -86,7 +118,6 @@ export function ProgramBuilderRowCard({
 }: ProgramBuilderRowCardProps) {
   const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
-  const typeLabelId = `pg-row-type-label-${row.id}`;
 
   return (
     <article
@@ -111,30 +142,31 @@ export function ProgramBuilderRowCard({
         <span className="pg-row-grip" aria-hidden>
           <RowGripIcon />
         </span>
-        <h3 id={titleId} className="pg-row-title">
-          {title}
-        </h3>
+        <div className="pg-row-title-wrap">
+          <h3 id={titleId} className="pg-row-title">
+            {title}
+          </h3>
+          {row.kind === "placeholder" ? (
+            <p className="pg-row-placeholder-note">{PLACEHOLDER_ROW_NOTE}</p>
+          ) : null}
+        </div>
       </div>
       {row.kind === "exercise" ? (
         <>
-          <label className="pg-row-type-label">
-            <span id={typeLabelId}>{EXERCISE_TYPES_HEADING}</span>
-            <select
-              className="pg-row-type-select"
-              aria-labelledby={typeLabelId}
-              value={row.prescription_type}
-              disabled={actionsDisabled}
-              onChange={(event) => {
-                onTypeChange(event.target.value as PrescriptionType);
-              }}
-            >
-              {PRESCRIPTION_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {TYPE_LABELS[type]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <select
+            className="pg-row-type-select"
+            value={row.prescription_type}
+            disabled={actionsDisabled}
+            onChange={(event) => {
+              onTypeChange(event.target.value as PrescriptionType);
+            }}
+          >
+            {PRESCRIPTION_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
           <p className="pg-row-readout" aria-labelledby={titleId}>
             {formatExerciseParams(row.params)}
           </p>
@@ -158,7 +190,7 @@ export function ProgramBuilderRowCard({
           disabled={actionsDisabled || index === 0}
           onClick={onMoveUp}
         >
-          <RowGripIcon />
+          <RowArrowUpIcon />
         </button>
         <button
           type="button"
@@ -167,17 +199,16 @@ export function ProgramBuilderRowCard({
           disabled={actionsDisabled || index >= total - 1}
           onClick={onMoveDown}
         >
-          <RowGripIcon />
+          <RowArrowDownIcon />
         </button>
         <button
           type="button"
-          className="pg-row-icon-btn pg-row-icon-btn--text"
+          className="pg-row-icon-btn"
           aria-label={duplicateRowAriaLabel(title)}
           disabled={actionsDisabled || row.kind === "placeholder"}
           onClick={onDuplicate}
         >
           <RowCopyIcon />
-          <span>{DUPLICATE}</span>
         </button>
         <button
           type="button"
