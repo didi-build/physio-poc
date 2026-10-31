@@ -622,32 +622,43 @@ describe("Programs builder dev verification", () => {
     expect(screen.getByText("3 exercises")).toBeInTheDocument();
   });
 
-  it("formats published status with time like the mockups", async () => {
-    render(
-      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          programsClient={builderStubs({
-            getProgram: vi.fn().mockResolvedValue(
-              builderView({
-                auto_save_status: {
-                  kind: "published",
-                  published_at: "2026-10-24T18:10:00.000Z",
-                },
-              }),
-            ),
-          })}
-        />
-      </MemoryRouter>,
-    );
-    await screen.findByRole("textbox", { name: "Program name" });
-    await waitFor(() => {
-      const lines = document.querySelectorAll(".pg-publish-card-status");
-      const text = Array.from(lines)
-        .map((node) => node.textContent ?? "")
-        .join(" ");
-      expect(text).toMatch(/Published Oct 24, 2:10 PM/);
-    });
+  it("formats published status with the viewer local time", async () => {
+    const expectedStatus = "Published Oct 24, 11:10 AM";
+    const previousTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      render(
+        <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            programsClient={builderStubs({
+              getProgram: vi.fn().mockResolvedValue(
+                builderView({
+                  auto_save_status: {
+                    kind: "published",
+                    published_at: "2026-10-24T18:10:00.000Z",
+                  },
+                }),
+              ),
+            })}
+          />
+        </MemoryRouter>,
+      );
+      await screen.findByRole("textbox", { name: "Program name" });
+      await waitFor(() => {
+        const lines = document.querySelectorAll(".pg-publish-card-status");
+        expect(lines.length).toBeGreaterThan(0);
+        for (const node of lines) {
+          expect(node.textContent).toBe(expectedStatus);
+        }
+      });
+    } finally {
+      if (previousTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTz;
+      }
+    }
   });
 
   it("mounts the failure alert on the phone status block below 1024px", async () => {

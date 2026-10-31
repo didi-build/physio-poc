@@ -40,6 +40,10 @@ import {
   type ApprovedExerciseSearchSort,
 } from "../../storage/repositories/exercise-library-read.js";
 import { TypeDefaultsRepository } from "../../storage/repositories/type-defaults.js";
+import {
+  PractitionerNotFoundError,
+  requirePractitionerRecord,
+} from "../practitioner-access.js";
 import type {
   ApprovedExerciseSummary,
   ExerciseDetailsResult,
@@ -800,12 +804,16 @@ export class ExerciseLibraryService {
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {
-    const row = await this.practitioners.findById(practitionerId);
-    if (!row) {
-      throw new ExerciseLibraryServiceError(
-        "Practitioner not found",
-        "practitioner_not_found",
-      );
+    try {
+      await requirePractitionerRecord(this.practitioners, practitionerId);
+    } catch (err) {
+      if (err instanceof PractitionerNotFoundError) {
+        throw new ExerciseLibraryServiceError(
+          "Practitioner not found",
+          "practitioner_not_found",
+        );
+      }
+      throw err;
     }
   }
 
