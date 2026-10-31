@@ -75,8 +75,9 @@ async function createCountedMcpOAuthTestDeps(
   ...args: Parameters<typeof createMcpOAuthTestDeps>
 ): Promise<{
   deps: AppDependencies;
-  pendingConsentSelectCount: () => number;
-  resetPendingConsentSelectCount: () => void;
+  pendingConsentStoreCallCount: () => number;
+  pendingConsentWriteCallCount: () => number;
+  resetPendingConsentStoreCallCount: () => void;
 }> {
   let counted!: ReturnType<typeof wrapSqlStorageWithPendingSelectCounter>;
   const deps = await createMcpOAuthTestDeps(args[0], {
@@ -88,8 +89,10 @@ async function createCountedMcpOAuthTestDeps(
   });
   return {
     deps,
-    pendingConsentSelectCount: () => counted.pendingConsentSelectCount(),
-    resetPendingConsentSelectCount: () => counted.resetPendingConsentSelectCount(),
+    pendingConsentStoreCallCount: () => counted.pendingConsentStoreCallCount(),
+    pendingConsentWriteCallCount: () => counted.pendingConsentWriteCallCount(),
+    resetPendingConsentStoreCallCount: () =>
+      counted.resetPendingConsentStoreCallCount(),
   };
 }
 
@@ -984,10 +987,10 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(missingBadCsrf.body).toBe("");
   });
 
-  it("makes zero pending-row store reads on bad CSRF or Origin POST (missing, live, expired) and counts reads on valid allow", async () => {
+  it("makes zero pending-row store calls on bad CSRF or Origin POST (missing, live, expired) and counts store calls on valid allow", async () => {
     let nowMs = 5_200_000_000_000;
     const clock = { nowMs: () => nowMs };
-    const { deps, pendingConsentSelectCount, resetPendingConsentSelectCount } =
+    const { deps, pendingConsentStoreCallCount, resetPendingConsentStoreCallCount } =
       await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
         consentClock: clock,
       });
@@ -1005,7 +1008,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       }),
     );
 
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const liveBadCsrf = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
       deps,
@@ -1016,9 +1019,9 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(liveBadCsrf.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const liveBadOrigin = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
       deps,
@@ -1029,10 +1032,10 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(liveBadOrigin.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
     nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const expiredBadCsrf = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
       deps,
@@ -1043,9 +1046,9 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(expiredBadCsrf.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const expiredBadOrigin = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
       deps,
@@ -1056,7 +1059,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(expiredBadOrigin.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
     const jarMissing = new CookieJar();
     await completeGoogleSignIn(deps, jarMissing);
@@ -1074,7 +1077,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     await deps.sql.run("DELETE FROM physio_mcp_pending_consent WHERE id = ?", [
       pendingId!,
     ]);
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const missingBadCsrf = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
       deps,
@@ -1085,9 +1088,9 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(missingBadCsrf.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     const missingBadOrigin = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
       deps,
@@ -1098,7 +1101,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(missingBadOrigin.status).toBe(403);
-    expect(pendingConsentSelectCount()).toBe(0);
+    expect(pendingConsentStoreCallCount()).toBe(0);
 
     const jarAllowControl = new CookieJar();
     await completeGoogleSignIn(deps, jarAllowControl);
@@ -1112,9 +1115,74 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
         resource: mcpResourceUrl(),
       }),
     );
-    resetPendingConsentSelectCount();
+    resetPendingConsentStoreCallCount();
     await postConsentAllow(deps, jarAllowControl);
-    expect(pendingConsentSelectCount()).toBeGreaterThanOrEqual(1);
+    expect(pendingConsentStoreCallCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns plain 403 with zero pending-row writes when CSRF header matches cookie but not the stored hash (expired and consumed rows)", async () => {
+    let nowMs = 8_000_000_000_000;
+    const clock = { nowMs: () => nowMs };
+    const { deps, pendingConsentWriteCallCount, resetPendingConsentStoreCallCount } =
+      await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
+        consentClock: clock,
+      });
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const pendingId = jar.get("physio_mcp_pending_consent_id");
+    expect(pendingId).toBeTruthy();
+    await deps.sql.run(
+      "UPDATE physio_mcp_pending_consent SET csrf_token_hash = ? WHERE id = ?",
+      ["0".repeat(64), pendingId!],
+    );
+
+    nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+    resetPendingConsentStoreCallCount();
+    const expiredForged = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jar,
+      { method: "POST" },
+    );
+    expect(expiredForged.status).toBe(403);
+    expect(await expiredForged.text()).toBe("");
+    expect(pendingConsentWriteCallCount()).toBe(0);
+
+    nowMs = 9_000_000_000_000;
+    const jarFresh = new CookieJar();
+    await completeGoogleSignIn(deps, jarFresh);
+    await followAuthorizeToConsent(
+      deps,
+      jarFresh,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const consumedPendingId = jarFresh.get("physio_mcp_pending_consent_id");
+    expect(consumedPendingId).toBeTruthy();
+    await allowConsent(deps, jarFresh);
+    await deps.sql.run(
+      "UPDATE physio_mcp_pending_consent SET csrf_token_hash = ? WHERE id = ?",
+      ["1".repeat(64), consumedPendingId!],
+    );
+    resetPendingConsentStoreCallCount();
+    const consumedForged = await postConsentDeny(deps, jarFresh);
+    expect(consumedForged.status).toBe(403);
+    expect(await consumedForged.text()).toBe("");
+    expect(pendingConsentWriteCallCount()).toBe(0);
   });
 
   it("shows the expired page when the owner posts allow on expired or consumed pending rows", async () => {

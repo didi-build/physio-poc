@@ -375,6 +375,7 @@ async function handleConsentGet(
   );
 }
 
+/** Consent POST load order (DIDI-1150 CTO): Origin + header/cookie CSRF, scoped lookup, stored hash, usability. */
 async function loadPendingForConsentPost(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<

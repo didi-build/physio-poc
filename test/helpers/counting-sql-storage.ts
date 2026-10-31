@@ -6,42 +6,77 @@ import type {
 
 export type CountingSqlStorage = {
   sql: SqlStoragePort;
-  pendingConsentSelectCount: () => number;
-  resetPendingConsentSelectCount: () => void;
+  pendingConsentStoreCallCount: () => number;
+  pendingConsentWriteCallCount: () => number;
+  resetPendingConsentStoreCallCount: () => void;
 };
 
-function isPendingConsentSelect(sql: string): boolean {
+function isPendingConsentStoreSql(sql: string): boolean {
+  const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized.includes("physio_mcp_pending_consent");
+}
+
+function isPendingConsentWriteSql(sql: string): boolean {
   const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
   return (
-    normalized.startsWith("select") && normalized.includes("physio_mcp_pending_consent")
+    normalized.startsWith("insert") ||
+    normalized.startsWith("update") ||
+    normalized.startsWith("delete")
   );
+}
+
+function bumpPendingConsentCount(
+  statement: string,
+  bumpStore: () => void,
+  bumpWrite: () => void,
+): void {
+  if (!isPendingConsentStoreSql(statement)) {
+    return;
+  }
+  bumpStore();
+  if (isPendingConsentWriteSql(statement)) {
+    bumpWrite();
+  }
 }
 
 export function wrapSqlStorageWithPendingSelectCounter(
   inner: SqlStoragePort,
 ): CountingSqlStorage {
-  let pendingConsentSelectCount = 0;
+  let pendingConsentStoreCallCount = 0;
+  let pendingConsentWriteCallCount = 0;
+  const bumpStore = () => {
+    pendingConsentStoreCallCount += 1;
+  };
+  const bumpWrite = () => {
+    pendingConsentWriteCallCount += 1;
+  };
   const sql: SqlStoragePort = {
-    run: (statement, bindings) => inner.run(statement, bindings),
+    run: (statement, bindings) => {
+      bumpPendingConsentCount(statement, bumpStore, bumpWrite);
+      return inner.run(statement, bindings);
+    },
     all: <T extends Record<string, SqlValue>>(
       statement: string,
       bindings?: SqlBindings,
-    ) => inner.all<T>(statement, bindings),
+    ) => {
+      bumpPendingConsentCount(statement, bumpStore, bumpWrite);
+      return inner.all<T>(statement, bindings);
+    },
     first: <T extends Record<string, SqlValue>>(
       statement: string,
       bindings?: SqlBindings,
     ) => {
-      if (isPendingConsentSelect(statement)) {
-        pendingConsentSelectCount += 1;
-      }
+      bumpPendingConsentCount(statement, bumpStore, bumpWrite);
       return inner.first<T>(statement, bindings);
     },
   };
   return {
     sql,
-    pendingConsentSelectCount: () => pendingConsentSelectCount,
-    resetPendingConsentSelectCount: () => {
-      pendingConsentSelectCount = 0;
+    pendingConsentStoreCallCount: () => pendingConsentStoreCallCount,
+    pendingConsentWriteCallCount: () => pendingConsentWriteCallCount,
+    resetPendingConsentStoreCallCount: () => {
+      pendingConsentStoreCallCount = 0;
+      pendingConsentWriteCallCount = 0;
     },
   };
 }
