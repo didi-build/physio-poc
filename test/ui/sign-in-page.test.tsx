@@ -20,7 +20,9 @@ afterEach(() => {
 describe("SignInPage (copy and error slot)", () => {
   it("pins literal sign-in copy strings", () => {
     render(<SignInPage returnTo="/programs" authError={null} />);
-    expect(screen.getByText("Didi Physio")).toBeTruthy();
+    expect(document.querySelector(".sign-in-wordmark-text")?.textContent).toBe(
+      "Didi Physio",
+    );
     expect(
       screen.getByRole("button", { name: SIGN_IN_WITH_GOOGLE_LABEL }),
     ).toBeTruthy();

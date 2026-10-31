@@ -11,7 +11,7 @@ function wordmarkHtml(centered = false): string {
   const centerClass = centered ? " consent-wordmark-centered" : "";
   return `<div class="consent-wordmark${centerClass}">
   <span class="consent-wordmark-tile" aria-hidden="true">D</span>
-  <span class="consent-wordmark-text">Didi Physio</span>
+  <span class="consent-wordmark-text"><span class="consent-wordmark-didi">Didi</span> <span class="consent-wordmark-physio">Physio</span></span>
 </div>`;
 }
 
@@ -71,6 +71,11 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
       var loc = response.headers.get("Location");
       if (loc) { window.location.href = loc; return; }
     }
+    if (response.status === 401 || response.status === 403 || response.status === 500) {
+      // TODO(DIDI-1126-follow-up): surface user-visible feedback when consent POST fails; no approved copy yet.
+      setBusy(false);
+      return;
+    }
     return response.text().then(function (html) {
       if (html && html.length > 0) {
         document.open();
@@ -108,9 +113,9 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
   const body = `<main class="consent-root">
   <section class="consent-card" aria-labelledby="consent-heading">
     ${wordmarkHtml()}
-    <p class="consent-host-line">Request from <span class="consent-host-mono">${host}</span></p>
+    <p class="consent-host-line">Request from <span class="consent-host-emphasis">${host}</span></p>
     <h1 id="consent-heading" class="consent-heading">Allow read-only access to Didi Physio?</h1>
-    <p class="consent-name-line">The app calls itself “${name}” <span class="consent-tag">Self-reported</span></p>
+    <p class="consent-name-line">The app calls itself <span class="consent-name-with-tag">“${name}” <span class="consent-tag">Self-reported</span></span></p>
     <p class="consent-list-heading">It can</p>
     <ul class="consent-list">
       ${consentListItem("can", "Search your approved exercises")}

@@ -255,7 +255,7 @@ async function handleConsentGet(
     let existing = await findPhysioMcpPendingConsentById(sql, pendingIdFromCookie);
     const nowMs = (clock ?? systemPhysioMcpConsentClock).nowMs();
     if (!existing) {
-      return invalidClientResponse(authBaseUrl);
+      return expiredResponse(authBaseUrl);
     }
     if (!isPhysioMcpPendingConsentUsable(existing, nowMs)) {
       return expiredResponse(authBaseUrl);
@@ -397,7 +397,7 @@ async function loadPendingForRequest(
   }
   const pending = await findPhysioMcpPendingConsentById(sql, pendingId);
   if (!pending) {
-    return { ok: false, response: plainStatus(403) };
+    return { ok: false, response: await expiredResponse(authBaseUrl) };
   }
   if (pending.practitioner_id !== practitioner.practitionerId) {
     return { ok: false, response: plainStatus(403) };
@@ -461,7 +461,7 @@ async function handleConsentAllow(
   }
   const pending = await findPhysioMcpPendingConsentById(input.sql, loaded.pendingId);
   if (!pending) {
-    return plainStatus(403);
+    return expiredResponse(input.authBaseUrl);
   }
   const redirectGuard = await pendingRedirectUriStillRegistered(
     input.sql,
@@ -498,7 +498,7 @@ async function handleConsentDeny(
   }
   const pending = await findPhysioMcpPendingConsentById(input.sql, loaded.pendingId);
   if (!pending) {
-    return plainStatus(403);
+    return expiredResponse(input.authBaseUrl);
   }
   const redirectGuard = await pendingRedirectUriStillRegistered(
     input.sql,

@@ -10,18 +10,12 @@ body {
 .consent-root {
   min-height: 100vh;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   padding: 1.5rem;
   background: #f8fafc;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   color: #0f172a;
-}
-
-@media (min-width: 640px) {
-  .consent-root {
-    align-items: center;
-  }
 }
 
 .consent-card {
@@ -63,8 +57,16 @@ body {
 }
 
 .consent-wordmark-text {
-  font-weight: 600;
   font-size: 1.125rem;
+  color: #0f172a;
+}
+
+.consent-wordmark-didi {
+  font-weight: 700;
+}
+
+.consent-wordmark-physio {
+  font-weight: 400;
 }
 
 .consent-host-line {
@@ -73,8 +75,7 @@ body {
   margin: 0 0 0.5rem;
 }
 
-.consent-host-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+.consent-host-emphasis {
   font-weight: 700;
   color: #0f172a;
 }
@@ -92,6 +93,10 @@ body {
   line-height: 1.5;
 }
 
+.consent-name-with-tag {
+  white-space: nowrap;
+}
+
 .consent-tag {
   display: inline-block;
   margin-left: 0.35rem;
@@ -105,6 +110,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .consent-list-heading {
