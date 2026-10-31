@@ -12,6 +12,7 @@ import {
 } from "../../domain/opaque-entity-id.js";
 import type { PhysioServerConfig } from "../../http/config.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import {
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
@@ -29,6 +30,7 @@ import {
   PractitionerNotFoundError,
   requirePractitionerRecord,
 } from "../practitioner-access.js";
+import { ProgramBuilderService } from "../programs/program-builder-service.js";
 import {
   appendMergeToDraftRequest,
   fakeExerciseDraftGenerator,
@@ -465,12 +467,15 @@ export class ExerciseRequestsService {
       }
     }
 
-    await this.requests.updateStatus({
+    const updated = await this.requests.updateStatus({
       id: row.id,
       status: "drafting",
       updatedAt: this.now(),
       allowedFromStatuses: ["open", "drafting"],
     });
+    if (!updated) {
+      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    }
 
     return this.getRequest({ practitionerId: input.practitionerId, requestId: row.id });
   }
@@ -491,27 +496,38 @@ export class ExerciseRequestsService {
     }
 
     const approvedAt = this.now();
-    const approved = await this.versions.approveDraft({
-      versionId: draft.id,
-      approvedBy: input.practitionerId,
-      approvedAt,
-    });
-    if (!approved) {
-      throw new ExerciseRequestsServiceError("Approve failed", "approve_failed");
+    const programBuilder = new ProgramBuilderService(this.sql, () => approvedAt);
+    const { statements: linkStatements } =
+      await programBuilder.buildLinkApprovedPlaceholderStatements(requestId, draft.id);
+
+    const batchStatements = [
+      this.versions.buildApproveDraftBatchStatement({
+        versionId: draft.id,
+        approvedBy: input.practitionerId,
+        approvedAt,
+      }),
+      this.requests.buildUpdateStatusBatchStatement({
+        id: row.id,
+        status: "approved",
+        updatedAt: approvedAt,
+        allowedFromStatuses: ["drafting"],
+      }),
+      this.practitionerExercises.buildSaveExerciseBatchStatement({
+        practitionerId: row.requested_by,
+        exerciseId: row.exercise_id,
+        savedAt: approvedAt,
+      }),
+      ...linkStatements,
+    ];
+
+    try {
+      await this.sql.batch(batchStatements);
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        throw new ExerciseRequestsServiceError("Approve failed", "approve_failed");
+      }
+      throw error;
     }
-
-    await this.requests.updateStatus({
-      id: row.id,
-      status: "approved",
-      updatedAt: approvedAt,
-      allowedFromStatuses: ["drafting"],
-    });
-
-    await this.practitionerExercises.upsert({
-      practitionerId: row.requested_by,
-      exerciseId: row.exercise_id,
-      savedAt: approvedAt,
-    });
 
     return {
       request_id: row.id,

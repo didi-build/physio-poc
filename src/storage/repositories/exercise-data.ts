@@ -1,4 +1,8 @@
-import type { SqlStoragePort, SqlValue } from "../ports/sql-storage.js";
+import type {
+  SqlBatchStatement,
+  SqlStoragePort,
+  SqlValue,
+} from "../ports/sql-storage.js";
 import type {
   ExerciseCategory,
   ExerciseRequestStatus,
@@ -93,6 +97,30 @@ export class PractitionerExercisesRepository {
         paramJson,
       ],
     );
+  }
+
+  buildSaveExerciseBatchStatement(input: {
+    practitionerId: string;
+    exerciseId: string;
+    savedAt: string;
+  }): SqlBatchStatement {
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const textJson = serializeTextOverrides({});
+    const paramJson = JSON.stringify(validateParamOverridesByType({}));
+    return {
+      sql: `INSERT INTO practitioner_exercises (
+        practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+        text_overrides_json, param_overrides_json
+      ) VALUES (?, ?, 0, ?, NULL, ?, ?)
+      ON CONFLICT(practitioner_id, exercise_id) DO UPDATE SET
+        saved_at = excluded.saved_at`,
+      bindings: [practitionerId, exerciseId, input.savedAt, textJson, paramJson],
+      minRowsAffected: 1,
+    };
   }
 
   async find(
@@ -368,6 +396,22 @@ export class ExerciseVersionsRepository {
     return result.rowsAffected > 0;
   }
 
+  buildApproveDraftBatchStatement(input: {
+    versionId: string;
+    approvedBy: string;
+    approvedAt: string;
+  }): SqlBatchStatement {
+    const versionId = validateOpaqueEntityId(input.versionId, "Exercise version id");
+    const approvedBy = validateOpaqueEntityId(input.approvedBy, "Practitioner id");
+    return {
+      sql: `UPDATE exercise_versions
+       SET status = 'approved', approved_by = ?, approved_at = ?
+       WHERE id = ? AND status = 'draft'`,
+      bindings: [approvedBy, input.approvedAt, versionId],
+      minRowsAffected: 1,
+    };
+  }
+
   async insert(input: ExerciseVersionInsert): Promise<void> {
     const id = validateOpaqueEntityId(input.id, "Exercise version id");
     const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
@@ -582,6 +626,29 @@ export class ExerciseRequestsRepository {
       bindings,
     );
     return result.rowsAffected > 0;
+  }
+
+  buildUpdateStatusBatchStatement(input: {
+    id: string;
+    status: ExerciseRequestStatus;
+    updatedAt: string;
+    allowedFromStatuses?: readonly ExerciseRequestStatus[];
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const allowed = input.allowedFromStatuses;
+    const statusFilter =
+      allowed && allowed.length > 0
+        ? ` AND status IN (${allowed.map(() => "?").join(", ")})`
+        : "";
+    const bindings: SqlValue[] = [input.status, input.updatedAt, id];
+    if (allowed && allowed.length > 0) {
+      bindings.push(...allowed);
+    }
+    return {
+      sql: `UPDATE exercise_requests SET status = ?, updated_at = ? WHERE id = ?${statusFilter}`,
+      bindings,
+      minRowsAffected: 1,
+    };
   }
 
   async updateNote(input: {

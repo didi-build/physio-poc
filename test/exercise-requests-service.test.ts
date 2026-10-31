@@ -850,4 +850,172 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       storage.close();
     }
   });
+
+  it("rejects updateDraft with draft_not_ready after the request is approved", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-patch-after-appr"),
+        "paa@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-patch-after-appr-app"),
+        "paaa@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Patch after approve",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await service.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      await expect(
+        service.updateDraft({
+          practitionerId: approver,
+          requestId: created.request_id,
+          patch: { title: "Too late" },
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns draft_not_ready when the draft version row is no longer draft before approve", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-preappr-ver"),
+        "ppv@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-preappr-ver-app"),
+        "ppva@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Pre approved version",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created" || !created.exercise_id) {
+        return;
+      }
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ?
+         WHERE exercise_id = ? AND status = 'draft'`,
+        [approver, AFTER_FORM, created.exercise_id],
+      );
+      await expect(
+        service.approveRequest({
+          practitionerId: approver,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+      const requestRow = await storage.first<{ status: string }>(
+        "SELECT status FROM exercise_requests WHERE id = ?",
+        [created.request_id],
+      );
+      expect(requestRow?.status).toBe("drafting");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a second approve with draft_not_ready", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-double-appr"),
+        "pda@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-double-appr-app"),
+        "pdaa@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Double approve",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await service.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      await expect(
+        service.approveRequest({
+          practitionerId: approver,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns draft_not_ready when updateDraft refresh cannot apply to the stored status", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-refresh-guard"),
+        "prg@example.com",
+      );
+      const reviewer = await seedPractitioner(
+        storage,
+        id("pract-refresh-guard-rev"),
+        "prgr@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Refresh guard move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', updated_at = ? WHERE id = ?`,
+        [AFTER_FORM, created.request_id],
+      );
+      await expect(
+        service.updateDraft({
+          practitionerId: reviewer,
+          requestId: created.request_id,
+          patch: {},
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
 });

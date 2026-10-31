@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
+import { handleExerciseRequestsHttpRequest } from "../src/http/routes/exercise-requests.js";
 import {
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
@@ -26,6 +27,7 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { apiMeHttpRouteCases } from "./helpers/api-me-http-route-cases.js";
 import {
+  EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID,
   EXERCISE_REQUESTS_HTTP_ROUTE_TABLE,
   exerciseRequestsHttpJsonBody,
   exerciseRequestsHttpRouteCases,
@@ -106,11 +108,67 @@ async function seedDraftingRequestForPractitioner(
   return { requestId: created.request_id, exerciseId: created.exercise_id! };
 }
 
+/** Independent pin: must not reuse `EXERCISE_REQUESTS_HTTP_ROUTE_TABLE` or the helper return value. */
+const PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES = [
+  { method: "GET", path: `${EXERCISE_REQUESTS_API_BASE}/similar` },
+  { method: "GET", path: exerciseRequestsInProgressPath() },
+  { method: "GET", path: exerciseRequestsInProgressCountPath() },
+  { method: "POST", path: exerciseRequestsCollectionPath() },
+  {
+    method: "GET",
+    path: exerciseRequestPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
+  {
+    method: "PATCH",
+    path: exerciseRequestDraftPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
+  {
+    method: "POST",
+    path: exerciseRequestApprovePath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
+] as const;
+
 describe("Exercise requests HTTP routes (integration)", () => {
   it("pins the seven exercise request routes as literal method and path pairs", () => {
+    expect(PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES).toHaveLength(7);
     expect(exerciseRequestsHttpRouteCases()).toEqual([
-      ...EXERCISE_REQUESTS_HTTP_ROUTE_TABLE,
+      ...PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES,
     ]);
+  });
+
+  it("returns 401 from the exercise-requests handler when the session is missing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      await seedPractitioner(storage);
+      const response = await handleExerciseRequestsHttpRequest(
+        new Request(`${BASE}${exerciseRequestsCollectionPath()}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            requested_name: "Heel slide",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        {
+          sql: storage,
+          objects: new InMemoryObjectStorage(),
+          config: MCP_TEST_CONFIG,
+          mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+          auth: new FakeAuthPort({
+            practitioner: {
+              practitionerId: testOpaqueEntityId("handler-401"),
+              email: "coach@example.com",
+              displayName: "Coach",
+            },
+          }),
+        },
+        { sessionPractitioner: null },
+      );
+      expect(response?.status).toBe(401);
+      await expect(response?.json()).resolves.toEqual({ error: "unauthorized" });
+    } finally {
+      storage.close();
+    }
   });
 
   it("includes all seven exercise request routes in the api/me route table helper", () => {
