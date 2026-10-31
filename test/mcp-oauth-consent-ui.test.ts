@@ -77,6 +77,7 @@ async function createCountedMcpOAuthTestDeps(
   deps: AppDependencies;
   pendingConsentStoreCallCount: () => number;
   pendingConsentWriteCallCount: () => number;
+  sqlWriteCallCount: () => number;
   resetPendingConsentStoreCallCount: () => void;
 }> {
   let counted!: ReturnType<typeof wrapSqlStorageWithPendingSelectCounter>;
@@ -91,6 +92,7 @@ async function createCountedMcpOAuthTestDeps(
     deps,
     pendingConsentStoreCallCount: () => counted.pendingConsentStoreCallCount(),
     pendingConsentWriteCallCount: () => counted.pendingConsentWriteCallCount(),
+    sqlWriteCallCount: () => counted.sqlWriteCallCount(),
     resetPendingConsentStoreCallCount: () =>
       counted.resetPendingConsentStoreCallCount(),
   };
@@ -990,10 +992,14 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
   it("makes zero pending-row store calls on bad CSRF or Origin POST (missing, live, expired) and counts store calls on valid allow", async () => {
     let nowMs = 5_200_000_000_000;
     const clock = { nowMs: () => nowMs };
-    const { deps, pendingConsentStoreCallCount, resetPendingConsentStoreCallCount } =
-      await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
-        consentClock: clock,
-      });
+    const {
+      deps,
+      pendingConsentStoreCallCount,
+      sqlWriteCallCount,
+      resetPendingConsentStoreCallCount,
+    } = await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
 
     const jarLive = new CookieJar();
     await completeGoogleSignIn(deps, jarLive);
@@ -1118,15 +1124,20 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     resetPendingConsentStoreCallCount();
     await postConsentAllow(deps, jarAllowControl);
     expect(pendingConsentStoreCallCount()).toBeGreaterThanOrEqual(1);
+    expect(sqlWriteCallCount()).toBeGreaterThanOrEqual(1);
   });
 
   it("returns plain 403 with zero pending-row writes when CSRF header matches cookie but not the stored hash (expired and consumed rows)", async () => {
     let nowMs = 8_000_000_000_000;
     const clock = { nowMs: () => nowMs };
-    const { deps, pendingConsentWriteCallCount, resetPendingConsentStoreCallCount } =
-      await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
-        consentClock: clock,
-      });
+    const {
+      deps,
+      pendingConsentWriteCallCount,
+      sqlWriteCallCount,
+      resetPendingConsentStoreCallCount,
+    } = await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
     const jar = new CookieJar();
     await completeGoogleSignIn(deps, jar);
     await followAuthorizeToConsent(
@@ -1157,6 +1168,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(expiredForged.status).toBe(403);
     expect(await expiredForged.text()).toBe("");
     expect(pendingConsentWriteCallCount()).toBe(0);
+    expect(sqlWriteCallCount()).toBe(0);
 
     nowMs = 9_000_000_000_000;
     const jarFresh = new CookieJar();
@@ -1183,6 +1195,27 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(consumedForged.status).toBe(403);
     expect(await consumedForged.text()).toBe("");
     expect(pendingConsentWriteCallCount()).toBe(0);
+    expect(sqlWriteCallCount()).toBe(0);
+  });
+
+  it("increments the wrapped SQL write counter on a valid allow POST (positive control)", async () => {
+    const { deps, sqlWriteCallCount, resetPendingConsentStoreCallCount } =
+      await createCountedMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    resetPendingConsentStoreCallCount();
+    await postConsentAllow(deps, jar);
+    expect(sqlWriteCallCount()).toBeGreaterThanOrEqual(1);
   });
 
   it("shows the expired page when the owner posts allow on expired or consumed pending rows", async () => {

@@ -127,51 +127,97 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       await loadConsentHtmlInPage(page, html);
       await expectInter700Ready(page);
       const boxes = await page.evaluate(() => {
+        function readCardContentBox(card: Element) {
+          const style = getComputedStyle(card);
+          const box = card.getBoundingClientRect();
+          const padLeft = Number.parseFloat(style.paddingLeft);
+          const padRight = Number.parseFloat(style.paddingRight);
+          const left = box.left + padLeft;
+          const right = box.right - padRight;
+          const width = right - left;
+          const scrollWidth = Math.max(0, card.scrollWidth - padLeft - padRight);
+          return { left, right, width, scrollWidth };
+        }
+        function wordsStayOnSingleLines(nameEl: Element): boolean {
+          const text = nameEl.textContent ?? "";
+          const words = text.match(/\S+/g) ?? [];
+          for (const word of words) {
+            const index = text.indexOf(word);
+            if (index < 0) {
+              continue;
+            }
+            const range = document.createRange();
+            range.setStart(nameEl.firstChild ?? nameEl, index);
+            range.setEnd(nameEl.firstChild ?? nameEl, index + word.length);
+            const rects = range.getClientRects();
+            if (rects.length === 0) {
+              return false;
+            }
+            const firstTop = rects[0]!.top;
+            for (let i = 1; i < rects.length; i += 1) {
+              if (Math.abs(rects[i]!.top - firstTop) > 0.5) {
+                return false;
+              }
+            }
+          }
+          return true;
+        }
         const card = document.querySelector(".consent-card");
         const lead = document.querySelector(".consent-name-lead");
         const name = document.querySelector(".consent-name-inline");
         const tag = document.querySelector(".consent-tag");
-        if (!card || !lead || !name || !tag) {
+        const nameLine = document.querySelector(".consent-name-line");
+        if (!card || !lead || !name || !tag || !nameLine) {
           return null;
         }
-        const cardStyle = getComputedStyle(card);
-        const cardBox = card.getBoundingClientRect();
-        const padLeft = Number.parseFloat(cardStyle.paddingLeft);
-        const contentRight = cardBox.left + padLeft + card.clientWidth;
+        const content = readCardContentBox(card);
         const leadBox = lead.getBoundingClientRect();
         const nameBox = name.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
+        const nameStyle = getComputedStyle(name);
+        const contentRight =
+          card.getBoundingClientRect().left +
+          card.clientLeft +
+          card.clientWidth -
+          Number.parseFloat(getComputedStyle(card).paddingRight);
         return {
           nameTop: nameBox.top,
           tagTop: tagBox.top,
           tagRight: tagBox.right,
           tagWidth: tagBox.width,
           contentRight,
-          cardScrollWidth: card.scrollWidth,
-          cardClientWidth: card.clientWidth,
+          contentScrollWidth: content.scrollWidth,
+          contentClientWidth: content.width,
           leadRight: leadBox.right,
           nameLeft: nameBox.left,
           tagFontWeight: getComputedStyle(tag).fontWeight,
+          nameLineFlexWrap: getComputedStyle(nameLine).flexWrap,
+          nameMinWidth: nameStyle.minWidth,
+          nameColumnWidth: nameBox.width,
+          nameLineRects: name.getClientRects().length,
+          wordsSingleLine: wordsStayOnSingleLines(name),
         };
       });
       expect(boxes).not.toBeNull();
+      expect(Math.abs(boxes!.contentRight - 800)).toBeLessThan(1);
+      expect(boxes!.contentScrollWidth).toBeLessThanOrEqual(
+        boxes!.contentClientWidth + 1,
+      );
       expect(Math.abs(boxes!.nameTop - boxes!.tagTop)).toBeLessThan(4);
+      expect(boxes!.nameLineRects).toBe(1);
       expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.contentRight + 0.5);
-      expect(boxes!.contentRight - boxes!.tagRight).toBeGreaterThanOrEqual(55);
       expectTagPillWidth(boxes!.tagWidth);
-      expect(boxes!.cardScrollWidth).toBeLessThanOrEqual(boxes!.cardClientWidth + 1);
-      expect(boxes!.nameLeft - boxes!.leadRight).toBeGreaterThanOrEqual(7);
+      expect(boxes!.nameLeft - boxes!.leadRight).toBeGreaterThanOrEqual(5);
       expect(boxes!.tagFontWeight).toBe("700");
+      expect(boxes!.nameLineFlexWrap).toBe("wrap");
+      expect(boxes!.wordsSingleLine).toBe(true);
+      expect(Number.parseFloat(boxes!.nameMinWidth)).toBe(0);
+      expect(boxes!.nameColumnWidth).toBeGreaterThan(40);
       const leadWhiteSpace = await page.evaluate(() => {
         const lead = document.querySelector(".consent-name-lead");
         return lead ? getComputedStyle(lead).whiteSpace : null;
       });
       expect(leadWhiteSpace).toBe("nowrap");
-      const nameLineFlexWrap = await page.evaluate(() => {
-        const line = document.querySelector(".consent-name-line");
-        return line ? getComputedStyle(line).flexWrap : null;
-      });
-      expect(nameLineFlexWrap).toBe("nowrap");
     } finally {
       await browser.close();
     }
@@ -265,6 +311,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         if (!lead || !name || !tag) {
           return null;
         }
+        const leadBox = lead.getBoundingClientRect();
         const nameBox = name.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
         const nameText = name.textContent ?? "";
@@ -272,6 +319,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           return { error: "name mismatch" as const };
         }
         return {
+          leadBottom: leadBox.bottom,
           nameTop: nameBox.top,
           nameBottom: nameBox.bottom,
           tagTop: tagBox.top,
@@ -283,8 +331,8 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         expect.fail("expected long-name layout metrics");
       }
       const metrics = layout;
+      expect(metrics.nameBottom).toBeGreaterThan(metrics.leadBottom + 8);
       expect(metrics.tagTop).toBeGreaterThanOrEqual(metrics.nameBottom - 2);
-      expect(metrics.tagTop - metrics.nameTop).toBeGreaterThan(12);
       expectTagPillWidth(metrics.tagWidth);
     } finally {
       await browser.close();
@@ -300,23 +348,58 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       await loadConsentHtmlInPage(page, html);
       const cardMetrics = await page.evaluate(() => {
         const card = document.querySelector(".consent-card") as HTMLElement | null;
-        if (!card) {
+        const name = document.querySelector(".consent-name-inline");
+        if (!card || !name) {
           return null;
         }
+        const style = getComputedStyle(card);
+        const padLeft = Number.parseFloat(style.paddingLeft);
+        const padRight = Number.parseFloat(style.paddingRight);
+        const box = card.getBoundingClientRect();
+        const contentRight = box.right - padRight;
+        const contentWidth = box.right - padRight - (box.left + padLeft);
+        const contentScrollWidth = Math.max(0, card.scrollWidth - padLeft - padRight);
+        function wordsStayOnSingleLines(nameEl: Element): boolean {
+          const text = nameEl.textContent ?? "";
+          const words = text.match(/\S+/g) ?? [];
+          for (const word of words) {
+            const index = text.indexOf(word);
+            if (index < 0) {
+              continue;
+            }
+            const range = document.createRange();
+            range.setStart(nameEl.firstChild ?? nameEl, index);
+            range.setEnd(nameEl.firstChild ?? nameEl, index + word.length);
+            const rects = range.getClientRects();
+            if (rects.length === 0) {
+              return false;
+            }
+            const firstTop = rects[0]!.top;
+            for (let i = 1; i < rects.length; i += 1) {
+              if (Math.abs(rects[i]!.top - firstTop) > 0.5) {
+                return false;
+              }
+            }
+          }
+          return true;
+        }
         return {
-          clientWidth: card.clientWidth,
-          scrollWidth: card.scrollWidth,
+          contentRight,
+          contentWidth,
+          contentScrollWidth,
+          wordsSingleLine: wordsStayOnSingleLines(name),
+          nameMinWidth: getComputedStyle(name).minWidth,
+          nameWidth: name.getBoundingClientRect().width,
         };
       });
       expect(cardMetrics).not.toBeNull();
-      expect(cardMetrics!.scrollWidth).toBeLessThanOrEqual(
-        cardMetrics!.clientWidth + 1,
+      expect(Math.abs(cardMetrics!.contentRight - 800)).toBeLessThan(1);
+      expect(cardMetrics!.contentScrollWidth).toBeLessThanOrEqual(
+        cardMetrics!.contentWidth + 1,
       );
-      const nameWhiteSpace = await page.evaluate(() => {
-        const name = document.querySelector(".consent-name-inline");
-        return name ? getComputedStyle(name).whiteSpace : null;
-      });
-      expect(nameWhiteSpace).toBe("normal");
+      expect(cardMetrics!.wordsSingleLine).toBe(true);
+      expect(Number.parseFloat(cardMetrics!.nameMinWidth)).toBe(0);
+      expect(cardMetrics!.nameWidth).toBeGreaterThan(40);
     } finally {
       await browser.close();
     }
@@ -400,7 +483,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
             };
           });
           expect(desktopLayout).not.toBeNull();
-          expect(desktopLayout!.gap).toBeGreaterThanOrEqual(7);
+          expect(desktopLayout!.gap).toBeGreaterThanOrEqual(5);
           expect(desktopLayout!.tagNameRowDelta).toBeLessThan(4);
         }
       } finally {

@@ -47,12 +47,12 @@ describe("ci-test-summary (unit)", () => {
   it("uses trimmed fixture literals for skipped and failure totals", () => {
     const fixtureXml = readFileSync(FIXTURE_JUNIT, "utf8");
     const summary = summarizeVitestJUnitXml(fixtureXml);
-    expect(summary.tests).toBe(1503);
+    expect(summary.tests).toBe(1504);
     expect(summary.skipped).toBe(4);
     expect(summary.failures).toBe(1);
-    expect(summary.errors).toBe(0);
-    expect(summary.failed).toBe(1);
-    expect(summary.executed).toBe(1499);
+    expect(summary.errors).toBe(1);
+    expect(summary.failed).toBe(2);
+    expect(summary.executed).toBe(1500);
     expect(summary.passed).toBe(1498);
 
     const body = runSummary({
@@ -61,7 +61,7 @@ describe("ci-test-summary (unit)", () => {
       PR_HEAD_SHA: "deadbeef00000000",
       VITEST_JUNIT_PATH: FIXTURE_JUNIT,
     });
-    expect(body).toContain("1498/1499 passed (1 failed)");
+    expect(body).toContain("1498/1500 passed (2 failed)");
     expect(body).not.toContain("1498/1503 passed");
     expect(body).not.toContain("1499/1499 passed");
   });

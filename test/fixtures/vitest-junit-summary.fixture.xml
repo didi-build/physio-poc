@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="vitest tests" tests="1503" failures="1" errors="0" skipped="4" time="12.5">
+<testsuites name="vitest tests" tests="1504" failures="1" errors="1" skipped="4" time="12.5">
   <testsuite name="test/example-a.test.ts" tests="750" failures="0" errors="0" skipped="2" time="4">
     <testcase classname="test/example-a.test.ts" name="passes one" time="0.01" />
     <testcase classname="test/example-a.test.ts" name="passes two" time="0.01" />
@@ -26,6 +26,11 @@
       <failure message="expected false to be true" type="AssertionError">
         AssertionError: expected false to be true
       </failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="test/example-d.test.ts" tests="1" failures="0" errors="1" skipped="0" time="0.05">
+    <testcase classname="test/example-d.test.ts" name="errors once" time="0.02">
+      <error message="boom" type="Error">Error: boom</error>
     </testcase>
   </testsuite>
 </testsuites>

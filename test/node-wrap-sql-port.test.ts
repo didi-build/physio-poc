@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
+import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -12,7 +13,7 @@ describe("wrapSqlPort DI (DIDI-1150)", () => {
       AUTH_BASE_URL: "https://auth.example",
       PHYSIO_ALLOWED_GOOGLE_EMAILS: "dev@example.com",
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      BETTER_AUTH_SECRET: "test-wrap-sql-port-secret-32chars!!",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
     });
     await expect(deps.sql.run("SELECT 1")).resolves.toBeDefined();
   });
@@ -24,7 +25,7 @@ describe("wrapSqlPort DI (DIDI-1150)", () => {
         AUTH_BASE_URL: "https://auth.example",
         PHYSIO_ALLOWED_GOOGLE_EMAILS: "dev@example.com",
         PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-        BETTER_AUTH_SECRET: "test-wrap-sql-port-secret-32chars!!",
+        BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
       },
       {
         wrapSqlPort: (sql) => {
@@ -44,6 +45,16 @@ describe("wrapSqlPort DI (DIDI-1150)", () => {
     const nodeEntry = readFileSync(join(REPO_ROOT, "src/entry/node.ts"), "utf8");
     expect(workerEntry).not.toContain("wrapSqlPort");
     expect(nodeEntry).not.toContain("wrapSqlPort");
+  });
+
+  it("does not read wrapSqlPort from process.env in the node adapter", () => {
+    const adapterSource = readFileSync(
+      join(REPO_ROOT, "src/adapters/node/create-node-app-dependencies.ts"),
+      "utf8",
+    );
+    expect(adapterSource).not.toMatch(/PHYSIO_WRAP_SQL_PORT/);
+    expect(adapterSource).not.toMatch(/process\.env[^\n]*wrapSqlPort/);
+    expect(adapterSource).not.toMatch(/wrapSqlPort[^\n]*process\.env/);
   });
 
   it("is only passed from test helpers besides the node adapter definition", () => {

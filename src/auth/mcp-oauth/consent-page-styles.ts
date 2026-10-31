@@ -115,9 +115,9 @@ body {
 @media (min-width: 640px) {
   .consent-name-line {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     align-items: baseline;
-    column-gap: 0.5rem;
+    column-gap: 0.375rem;
     row-gap: 0.25rem;
     font-size: 0.875rem;
   }
