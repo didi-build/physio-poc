@@ -16,7 +16,7 @@ if (installOutcome !== "success") {
   );
 } else {
   let testLine = "_Tests did not run or JUnit output is missing._";
-  const junitPath = "test-results/junit.xml";
+  const junitPath = process.env.VITEST_JUNIT_PATH ?? "test-results/junit.xml";
   if (existsSync(junitPath)) {
     const xml = readFileSync(junitPath, "utf8");
     const tests = Number(xml.match(/tests="(\d+)"/)?.[1] ?? 0);

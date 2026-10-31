@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function runSummary(env: Record<string, string>) {
@@ -37,9 +39,10 @@ describe("ci-test-summary (unit)", () => {
   });
 
   it("excludes skipped tests from the Vitest passed total", () => {
-    mkdirSync("test-results", { recursive: true });
+    const dir = mkdtempSync(join(tmpdir(), "ci-test-summary-junit-"));
+    const fakeJunit = join(dir, "junit.xml");
     writeFileSync(
-      "test-results/junit.xml",
+      fakeJunit,
       '<?xml version="1.0"?><testsuites tests="10" failures="0" errors="0" skipped="4"></testsuites>',
     );
     try {
@@ -47,11 +50,12 @@ describe("ci-test-summary (unit)", () => {
         INSTALL_OUTCOME: "success",
         CHECK_OUTCOME: "success",
         PR_HEAD_SHA: "deadbeef00000000",
+        VITEST_JUNIT_PATH: fakeJunit,
       });
       expect(body).toContain("6/6 passed");
       expect(body).not.toContain("6/10 passed");
     } finally {
-      rmSync("test-results/junit.xml", { force: true });
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
