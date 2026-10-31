@@ -252,7 +252,7 @@ export class ProgramsRepository {
   async findByExactCode(normalizedCode: string): Promise<ProgramRecord | null> {
     return this.sql.first<ProgramRecord>(
       `SELECT ${PROGRAM_SELECT}
-       FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
+       FROM programs WHERE code = ? LIMIT 1`,
       [normalizedCode],
     );
   }
@@ -814,14 +814,6 @@ export class ShareLinksRepository {
        LIMIT 1`,
       [programId],
     );
-  }
-
-  async hasAnyLinkForProgram(programId: string): Promise<boolean> {
-    const row = await this.sql.first<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM share_links WHERE program_id = ?`,
-      [programId],
-    );
-    return (row?.c ?? 0) > 0;
   }
 
   async findLatestByProgramId(programId: string): Promise<ShareLinkRecord | null> {

@@ -4,6 +4,7 @@ import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-m
 import { handleRequest } from "../src/http/app.js";
 import {
   programPath,
+  programByCodePath,
   programRestorePath,
   programRowDuplicatePath,
   programRowPath,
@@ -56,6 +57,7 @@ function authedRequest(url: string, cookie: string, init: RequestInit = {}): Req
 function apiDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   practId: string,
+  sessionCookieName?: string,
 ) {
   const auth = new FakeAuthPort({
     practitioner: {
@@ -63,6 +65,7 @@ function apiDeps(
       email: "coach@example.com",
       displayName: "Coach",
     },
+    sessionCookieName: sessionCookieName ?? `physio.fake_session.${practId}`,
   });
   return {
     deps: {
@@ -756,7 +759,9 @@ describe("Program builder HTTP routes (integration)", () => {
       const missingProgramId = id("prog-missing");
       const rowId = id("prog-http-row");
       const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerA, { programId: ownedProgramId });
+      const owned = await service.createProgram(practitionerA, {
+        programId: ownedProgramId,
+      });
       await seedApprovedForBuilder(storage, practitionerA);
       await service.addExerciseRow(practitionerA, ownedProgramId, {
         rowId,
@@ -785,11 +790,14 @@ describe("Program builder HTTP routes (integration)", () => {
       for (const routeCase of programBuilderProgram404ParityRouteCases(
         ownedProgramId,
         rowId,
+        owned.program.code,
       )) {
-        const missingPath = routeCase.path.replace(
-          encodeURIComponent(ownedProgramId),
-          encodeURIComponent(missingProgramId),
-        );
+        const missingPath = routeCase.path.includes("/by-code/")
+          ? programByCodePath("PRG-NOMATCH")
+          : routeCase.path.replace(
+              encodeURIComponent(ownedProgramId),
+              encodeURIComponent(missingProgramId),
+            );
         const missingCase: ProgramBuilderHttpRouteCase = {
           method: routeCase.method,
           path: missingPath,

@@ -73,6 +73,7 @@ const JSON_HEADERS: ReadonlyArray<[string, string]> = [
 function apiDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   practId: string,
+  sessionCookieName?: string,
 ) {
   const auth = new FakeAuthPort({
     practitioner: {
@@ -80,6 +81,7 @@ function apiDeps(
       email: "coach@example.com",
       displayName: "Coach",
     },
+    sessionCookieName: sessionCookieName ?? `physio.fake_session.${practId}`,
   });
   return {
     deps: {
@@ -158,23 +160,48 @@ describe("DIDI-1140 program API fields and routes", () => {
       const practitionerA = await seedPractitioner(storage);
       const practitionerB = testOpaqueEntityId("1140-by-code-b");
       await seedPractitioner(storage, practitionerB, "b1140@example.com");
-      const programId = id("prog-1140-code");
       const service = new ProgramBuilderService(storage);
-      const created = await service.createProgram(practitionerA, { programId });
-      await service.deleteProgram(practitionerA, programId);
+      const liveForForeign = await service.createProgram(practitionerA, {
+        programId: id("prog-1140-live-foreign"),
+      });
+      const deletedProgramId = id("prog-1140-code");
+      const deleted = await service.createProgram(practitionerA, {
+        programId: deletedProgramId,
+      });
+      await service.deleteProgram(practitionerA, deletedProgramId);
 
       const { deps: depsA, cookie: cookieA } = apiDeps(storage, practitionerA);
       const { deps: depsB, cookie: cookieB } = apiDeps(storage, practitionerB);
 
-      const cases = [
-        { cookie: cookieB, code: created.program.code, label: "foreign" },
-        { cookie: cookieA, code: "PRG-NOMATCH", label: "missing" },
-        { cookie: cookieA, code: created.program.code, label: "soft-deleted" },
-        { cookie: cookieA, code: "AB12", label: "bare-suffix" },
-        { cookie: cookieA, code: "PRGAB12", label: "dashless" },
-        { cookie: cookieA, code: "prgab12", label: "lowercase-dashless" },
-        { cookie: cookieA, code: "PRG7", label: "lenient-list-only" },
-        { cookie: cookieA, code: "not-a-code", label: "invalid-format" },
+      const cases: {
+        deps: ReturnType<typeof apiDeps>["deps"];
+        cookie: string;
+        code: string;
+        label: string;
+      }[] = [
+        {
+          deps: depsB,
+          cookie: cookieB,
+          code: liveForForeign.program.code,
+          label: "foreign",
+        },
+        { deps: depsA, cookie: cookieA, code: "PRG-NOMATCH", label: "missing" },
+        {
+          deps: depsA,
+          cookie: cookieA,
+          code: deleted.program.code,
+          label: "soft-deleted",
+        },
+        { deps: depsA, cookie: cookieA, code: "AB12", label: "bare-suffix" },
+        { deps: depsA, cookie: cookieA, code: "PRGAB12", label: "dashless" },
+        {
+          deps: depsA,
+          cookie: cookieA,
+          code: "prgab12",
+          label: "lowercase-dashless",
+        },
+        { deps: depsA, cookie: cookieA, code: "PRG7", label: "lenient-list-only" },
+        { deps: depsA, cookie: cookieA, code: "not-a-code", label: "invalid-format" },
       ];
 
       let reference: {
@@ -185,7 +212,7 @@ describe("DIDI-1140 program API fields and routes", () => {
       for (const probe of cases) {
         const response = await handleRequest(
           authedGet(`${BASE}${programByCodePath(probe.code)}`, probe.cookie),
-          probe.cookie === cookieA ? depsA : depsB,
+          probe.deps,
         );
         expect(response.status, probe.label).toBe(404);
         const body = await response.text();
@@ -241,7 +268,35 @@ describe("DIDI-1140 program API fields and routes", () => {
     }
   });
 
-  it("returns program_not_found for by-code when stored code is non-canonical PRG-PRG7", async () => {
+  it("does not match by-code when stored program code is non-canonical (format check after normalize)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-non-canonical-code");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-AB12",
+        name: "Will become non-canonical",
+      });
+      await storage.run(`UPDATE programs SET code = ? WHERE id = ?`, [
+        "PRG-AB1",
+        programId,
+      ]);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const response = await handleRequest(
+        authedGet(`${BASE}${programByCodePath("PRG-AB1")}`, cookie),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      expect(JSON.parse(await response.text())).toEqual(PROGRAM_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("by-code does not use lenient list keys (PRG7 does not resolve PRG-PRG7)", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -380,6 +435,77 @@ describe("DIDI-1140 program API fields and routes", () => {
       });
       view = await service.getProgram(practitionerId, programExact);
       expect(view.share_link_status).toBe("closed");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("share_link_status uses the latest link when older and newer links disagree", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const service = new ProgramBuilderService(storage, () => PINNED_NOW);
+      const programRevokedThenOpen = id("prog-link-latest-open");
+      await service.createProgram(practitionerId, {
+        programId: programRevokedThenOpen,
+      });
+      await storage.run(
+        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          id("link-old-closed"),
+          programRevokedThenOpen,
+          "tok-old-closed",
+          "2026-10-31T12:00:01.000Z",
+          TS,
+          "2026-10-31T11:00:00.000Z",
+        ],
+      );
+      await storage.run(
+        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?)`,
+        [
+          id("link-new-open"),
+          programRevokedThenOpen,
+          "tok-new-open",
+          "2026-10-31T12:00:01.000Z",
+          "2026-10-31T12:00:00.000Z",
+        ],
+      );
+      let view = await service.getProgram(practitionerId, programRevokedThenOpen);
+      expect(view.share_link_status).toBe("open");
+      expect(view.open_share_link).toBe(true);
+
+      const programOpenThenRevoked = id("prog-link-latest-closed");
+      await service.createProgram(practitionerId, {
+        programId: programOpenThenRevoked,
+      });
+      await storage.run(
+        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?)`,
+        [
+          id("link-old-open"),
+          programOpenThenRevoked,
+          "tok-old-open",
+          "2026-10-31T12:00:01.000Z",
+          "2026-10-31T11:00:00.000Z",
+        ],
+      );
+      await storage.run(
+        `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          id("link-new-closed"),
+          programOpenThenRevoked,
+          "tok-new-closed",
+          "2026-10-31T12:00:01.000Z",
+          TS,
+          "2026-10-31T12:00:00.000Z",
+        ],
+      );
+      view = await service.getProgram(practitionerId, programOpenThenRevoked);
+      expect(view.share_link_status).toBe("closed");
+      expect(view.open_share_link).toBe(true);
     } finally {
       storage.close();
     }
@@ -538,6 +664,57 @@ describe("DIDI-1140 program API fields and routes", () => {
       ).rejects.toMatchObject({ code: "invalid_input" });
       const after = await new ProgramRowsRepository(storage).findById(rowId);
       expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects PATCH to a draft exercise version with invalid_input and no row write", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedForBuilder(storage, practitionerId);
+      const draftVersionId = id("ex-ver-draft-patch-1140");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: draftVersionId,
+          version_number: 2,
+          status: "draft",
+          title: "Draft heel raise",
+        }),
+      );
+      const programId = id("prog-draft-ver-patch");
+      const rowId = id("row-draft-ver-patch");
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+      await service.addExerciseRow(practitionerId, programId, {
+        rowId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      const programBefore = await new ProgramsRepository(storage).findById(programId);
+      const rowBefore = await new ProgramRowsRepository(storage).findById(rowId);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const url = `${BASE}${programRowPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ exercise_version_id: draftVersionId }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual(INVALID_INPUT_BODY);
+      expect(await new ProgramRowsRepository(storage).findById(rowId)).toEqual(
+        rowBefore,
+      );
+      const programAfter = await new ProgramsRepository(storage).findById(programId);
+      expect(programAfter?.draft_updated_at).toBe(programBefore?.draft_updated_at);
     } finally {
       storage.close();
     }
@@ -977,6 +1154,8 @@ describe("DIDI-1140 program API fields and routes", () => {
         rowId,
         exerciseId: FIXTURE_EXERCISE_ID,
       });
+      const programBefore = await new ProgramsRepository(storage).findById(programId);
+      const rowBefore = await new ProgramRowsRepository(storage).findById(rowId);
       const { deps, cookie } = apiDeps(storage, practitionerB);
       const url = `${BASE}${programRowPath(programId, rowId)}`;
       const response = await handleRequest(
@@ -992,6 +1171,11 @@ describe("DIDI-1140 program API fields and routes", () => {
       );
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual(PROGRAM_NOT_FOUND_BODY);
+      expect(await new ProgramRowsRepository(storage).findById(rowId)).toEqual(
+        rowBefore,
+      );
+      const programAfter = await new ProgramsRepository(storage).findById(programId);
+      expect(programAfter?.draft_updated_at).toBe(programBefore?.draft_updated_at);
     } finally {
       storage.close();
     }
@@ -1052,7 +1236,7 @@ describe("DIDI-1140 program API fields and routes", () => {
       programBuilderHttpRouteCases().some(
         (routeCase) =>
           routeCase.method === "GET" &&
-          routeCase.path === programByCodePath("PRG-TEST"),
+          routeCase.path === programByCodePath("PRG-ROUTE"),
       ),
     ).toBe(true);
   });
