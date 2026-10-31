@@ -205,6 +205,57 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
       storage.close();
     }
   });
+
+  it("GET public serve: exercise owner on own draft matches missing version response", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practB = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("media-own-draft-b"),
+        "b@example.com",
+      );
+      const exerciseId = await seedExercise(storage, practB);
+      const draftVersionId = testOpaqueEntityId("media-own-draft-ver");
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: draftVersionId,
+          exercise_id: exerciseId,
+          status: "draft",
+          title: "Owner draft",
+          starting_position: "Supine",
+        }),
+      ]);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: practB,
+        email: "b@example.com",
+        displayName: "B",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const missing = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=public`,
+            { headers: { cookie } },
+          ),
+          deps,
+        ),
+      );
+      const ownDraft = await responseSnapshot(
+        await handleRequest(
+          new Request(
+            `${BASE}/api/exercise-versions/${draftVersionId}/media?access=public`,
+            { headers: { cookie } },
+          ),
+          deps,
+        ),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(ownDraft).toEqual(missing);
+    } finally {
+      storage.close();
+    }
+  });
 });
 
 describe("Exercise media cross-practitioner approved access (integration)", () => {
