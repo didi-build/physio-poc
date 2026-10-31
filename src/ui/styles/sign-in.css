@@ -38,16 +38,9 @@
 }
 
 .sign-in-wordmark-text {
+  font-weight: 600;
   font-size: 1.125rem;
   color: #0f172a;
-}
-
-.sign-in-wordmark-didi {
-  font-weight: 700;
-}
-
-.sign-in-wordmark-physio {
-  font-weight: 400;
 }
 
 .sign-in-google-button {

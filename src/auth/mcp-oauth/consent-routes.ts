@@ -26,9 +26,11 @@ import {
 import {
   PHYSIO_MCP_PENDING_CONSENT_TTL_MS,
   findPhysioMcpPendingConsentById,
+  findPhysioMcpPendingConsentForPractitioner,
   insertPhysioMcpPendingConsent,
   isPhysioMcpPendingConsentUsable,
   markPhysioMcpPendingConsentConsumed,
+  type PhysioMcpPendingConsentRow,
 } from "./pending-consent.js";
 import {
   deleteOAuthConsentRecordsForUserClient,
@@ -383,9 +385,11 @@ async function handleConsentGet(
   );
 }
 
-async function loadPendingForRequest(
+async function loadPendingForConsentPost(
   input: HandlePhysioMcpConsentRoutesInput,
-): Promise<{ ok: true; pendingId: string } | { ok: false; response: Response }> {
+): Promise<
+  { ok: true; pending: PhysioMcpPendingConsentRow } | { ok: false; response: Response }
+> {
   const { request, practitioner, sql, clock, authBaseUrl } = input;
   if (!practitioner) {
     return { ok: false, response: plainStatus(401) };
@@ -395,15 +399,16 @@ async function loadPendingForRequest(
   if (!pendingId || !csrfToken) {
     return { ok: false, response: plainStatus(403) };
   }
-  const pending = await findPhysioMcpPendingConsentById(sql, pendingId);
-  if (!pending) {
-    return { ok: false, response: await expiredResponse(authBaseUrl) };
-  }
-  if (pending.practitioner_id !== practitioner.practitionerId) {
-    return { ok: false, response: plainStatus(403) };
-  }
   const csrfHeader = request.headers.get(PHYSIO_MCP_CONSENT_CSRF_HEADER);
   if (!csrfHeader || csrfHeader !== csrfToken) {
+    return { ok: false, response: plainStatus(403) };
+  }
+  const pending = await findPhysioMcpPendingConsentForPractitioner(
+    sql,
+    pendingId,
+    practitioner.practitionerId,
+  );
+  if (!pending) {
     return { ok: false, response: plainStatus(403) };
   }
   const csrfHash = await sha256Hex(csrfToken);
@@ -414,7 +419,7 @@ async function loadPendingForRequest(
   if (!isPhysioMcpPendingConsentUsable(pending, nowMs)) {
     return { ok: false, response: await expiredResponse(authBaseUrl) };
   }
-  return { ok: true, pendingId };
+  return { ok: true, pending };
 }
 
 async function pendingRedirectUriStillRegistered(
@@ -455,14 +460,11 @@ async function handleConsentAllow(
   if (crossOrigin) {
     return crossOrigin;
   }
-  const loaded = await loadPendingForRequest(input);
+  const loaded = await loadPendingForConsentPost(input);
   if (!loaded.ok) {
     return loaded.response;
   }
-  const pending = await findPhysioMcpPendingConsentById(input.sql, loaded.pendingId);
-  if (!pending) {
-    return expiredResponse(input.authBaseUrl);
-  }
+  const pending = loaded.pending;
   const redirectGuard = await pendingRedirectUriStillRegistered(
     input.sql,
     pending,
@@ -492,14 +494,11 @@ async function handleConsentDeny(
   if (crossOrigin) {
     return crossOrigin;
   }
-  const loaded = await loadPendingForRequest(input);
+  const loaded = await loadPendingForConsentPost(input);
   if (!loaded.ok) {
     return loaded.response;
   }
-  const pending = await findPhysioMcpPendingConsentById(input.sql, loaded.pendingId);
-  if (!pending) {
-    return expiredResponse(input.authBaseUrl);
-  }
+  const pending = loaded.pending;
   const redirectGuard = await pendingRedirectUriStillRegistered(
     input.sql,
     pending,

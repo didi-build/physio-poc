@@ -25,6 +25,7 @@ body {
   border-radius: 1rem;
   background: #ffffff;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+  overflow-x: clip;
 }
 
 .consent-card-centered {
@@ -57,16 +58,9 @@ body {
 }
 
 .consent-wordmark-text {
+  font-weight: 600;
   font-size: 1.125rem;
   color: #0f172a;
-}
-
-.consent-wordmark-didi {
-  font-weight: 700;
-}
-
-.consent-wordmark-physio {
-  font-weight: 400;
 }
 
 .consent-host-line {
@@ -93,14 +87,18 @@ body {
   line-height: 1.5;
 }
 
-.consent-name-with-tag {
+.consent-name-lead {
   white-space: nowrap;
+}
+
+.consent-name-inline {
+  overflow-wrap: anywhere;
 }
 
 .consent-tag {
   display: inline-block;
   margin-left: 0.35rem;
-  vertical-align: middle;
+  vertical-align: baseline;
   padding: 0.125rem 0.5rem;
   border-radius: 9999px;
   border: 1px dashed #cbd5e1;
