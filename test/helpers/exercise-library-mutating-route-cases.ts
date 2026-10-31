@@ -1,4 +1,4 @@
-import { exerciseLibraryPractitionerPathHttpRouteCases } from "../../src/http/routes/exercise-library.js";
+import { exerciseLibraryPractitionerPathHttpRouteCases } from "./exercise-library-practitioner-path-route-cases.js";
 
 export type ExerciseLibraryMutatingHttpRouteCase = {
   readonly method: string;
