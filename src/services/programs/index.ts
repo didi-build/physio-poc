@@ -1,6 +1,7 @@
 export {
   ProgramBuilderService,
   ProgramBuilderServiceError,
+  buildLinkApprovedPlaceholderStatements,
   computeAutoSaveStatus,
   detectLibraryUpdate,
   linkApprovedPlaceholders,
