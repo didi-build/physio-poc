@@ -60,6 +60,7 @@ async function seedDraftVersionWithGeneratedMedia(
     () => testOpaqueEntityId(`media-bootstrap-${tick}`),
   );
   await bootstrap.generateInitialMediaForVersion({
+    practitionerId,
     exerciseVersionId: FIXTURE_VERSION_ID,
   });
   const row = await storage.first<{ start_provider_url: string | null }>(

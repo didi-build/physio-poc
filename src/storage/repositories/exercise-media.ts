@@ -136,6 +136,20 @@ export class ExerciseVersionMediaRepository {
     );
   }
 
+  async findVersionWithExerciseOwner(
+    id: string,
+  ): Promise<(ExerciseVersionMediaRow & { exercise_created_by: string }) | null> {
+    return this.sql.first<ExerciseVersionMediaRow & { exercise_created_by: string }>(
+      `SELECT ev.id, ev.exercise_id, ev.version_number, ev.status, ev.approved_by, ev.approved_at,
+              ev.title, ev.description, ev.starting_position, ev.steps, ev.media_set_id,
+              ev.change_summary, ev.created_at, e.created_by AS exercise_created_by
+       FROM exercise_versions ev
+       JOIN exercises e ON e.id = ev.exercise_id
+       WHERE ev.id = ? LIMIT 1`,
+      [id],
+    );
+  }
+
   async updateMediaSetId(versionId: string, mediaSetId: string): Promise<void> {
     await this.sql.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
       mediaSetId,
