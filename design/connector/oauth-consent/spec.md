@@ -2,7 +2,7 @@
 
 Area: connector · Feature: oauth-consent (consent page after Google sign-in, invalid-client and expired-request pages, sign-in page wordmark)
 
-Target path: `design/connector/oauth-consent/spec.md`, with mockups in `design/connector/oauth-consent/mockups/`. Final apart from the open questions below; not yet in a PR.
+Target path: `design/connector/oauth-consent/spec.md`, with mockups in `design/connector/oauth-consent/mockups/`. Final; Diadem approved Oct 31, 2026 (2:50 to 2:53 AM ET via CTO).
 
 ## Purpose
 
@@ -41,11 +41,11 @@ In `design/connector/oauth-consent/mockups/`. Phone is 390 px wide (2x), desktop
 | 06 | After Allow | 06-after-allow-phone.png | 06-after-allow-desktop.png |
 | 07 | After Deny | 07-after-deny-phone.png | 07-after-deny-desktop.png |
 
-Long name sample: "ChatGPT Connector for Clinics and Practitioners Extended Edition 2026 Beta Build" (sample input, not copy). "Not you? Sign out" does nothing in the mockups because its destination is open question 1.
+Long name sample: "ChatGPT Connector for Clinics and Practitioners Extended Edition 2026 Beta Build" (sample input, not copy). "Not you? Sign out" does nothing in the mockups (static render only; behaviour is under Behaviour).
 
 ## Diadem's decisions (verbatim, CTO's chat, Oct 31, 2026, ET)
 
-Quoted from CTO's DIDI-1125 comment 44795ea9 and the DIDI-594 locked block.
+Quoted from CTO's DIDI-1125 comment 44795ea9, the DIDI-594 locked block, and approval messages relayed via CTO and recorded on DIDI-1125.
 
 | # | Time | Diadem's words | What it means here |
 | -- | -- | -- | -- |
@@ -57,6 +57,9 @@ Quoted from CTO's DIDI-1125 comment 44795ea9 and the DIDI-594 locked block.
 | 6 | 2:34 AM | "hmm we can go further and say: no patient details are needed, stored or shared / although this is lengthy" | Considered, not chosen. |
 | 6 | 2:34 AM | "Use: Didi Physio never stores or shares patient details." | The consent page carries the line "Didi Physio never stores or shares patient details." |
 | 7 | 2:35 AM | "Keep the Go to Didi Physio button" | The invalid-client and expired pages keep "Go to Didi Physio". |
+| 8 | 2:50 AM | "Approve the consent page as drawn" | Covers the placement of the patient-details line and the safety line between the It can't list and the buttons. |
+| 9 | 2:52 AM | "Keep: Go back to the app you were connecting and start again." | The expired-request next-step line stays as in option C. |
+| 10 | 2:53 AM | "Approve the tab title: Connect an app · Didi Physio" | Browser tab title for the consent, invalid-client and expired pages. |
 
 Also applied (not Diadem's Oct 31 words):
 - No gallery component. physio-poc has no gallery step (Diadem, Oct 29, 2026, 2:59 PM ET: "for the physio-poc gallery components and preview. its ok; it shouldnt block the work. the reason is because this is a poc. i think once the whole system is set up we will do a redesign"). Recorded as a CTO decision in comment 44795ea9.
@@ -117,7 +120,7 @@ Invalid client and expired request:
 | Wordmark | Didi Physio | Didi Physio | C |
 | Heading | This app can't connect | This request has expired | C |
 | Body | The app asking to connect didn't identify itself in a way Didi Physio accepts, so nothing was shared. | Connection requests only last a short time, so this one was stopped. Nothing was shared. | C |
-| Next step | Go back to the app and try connecting again. If it keeps happening, the app may not work with Didi Physio yet. | Go back to the app you were connecting and start again. | C |
+| Next step | Go back to the app and try connecting again. If it keeps happening, the app may not work with Didi Physio yet. | Go back to the app you were connecting and start again. | C, Diadem 2:52 AM |
 | Button | Go to Didi Physio | Go to Didi Physio | C, Diadem 2:35 AM |
 
 Sign-in page: wordmark "Didi Physio" (added, Diadem 2:31 AM) and the existing button "Sign in with Google" (src/ui/copy/sign-in.ts, unchanged).
@@ -133,7 +136,7 @@ From CTO's rulings (comment a7182c50, Oct 30, 2026) and Diadem's Oct 31 calls. A
 - **Allow:** records consent and returns to the app with a code and `iss`. **Deny:** returns `access_denied` to the app. Both are POSTs with CSRF protection, bound to Kojo's session (DIDI-1126).
 - **Remembered consent:** keyed on client_id, redirect_uri and scope set. A reconnect with the same values skips the page; any change shows it again (Diadem, 2:29 AM; keys from CTO).
 - **No staying-connected line and no revoke control in V1** (Diadem, 2:31 AM). Removing Kojo's email from the allowlist cuts access (DIDI-1109).
-- **Sign out:** "Not you? Sign out" signs out the current Google session (existing `/api/auth/sign-out`). Where Kojo lands afterwards is open (see Open questions).
+- **Sign out** (CTO, DIDI-1126): "Not you? Sign out" ends the Google session only (existing `/api/auth/sign-out`). The pending request is keyed by its own id, not the session, so it survives. The user goes back to sign-in with the same request. After sign-in, the consent page shows for whichever allowlisted account signed in. If the request is past 10 minutes or already used, they get the expired page. A non-allowlisted account never reaches consent.
 - **Invalid client:** an unknown or unfetchable client_id, a malformed CIMD document, or a redirect_uri that doesn't exactly match a registered one. The page never redirects to an unvalidated redirect_uri and shows no error code in V1. Errors found after the redirect is validated (bad scope, missing or non-S256 PKCE) go back to the app as OAuth errors with no page.
 - **Expiry:** a pending request lasts 10 minutes and is single use (`PHYSIO_MCP_PENDING_CONSENT_TTL_MS`). The expired page has no restart, because only the app can start a new request.
 - **Go to Didi Physio:** opens the app home. If Kojo isn't signed in, the normal sign-in applies.
@@ -154,23 +157,15 @@ Taken from the final option C source (revision 467169139593728000). Accessible n
 | Invalid client, expired request | An alert; the card is named by its heading; the icon is hidden from screen readers |
 | Wordmark "D" tile | Hidden from screen readers; "Didi Physio" is read as text |
 
-Browser tab title: not in any approved design. See PROPOSED strings.
+Browser tab title: "Connect an app · Didi Physio" (Diadem, 2:53 AM).
 
 ## Layout
 
 - Inside the existing sign-in chrome (`src/ui/styles/sign-in.css`): slate-50 page, centred white card, max width 24rem, 2rem padding, 1rem radius, faint shadow, teal pill buttons. 390 px first.
 - Consent (from C): wordmark top left; "Request from {host}" (host in bold mono) above the heading; name line with tag; the two lists, each with a small uppercase heading; Deny and Allow in a two-column row (Deny outlined on the left, Allow teal on the right); account line centred below.
-- Diadem's additions, placement (layout only, no new copy): the patient details line and A's safety line sit between the "It can't" list and the buttons, in that order, in small slate text as in A. "Not you? Sign out" is a teal text link on its own line under "Signed in as {email}", with a 44 px tap target.
+- Diadem's additions (approved 2:50 AM): the patient details line and A's safety line sit between the "It can't" list and the buttons, in that order, in small slate text as in A. "Not you? Sign out" is a teal text link on its own line under "Signed in as {email}", with a 44 px tap target.
 - Invalid and expired (from C): everything centred; 56 px round icon (amber for invalid, slate for expired); next step in a grey rounded box; full-width "Go to Didi Physio".
 - Sign-in: the same wordmark as the consent page at the top of the card, above "Sign in with Google".
-
-## PROPOSED strings (not in the approved designs or Diadem's words)
-
-| String | Where | Why it's needed |
-| -- | -- | -- |
-| PROPOSED: "Connect an app · Didi Physio" | Browser tab title for the consent, invalid-client and expired pages | Every page needs a title. Should follow the page-title pattern from DIDI-1114 once that is approved. |
-
-No other new strings. Placement of the two added lines and the sign-out link is a layout proposal (above), not copy.
 
 ## Is/was: final option C (revision 467169139593728000) against the picked option C (revision 466932541740429313)
 
@@ -192,11 +187,12 @@ No other new strings. Placement of the two added lines and the sign-out link is 
 
 **Considered and not used:** a staying-connected line (Diadem, 2:31 AM: "No staying connected line"); option B's "What does self-reported mean?" disclosure; A's heading and one-sentence access line.
 
-## Open questions (not decided here)
+## Open questions (resolved)
 
-1. **After Sign out** (CTO, DIDI-1126): where does Kojo land? Suggested: back to sign-in with the same pending request, so he can sign in with the right account within the 10 minutes. If the request has expired by then, he sees the expired page.
-2. **Expired wording** (Diadem): CTO's a7182c50 said the expired page "just says to start again from ChatGPT". Option C, which Diadem picked, says "Go back to the app you were connecting and start again." and doesn't name ChatGPT, because the name is self-reported. This draft keeps C. Confirm.
-3. **Placement** (Diadem): the patient details line and the safety line between the lists and the buttons, as described under Layout. Confirm.
+1. **After Sign out** (CTO, DIDI-1126): where does Kojo land? **Resolved (CTO, DIDI-1126):** sign-out ends the Google session only; the pending request survives keyed by its own id; the user returns to sign-in with the same request, then consent for whichever allowlisted account signs in, or the expired page if the request is past 10 minutes or already used; non-allowlisted accounts never reach consent (see Behaviour).
+2. **Expired wording** (Diadem): Option C says "Go back to the app you were connecting and start again." **Resolved (Diadem, 2:52 AM):** keep that line.
+3. **Placement** (Diadem): the patient details line and the safety line between the lists and the buttons. **Resolved (Diadem, 2:50 AM):** approve the consent page as drawn (see Layout).
+4. **Browser tab title:** **Resolved (Diadem, 2:53 AM):** "Connect an app · Didi Physio" for the consent, invalid-client and expired pages.
 
 ## Locked Product direction (DIDI-594, quoted)
 
@@ -262,7 +258,7 @@ Every user-facing string, in screen order. `{...}` is a runtime value.
 ### Existing, unchanged
 - This Google account isn't allowed
 
-### PROPOSED (not approved)
+### Browser tab title (consent, invalid client, expired request)
 - Connect an app · Didi Physio
 
 ## Changes
@@ -271,3 +267,4 @@ Every user-facing string, in screen order. `{...}` is a runtime value.
 - **Oct 30, 2026**: CTO security rulings (host, verified, invalid client, expiry, name hygiene, clickjacking). https://linear.app/didi-build/issue/DIDI-1125
 - **Oct 31, 2026**: Diadem's calls, 2:28 to 2:35 AM ET: option C plus A's safety line, email with "Not you? Sign out", remembered consent, no staying-connected line, wordmark on consent and sign-in, patient details line, keep "Go to Didi Physio". https://linear.app/didi-build/issue/DIDI-1125
 - **Oct 31, 2026**: Final revisions in MagicPath: option C 467169139593728000 and sign-in 467169143641223168. Mockups 01 to 07 at 390 px and 1280 px. https://linear.app/didi-build/issue/DIDI-1125
+- **Oct 31, 2026**: Diadem approved the spec (2:50, 2:52, 2:53 AM ET via CTO): consent page as drawn, expired next-step wording, tab title "Connect an app · Didi Physio". CTO sign-out behaviour for DIDI-1126. https://linear.app/didi-build/issue/DIDI-1125
