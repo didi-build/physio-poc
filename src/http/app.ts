@@ -14,6 +14,7 @@ import {
 } from "./mutating-app-api-csrf.js";
 import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
+import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
 import { handleRoutinesRequest } from "./routes/routines.js";
@@ -184,6 +185,14 @@ export async function handleRequest(
       });
       if (myDefaultsResponse) {
         return myDefaultsResponse;
+      }
+      const exerciseRequestsResponse = await handleExerciseRequestsHttpRequest(
+        request,
+        deps,
+        { sessionPractitioner },
+      );
+      if (exerciseRequestsResponse) {
+        return exerciseRequestsResponse;
       }
       if (deps.extraRouteHandlers) {
         for (const handler of deps.extraRouteHandlers) {

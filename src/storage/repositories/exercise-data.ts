@@ -1,4 +1,8 @@
-import type { SqlStoragePort } from "../ports/sql-storage.js";
+import type {
+  SqlBatchStatement,
+  SqlStoragePort,
+  SqlValue,
+} from "../ports/sql-storage.js";
 import type {
   ExerciseCategory,
   ExerciseRequestStatus,
@@ -93,6 +97,30 @@ export class PractitionerExercisesRepository {
         paramJson,
       ],
     );
+  }
+
+  buildSaveExerciseBatchStatement(input: {
+    practitionerId: string;
+    exerciseId: string;
+    savedAt: string;
+  }): SqlBatchStatement {
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const textJson = serializeTextOverrides({});
+    const paramJson = JSON.stringify(validateParamOverridesByType({}));
+    return {
+      sql: `INSERT INTO practitioner_exercises (
+        practitioner_id, exercise_id, favourite, saved_at, last_used_at,
+        text_overrides_json, param_overrides_json
+      ) VALUES (?, ?, 0, ?, NULL, ?, ?)
+      ON CONFLICT(practitioner_id, exercise_id) DO UPDATE SET
+        saved_at = excluded.saved_at`,
+      bindings: [practitionerId, exerciseId, input.savedAt, textJson, paramJson],
+      minRowsAffected: 1,
+    };
   }
 
   async find(
@@ -194,6 +222,195 @@ export type ExerciseVersionInsert = {
 
 export class ExerciseVersionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
+
+  async findById(id: string): Promise<{
+    id: string;
+    exercise_id: string;
+    version_number: number;
+    status: VersionStatus;
+    title: string;
+  } | null> {
+    return this.sql.first(
+      `SELECT id, exercise_id, version_number, status, title
+       FROM exercise_versions WHERE id = ? LIMIT 1`,
+      [id],
+    );
+  }
+
+  async findDraftForExercise(
+    exerciseId: string,
+  ): Promise<{ id: string; version_number: number; title: string } | null> {
+    return this.sql.first(
+      `SELECT id, version_number, title
+       FROM exercise_versions
+       WHERE exercise_id = ? AND status = 'draft'
+       ORDER BY version_number DESC
+       LIMIT 1`,
+      [exerciseId],
+    );
+  }
+
+  async findDraftVersionDetailForExercise(exerciseId: string): Promise<{
+    id: string;
+    version_number: number;
+    title: string;
+    description: string;
+    equipment: string;
+    starting_position: string;
+    steps: string;
+    common_mistakes: string;
+    regressions: string;
+    progressions: string;
+    precautions: string;
+    cue_stretching: string | null;
+    cue_isometric: string | null;
+    cue_concentric: string | null;
+    cue_eccentric: string | null;
+  } | null> {
+    return this.sql.first(
+      `SELECT id, version_number, title, description, equipment, starting_position, steps,
+              common_mistakes, regressions, progressions, precautions,
+              cue_stretching, cue_isometric, cue_concentric, cue_eccentric
+       FROM exercise_versions
+       WHERE exercise_id = ? AND status = 'draft'
+       ORDER BY version_number DESC LIMIT 1`,
+      [exerciseId],
+    );
+  }
+
+  async updateDraftFields(
+    versionId: string,
+    patch: Partial<{
+      title: string;
+      description: string;
+      equipment: string;
+      startingPosition: string;
+      steps: string;
+      commonMistakes: string;
+      regressions: string;
+      progressions: string;
+      precautions: string;
+      cueStretching: string | null;
+      cueIsometric: string | null;
+      cueConcentric: string | null;
+      cueEccentric: string | null;
+    }>,
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const bindings: SqlValue[] = [];
+    if (patch.title !== undefined) {
+      sets.push("title = ?");
+      bindings.push(validateExerciseTitle(patch.title));
+    }
+    if (patch.description !== undefined) {
+      sets.push("description = ?");
+      bindings.push(validateExerciseTemplateText(patch.description, "Description"));
+    }
+    if (patch.equipment !== undefined) {
+      sets.push("equipment = ?");
+      bindings.push(validateExerciseTemplateText(patch.equipment, "Equipment"));
+    }
+    if (patch.startingPosition !== undefined) {
+      sets.push("starting_position = ?");
+      bindings.push(
+        validateExerciseTemplateText(patch.startingPosition, "Starting position"),
+      );
+    }
+    if (patch.steps !== undefined) {
+      sets.push("steps = ?");
+      bindings.push(validateExerciseTemplateText(patch.steps, "Steps"));
+    }
+    if (patch.commonMistakes !== undefined) {
+      sets.push("common_mistakes = ?");
+      bindings.push(
+        validateExerciseTemplateText(patch.commonMistakes, "Common mistakes"),
+      );
+    }
+    if (patch.regressions !== undefined) {
+      sets.push("regressions = ?");
+      bindings.push(validateExerciseTemplateText(patch.regressions, "Regressions"));
+    }
+    if (patch.progressions !== undefined) {
+      sets.push("progressions = ?");
+      bindings.push(validateExerciseTemplateText(patch.progressions, "Progressions"));
+    }
+    if (patch.precautions !== undefined) {
+      sets.push("precautions = ?");
+      bindings.push(validateExerciseTemplateText(patch.precautions, "Precautions"));
+    }
+    if (patch.cueStretching !== undefined) {
+      sets.push("cue_stretching = ?");
+      bindings.push(
+        patch.cueStretching === null
+          ? null
+          : validateExerciseCue(patch.cueStretching, "cue_stretching"),
+      );
+    }
+    if (patch.cueIsometric !== undefined) {
+      sets.push("cue_isometric = ?");
+      bindings.push(
+        patch.cueIsometric === null
+          ? null
+          : validateExerciseCue(patch.cueIsometric, "cue_isometric"),
+      );
+    }
+    if (patch.cueConcentric !== undefined) {
+      sets.push("cue_concentric = ?");
+      bindings.push(
+        patch.cueConcentric === null
+          ? null
+          : validateExerciseCue(patch.cueConcentric, "cue_concentric"),
+      );
+    }
+    if (patch.cueEccentric !== undefined) {
+      sets.push("cue_eccentric = ?");
+      bindings.push(
+        patch.cueEccentric === null
+          ? null
+          : validateExerciseCue(patch.cueEccentric, "cue_eccentric"),
+      );
+    }
+    if (sets.length === 0) {
+      return false;
+    }
+    bindings.push(versionId);
+    const result = await this.sql.run(
+      `UPDATE exercise_versions SET ${sets.join(", ")}
+       WHERE id = ? AND status = 'draft'`,
+      bindings,
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async approveDraft(input: {
+    versionId: string;
+    approvedBy: string;
+    approvedAt: string;
+  }): Promise<boolean> {
+    const result = await this.sql.run(
+      `UPDATE exercise_versions
+       SET status = 'approved', approved_by = ?, approved_at = ?
+       WHERE id = ? AND status = 'draft'`,
+      [input.approvedBy, input.approvedAt, input.versionId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  buildApproveDraftBatchStatement(input: {
+    versionId: string;
+    approvedBy: string;
+    approvedAt: string;
+  }): SqlBatchStatement {
+    const versionId = validateOpaqueEntityId(input.versionId, "Exercise version id");
+    const approvedBy = validateOpaqueEntityId(input.approvedBy, "Practitioner id");
+    return {
+      sql: `UPDATE exercise_versions
+       SET status = 'approved', approved_by = ?, approved_at = ?
+       WHERE id = ? AND status = 'draft'`,
+      bindings: [approvedBy, input.approvedAt, versionId],
+      minRowsAffected: 1,
+    };
+  }
 
   async insert(input: ExerciseVersionInsert): Promise<void> {
     const id = validateOpaqueEntityId(input.id, "Exercise version id");
@@ -304,6 +521,31 @@ export class ExerciseAliasesRepository {
       [id, exerciseId, alias, input.createdAt],
     );
   }
+
+  async aliasExistsCaseInsensitive(alias: string): Promise<boolean> {
+    const normalized = validateExerciseAlias(alias);
+    const row = await this.sql.first<{ one: number }>(
+      `SELECT 1 AS one FROM exercise_aliases WHERE alias = ? COLLATE NOCASE LIMIT 1`,
+      [normalized],
+    );
+    return row !== null;
+  }
+
+  buildInsertBatchStatement(input: {
+    id: string;
+    exerciseId: string;
+    alias: string;
+    createdAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise alias id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const alias = validateExerciseAlias(input.alias);
+    return {
+      sql: "INSERT INTO exercise_aliases (id, exercise_id, alias, created_at) VALUES (?, ?, ?, ?)",
+      bindings: [id, exerciseId, alias, input.createdAt],
+      minRowsAffected: 1,
+    };
+  }
 }
 
 export class ExerciseBodyRegionsRepository {
@@ -324,20 +566,18 @@ export class ExerciseRequestsRepository {
   async findById(requestId: string): Promise<{
     id: string;
     requested_name: string;
+    note: string | null;
     requested_by: string;
     status: ExerciseRequestStatus;
     exercise_id: string | null;
+    created_at: string;
+    updated_at: string;
   } | null> {
-    return this.sql.first<{
-      id: string;
-      requested_name: string;
-      requested_by: string;
-      status: ExerciseRequestStatus;
-      exercise_id: string | null;
-    }>(
-      `SELECT id, requested_name, requested_by, status, exercise_id
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    return this.sql.first(
+      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
        FROM exercise_requests WHERE id = ? LIMIT 1`,
-      [requestId],
+      [id],
     );
   }
 
@@ -374,5 +614,100 @@ export class ExerciseRequestsRepository {
         input.updatedAt,
       ],
     );
+  }
+
+  async updateAfterDraftLink(input: {
+    id: string;
+    status: ExerciseRequestStatus;
+    exerciseId: string;
+    updatedAt: string;
+  }): Promise<boolean> {
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET status = ?, exercise_id = ?, updated_at = ?
+       WHERE id = ? AND status IN ('open', 'drafting')`,
+      [input.status, input.exerciseId, input.updatedAt, input.id],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async updateStatus(input: {
+    id: string;
+    status: ExerciseRequestStatus;
+    updatedAt: string;
+    allowedFromStatuses?: readonly ExerciseRequestStatus[];
+  }): Promise<boolean> {
+    const allowed = input.allowedFromStatuses;
+    const statusFilter =
+      allowed && allowed.length > 0
+        ? ` AND status IN (${allowed.map(() => "?").join(", ")})`
+        : "";
+    const bindings: SqlValue[] = [input.status, input.updatedAt, input.id];
+    if (allowed && allowed.length > 0) {
+      bindings.push(...allowed);
+    }
+    const result = await this.sql.run(
+      `UPDATE exercise_requests SET status = ?, updated_at = ? WHERE id = ?${statusFilter}`,
+      bindings,
+    );
+    return result.rowsAffected > 0;
+  }
+
+  buildUpdateStatusBatchStatement(input: {
+    id: string;
+    status: ExerciseRequestStatus;
+    updatedAt: string;
+    allowedFromStatuses?: readonly ExerciseRequestStatus[];
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const allowed = input.allowedFromStatuses;
+    const statusFilter =
+      allowed && allowed.length > 0
+        ? ` AND status IN (${allowed.map(() => "?").join(", ")})`
+        : "";
+    const bindings: SqlValue[] = [input.status, input.updatedAt, id];
+    if (allowed && allowed.length > 0) {
+      bindings.push(...allowed);
+    }
+    return {
+      sql: `UPDATE exercise_requests SET status = ?, updated_at = ? WHERE id = ?${statusFilter}`,
+      bindings,
+      minRowsAffected: 1,
+    };
+  }
+
+  async updateNote(input: {
+    id: string;
+    note: string | null;
+    updatedAt: string;
+  }): Promise<boolean> {
+    const note = validateRequestNote(input.note);
+    const result = await this.sql.run(
+      `UPDATE exercise_requests SET note = ?, updated_at = ? WHERE id = ?`,
+      [note, input.updatedAt, input.id],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  buildUpdateNoteBatchStatement(input: {
+    id: string;
+    note: string | null;
+    updatedAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const note = validateRequestNote(input.note);
+    return {
+      sql: `UPDATE exercise_requests SET note = ?, updated_at = ? WHERE id = ?`,
+      bindings: [note, input.updatedAt, id],
+      minRowsAffected: 1,
+    };
+  }
+
+  async countInProgress(): Promise<number> {
+    const row = await this.sql.first<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM exercise_requests
+       WHERE status IN ('open', 'drafting')`,
+    );
+    return row?.count ?? 0;
   }
 }

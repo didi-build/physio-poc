@@ -20,6 +20,10 @@ export function practitionerUnderscoreIdQuerySuffix(
   return `?practitioner_id=${encodeURIComponent(otherPractitionerId)}`;
 }
 
+export function practitionerAsQuerySuffix(otherPractitionerId: string): string {
+  return `?as=${encodeURIComponent(otherPractitionerId)}`;
+}
+
 export function sortedHeaderEntries(response: Response): [string, string][] {
   return [...response.headers.entries()].sort((left, right) =>
     left[0].localeCompare(right[0]),

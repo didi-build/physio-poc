@@ -18,6 +18,27 @@ export function generateProgramCode(): string {
   return `${PROGRAM_CODE_PREFIX}${randomSuffix(CODE_SUFFIX_LENGTH)}`;
 }
 
+/** Trim and uppercase a path or query segment without inserting the PRG- prefix. */
+export function trimUppercaseProgramCode(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Program code must not be empty");
+  }
+  return trimmed.toUpperCase();
+}
+
+/** True when the value is already canonical PRG-XXXX (no prefix completion). */
+export function isCanonicalProgramCodeFormat(code: string): boolean {
+  if (!code.startsWith(PROGRAM_CODE_PREFIX)) {
+    return false;
+  }
+  const suffix = code.slice(PROGRAM_CODE_PREFIX.length);
+  if (suffix.length !== CODE_SUFFIX_LENGTH) {
+    return false;
+  }
+  return [...suffix].every((char) => CODE_SUFFIX_ALPHABET.includes(char));
+}
+
 /** Uppercase canonical code for storage and lookup. */
 export function normalizeProgramCode(input: string): string {
   const trimmed = input.trim();
