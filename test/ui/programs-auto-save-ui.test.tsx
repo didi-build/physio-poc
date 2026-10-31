@@ -10,6 +10,7 @@ import {
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
   NOT_PUBLISHED_YET,
+  builderPublishedStatus,
 } from "../../src/ui/copy/programs.js";
 import { AutoSaveStatus } from "../../src/ui/programs/AutoSaveStatus.js";
 import { BuilderPublishCard } from "../../src/ui/programs/BuilderPublishCard.js";
@@ -56,7 +57,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         onTryAgain={() => {}}
       />,
     );
-    expect(screen.getByText("Published Oct 24, 2:10 PM")).toBeInTheDocument();
+    expect(screen.getByText(builderPublishedStatus(publishedAt))).toBeInTheDocument();
     const card = container.querySelector(".pg-publish-card");
     expect(card).not.toHaveAttribute("aria-label", NOT_PUBLISHED_YET);
   });

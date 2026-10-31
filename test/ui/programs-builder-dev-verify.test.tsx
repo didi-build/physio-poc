@@ -25,7 +25,10 @@ import type {
   ProgramBuilderView,
   ProgramListItem,
 } from "../../src/services/programs/types.js";
-import { AUTO_SAVE_TRY_AGAIN_ARIA } from "../../src/ui/copy/programs.js";
+import {
+  AUTO_SAVE_TRY_AGAIN_ARIA,
+  builderPublishedStatus,
+} from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -618,7 +621,9 @@ describe("Programs builder dev verification", () => {
     expect(screen.getByText("3 exercises")).toBeInTheDocument();
   });
 
-  it("formats published status with time like the mockups", async () => {
+  it("formats published status with the viewer local time", async () => {
+    const publishedAt = "2026-10-24T18:10:00.000Z";
+    const expectedStatus = builderPublishedStatus(publishedAt);
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
@@ -639,10 +644,10 @@ describe("Programs builder dev verification", () => {
     await screen.findByRole("textbox", { name: "Program name" });
     await waitFor(() => {
       const lines = document.querySelectorAll(".pg-publish-card-status");
-      const text = Array.from(lines)
-        .map((node) => node.textContent ?? "")
-        .join(" ");
-      expect(text).toMatch(/Published Oct 24, 2:10 PM/);
+      expect(lines.length).toBeGreaterThan(0);
+      for (const node of lines) {
+        expect(node.textContent).toBe(expectedStatus);
+      }
     });
   });
 

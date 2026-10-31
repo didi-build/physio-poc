@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const AUTO_SAVE_RETRY_INITIAL_MS = 1500;
+const AUTO_SAVE_RETRY_MAX_MS = 30_000;
+
 export type AutoSaveUiState = "idle" | "saving" | "saved" | "failed";
 
 export type UseProgramAutoSaveOptions = {
@@ -30,6 +33,11 @@ export function useProgramAutoSave({
   const deferredTaskRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const failedSavesRef = useRef<Map<string, () => Promise<void>>>(new Map());
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryDelayMsRef = useRef(AUTO_SAVE_RETRY_INITIAL_MS);
+
+  const resetRetryBackoff = useCallback(() => {
+    retryDelayMsRef.current = AUTO_SAVE_RETRY_INITIAL_MS;
+  }, []);
 
   const clearRetryTimer = useCallback(() => {
     if (retryTimerRef.current) {
@@ -63,15 +71,20 @@ export function useProgramAutoSave({
 
   const scheduleFailedRetries = useCallback(() => {
     clearRetryTimer();
+    const delay = retryDelayMsRef.current;
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
+      retryDelayMsRef.current = Math.min(
+        retryDelayMsRef.current * 2,
+        AUTO_SAVE_RETRY_MAX_MS,
+      );
       for (const [key, run] of failedSavesRef.current.entries()) {
         if (inFlightKeysRef.current.has(key)) {
           continue;
         }
         void runSaveRef.current?.(key, run);
       }
-    }, 1500);
+    }, delay);
   }, [clearRetryTimer]);
 
   const runSave = useCallback(
@@ -94,8 +107,14 @@ export function useProgramAutoSave({
       try {
         await task();
         pendingKeysRef.current.delete(key);
-        if (failedSavesRef.current.delete(key) && failedSavesRef.current.size === 0) {
-          setFailureAlertShown(false);
+        if (failedSavesRef.current.delete(key)) {
+          resetRetryBackoff();
+          if (failedSavesRef.current.size === 0) {
+            setFailureAlertShown(false);
+            clearRetryTimer();
+          } else {
+            scheduleFailedRetries();
+          }
         }
       } catch {
         failedSavesRef.current.set(key, task);
@@ -112,7 +131,7 @@ export function useProgramAutoSave({
         }
       }
     },
-    [scheduleFailedRetries, syncUi],
+    [clearRetryTimer, resetRetryBackoff, scheduleFailedRetries, syncUi],
   );
 
   runSaveRef.current = runSave;
@@ -149,18 +168,20 @@ export function useProgramAutoSave({
     failedSavesRef.current.clear();
     setFailureAlertShown(false);
     clearRetryTimer();
+    resetRetryBackoff();
     syncUi();
-  }, [clearRetryTimer, syncUi]);
+  }, [clearRetryTimer, resetRetryBackoff, syncUi]);
 
   const tryAgain = useCallback(() => {
     clearRetryTimer();
+    resetRetryBackoff();
     for (const [key, run] of failedSavesRef.current.entries()) {
       if (inFlightKeysRef.current.has(key)) {
         continue;
       }
       void runSave(key, run);
     }
-  }, [clearRetryTimer, runSave]);
+  }, [clearRetryTimer, resetRetryBackoff, runSave]);
 
   useEffect(() => {
     return () => {
