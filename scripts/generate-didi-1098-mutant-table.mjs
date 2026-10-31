@@ -1280,7 +1280,7 @@ export type ConditionRow`,
   },
   {
     id: "H1",
-    mutation: "`expectNoFrozenCopy`: dead header-by-id check removed",
+    mutation: "`expectNoFrozenCopy`: drop header lookup by copy id",
     apply: () =>
       patchBatchTest((s) =>
         s.replace(

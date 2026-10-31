@@ -1157,6 +1157,11 @@ describe("expect helper regression", () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(storage);
+      const otherPractitioner = await seedPractitioner(
+        storage,
+        id("helper-header-only-other-practitioner"),
+        "helper-header-only-other@example.com",
+      );
       await seedApprovedExerciseVersion(storage, author);
       const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
         storage,
@@ -1169,7 +1174,7 @@ describe("expect helper regression", () => {
           id, practitioner_id, routine_id, source_routine_version_id,
           source_version_number, saved_at
         ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [copyId, author, routineId, publishedVersionId, 1, TS],
+        [copyId, otherPractitioner, routineId, publishedVersionId, 1, TS],
       );
       await expect(
         expectNoFrozenCopy(storage, author, routineId, copyId),
