@@ -337,7 +337,7 @@ export class ProgramsRepository {
   async findByExactCode(normalizedCode: string): Promise<ProgramRecord | null> {
     return this.sql.first<ProgramRecord>(
       `SELECT ${PROGRAM_SELECT}
-       FROM programs WHERE code = ? LIMIT 1`,
+       FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
       [normalizedCode],
     );
   }

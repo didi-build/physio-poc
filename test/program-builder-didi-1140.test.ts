@@ -185,7 +185,24 @@ describe("DIDI-1140 program API fields and routes", () => {
           code: liveForForeign.program.code,
           label: "foreign",
         },
-        { deps: depsA, cookie: cookieA, code: "PRG-NOMATCH", label: "missing" },
+        {
+          deps: depsA,
+          cookie: cookieA,
+          code: "PRG-ZZZZ",
+          label: "missing-canonical-a",
+        },
+        {
+          deps: depsB,
+          cookie: cookieB,
+          code: "PRG-ZZZZ",
+          label: "missing-canonical-b",
+        },
+        {
+          deps: depsA,
+          cookie: cookieA,
+          code: "PRG-NOMATCH",
+          label: "missing-invalid-format",
+        },
         {
           deps: depsA,
           cookie: cookieA,
@@ -408,6 +425,18 @@ describe("DIDI-1140 program API fields and routes", () => {
       expect(view.open_share_link).toBe(true);
       expect(view.share_link_status).toBe("open");
 
+      const programNeverExpires = id("prog-never-expires-status");
+      await service.createProgram(practitionerId, { programId: programNeverExpires });
+      await links.createOpenLink({
+        id: id("link-never-expires-status"),
+        programId: programNeverExpires,
+        createdAt: TS,
+        expiresAt: null,
+      });
+      view = await service.getProgram(practitionerId, programNeverExpires);
+      expect(view.open_share_link).toBe(true);
+      expect(view.share_link_status).toBe("open");
+
       await links.closeOpenLinksForProgram(programId, TS);
       view = await service.getProgram(practitionerId, programId);
       expect(view.open_share_link).toBe(false);
@@ -625,6 +654,94 @@ describe("DIDI-1140 program API fields and routes", () => {
     }
   });
 
+  it("share_link_status on soft-deleted programs reflects link history", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const service = new ProgramBuilderService(storage, () => PINNED_NOW);
+      const neverLinkedId = id("prog-deleted-never-linked");
+      await service.createProgram(practitionerId, { programId: neverLinkedId });
+      await service.deleteProgram(practitionerId, neverLinkedId);
+      let view = await service.getProgram(practitionerId, neverLinkedId);
+      expect(view.share_link_status).toBe("none");
+      expect(view.open_share_link).toBe(false);
+
+      const hadLinkId = id("prog-deleted-had-link");
+      await service.createProgram(practitionerId, { programId: hadLinkId });
+      const links = new ShareLinksRepository(storage);
+      await links.createOpenLink({
+        id: id("link-deleted-program"),
+        programId: hadLinkId,
+        createdAt: TS,
+        expiresAt: null,
+      });
+      await service.deleteProgram(practitionerId, hadLinkId);
+      view = await service.getProgram(practitionerId, hadLinkId);
+      expect(view.share_link_status).toBe("closed");
+      expect(view.open_share_link).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("findByExactCode uses idx_programs_code in the query plan", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await new ProgramsRepository(storage).create({
+        id: id("prog-explain-code"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-EXPL",
+        name: "Explain index",
+      });
+      const plan = storage
+        .nativeDatabase()
+        .prepare(
+          "EXPLAIN QUERY PLAN SELECT id FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1",
+        )
+        .all("PRG-EXPL");
+      expect(JSON.stringify(plan)).toContain("idx_programs_code");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET by-code uses exact lookup not lenient findByCode keys", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      const canonicalId = id("prog-canonical-trap");
+      const trapId = id("prog-lenient-trap");
+      await programs.create({
+        id: canonicalId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        code: "PRG-AB12",
+        name: "Canonical trap target",
+      });
+      await storage.run(
+        `INSERT INTO programs (
+          id, created_by, created_at, draft_updated_at, code, name,
+          source_routine_id, source_routine_version_id, source_routine_origin,
+          published_at, deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+        [trapId, practitionerId, TS, TS, "PRG-PRG-AB12", "Lenient trap decoy"],
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const response = await handleRequest(
+        authedGet(`${BASE}${programByCodePath("PRG-AB12")}`, cookie),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { program_id: string };
+      expect(body.program_id).toBe(canonicalId);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects PATCH exercise_version_id for another exercise with invalid_input unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -684,15 +801,46 @@ describe("DIDI-1140 program API fields and routes", () => {
           title: "Draft heel raise",
         }),
       );
+      const routines = new RoutinesRepository(storage);
+      const routineRows = new RoutineVersionRowsRepository(storage);
+      const routineVersions = new RoutineVersionsRepository(storage);
+      const routineId = id("routine-draft-patch-1140");
+      await routines.createDraft({
+        id: routineId,
+        draftVersionId: id("rv-draft-patch-1140"),
+        createdBy: practitionerId,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await routineRows.replaceDraftRow({
+        id: id("rvr-draft-patch-1140"),
+        routineId,
+        authorId: practitionerId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, per_day: 1, days_per_week: 3 },
+        draftUpdatedAt: TS,
+      });
+      await routineVersions.publishDraft({
+        routineId,
+        authorId: practitionerId,
+        publishedAt: TS,
+        name: "Draft patch routine",
+      });
       const programId = id("prog-draft-ver-patch");
       const rowId = id("row-draft-ver-patch");
       const service = new ProgramBuilderService(storage);
-      await service.createProgram(practitionerId, { programId });
-      await service.addExerciseRow(practitionerId, programId, {
-        rowId,
-        exerciseId: FIXTURE_EXERCISE_ID,
-        exerciseVersionId: FIXTURE_VERSION_ID,
+      await service.createProgramFromRoutine(practitionerId, {
+        programId,
+        routineId,
+        source: "community",
+        rowIds: [rowId],
       });
+      expect(
+        (await service.getProgram(practitionerId, programId)).routine_origin?.used_as,
+      ).toBe("used_as_is");
       const programBefore = await new ProgramsRepository(storage).findById(programId);
       const rowBefore = await new ProgramRowsRepository(storage).findById(rowId);
       const { deps, cookie } = apiDeps(storage, practitionerId);
@@ -714,7 +862,10 @@ describe("DIDI-1140 program API fields and routes", () => {
         rowBefore,
       );
       const programAfter = await new ProgramsRepository(storage).findById(programId);
-      expect(programAfter?.draft_updated_at).toBe(programBefore?.draft_updated_at);
+      expect(programAfter).toEqual(programBefore);
+      expect(
+        (await service.getProgram(practitionerId, programId)).routine_origin?.used_as,
+      ).toBe("used_as_is");
     } finally {
       storage.close();
     }
@@ -1265,6 +1416,12 @@ describe("DIDI-1140 computeShareLinkStatus (unit)", () => {
     expect(
       computeShareLinkStatus({
         latestLink: link({ expires_at: "2026-10-31T12:00:01.000Z" }),
+        requestTimeIso: PINNED_NOW,
+      }),
+    ).toBe("open");
+    expect(
+      computeShareLinkStatus({
+        latestLink: link({ expires_at: null }),
         requestTimeIso: PINNED_NOW,
       }),
     ).toBe("open");

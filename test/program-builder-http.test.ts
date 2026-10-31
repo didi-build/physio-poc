@@ -21,6 +21,7 @@ import { ProgramBuilderService } from "../src/services/programs/program-builder-
 import {
   ProgramRowsRepository,
   ProgramsRepository,
+  ShareLinksRepository,
 } from "../src/storage/repositories/programs.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -793,7 +794,7 @@ describe("Program builder HTTP routes (integration)", () => {
         owned.program.code,
       )) {
         const missingPath = routeCase.path.includes("/by-code/")
-          ? programByCodePath("PRG-NOMATCH")
+          ? programByCodePath("PRG-ZZZZ")
           : routeCase.path.replace(
               encodeURIComponent(ownedProgramId),
               encodeURIComponent(missingProgramId),
@@ -821,6 +822,81 @@ describe("Program builder HTTP routes (integration)", () => {
       }>("SELECT name, deleted_at FROM programs WHERE id = ?", [ownedProgramId]);
       expect(afterProgramA).toEqual(beforeProgramA);
       expect(await rowIdsInOrder(storage, ownedProgramId)).toEqual(beforeRowOrderA);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns open share_link_status for a never-expiring open link over HTTP", async () => {
+    const pinnedNow = "2026-10-31T12:00:00.000Z";
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-http-never-expires");
+      const service = new ProgramBuilderService(storage, () => pinnedNow);
+      await service.createProgram(practitionerId, { programId });
+      const links = new ShareLinksRepository(storage);
+      await links.createOpenLink({
+        id: id("link-http-never-expires"),
+        programId,
+        createdAt: TS,
+        expiresAt: null,
+      });
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const response = await handleRequest(
+        authedRequest(`${BASE}${programPath(programId)}`, cookie),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        open_share_link: true,
+        share_link_status: "open",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns share_link_status none or closed for soft-deleted programs over HTTP", async () => {
+    const pinnedNow = "2026-10-31T12:00:00.000Z";
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const service = new ProgramBuilderService(storage, () => pinnedNow);
+      const neverLinkedId = id("prog-http-deleted-none");
+      await service.createProgram(practitionerId, { programId: neverLinkedId });
+      await service.deleteProgram(practitionerId, neverLinkedId);
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+
+      const noneResponse = await handleRequest(
+        authedRequest(`${BASE}${programPath(neverLinkedId)}`, cookie),
+        deps,
+      );
+      expect(noneResponse.status).toBe(200);
+      await expect(noneResponse.json()).resolves.toMatchObject({
+        share_link_status: "none",
+        open_share_link: false,
+      });
+
+      const hadLinkId = id("prog-http-deleted-closed");
+      await service.createProgram(practitionerId, { programId: hadLinkId });
+      const links = new ShareLinksRepository(storage);
+      await links.createOpenLink({
+        id: id("link-http-deleted-closed"),
+        programId: hadLinkId,
+        createdAt: TS,
+        expiresAt: null,
+      });
+      await service.deleteProgram(practitionerId, hadLinkId);
+      const closedResponse = await handleRequest(
+        authedRequest(`${BASE}${programPath(hadLinkId)}`, cookie),
+        deps,
+      );
+      expect(closedResponse.status).toBe(200);
+      await expect(closedResponse.json()).resolves.toMatchObject({
+        share_link_status: "closed",
+        open_share_link: false,
+      });
     } finally {
       storage.close();
     }

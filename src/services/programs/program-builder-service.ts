@@ -221,6 +221,9 @@ export class ProgramBuilderService {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
     }
     const program = await this.programs.findByExactCode(normalized);
+    if (!program) {
+      throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
     this.assertProgramAccess(practitionerId, program);
     return this.buildProgramView(practitionerId, program.id);
   }
@@ -613,10 +616,10 @@ export class ProgramBuilderService {
           note: input.note !== undefined ? input.note : row.note,
           draftUpdatedAt: this.now(),
         });
+        await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
       } catch (err) {
         this.mapRowWriteError(err);
       }
-      await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
       return {
         program: await this.buildProgramView(practitionerId, validatedProgramId),
       };
