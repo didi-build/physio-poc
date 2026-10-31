@@ -11,6 +11,7 @@ import {
   looksLikeCommittedProductionD1Id,
   PHYSIO_D1_BINDING,
   PHYSIO_D1_DATABASE_NAME,
+  COMMITTED_WEB_APP_BASE_URL,
 } from "../scripts/lib/wrangler-d1-placeholders.mjs";
 import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
@@ -107,6 +108,13 @@ describe("D1 binding in wrangler.jsonc (DIDI-1031)", () => {
     expect(looksLikeCommittedProductionD1Id(entry.database_id as string)).toBe(false);
     expect(entry.migrations_dir).toBe("migrations");
   });
+
+  it("pins production WEB_APP_BASE_URL and keeps fake Google provider off in committed vars", () => {
+    const parsed = parseWranglerJsonc(readFileSync(WRANGLER_PATH, "utf8"));
+    const vars = parsed.vars as Record<string, string> | undefined;
+    expect(vars?.WEB_APP_BASE_URL).toBe(COMMITTED_WEB_APP_BASE_URL);
+    expect(vars?.PHYSIO_USE_FAKE_GOOGLE_PROVIDER).toBe("false");
+  });
 });
 
 describe("production deploy workflow (DIDI-1031)", () => {
@@ -134,6 +142,7 @@ describe("production deploy workflow (DIDI-1031)", () => {
     expect(body).toContain("::add-mask::");
     expect(body).toContain("prepare-wrangler-config.mjs");
     expect(body).toContain("wrangler.ci.jsonc");
+    expect(workflowText).not.toMatch(/vars\.PHYSIO_PRODUCTION_WEB_APP_BASE_URL/);
     expect(body).not.toMatch(/\bcat\b.*wrangler\.ci\.jsonc/);
   });
 
@@ -167,6 +176,26 @@ describe("production deploy workflow (DIDI-1031)", () => {
 
   it("does not run on pull_request", () => {
     expect(workflowText).not.toMatch(/^\s*pull_request:/m);
+  });
+
+  it("orders auth deploy steps validate < prepare < migrate < put < deploy (DIDI-1044)", () => {
+    expect(workflowText).toContain("Validate production auth secrets");
+    expect(workflowText).toContain("Prepare Wrangler config (production D1 ID)");
+    expect(workflowText).toContain("Apply production D1 migrations");
+    expect(workflowText).toContain("Put production Worker auth secrets");
+    expect(workflowText).toContain("Deploy to Cloudflare Workers");
+    const validateIdx = stepIndexByName(jobBlock, "Validate production auth secrets");
+    const prepareIdx = stepIndexByName(
+      jobBlock,
+      "Prepare Wrangler config (production D1 ID)",
+    );
+    const migrateIdx = stepIndexByName(jobBlock, "Apply production D1 migrations");
+    const putIdx = stepIndexByName(jobBlock, "Put production Worker auth secrets");
+    const deployIdx = stepIndexByName(jobBlock, "Deploy to Cloudflare Workers");
+    expect(validateIdx).toBeLessThan(prepareIdx);
+    expect(prepareIdx).toBeLessThan(migrateIdx);
+    expect(migrateIdx).toBeLessThan(putIdx);
+    expect(putIdx).toBeLessThan(deployIdx);
   });
 
   it("does not reference production D1 secrets outside the production deploy job file", () => {
