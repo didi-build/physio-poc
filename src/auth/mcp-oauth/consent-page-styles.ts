@@ -93,6 +93,7 @@ body {
 
 .consent-name-inline {
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .consent-tag {
@@ -130,6 +131,7 @@ body {
     flex: 0 1 auto;
     min-width: 0;
     overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .consent-tag {
@@ -153,6 +155,7 @@ body {
     flex: 1 1 auto;
     min-width: 0;
     overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .consent-tag {

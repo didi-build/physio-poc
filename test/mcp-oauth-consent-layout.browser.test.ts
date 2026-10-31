@@ -135,6 +135,11 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       expect(boxes!.tagWidth).toBeGreaterThan(95);
       expect(boxes!.tagWidth).toBeLessThan(130);
       expect(boxes!.cardScrollWidth).toBeLessThanOrEqual(boxes!.cardClientWidth + 1);
+      const leadWhiteSpace = await page.evaluate(() => {
+        const lead = document.querySelector(".consent-name-lead");
+        return lead ? getComputedStyle(lead).whiteSpace : null;
+      });
+      expect(leadWhiteSpace).toBe("nowrap");
     } finally {
       await browser.close();
     }
@@ -235,6 +240,11 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       expect(cardMetrics!.scrollWidth).toBeLessThanOrEqual(
         cardMetrics!.clientWidth + 1,
       );
+      const nameWhiteSpace = await page.evaluate(() => {
+        const name = document.querySelector(".consent-name-inline");
+        return name ? getComputedStyle(name).whiteSpace : null;
+      });
+      expect(nameWhiteSpace).toBe("normal");
     } finally {
       await browser.close();
     }
