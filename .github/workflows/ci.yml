@@ -117,7 +117,7 @@ jobs:
         continue-on-error: true
       - name: Install Playwright Chromium for layout tests
         if: steps.install.outcome == 'success'
-        run: npx playwright install chromium
+        run: npx playwright install --only-shell chromium
       - name: npm run check
         id: check
         if: steps.install.outcome == 'success'
@@ -138,6 +138,7 @@ jobs:
           name: vitest-junit
           path: test-results/junit.xml
           if-no-files-found: error
+          retention-days: 14
       - name: Build PR test summary
         id: summary
         if: always() && github.event_name == 'pull_request'

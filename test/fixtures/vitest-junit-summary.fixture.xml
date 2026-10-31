@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="vitest tests" tests="1503" failures="1" errors="0" skipped="4" time="12.5">
+  <testsuite name="test/example-a.test.ts" tests="750" failures="0" errors="0" skipped="2" time="4">
+    <testcase classname="test/example-a.test.ts" name="passes one" time="0.01" />
+    <testcase classname="test/example-a.test.ts" name="passes two" time="0.01" />
+    <testcase classname="test/example-a.test.ts" name="skipped one" time="0">
+      <skipped />
+    </testcase>
+    <testcase classname="test/example-a.test.ts" name="skipped two" time="0">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="test/example-b.test.ts" tests="750" failures="0" errors="0" skipped="2" time="4">
+    <testcase classname="test/example-b.test.ts" name="passes three" time="0.01" />
+    <testcase classname="test/example-b.test.ts" name="skipped three" time="0">
+      <skipped />
+    </testcase>
+    <testcase classname="test/example-b.test.ts" name="skipped four" time="0">
+      <skipped />
+    </testcase>
+  </testsuite>
+  <testsuite name="test/example-c.test.ts" tests="3" failures="1" errors="0" skipped="0" time="0.1">
+    <testcase classname="test/example-c.test.ts" name="passes four" time="0.01" />
+    <testcase classname="test/example-c.test.ts" name="passes five" time="0.01" />
+    <testcase classname="test/example-c.test.ts" name="fails once" time="0.02">
+      <failure message="expected false to be true" type="AssertionError">
+        AssertionError: expected false to be true
+      </failure>
+    </testcase>
+  </testsuite>
+</testsuites>
