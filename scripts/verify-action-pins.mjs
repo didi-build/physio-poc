@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   ACTIONS_DIR_ENV,
+  REPO_ROOT_ENV,
   WORKFLOWS_DIR_ENV,
   collectAllRemoteShaUses,
   collectUsesProblems,
@@ -12,18 +13,21 @@ const actionsDir =
   process.env[ACTIONS_DIR_ENV] === "none"
     ? null
     : (process.env[ACTIONS_DIR_ENV] ?? join(".github", "actions"));
+const repoRoot = process.env[REPO_ROOT_ENV] ?? process.cwd();
 
 let scan;
 try {
-  scan = collectUsesProblems({ workflowsDir, actionsDir });
+  scan = collectUsesProblems({ workflowsDir, actionsDir, repoRoot });
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 
 if (scan.problems.length > 0) {
-  for (const { file, spec, reason } of scan.problems) {
-    console.error(`FAIL  ${file}  ${spec}  (${reason})`);
+  for (const { file, line, spec, reason } of scan.problems) {
+    const where = line ? `${file}:${line}` : file;
+    const detail = spec ? `${spec}  ` : "";
+    console.error(`FAIL  ${where}  ${detail}(${reason})`);
   }
   process.exit(1);
 }
