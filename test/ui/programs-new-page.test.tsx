@@ -44,6 +44,8 @@ function builderView(): ProgramBuilderView {
     library_updates_to_review: 0,
     rows: [],
     open_share_link: false,
+    share_link_status: "none",
+    last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
   };

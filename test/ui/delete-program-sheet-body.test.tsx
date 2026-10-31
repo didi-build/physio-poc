@@ -20,6 +20,8 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     library_updates_to_review: 0,
     rows: [],
     open_share_link: true,
+    share_link_status: "open",
+    last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
     ...overrides,

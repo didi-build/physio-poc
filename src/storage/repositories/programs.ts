@@ -248,6 +248,15 @@ export class ProgramsRepository {
     return null;
   }
 
+  /** Exact canonical code match only (no lenient search keys). */
+  async findByExactCode(normalizedCode: string): Promise<ProgramRecord | null> {
+    return this.sql.first<ProgramRecord>(
+      `SELECT ${PROGRAM_SELECT}
+       FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
+      [normalizedCode],
+    );
+  }
+
   async listForPractitioner(input: {
     practitionerId: string;
     searchQuery?: string;
@@ -805,6 +814,14 @@ export class ShareLinksRepository {
        LIMIT 1`,
       [programId],
     );
+  }
+
+  async hasAnyLinkForProgram(programId: string): Promise<boolean> {
+    const row = await this.sql.first<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM share_links WHERE program_id = ?`,
+      [programId],
+    );
+    return (row?.c ?? 0) > 0;
   }
 
   async createOpenLink(input: {

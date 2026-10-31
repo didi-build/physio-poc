@@ -1,5 +1,6 @@
 import {
   programPath,
+  programByCodePath,
   programRestorePath,
   programRowDuplicatePath,
   programRowLibraryUpdateApplyPath,
@@ -34,6 +35,7 @@ export function programBuilderHttpRouteCases(
     { method: "POST", path: programsFromRoutinePath() },
     { method: "GET", path: programsDeletedListPath() },
     { method: "GET", path: routineSentProgramsPath(routineId) },
+    { method: "GET", path: programByCodePath("PRG-TEST") },
     { method: "GET", path: programPath(programId) },
     { method: "PATCH", path: programPath(programId) },
     { method: "DELETE", path: programPath(programId) },
