@@ -12,6 +12,7 @@ import {
   D1_PLACEHOLDER_PRODUCTION,
   isExactHttpsOrigin,
 } from "./lib/wrangler-d1-placeholders.mjs";
+import { LOWERCASE_CANONICAL_UUID_RE } from "./lib/lowercase-canonical-uuid.mjs";
 
 const SOURCE = resolve("wrangler.jsonc");
 
@@ -52,17 +53,37 @@ function assertCommittedWebAppBaseUrlInSource(sourceText) {
   }
 }
 
-function main() {
-  const { output } = parseArgs(process.argv.slice(2));
-  const productionId = process.env.PHYSIO_D1_DATABASE_ID?.trim();
-  if (!productionId) {
+function readProductionId() {
+  const raw = process.env.PHYSIO_D1_DATABASE_ID;
+  if (raw === undefined || raw === "") {
     console.error("PHYSIO_D1_DATABASE_ID is required.");
     process.exit(1);
   }
-  if (productionId === D1_PLACEHOLDER_PRODUCTION) {
+  if (/[\r\n]/.test(raw)) {
+    console.error("PHYSIO_D1_DATABASE_ID must not contain newline characters.");
+    process.exit(1);
+  }
+  const trimmed = raw.trim();
+  if (raw !== trimmed) {
+    console.error(
+      "PHYSIO_D1_DATABASE_ID must not contain leading or trailing whitespace.",
+    );
+    process.exit(1);
+  }
+  if (trimmed === D1_PLACEHOLDER_PRODUCTION) {
     console.error("PHYSIO_D1_DATABASE_ID must not be the committed placeholder.");
     process.exit(1);
   }
+  if (!LOWERCASE_CANONICAL_UUID_RE.test(trimmed)) {
+    console.error("PHYSIO_D1_DATABASE_ID must be a lowercase UUID.");
+    process.exit(1);
+  }
+  return trimmed;
+}
+
+function main() {
+  const { output } = parseArgs(process.argv.slice(2));
+  const productionId = readProductionId();
   const sourceText = readFileSync(SOURCE, "utf8");
   assertCommittedWebAppBaseUrlInSource(sourceText);
   const text = sourceText.replaceAll(D1_PLACEHOLDER_PRODUCTION, productionId);

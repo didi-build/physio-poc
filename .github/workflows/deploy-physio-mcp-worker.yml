@@ -45,8 +45,28 @@ jobs:
           PHYSIO_D1_DATABASE_ID: ${{ secrets.PHYSIO_D1_DATABASE_ID }}
         run: |
           set -euo pipefail
-          echo "::add-mask::${PHYSIO_D1_DATABASE_ID}"
-          node scripts/prepare-wrangler-config.mjs --output wrangler.ci.jsonc
+          case "${PHYSIO_D1_DATABASE_ID}" in
+            *$'\n'*|*$'\r'*)
+              echo "PHYSIO_D1_DATABASE_ID must not contain newline characters." >&2
+              exit 1
+              ;;
+          esac
+          TRIMMED="${PHYSIO_D1_DATABASE_ID#"${PHYSIO_D1_DATABASE_ID%%[![:space:]]*}"}"
+          TRIMMED="${TRIMMED%"${TRIMMED##*[![:space:]]}"}"
+          if [ "${PHYSIO_D1_DATABASE_ID}" != "${TRIMMED}" ]; then
+            echo "PHYSIO_D1_DATABASE_ID must not contain leading or trailing whitespace." >&2
+            exit 1
+          fi
+          if ! printf '%s' "${TRIMMED}" | grep -Eq '^[0123456789abcdef]{8}-[0123456789abcdef]{4}-[0123456789abcdef]{4}-[0123456789abcdef]{4}-[0123456789abcdef]{12}$'; then
+            echo "PHYSIO_D1_DATABASE_ID must be a lowercase UUID." >&2
+            exit 1
+          fi
+          if [ "${TRIMMED}" = "00000000-0000-0000-0000-000000000001" ]; then
+            echo "PHYSIO_D1_DATABASE_ID must not be the committed placeholder." >&2
+            exit 1
+          fi
+          echo "::add-mask::${TRIMMED}"
+          PHYSIO_D1_DATABASE_ID="${TRIMMED}" node scripts/prepare-wrangler-config.mjs --output wrangler.ci.jsonc
       - name: Apply production D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
