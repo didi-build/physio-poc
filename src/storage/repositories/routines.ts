@@ -772,6 +772,10 @@ export class PractitionerRoutinesRepository {
       input.sourceRoutineVersionId,
       "sourceRoutineVersionId",
     );
+    const routine = await new RoutinesRepository(this.sql).findById(routineId);
+    if (!routine || routine.published_version === null) {
+      throw new RoutineRepositoryError("Routine is not published");
+    }
     if (input.rows.length === 0) {
       throw new RoutineRepositoryError("Cannot save an empty routine copy");
     }
@@ -796,6 +800,7 @@ export class PractitionerRoutinesRepository {
         routineId,
         sourceRoutineVersionId: sourceVersion.id,
         sourceVersionNumber: sourceVersion.version_number,
+        routineCreatedBy: routine.created_by,
         savedAt: input.savedAt,
         rowStatements,
       }),
@@ -813,6 +818,7 @@ export class PractitionerRoutinesRepository {
     routineId: string;
     sourceRoutineVersionId: string;
     sourceVersionNumber: number;
+    routineCreatedBy: string;
     savedAt: string;
     rowStatements: SqlBatchStatement[];
   }): SqlBatchStatement[] {
@@ -822,21 +828,30 @@ export class PractitionerRoutinesRepository {
       input.sourceRoutineVersionId,
       "Source routine version id",
     );
+    const routineCreatedBy = validateOpaqueEntityId(
+      input.routineCreatedBy,
+      "Routine author id",
+    );
     return [
       {
         sql: `INSERT INTO practitioner_routines (
         id, practitioner_id, routine_id, source_routine_version_id,
         source_version_number, saved_at, last_used_at, edited
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      SELECT ?, ?, r.id, ?, ?, ?, ?, ?
+      FROM routines r
+      WHERE r.id = ? AND r.published_version = ? AND r.created_by = ?`,
         bindings: [
           copyId,
           input.practitionerId,
-          routineId,
           sourceRoutineVersionId,
           input.sourceVersionNumber,
           input.savedAt,
           null,
           0,
+          routineId,
+          input.sourceVersionNumber,
+          routineCreatedBy,
         ],
         minRowsAffected: 1,
       },

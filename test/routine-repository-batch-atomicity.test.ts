@@ -292,11 +292,16 @@ async function expectNoFrozenCopy(
   routineId: string,
   copyId: string,
 ): Promise<void> {
+  const header = await storage.first<{ id: string }>(
+    `SELECT id FROM practitioner_routines WHERE id = ? LIMIT 1`,
+    [copyId],
+  );
+  expect(header).toBeNull();
   const copies = await storage.all<{ id: string; routine_id: string }>(
-    "SELECT id FROM practitioner_routines WHERE practitioner_id = ?",
+    "SELECT id, routine_id FROM practitioner_routines WHERE practitioner_id = ?",
     [practitionerId],
   );
-  expect(copies.some((row) => row.routine_id === routineId)).toBe(false);
+  expect(copies.filter((row) => row.routine_id === routineId)).toHaveLength(0);
   const rows = await storage.all<{ id: string }>(
     `SELECT id FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
     [copyId],
@@ -345,6 +350,45 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
           [draftVersionId],
         );
         expect(draft?.status).toBe("published");
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("does not publish other drafts by the same author", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const primary = await seedDraftReadyToPublish(
+          storage,
+          author,
+          `${label}-pub-primary`,
+        );
+        const secondary = await seedDraftReadyToPublish(
+          storage,
+          author,
+          `${label}-pub-secondary`,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        await versions.publishDraft({
+          routineId: primary.routineId,
+          authorId: author,
+          publishedAt: TS,
+          name: "Primary publish",
+        });
+        const otherRoutine = await new RoutinesRepository(storage).findById(
+          secondary.routineId,
+        );
+        expect(otherRoutine?.published_version).toBeNull();
+        const otherDraft = await storage.first<{ status: string }>(
+          "SELECT status FROM routine_versions WHERE id = ? LIMIT 1",
+          [secondary.draftVersionId],
+        );
+        expect(otherDraft?.status).toBe("draft");
       } finally {
         if ("close" in storage && typeof storage.close === "function") {
           storage.close();
@@ -449,6 +493,45 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
         }
       }
     });
+
+    it("does not bump other routines published at v1 when saving a new version", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const primary = await seedPublishedRoutineV1(
+          storage,
+          author,
+          `${label}-save-primary`,
+        );
+        const secondary = await seedPublishedRoutineV1(
+          storage,
+          author,
+          `${label}-save-secondary`,
+        );
+        const routinesRepo = new RoutinesRepository(storage);
+        const secondaryBefore = await routinesRepo.findById(secondary.routineId);
+        const draftUpdatedAtBefore = secondaryBefore?.draft_updated_at;
+        expect(secondaryBefore?.published_version).toBe(1);
+        const versions = new RoutineVersionsRepository(storage);
+        await versions.savePublishedVersion({
+          id: id(`save-v2-only-primary-${label}`),
+          routineId: primary.routineId,
+          createdBy: author,
+          createdAt: TS,
+          name: "Primary v2",
+          copyFromVersionId: primary.publishedVersionId,
+        });
+        const secondaryAfter = await routinesRepo.findById(secondary.routineId);
+        expect(secondaryAfter?.published_version).toBe(1);
+        expect(secondaryAfter?.draft_updated_at).toBe(draftUpdatedAtBefore);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
   },
 );
 
@@ -544,24 +627,127 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
   },
 );
 
-describe.each(STORAGE_CASES)("saveFrozenCopy batch atomicity ($label)", ({ open }) => {
-  it("leaves no practitioner copy when batch fails mid write", async () => {
-    const storage = await open();
-    try {
-      const author = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, author);
-      const label = storage.constructor.name;
-      const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
-        storage,
-        author,
-        label,
-      );
-      const copyId = id(`frozen-copy-${label}`);
-      const rowId = id(`frozen-row-${label}`);
-      poisonBatchAfterIndex(storage, 0, batchFailureGuardStatement(routineId));
-      const my = new PractitionerRoutinesRepository(storage);
-      let caught: unknown;
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
+  "saveFrozenCopy batch atomicity ($label)",
+  ({ open }) => {
+    it("leaves no practitioner copy when batch fails mid write", async () => {
+      const storage = await open();
       try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const copyId = id(`frozen-copy-${label}`);
+        const rowId = id(`frozen-row-${label}`);
+        poisonBatchAfterIndex(storage, 0, batchFailureGuardStatement(routineId));
+        const my = new PractitionerRoutinesRepository(storage);
+        let caught: unknown;
+        try {
+          await my.saveFrozenCopy({
+            id: copyId,
+            practitionerId: author,
+            routineId,
+            sourceRoutineVersionId: publishedVersionId,
+            savedAt: TS,
+            rows: [
+              {
+                id: rowId,
+                position: 0,
+                exerciseId: FIXTURE_EXERCISE_ID,
+                exerciseVersionId: FIXTURE_VERSION_ID,
+                prescriptionType: "stretching",
+                params: VALID_PARAMS,
+              },
+            ],
+          });
+        } catch (error) {
+          caught = error;
+        }
+        expectStaleWrite(caught);
+        await expectNoFrozenCopy(storage, author, routineId, copyId);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+  },
+);
+
+describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
+  "saveFrozenCopy published source guard ($label)",
+  ({ open }) => {
+    it("writes nothing and returns stale_write when the source version is no longer the routine published_version", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const versions = new RoutineVersionsRepository(storage);
+        const v2Id = id(`frozen-guard-v2-${label}`);
+        await versions.savePublishedVersion({
+          id: v2Id,
+          routineId,
+          createdBy: author,
+          createdAt: TS,
+          name: "Version two",
+          copyFromVersionId: publishedVersionId,
+        });
+        const copyId = id(`frozen-stale-src-${label}`);
+        const my = new PractitionerRoutinesRepository(storage);
+        let caught: unknown;
+        try {
+          await my.saveFrozenCopy({
+            id: copyId,
+            practitionerId: author,
+            routineId,
+            sourceRoutineVersionId: publishedVersionId,
+            savedAt: TS,
+            rows: [
+              {
+                id: id(`frozen-stale-row-${label}`),
+                position: 0,
+                exerciseId: FIXTURE_EXERCISE_ID,
+                exerciseVersionId: FIXTURE_VERSION_ID,
+                prescriptionType: "stretching",
+                params: VALID_PARAMS,
+              },
+            ],
+          });
+        } catch (error) {
+          caught = error;
+        }
+        expectStaleWrite(caught);
+        await expectNoFrozenCopy(storage, author, routineId, copyId);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    });
+
+    it("writes exactly one practitioner copy on the happy path", async () => {
+      const storage = await open();
+      try {
+        const author = await seedPractitioner(storage);
+        await seedApprovedExerciseVersion(storage, author);
+        const label = storage.constructor.name;
+        const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+          storage,
+          author,
+          label,
+        );
+        const copyId = id(`frozen-happy-${label}`);
+        const my = new PractitionerRoutinesRepository(storage);
         await my.saveFrozenCopy({
           id: copyId,
           practitionerId: author,
@@ -570,7 +756,7 @@ describe.each(STORAGE_CASES)("saveFrozenCopy batch atomicity ($label)", ({ open 
           savedAt: TS,
           rows: [
             {
-              id: rowId,
+              id: id(`frozen-happy-row-${label}`),
               position: 0,
               exerciseId: FIXTURE_EXERCISE_ID,
               exerciseVersionId: FIXTURE_VERSION_ID,
@@ -579,18 +765,20 @@ describe.each(STORAGE_CASES)("saveFrozenCopy batch atomicity ($label)", ({ open 
             },
           ],
         });
-      } catch (error) {
-        caught = error;
+        const copies = await storage.all<{ id: string; routine_id: string }>(
+          "SELECT id, routine_id FROM practitioner_routines WHERE practitioner_id = ?",
+          [author],
+        );
+        expect(copies.filter((row) => row.routine_id === routineId)).toHaveLength(1);
+        expect(copies[0]?.id).toBe(copyId);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
       }
-      expectStaleWrite(caught);
-      await expectNoFrozenCopy(storage, author, routineId, copyId);
-    } finally {
-      if ("close" in storage && typeof storage.close === "function") {
-        storage.close();
-      }
-    }
-  });
-});
+    });
+  },
+);
 
 describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
   "routine repository single batch contract ($label)",
@@ -770,6 +958,7 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
             routineId,
             sourceRoutineVersionId: publishedVersionId,
             sourceVersionNumber: 1,
+            routineCreatedBy: author,
             savedAt: TS,
             rowStatements,
           }),
@@ -819,7 +1008,8 @@ describe("batch statement guard contracts (builder)", () => {
     });
     expect(batch).toHaveLength(2);
     expect(batch[0]?.minRowsAffected).toBe(1);
-    expect(batch[0]?.sql).toContain("status = ?");
+    expect(batch[0]?.sql).toContain("WHERE id = ? AND status = ?");
+    expect(batch[0]?.bindings?.[4]).toBe("draft");
     expect(batch[1]?.minRowsAffected).toBe(1);
     expect(batch[1]?.sql).toContain("published_version IS NULL");
     expect(batch[1]?.sql).toContain("created_by = ?");
@@ -842,17 +1032,21 @@ describe("batch statement guard contracts (builder)", () => {
     expect(batch[0]?.sql).toContain("published_version = ?");
   });
 
-  it("saveFrozenCopy header insert requires minRowsAffected", () => {
+  it("saveFrozenCopy header insert requires published source guard and minRowsAffected", () => {
     const batch = my.buildSaveFrozenCopyBatchStatements({
       copyId: id("guard-copy"),
       practitionerId: author,
       routineId,
       sourceRoutineVersionId: id("guard-src-ver"),
       sourceVersionNumber: 1,
+      routineCreatedBy: author,
       savedAt: TS,
       rowStatements: [],
     });
     expect(batch[0]?.minRowsAffected).toBe(1);
+    expect(batch[0]?.sql).toContain("FROM routines");
+    expect(batch[0]?.sql).toContain("published_version = ?");
+    expect(batch[0]?.sql).toContain("created_by = ?");
   });
 });
 
@@ -888,6 +1082,40 @@ describe("createDraft batch atomicity (BetterSqliteStorage)", () => {
   });
 });
 
+describe("createDraft batch atomicity (D1SqlStorage fake)", () => {
+  it("leaves no routine row when draftVersionId collides", async () => {
+    const storage = await openMigratedD1SqlStorage();
+    try {
+      const author = await seedPractitioner(storage);
+      const routines = new RoutinesRepository(storage);
+      const sharedVersionId = id("d1-batch-create-shared-rv");
+      const routineAId = id("d1-batch-create-a");
+      const routineBId = id("d1-batch-create-b");
+      await routines.createDraft({
+        id: routineAId,
+        draftVersionId: sharedVersionId,
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+      });
+      await expect(
+        routines.createDraft({
+          id: routineBId,
+          draftVersionId: sharedVersionId,
+          createdBy: author,
+          createdAt: TS,
+          bodyRegionId: BODY_REGION_KNEE,
+        }),
+      ).rejects.toThrow(/UNIQUE constraint failed/i);
+      expect(await routines.findById(routineBId)).toBeNull();
+    } finally {
+      if ("close" in storage && typeof storage.close === "function") {
+        storage.close();
+      }
+    }
+  });
+});
+
 describe("expect helper regression", () => {
   it("expectNoFrozenCopy fails when a practitioner copy row exists", async () => {
     const storage = await openMigratedDatabase();
@@ -917,6 +1145,32 @@ describe("expect helper regression", () => {
           },
         ],
       });
+      await expect(
+        expectNoFrozenCopy(storage, author, routineId, copyId),
+      ).rejects.toThrow();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("expectNoFrozenCopy fails when only the copy header exists", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      await seedApprovedExerciseVersion(storage, author);
+      const { routineId, publishedVersionId } = await seedPublishedRoutineV1(
+        storage,
+        author,
+        "helper-header-only",
+      );
+      const copyId = id("helper-header-only-copy");
+      await storage.run(
+        `INSERT INTO practitioner_routines (
+          id, practitioner_id, routine_id, source_routine_version_id,
+          source_version_number, saved_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [copyId, author, routineId, publishedVersionId, 1, TS],
+      );
       await expect(
         expectNoFrozenCopy(storage, author, routineId, copyId),
       ).rejects.toThrow();
