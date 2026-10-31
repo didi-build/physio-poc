@@ -93,6 +93,7 @@ const EXPECTED_WRANGLER_TOP_LEVEL_KEYS = [
   "main",
   "name",
   "observability",
+  "vars",
 ];
 
 describe("Physio MCP HTTP handler (Streamable HTTP)", () => {

@@ -211,6 +211,10 @@ async function sessionDeps(): Promise<{
       sqlCalls.count += 1;
       return storage.first<T>(sql, bindings);
     },
+    async batch(statements) {
+      sqlCalls.count += 1;
+      return storage.batch(statements);
+    },
   };
   const auth = new FakeAuthPort({
     practitioner: {
