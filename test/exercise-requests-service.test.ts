@@ -1,0 +1,1021 @@
+import { describe, expect, it } from "vitest";
+import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  ExerciseRequestsRepository,
+  PractitionerExercisesRepository,
+} from "../src/storage/repositories/exercise-data.js";
+import {
+  openMigratedDatabase,
+  seedExercise,
+  seedPractitioner,
+  TS,
+  VERSION_INSERT_SQL,
+  versionInsertBindings,
+} from "./helpers/exercise-sqlite-fixture.js";
+import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+
+const FORM_OPENED = "2026-10-30T10:00:00.000Z";
+const BEFORE_FORM = "2026-10-30T09:00:00.000Z";
+const AFTER_FORM = "2026-10-30T11:00:00.000Z";
+
+async function seedApprovedTitle(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  title: string,
+  exerciseId = "ex-approved-1",
+) {
+  await seedExercise(storage, practitionerId, exerciseId);
+  await storage.run(VERSION_INSERT_SQL, [
+    ...versionInsertBindings({
+      id: "ver-approved-1",
+      exercise_id: exerciseId,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title,
+      cue_stretching: "Hold",
+    }),
+  ]);
+}
+
+describe("ExerciseRequestsService (integration, SQLite)", () => {
+  it("lists similar library matches and in-progress drafts, excluding unapproved-only rows from library", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practA = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("ex-req-similar-a"),
+        "a@example.com",
+      );
+      const practB = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("ex-req-similar-b"),
+        "b@example.com",
+      );
+      await seedApprovedTitle(storage, practA, "Copenhagen plank approved");
+      await seedExercise(storage, practB, "ex-draft-search");
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: "ver-draft-only",
+          exercise_id: "ex-draft-search",
+          title: "Copenhagen plank draft only",
+        }),
+      ]);
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      await service.submitRequest({
+        practitionerId: practB,
+        requestedName: "Copenhagen plank in progress",
+        formOpenedAt: FORM_OPENED,
+      });
+
+      const similar = await service.listSimilar({
+        practitionerId: practA,
+        query: "Copenhagen plank",
+      });
+      expect(
+        similar.library_matches.some((row) => row.exercise_name.includes("approved")),
+      ).toBe(true);
+      expect(
+        similar.library_matches.some((row) => row.exercise_name.includes("draft only")),
+      ).toBe(false);
+      expect(similar.drafts_in_progress.length).toBeGreaterThanOrEqual(1);
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const search = await library.searchApprovedExercises({
+        practitionerId: practA,
+        query: "Copenhagen",
+      });
+      expect(
+        search.exercises.every((row) => !row.exercise_name.includes("draft only")),
+      ).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns conflict on submit when a similar request was created after the form opened", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-req"),
+        "req@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("pract-other"),
+        "other@example.com",
+      );
+
+      const otherService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await otherService.submitRequest({
+        practitionerId: other,
+        requestedName: "Short lever plank",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(created.outcome).toBe("created");
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      const conflict = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Short lever plank variation",
+        exerciseNote: "supine",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(conflict.outcome).toBe("conflict");
+      if (conflict.outcome !== "conflict") {
+        return;
+      }
+      expect(conflict.similar_request.requested_name).toBe("Short lever plank");
+
+      const noConflictBefore = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Unrelated move",
+        formOpenedAt: FORM_OPENED,
+        resolution: "submit",
+      });
+      expect(noConflictBefore.outcome).toBe("created");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("merge adds the requester name and exercise note to the existing draft request", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-owner"),
+        "owner@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge"),
+        "merge@example.com",
+      );
+
+      const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const existing = await ownerService.submitRequest({
+        practitionerId: owner,
+        requestedName: "Copenhagen plank",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(existing.outcome).toBe("created");
+      if (existing.outcome !== "created") {
+        return;
+      }
+
+      const requestsRepo = new ExerciseRequestsRepository(storage);
+      await requestsRepo.updateNote({
+        id: existing.request_id,
+        note: "owner baseline note",
+        updatedAt: AFTER_FORM,
+      });
+
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      const merged = await mergeService.submitRequest({
+        practitionerId: merger,
+        requestedName: "Copenhagen plank short lever",
+        exerciseNote: "rehab version",
+        formOpenedAt: FORM_OPENED,
+        resolution: "merge",
+        conflictRequestId: existing.request_id,
+      });
+      expect(merged.outcome).toBe("merged");
+
+      const view = await ownerService.getRequest({
+        practitionerId: owner,
+        requestId: existing.request_id,
+      });
+      expect(view.exercise_note).toContain("owner baseline note");
+      expect(view.exercise_note).toContain("rehab version");
+
+      const aliasRow = await storage.first<{ alias: string }>(
+        "SELECT alias FROM exercise_aliases WHERE exercise_id = ? AND alias = ? COLLATE NOCASE",
+        [existing.exercise_id!, "Copenhagen plank short lever"],
+      );
+      expect(aliasRow?.alias).toBe("Copenhagen plank short lever");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects merge into an approved target with conflict_target_not_found and adds no alias", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-owner"),
+        "merge-approved-owner@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-merger"),
+        "merge-approved-merger@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-app"),
+        "merge-approved-app@example.com",
+      );
+
+      const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await ownerService.submitRequest({
+        practitionerId: owner,
+        requestedName: "Approved merge target",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const approveService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T14:00:00.000Z",
+      });
+      await approveService.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T15:00:00.000Z",
+      });
+      await expect(
+        mergeService.submitRequest({
+          practitionerId: merger,
+          requestedName: "Approved merge target alias",
+          formOpenedAt: FORM_OPENED,
+          resolution: "merge",
+          conflictRequestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "conflict_target_not_found" });
+
+      const aliasRow = await storage.first<{ alias: string }>(
+        "SELECT alias FROM exercise_aliases WHERE exercise_id = ? AND alias = ? COLLATE NOCASE",
+        [created.exercise_id!, "Approved merge target alias"],
+      );
+      expect(aliasRow).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("merge applies only to conflict_request_id when two similar open requests exist", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerOne = await seedPractitioner(
+        storage,
+        id("pract-merge-two-a"),
+        "merge-two-a@example.com",
+      );
+      const ownerTwo = await seedPractitioner(
+        storage,
+        id("pract-merge-two-b"),
+        "merge-two-b@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-two-merger"),
+        "merge-two-merger@example.com",
+      );
+
+      const serviceOne = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => BEFORE_FORM,
+      });
+      const first = await serviceOne.submitRequest({
+        practitionerId: ownerOne,
+        requestedName: "Dual open plank",
+        exerciseNote: "first note",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(first.outcome).toBe("created");
+      if (first.outcome !== "created") {
+        return;
+      }
+
+      const serviceTwo = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const second = await serviceTwo.submitRequest({
+        practitionerId: ownerTwo,
+        requestedName: "Dual open plank side",
+        exerciseNote: "second note",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(second.outcome).toBe("created");
+      if (second.outcome !== "created") {
+        return;
+      }
+
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:30:00.000Z",
+      });
+      const merged = await mergeService.submitRequest({
+        practitionerId: merger,
+        requestedName: "Dual open plank merged alias",
+        exerciseNote: "merger note",
+        formOpenedAt: FORM_OPENED,
+        resolution: "merge",
+        conflictRequestId: first.request_id,
+      });
+      expect(merged.outcome).toBe("merged");
+
+      const firstView = await serviceOne.getRequest({
+        practitionerId: ownerOne,
+        requestId: first.request_id,
+      });
+      expect(firstView.exercise_note).toContain("first note");
+      expect(firstView.exercise_note).toContain("merger note");
+
+      const secondRow = await storage.first<{ note: string | null }>(
+        "SELECT note FROM exercise_requests WHERE id = ?",
+        [second.request_id],
+      );
+      expect(secondRow?.note).toBe("second note");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("approve records approver and time, adds to requester My exercises, and removes from in-progress list", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-apr-req"),
+        "apr-req@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-apr-app"),
+        "apr-app@example.com",
+      );
+      const approvedAt = "2026-10-30T15:00:00.000Z";
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Heel slide request",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const beforeList = await service.listInProgress({ practitionerId: approver });
+      expect(beforeList.in_progress_count).toBe(1);
+
+      const approveService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => approvedAt,
+      });
+      const approved = await approveService.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      expect(approved.approved_by).toBe(approver);
+      expect(approved.approved_at).toBe(approvedAt);
+      expect(approved.version_number).toBe(1);
+
+      const afterList = await approveService.listInProgress({
+        practitionerId: approver,
+      });
+      expect(afterList.in_progress_count).toBe(0);
+
+      const myExercises = new PractitionerExercisesRepository(storage);
+      const row = await myExercises.find(requester, approved.exercise_id);
+      expect(row).not.toBeNull();
+
+      const version = await storage.first<{ approved_by: string; status: string }>(
+        "SELECT approved_by, status FROM exercise_versions WHERE id = ?",
+        [approved.exercise_version_id],
+      );
+      expect(version?.status).toBe("approved");
+      expect(version?.approved_by).toBe(approver);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects exercise notes that contain patient details", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
+      await expect(
+        service.submitRequest({
+          practitionerId: practId,
+          requestedName: "Safe name",
+          exerciseNote: "contact patient@example.com",
+          formOpenedAt: FORM_OPENED,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("exposes in-progress count for the Requests badge", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      expect(await service.getInProgressCount({ practitionerId: practId })).toBe(0);
+      await service.submitRequest({
+        practitionerId: practId,
+        requestedName: "New move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(await service.getInProgressCount({ practitionerId: practId })).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects calls when the path practitioner id is unknown", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
+      await expect(
+        service.listSimilar({
+          practitionerId: id("pract-missing"),
+          query: "Heel slide",
+        }),
+      ).rejects.toMatchObject({ code: "practitioner_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("allows another practitioner to review an in-progress request but not after approval", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-req-view"),
+        "rv@example.com",
+      );
+      const reviewer = await seedPractitioner(
+        storage,
+        id("pract-rev-view"),
+        "vw@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "View draft move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const review = await service.getRequest({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+      });
+      expect(review.requested_by).toBe(requester);
+
+      await service.approveRequest({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+      });
+
+      await expect(
+        service.getRequest({
+          practitionerId: reviewer,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "request_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not conflict when a similar request was created exactly at form_opened_at", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-boundary"),
+        "bd@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("pract-boundary-other"),
+        "bo@example.com",
+      );
+      const boundary = "2026-10-30T11:00:00.000Z";
+
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "44444444-4444-4444-8444-444444444444",
+          "Boundary plank",
+          null,
+          other,
+          "open",
+          null,
+          boundary,
+          boundary,
+        ],
+      );
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      const atBoundary = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Boundary plank variation",
+        formOpenedAt: boundary,
+      });
+      expect(atBoundary.outcome).toBe("created");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("conflicts when a similar request was created strictly after form_opened_at", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-after"),
+        "af@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("pract-after-other"),
+        "ao@example.com",
+      );
+      const formOpened = "2026-10-30T11:00:00.000Z";
+
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "55555555-5555-4555-8555-555555555555",
+          "After boundary plank",
+          null,
+          other,
+          "open",
+          null,
+          "2026-10-30T11:00:00.001Z",
+          "2026-10-30T11:00:00.001Z",
+        ],
+      );
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      const conflict = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "After boundary plank variation",
+        formOpenedAt: formOpened,
+      });
+      expect(conflict.outcome).toBe("conflict");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps edited draft titles out of approved search", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-edit"),
+        "ed@example.com",
+      );
+      const reviewer = await seedPractitioner(
+        storage,
+        id("pract-edit-rev"),
+        "er@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Editable draft move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const editedTitle = "Editable draft move edited unique";
+      await service.updateDraft({
+        practitionerId: reviewer,
+        requestId: created.request_id,
+        patch: { title: editedTitle },
+      });
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const search = await library.searchApprovedExercises({
+        practitionerId: reviewer,
+        query: editedTitle,
+      });
+      expect(search.exercises).toHaveLength(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects merge when the target request has no draft yet", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-open"),
+        "open@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-open"),
+        "mo@example.com",
+      );
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "77777777-7777-4777-8777-777777777777",
+          "Open only plank",
+          "owner note",
+          owner,
+          "open",
+          null,
+          AFTER_FORM,
+          AFTER_FORM,
+        ],
+      );
+
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      await expect(
+        service.submitRequest({
+          practitionerId: merger,
+          requestedName: "Open only plank alt",
+          exerciseNote: "merge note",
+          formOpenedAt: FORM_OPENED,
+          resolution: "merge",
+          conflictRequestId: "77777777-7777-4777-8777-777777777777",
+        }),
+      ).rejects.toMatchObject({ code: "merge_target_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not treat the requester's own in-progress request as a save conflict", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(
+        storage,
+        id("pract-self-conf"),
+        "sc@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const first = await service.submitRequest({
+        practitionerId: practId,
+        requestedName: "Self conflict move",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(first.outcome).toBe("created");
+
+      const second = await service.submitRequest({
+        practitionerId: practId,
+        requestedName: "Self conflict move variation",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(second.outcome).toBe("created");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects form_opened_at far in the future beyond clock skew", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const serverNow = "2026-10-30T12:00:00.000Z";
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => serverNow,
+      });
+      await expect(
+        service.submitRequest({
+          practitionerId: practId,
+          requestedName: "Future skew move",
+          formOpenedAt: "2026-10-30T12:02:00.001Z",
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+
+      const ok = await service.submitRequest({
+        practitionerId: practId,
+        requestedName: "Future skew ok",
+        formOpenedAt: "2026-10-30T12:01:59.000Z",
+      });
+      expect(ok.outcome).toBe("created");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("allows the requester to approve their own request", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-self-apr"),
+        "sa@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Self approve move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      const approved = await service.approveRequest({
+        practitionerId: requester,
+        requestId: created.request_id,
+      });
+      expect(approved.approved_by).toBe(requester);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("lists in-progress requests without practitioner email fields", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(
+        storage,
+        id("pract-no-email"),
+        "hidden@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      await service.submitRequest({
+        practitionerId: practId,
+        requestedName: "No email leak",
+        formOpenedAt: FORM_OPENED,
+      });
+      const list = await service.listInProgress({ practitionerId: practId });
+      const serialized = JSON.stringify(list);
+      expect(serialized).not.toContain("hidden@example.com");
+      expect(serialized).not.toContain("requester_email");
+      expect(list.requests[0]?.requested_by).toBe(practId);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("tags approved request exercises as new_from_requests in My exercises", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-new-sect"),
+        "ns@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-new-sect-app"),
+        "na@example.com",
+      );
+      const approvedAt = "2026-10-30T16:00:00.000Z";
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "New section move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      const approveService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => approvedAt,
+      });
+      await approveService.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const mine = await library.listMyExercises({ practitionerId: requester });
+      expect(mine.sections.new_from_requests).toHaveLength(1);
+      expect(mine.sections.new_from_requests[0]?.exercise_id).toBe(created.exercise_id);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects updateDraft with draft_not_ready after the request is approved", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-patch-after-appr"),
+        "paa@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-patch-after-appr-app"),
+        "paaa@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Patch after approve",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await service.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      await expect(
+        service.updateDraft({
+          practitionerId: approver,
+          requestId: created.request_id,
+          patch: { title: "Too late" },
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns draft_not_ready when the draft version row is no longer draft before approve", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-preappr-ver"),
+        "ppv@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-preappr-ver-app"),
+        "ppva@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Pre approved version",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created" || !created.exercise_id) {
+        return;
+      }
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ?
+         WHERE exercise_id = ? AND status = 'draft'`,
+        [approver, AFTER_FORM, created.exercise_id],
+      );
+      await expect(
+        service.approveRequest({
+          practitionerId: approver,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+      const requestRow = await storage.first<{ status: string }>(
+        "SELECT status FROM exercise_requests WHERE id = ?",
+        [created.request_id],
+      );
+      expect(requestRow?.status).toBe("drafting");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects a second approve with draft_not_ready", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-double-appr"),
+        "pda@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-double-appr-app"),
+        "pdaa@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Double approve",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await service.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+      await expect(
+        service.approveRequest({
+          practitionerId: approver,
+          requestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns draft_not_ready when updateDraft refresh cannot apply to the stored status", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pract-refresh-guard"),
+        "prg@example.com",
+      );
+      const reviewer = await seedPractitioner(
+        storage,
+        id("pract-refresh-guard-rev"),
+        "prgr@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await service.submitRequest({
+        practitionerId: requester,
+        requestedName: "Refresh guard move",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', updated_at = ? WHERE id = ?`,
+        [AFTER_FORM, created.request_id],
+      );
+      await expect(
+        service.updateDraft({
+          practitionerId: reviewer,
+          requestId: created.request_id,
+          patch: {},
+        }),
+      ).rejects.toMatchObject({ code: "draft_not_ready" });
+    } finally {
+      storage.close();
+    }
+  });
+});
