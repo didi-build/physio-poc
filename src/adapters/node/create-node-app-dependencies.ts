@@ -55,14 +55,20 @@ export type NodeEnvInput = WorkerEnv & {
   NODE_ENV?: string;
 };
 
+export type CreateNodeAppDependenciesOptions = {
+  cimdMetadataFetch?: ClientMetadataResourceFetch;
+  consentClock?: PhysioMcpConsentClock;
+  /** Test-only DI hook; defaults to identity. Not used in production wiring. */
+  wrapSqlPort?: (sql: SqlStoragePort) => SqlStoragePort;
+};
+
 export async function createNodeAppDependencies(
   env: NodeEnvInput,
-  options: {
-    cimdMetadataFetch?: ClientMetadataResourceFetch;
-    consentClock?: PhysioMcpConsentClock;
-    /** Test-only: wrap the SQL port before wiring auth (same instance for deps.sql and consent routes). */
-    wrapSqlPort?: (sql: SqlStoragePort) => SqlStoragePort;
-  } = {},
+  {
+    cimdMetadataFetch = defaultCimdMetadataFetch,
+    consentClock,
+    wrapSqlPort = (sql) => sql,
+  }: CreateNodeAppDependenciesOptions = {},
 ): Promise<AppDependencies> {
   const config = resolveNodePhysioServerConfig(env, "127.0.0.1:8787");
   const storage = BetterSqliteStorage.openInMemory();
@@ -71,13 +77,10 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
-  let sqlPort: SqlStoragePort = storage;
-  if (options.wrapSqlPort) {
-    sqlPort = options.wrapSqlPort(storage);
-  }
+  const sqlPort = wrapSqlPort(storage);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
-    cimdMetadataFetch: options.cimdMetadataFetch ?? defaultCimdMetadataFetch,
-    consentClock: options.consentClock,
+    cimdMetadataFetch,
+    consentClock,
   });
   const mcpHandler = createPhysioMcpHttpHandler(config);
   return {
