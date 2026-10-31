@@ -11,6 +11,8 @@ const FORBIDDEN_BUNDLE_MARKERS = [
   "fake-google-better-auth",
   "handleFakeGoogleRequest",
   "installFakeGoogleFetch",
+  "__fake-google",
+  "fake-google-oauth",
 ] as const;
 
 async function listFilesRecursive(dir: string): Promise<string[]> {

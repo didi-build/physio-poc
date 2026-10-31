@@ -56,6 +56,8 @@ export type AppDependencies = {
   uiStatic?: UiStaticPort;
   /** Dev/test Node entry only; never set on the Worker entry. */
   fakeGooglePreAuth?: FakeGooglePreAuthHandler;
+  /** Dev/test only; session guard public paths (for example fake Google OAuth). */
+  extraSessionPublicPath?: (pathname: string) => boolean;
   /** @deprecated Use fakeGooglePreAuth; kept for tests that assert the flag. */
   enableFakeGoogleRoutes?: boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
@@ -85,8 +87,7 @@ export async function handleRequest(
   void deps.objects;
 
   const sessionGuardOptions = {
-    fakeGoogleRoutesEnabled:
-      deps.fakeGooglePreAuth !== undefined || deps.enableFakeGoogleRoutes === true,
+    extraSessionPublicPath: deps.extraSessionPublicPath,
   };
 
   if (
@@ -237,7 +238,7 @@ export async function handleRequest(
 async function guardAndRun(
   request: Request,
   deps: AppDependencies,
-  sessionGuardOptions: { fakeGoogleRoutesEnabled: boolean },
+  sessionGuardOptions: { extraSessionPublicPath?: (pathname: string) => boolean },
   next: () => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);

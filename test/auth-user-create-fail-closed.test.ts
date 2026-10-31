@@ -12,6 +12,7 @@ import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
 import {
   installFakeGoogleFetch,
   handleFakeGoogleRequest,
+  isFakeGoogleOAuthPath,
 } from "../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import {
@@ -139,6 +140,7 @@ describe("OAuth user-create hook fail-closed (integration)", () => {
         auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
         mcp: createPhysioMcpHttpHandler(serverConfig),
         fakeGooglePreAuth: handleFakeGoogleRequest,
+        extraSessionPublicPath: isFakeGoogleOAuthPath,
         enableFakeGoogleRoutes: true,
       };
 

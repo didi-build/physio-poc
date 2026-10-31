@@ -13,6 +13,7 @@ import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import {
   installFakeGoogleFetch,
   handleFakeGoogleRequest,
+  isFakeGoogleOAuthPath,
 } from "../src/auth/fake-google-http.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -77,6 +78,7 @@ async function createAuthTestDeps(
     auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
     mcp: createPhysioMcpHttpHandler(serverConfig),
     fakeGooglePreAuth: handleFakeGoogleRequest,
+    extraSessionPublicPath: isFakeGoogleOAuthPath,
     enableFakeGoogleRoutes: true,
   };
 }

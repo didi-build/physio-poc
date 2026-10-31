@@ -11,7 +11,10 @@ import {
   MIGRATION_0004_ID,
   MIGRATION_0006_ID,
 } from "../../storage/migrations/apply.js";
-import { handleFakeGoogleRequest } from "../../auth/fake-google-http.js";
+import {
+  handleFakeGoogleRequest,
+  isFakeGoogleOAuthPath,
+} from "../../auth/fake-google-http.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
 import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { createMcpBearerAuthHandler, createNodeAuthPort } from "./create-auth-port.js";
@@ -84,6 +87,9 @@ export async function createNodeAppDependencies(
     uiStatic: createDistUiStaticPort(),
     fakeGooglePreAuth: config.auth.fakeGoogleProviderEnabled
       ? handleFakeGoogleRequest
+      : undefined,
+    extraSessionPublicPath: config.auth.fakeGoogleProviderEnabled
+      ? isFakeGoogleOAuthPath
       : undefined,
     enableFakeGoogleRoutes: config.auth.fakeGoogleProviderEnabled,
     guardedAppWithoutSession: "redirect",
