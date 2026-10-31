@@ -95,6 +95,38 @@ function assertShortNameLineIsSingleRow(doc: Document): void {
   expect(line!.getBoundingClientRect().height).toBeLessThan(40);
 }
 
+function duplicateCookieJar(source: CookieJar): CookieJar {
+  const target = new CookieJar();
+  const raw = source.header();
+  if (!raw) {
+    return target;
+  }
+  for (const segment of raw.split(";")) {
+    const eq = segment.indexOf("=");
+    if (eq <= 0) {
+      continue;
+    }
+    target.set(segment.slice(0, eq).trim(), segment.slice(eq + 1).trim());
+  }
+  return target;
+}
+
+async function referencePlain403ConsentAllowFingerprint(
+  deps: AppDependencies,
+  jar: CookieJar,
+): Promise<Awaited<ReturnType<typeof consentHttpFingerprint>>> {
+  const probeJar = duplicateCookieJar(jar);
+  probeJar.set("physio_mcp_pending_consent_id", generateOpaqueEntityId());
+  const reference = await consentHttpFingerprint(
+    await requestWithJar(`${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`, deps, probeJar, {
+      method: "POST",
+    }),
+  );
+  expect(reference.status).toBe(403);
+  expect(reference.body).toBe("");
+  return reference;
+}
+
 async function consentHttpFingerprint(response: Response): Promise<{
   status: number;
   headerLines: string[];
@@ -795,43 +827,14 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(missingOwner.body).toBe("");
   });
 
-  it("returns plain 403 for bad CSRF on a missing row and on an expired owner row", async () => {
-    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
-    const jarMissing = new CookieJar();
-    await completeGoogleSignIn(deps, jarMissing);
-    await followAuthorizeToConsent(
-      deps,
-      jarMissing,
-      buildAuthorizeUrl({
-        clientId: CHATGPT_CIMD_CLIENT_ID,
-        redirectUri: CHATGPT_REDIRECT_URI,
-        verifier: randomPkceVerifier(),
-        resource: mcpResourceUrl(),
-      }),
-    );
-    const pendingId = jarMissing.get("physio_mcp_pending_consent_id");
-    await deps.sql.run("DELETE FROM physio_mcp_pending_consent WHERE id = ?", [
-      pendingId!,
-    ]);
-    const missingBadCsrf = await consentHttpFingerprint(
-      await requestWithJar(
-        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
-        deps,
-        jarMissing,
-        {
-          method: "POST",
-          headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
-        },
-      ),
-    );
-
+  it("returns byte-identical plain 403 for bad CSRF or Origin on owner expired and consumed rows", async () => {
     let nowMs = 5_000_000_000_000;
     const clock = { nowMs: () => nowMs };
     const depsExpired = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
       consentClock: clock,
     });
     const jarExpired = new CookieJar();
-    await completeGoogleSignIn(deps, jarExpired);
+    await completeGoogleSignIn(depsExpired, jarExpired);
     await followAuthorizeToConsent(
       depsExpired,
       jarExpired,
@@ -841,6 +844,10 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
         verifier: randomPkceVerifier(),
         resource: mcpResourceUrl(),
       }),
+    );
+    const expiredReference = await referencePlain403ConsentAllowFingerprint(
+      depsExpired,
+      jarExpired,
     );
     nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
     const expiredBadCsrf = await consentHttpFingerprint(
@@ -854,12 +861,73 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
         },
       ),
     );
+    expect(expiredBadCsrf).toEqual(expiredReference);
+    expect(expiredBadCsrf.body).not.toContain("This request has expired");
 
-    expect(missingBadCsrf.status).toBe(403);
-    expect(expiredBadCsrf.status).toBe(403);
-    expect(missingBadCsrf.body).toBe("");
-    expect(expiredBadCsrf.body).toBe("");
-    expect(missingBadCsrf.headerLines).toEqual(expiredBadCsrf.headerLines);
+    const jarExpiredOrigin = duplicateCookieJar(jarExpired);
+    const expiredBadOrigin = await consentHttpFingerprint(
+      await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        depsExpired,
+        jarExpiredOrigin,
+        {
+          method: "POST",
+          headers: { origin: "https://evil.example" },
+        },
+      ),
+    );
+    expect(expiredBadOrigin).toEqual(expiredReference);
+    expect(expiredBadOrigin.body).not.toContain("This request has expired");
+
+    nowMs = 6_000_000_000_000;
+    const depsConsumed = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
+    const jarConsumed = new CookieJar();
+    await completeGoogleSignIn(depsConsumed, jarConsumed);
+    await followAuthorizeToConsent(
+      depsConsumed,
+      jarConsumed,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    await allowConsent(depsConsumed, jarConsumed);
+    const consumedReference = await referencePlain403ConsentAllowFingerprint(
+      depsConsumed,
+      jarConsumed,
+    );
+    const consumedBadCsrf = await consentHttpFingerprint(
+      await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+        depsConsumed,
+        jarConsumed,
+        {
+          method: "POST",
+          headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+        },
+      ),
+    );
+    expect(consumedBadCsrf).toEqual(consumedReference);
+    expect(consumedBadCsrf.body).not.toContain("This request has expired");
+
+    const jarConsumedOrigin = duplicateCookieJar(jarConsumed);
+    const consumedBadOrigin = await consentHttpFingerprint(
+      await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+        depsConsumed,
+        jarConsumedOrigin,
+        {
+          method: "POST",
+          headers: { origin: "https://evil.example" },
+        },
+      ),
+    );
+    expect(consumedBadOrigin).toEqual(consumedReference);
+    expect(consumedBadOrigin.body).not.toContain("This request has expired");
   });
 
   it("shows the expired page when the owner posts allow on expired or consumed pending rows", async () => {
