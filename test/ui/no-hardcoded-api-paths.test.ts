@@ -7,6 +7,7 @@ const ALLOWED_API_CLIENT_MODULES = new Set([
   "api/exercise-library-client.ts",
   "api/auth-client.ts",
   "api/my-defaults-client.ts",
+  "api/programs-client.ts",
 ]);
 
 function listSourceFiles(dir: string): string[] {
