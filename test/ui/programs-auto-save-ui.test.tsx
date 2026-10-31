@@ -47,7 +47,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
   it("announces publish card status from the visible status line, not a fixed Not published yet label", () => {
     const publishedAt = "2026-10-24T18:10:00.000Z";
     const previousTz = process.env.TZ;
-    process.env.TZ = "America/Toronto";
+    process.env.TZ = "America/Los_Angeles";
     try {
       const { container } = render(
         <BuilderPublishCard
@@ -59,7 +59,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
           onTryAgain={() => {}}
         />,
       );
-      expect(screen.getByText("Published Oct 24, 2:10 PM")).toBeInTheDocument();
+      expect(screen.getByText("Published Oct 24, 11:10 AM")).toBeInTheDocument();
       const card = container.querySelector(".pg-publish-card");
       expect(card).not.toHaveAttribute("aria-label", NOT_PUBLISHED_YET);
     } finally {

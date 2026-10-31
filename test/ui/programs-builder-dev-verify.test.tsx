@@ -619,9 +619,9 @@ describe("Programs builder dev verification", () => {
   });
 
   it("formats published status with the viewer local time", async () => {
-    const expectedStatus = "Published Oct 24, 2:10 PM";
+    const expectedStatus = "Published Oct 24, 11:10 AM";
     const previousTz = process.env.TZ;
-    process.env.TZ = "America/Toronto";
+    process.env.TZ = "America/Los_Angeles";
     try {
       render(
         <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
