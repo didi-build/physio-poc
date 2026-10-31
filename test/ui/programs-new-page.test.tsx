@@ -149,6 +149,7 @@ describe("Programs new page (integration, jsdom)", () => {
         />
       </MemoryRouter>,
     );
+    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
@@ -157,35 +158,38 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
   });
 
-  it("clears the error slot on retry after a failed create (C4)", async () => {
+  it("clears the error slot at the start of each retry attempt (C4)", async () => {
+    let rejectSecond: ((reason: Error) => void) | undefined;
     const createProgram = vi
       .fn()
       .mockRejectedValueOnce(new Error("fail"))
-      .mockResolvedValue({ program: builderView() });
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectSecond = reject;
+          }),
+      );
     render(
       <MemoryRouter initialEntries={["/programs/new"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
-          programsClient={stubProgramsClient({
-            createProgram,
-            ...listAndBuilderStubs(),
-          })}
+          programsClient={stubProgramsClient({ createProgram })}
         />
       </MemoryRouter>,
     );
-    let sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
       expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
     });
-    sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(createProgram).toHaveBeenCalledTimes(2);
+      expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
     });
+    rejectSecond?.(new Error("fail again"));
     await waitFor(() => {
-      expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
+      expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
     });
-    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+    expect(createProgram).toHaveBeenCalledTimes(2);
   });
 });

@@ -23,6 +23,8 @@ export const CLEAR_SEARCH = "Clear search";
 export const FILTER_FROM_ROUTINE = "From a routine";
 export const FILTER_FROM_SCRATCH = "From scratch";
 export const FILTER_ALL_PROGRAMS = "Show programs";
+/** design/app/programs/spec.md States table line 23 filter pills (All). */
+export const FILTER_ALL_PILL = "All";
 
 export const RECENTLY_DELETED = "Recently deleted";
 export const RECENTLY_DELETED_INTRO =

@@ -1,4 +1,5 @@
 import {
+  FILTER_ALL_PILL,
   FILTER_ALL_PROGRAMS,
   FILTER_FROM_ROUTINE,
   FILTER_FROM_SCRATCH,
@@ -17,7 +18,7 @@ export function ProgramOriginFilterPills({
   onSelect,
 }: ProgramOriginFilterPillsProps) {
   return (
-    <div className="pg-origin-filters" role="group">
+    <div className="pg-origin-filters" role="group" aria-label={FILTER_ALL_PROGRAMS}>
       <button
         type="button"
         className={`pg-origin-filter${active === "all" ? " pg-origin-filter--active" : ""}`}
@@ -26,7 +27,7 @@ export function ProgramOriginFilterPills({
           onSelect("all");
         }}
       >
-        {FILTER_ALL_PROGRAMS}
+        {FILTER_ALL_PILL}
       </button>
       <button
         type="button"
