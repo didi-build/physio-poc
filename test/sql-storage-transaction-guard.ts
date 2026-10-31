@@ -7,24 +7,55 @@ export const TRANSACTION_GUARD_SCAN_ROOTS = [
   join(import.meta.dirname, "..", "src", "storage", "repositories"),
 ] as const;
 
+const REPO_ROOT = join(import.meta.dirname, "..");
+const STORAGE_MIGRATIONS_ROOT = join(REPO_ROOT, "src", "storage", "migrations");
+
 /**
- * Paths under a directory named `migrations` are excluded (Node test migration runner only;
- * not service/repository code; DIDI-1101 does not cover applyMigration).
+ * Only the Node test migration runner under src/storage/migrations is excluded.
+ * A nested folder named migrations elsewhere remains in scope.
  */
 export function isExcludedFromTransactionGuardScan(absolutePath: string): boolean {
-  const segments = absolutePath.split(/[/\\]/);
-  return segments.includes("migrations");
+  const normalized = absolutePath.replace(/\\/g, "/");
+  const migrationsRoot = STORAGE_MIGRATIONS_ROOT.replace(/\\/g, "/");
+  return normalized === migrationsRoot || normalized.startsWith(`${migrationsRoot}/`);
 }
 
-/** Case-insensitive match on BEGIN, COMMIT, ROLLBACK inside run("...") strings. */
+/** Case-insensitive forbidden transaction control inside sql.run(...) string literals. */
+export function rawSqlTransactionControlPatterns(): RegExp[] {
+  const keyword =
+    "(BEGIN(?:\\s+(?:IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION))?|COMMIT|ROLLBACK|SAVEPOINT\\b|RELEASE\\s+SAVEPOINT)";
+  return [
+    new RegExp(
+      String.raw`\b(await\s+)?(this\.)?(sql\.)?run\(\s*(["'` +
+        "`" +
+        String.raw`])[^"'` +
+        "`" +
+        String.raw`]*\b${keyword}\b`,
+      "i",
+    ),
+    new RegExp(
+      String.raw`\b(await\s+)?(this\.)?(sql\.)?run\(\s*[a-zA-Z_$][\w$]*\s*\)`,
+      "i",
+    ),
+    new RegExp(
+      String.raw`\bbatch\s*\(\s*\[\s*\{[^}]*\bsql\s*:\s*(["'` +
+        "`" +
+        String.raw`])[^"'` +
+        "`" +
+        String.raw`]*\b${keyword}\b`,
+      "i",
+    ),
+  ];
+}
+
 export function rawSqlTransactionControlPattern(): RegExp {
-  return /\b(await\s+)?(this\.)?(sql\.)?run\(\s*["'](BEGIN|COMMIT|ROLLBACK)["']/i;
+  return rawSqlTransactionControlPatterns()[0];
 }
 
 export type TransactionGuardScanOptions = {
   roots?: readonly string[];
   recursive?: boolean;
-  pattern?: RegExp;
+  patterns?: RegExp[];
 };
 
 export function listTransactionGuardScanFiles(
@@ -35,7 +66,7 @@ export function listTransactionGuardScanFiles(
   const files: string[] = [];
   for (const root of roots) {
     if (recursive) {
-      collectTsFilesRecursive(root, root, files);
+      collectTsFilesRecursive(root, files);
     } else {
       for (const name of readdirSync(root)) {
         const absolute = join(root, name);
@@ -48,14 +79,14 @@ export function listTransactionGuardScanFiles(
   return files.sort();
 }
 
-function collectTsFilesRecursive(root: string, dir: string, files: string[]): void {
+function collectTsFilesRecursive(dir: string, files: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const absolute = join(dir, entry.name);
     if (isExcludedFromTransactionGuardScan(absolute)) {
       continue;
     }
     if (entry.isDirectory()) {
-      collectTsFilesRecursive(root, absolute, files);
+      collectTsFilesRecursive(absolute, files);
       continue;
     }
     if (entry.isFile() && entry.name.endsWith(".ts")) {
@@ -67,11 +98,11 @@ function collectTsFilesRecursive(root: string, dir: string, files: string[]): vo
 export function findRawSqlTransactionControlViolations(
   options: TransactionGuardScanOptions = {},
 ): { file: string; source: string }[] {
-  const pattern = options.pattern ?? rawSqlTransactionControlPattern();
+  const patterns = options.patterns ?? rawSqlTransactionControlPatterns();
   const violations: { file: string; source: string }[] = [];
   for (const file of listTransactionGuardScanFiles(options)) {
     const source = readFileSync(file, "utf8");
-    if (pattern.test(source)) {
+    if (patterns.some((pattern) => pattern.test(source))) {
       violations.push({ file, source });
     }
   }
@@ -79,5 +110,5 @@ export function findRawSqlTransactionControlViolations(
 }
 
 export function relativeFromRepoRoot(absolutePath: string): string {
-  return relative(join(import.meta.dirname, ".."), absolutePath);
+  return relative(REPO_ROOT, absolutePath);
 }

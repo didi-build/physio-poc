@@ -1,12 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
+import { ProgramBuilderServiceError } from "../src/services/programs/program-builder-service.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import { ProgramsRepository } from "../src/storage/repositories/programs.js";
-import {
-  RoutineVersionRowsRepository,
-  RoutineVersionsRepository,
-  RoutinesRepository,
-} from "../src/storage/repositories/routines.js";
 import {
   MIGRATION_0001_ID,
   MIGRATION_0002_ID,
@@ -27,8 +22,14 @@ import {
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { createFakePhysioD1Database } from "./helpers/fake-physio-d1-database.js";
+import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
+import {
+  RoutineVersionRowsRepository,
+  RoutineVersionsRepository,
+  RoutinesRepository,
+} from "../src/storage/repositories/routines.js";
 
 const BODY_REGION_KNEE = "br-knee";
 
@@ -101,36 +102,58 @@ async function expectNoProgramAfterPoisonedBatch(
   expect(rows).toHaveLength(0);
 }
 
+async function runPoisonedBatchCase(
+  storage: SqlStoragePort,
+  label: string,
+): Promise<void> {
+  const practitionerId = await seedPractitioner(storage);
+  await seedApprovedExerciseVersion(storage, practitionerId);
+  const { routineId, rowIds } = await publishTwoRowRoutine(storage, practitionerId);
+  const programId = id(`prog-batch-${label}`);
+  const service = new ProgramBuilderService(storage);
+  await expect(
+    service.createProgramFromRoutine(practitionerId, {
+      programId: id(`prog-happy-${label}`),
+      routineId,
+      source: "community",
+      rowIds: [id(`happy-a-${label}`), id(`happy-b-${label}`)],
+    }),
+  ).resolves.toBeDefined();
+  const originalBatch = storage.batch.bind(storage);
+  vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+    const poisoned = [
+      ...statements.slice(0, 3),
+      {
+        sql: "INSERT INTO program_rows (id, program_id, position) VALUES (?, ?, ?)",
+        bindings: [id(`poison-row-${label}`), id("missing-program-id"), 99],
+      },
+      ...statements.slice(3),
+    ];
+    return originalBatch(poisoned);
+  });
+  let caught: unknown;
+  try {
+    await service.createProgramFromRoutine(practitionerId, {
+      programId,
+      routineId,
+      source: "community",
+      rowIds,
+    });
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeDefined();
+  if (caught instanceof ProgramBuilderServiceError) {
+    expect(caught.code).not.toBe("exercise_not_found");
+  }
+  await expectNoProgramAfterPoisonedBatch(storage, programId);
+}
+
 describe("createProgramFromRoutine batch atomicity", () => {
   it("BetterSqliteStorage leaves no program when batch fails mid write", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const practitionerId = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, practitionerId);
-      const { routineId, rowIds } = await publishTwoRowRoutine(storage, practitionerId);
-      const programId = id("prog-batch-sqlite");
-      const service = new ProgramBuilderService(storage);
-      const originalBatch = storage.batch.bind(storage);
-      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
-        const poisoned = [
-          ...statements.slice(0, 3),
-          {
-            sql: "INSERT INTO program_rows (id, program_id, position) VALUES (?, ?, ?)",
-            bindings: [id("poison-row"), id("missing-program-id"), 99],
-          },
-          ...statements.slice(3),
-        ];
-        return originalBatch(poisoned);
-      });
-      await expect(
-        service.createProgramFromRoutine(practitionerId, {
-          programId,
-          routineId,
-          source: "community",
-          rowIds,
-        }),
-      ).rejects.toThrow();
-      await expectNoProgramAfterPoisonedBatch(storage, programId);
+      await runPoisonedBatchCase(storage, "sqlite");
     } finally {
       storage.close();
     }
@@ -138,31 +161,6 @@ describe("createProgramFromRoutine batch atomicity", () => {
 
   it("D1SqlStorage fake leaves no program when batch fails mid write", async () => {
     const storage = await openMigratedD1SqlStorage();
-    const practitionerId = await seedPractitioner(storage);
-    await seedApprovedExerciseVersion(storage, practitionerId);
-    const { routineId, rowIds } = await publishTwoRowRoutine(storage, practitionerId);
-    const programId = id("prog-batch-d1");
-    const service = new ProgramBuilderService(storage);
-    const originalBatch = storage.batch.bind(storage);
-    vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
-      const poisoned = [
-        ...statements.slice(0, 3),
-        {
-          sql: "INSERT INTO program_rows (id, program_id, position) VALUES (?, ?, ?)",
-          bindings: [id("poison-row-d1"), id("missing-program-id"), 99],
-        },
-        ...statements.slice(3),
-      ];
-      return originalBatch(poisoned);
-    });
-    await expect(
-      service.createProgramFromRoutine(practitionerId, {
-        programId,
-        routineId,
-        source: "community",
-        rowIds,
-      }),
-    ).rejects.toThrow();
-    await expectNoProgramAfterPoisonedBatch(storage, programId);
+    await runPoisonedBatchCase(storage, "d1");
   });
 });

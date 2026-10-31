@@ -3,8 +3,10 @@ import { PATIENT_DETAIL_REJECTION_MESSAGE } from "../src/mcp-connector/patient-d
 import { PRESCRIPTION_TYPES } from "../src/domain/exercise-types.js";
 import {
   ProgramBuilderService,
+  buildLinkApprovedPlaceholderStatements,
   linkApprovedPlaceholders,
 } from "../src/services/programs/program-builder-service.js";
+import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
   ProgramRowsRepository,
@@ -31,8 +33,6 @@ const ROW_ID_OPAQUE_MESSAGE = "Program row id must be a UUID v4 opaque id";
 const EXERCISE_VERSION_ID_OPAQUE_MESSAGE =
   "Exercise version id must be a UUID v4 opaque id";
 const HOLD_S_RANGE_MESSAGE = "hold_s must be between 1 and 120";
-const LINK_VERSION_MISMATCH_MESSAGE =
-  "approvedVersionId does not match the exercise request";
 const ROW_NOTE_PATIENT_DETAIL_MESSAGE = `Row note: ${PATIENT_DETAIL_REJECTION_MESSAGE}`;
 const FLAGGED_NOTE = "coach@example.com";
 
@@ -449,7 +449,15 @@ describe("ProgramBuilderService addExerciseRow guards", () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
-      await seedApprovedExerciseVersion(storage, practitionerId);
+      await seedExercise(storage, practitionerId);
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          status: "draft",
+          approved_by: null,
+          approved_at: null,
+        }),
+      );
       const service = new ProgramBuilderService(storage);
       await service.createProgram(practitionerId, { programId: id("prog-draft-ver") });
       await expect(
@@ -991,34 +999,29 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
     }
   });
 
-  it("rejects when approved request has no exercise_id", async () => {
+  it("links when the approved request still has a null exercise_id (batch compose guard)", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
-      await seedOpenExerciseRequest(
-        storage,
-        practitionerId,
-        id("req-no-exercise-id"),
-        "Move",
-      );
+      const requestId = id("req-no-exercise-id");
+      await seedOpenExerciseRequest(storage, practitionerId, requestId, "Move");
       const service = new ProgramBuilderService(storage);
       await service.createProgram(practitionerId, { programId: id("prog-no-ex-id") });
       await service.addPlaceholderRow(practitionerId, id("prog-no-ex-id"), {
         rowId: id("row-no-ex-id"),
-        exerciseRequestId: id("req-no-exercise-id"),
+        exerciseRequestId: requestId,
         prescriptionType: "stretching",
       });
       await storage.run(
         `UPDATE exercise_requests SET status = 'approved', exercise_id = NULL, updated_at = ? WHERE id = ?`,
-        [TS, id("req-no-exercise-id")],
+        [TS, requestId],
       );
       await expect(
-        linkApprovedPlaceholders(storage, id("req-no-exercise-id"), FIXTURE_VERSION_ID),
-      ).rejects.toMatchObject({
-        code: "invalid_input",
-        message: LINK_VERSION_MISMATCH_MESSAGE,
-      });
+        linkApprovedPlaceholders(storage, requestId, FIXTURE_VERSION_ID),
+      ).resolves.toBe(0);
+      const view = await service.getProgram(practitionerId, id("prog-no-ex-id"));
+      expect(view.rows[0]?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
     } finally {
       storage.close();
     }
@@ -1083,6 +1086,51 @@ describe("ProgramBuilderService linkApprovedPlaceholders repository guards", () 
       expect(restored.rows[0]?.exercise_id).toBe(FIXTURE_EXERCISE_ID);
       expect(restored.rows[0]?.exercise_version_id).toBe(FIXTURE_VERSION_ID);
       expect(restored.rows[0]?.exercise_request_id).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rolls back link writes when placeholder row no longer matches link guard", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      await seedApprovedExerciseForBuilder(storage, practitionerId);
+      const requestId = id("req-link-guard");
+      await seedOpenExerciseRequest(storage, practitionerId, requestId, "Guard");
+      const service = new ProgramBuilderService(storage);
+      const programId = id("prog-link-guard");
+      const rowId = id("row-link-guard");
+      await service.createProgram(practitionerId, { programId });
+      await service.addPlaceholderRow(practitionerId, programId, {
+        rowId,
+        exerciseRequestId: requestId,
+        prescriptionType: "stretching",
+      });
+      await markExerciseRequestApproved(storage, requestId, FIXTURE_EXERCISE_ID);
+      const { statements } = await buildLinkApprovedPlaceholderStatements(
+        storage,
+        requestId,
+        FIXTURE_VERSION_ID,
+      );
+      const otherRequestId = id("req-link-guard-decoy");
+      await seedOpenExerciseRequest(storage, practitionerId, otherRequestId, "Decoy");
+      await storage.run(
+        `UPDATE program_rows SET exercise_request_id = ? WHERE id = ?`,
+        [otherRequestId, rowId],
+      );
+      await expect(storage.batch(statements)).rejects.toBeInstanceOf(
+        SqlBatchGuardError,
+      );
+      const row = await storage.first<{
+        exercise_request_id: string | null;
+        exercise_id: string | null;
+      }>(
+        "SELECT exercise_request_id, exercise_id FROM program_rows WHERE id = ? LIMIT 1",
+        [rowId],
+      );
+      expect(row?.exercise_request_id).toBe(otherRequestId);
+      expect(row?.exercise_id).toBeNull();
     } finally {
       storage.close();
     }
