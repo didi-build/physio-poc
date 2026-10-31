@@ -23,7 +23,10 @@ import {
   programsFromRoutinePath,
   routineSentProgramsPath,
 } from "./helpers/program-builder-http-paths.js";
-import { programBuilderHttpRouteCases } from "./helpers/program-builder-http-route-cases.js";
+import {
+  programBuilderHttpRouteCases,
+  programBuilderMutatingHttpRouteCases,
+} from "./helpers/program-builder-http-route-cases.js";
 import {
   publishRoutine,
   seedTwoPractitioners,
@@ -672,7 +675,8 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
     }
   });
 
-  it("pins DIDI-1133 routes in the program builder HTTP route table", () => {
+  it("pins DIDI-1133 routes in programBuilderHttpRouteCases test helper list", () => {
+    // Test helper only; production routes are if branches in src/http/routes.
     const cases = programBuilderHttpRouteCases();
     expect(cases).toContainEqual({
       method: "POST",
@@ -684,6 +688,13 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
           routeCase.method === "GET" && routeCase.path.endsWith("/sent-programs"),
       ),
     ).toBe(true);
+  });
+
+  it("pins POST from-routine in programBuilderMutatingHttpRouteCases for CSRF registry", () => {
+    expect(programBuilderMutatingHttpRouteCases()).toContainEqual({
+      method: "POST",
+      path: programsFromRoutinePath(),
+    });
   });
 
   it("returns not_found for non-GET methods on sent-programs without stats in the body", async () => {
