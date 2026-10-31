@@ -13,4 +13,8 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    "WEB_APP_BASE_URL": "https://physio-poc.diademshoukralla.workers.dev",
+    "PHYSIO_USE_FAKE_GOOGLE_PROVIDER": "false",
+  },
 }
