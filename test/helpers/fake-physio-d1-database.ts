@@ -12,6 +12,11 @@ type MarkedPrepared = PhysioD1PreparedStatement & {
   __sqliteRun(): { meta: { changes?: number } };
 };
 
+export type FakePhysioD1DatabaseOptions = {
+  /** Called with each SQL string when `prepare` is invoked (matches D1 adapter call sites). */
+  onPrepareQuery?: (sql: string) => void;
+};
+
 function normalizeBinding(value: SqlValue): SqlValue {
   if (typeof value === "boolean") {
     return value ? 1 : 0;
@@ -44,19 +49,24 @@ function assertPreparedStatement(
 
 /**
  * In-process D1 test double backed by SQLite. Supports atomic db.batch like production D1.
+ * Compiles SQL at `run()` / `batch()` execution time, not when `prepare()` returns.
  */
-export function createFakePhysioD1Database(): PhysioD1Database {
+export function createFakePhysioD1Database(
+  options: FakePhysioD1DatabaseOptions = {},
+): PhysioD1Database {
   const db = new Database(":memory:");
   db.pragma("foreign_keys = ON");
+  const { onPrepareQuery } = options;
 
   return {
     prepare(query: string) {
-      const stmt = db.prepare(query);
+      onPrepareQuery?.(query);
       return {
         bind(...values: SqlValue[]) {
           const bound = values.map(normalizeBinding);
           return markPrepared({
             __sqliteRun() {
+              const stmt = db.prepare(query);
               const result = stmt.run(...bound);
               return { meta: { changes: result.changes } };
             },
@@ -64,10 +74,12 @@ export function createFakePhysioD1Database(): PhysioD1Database {
               return Promise.resolve(this.__sqliteRun());
             },
             all(): Promise<{ results?: Record<string, SqlValue>[] }> {
+              const stmt = db.prepare(query);
               const results = stmt.all(...bound) as Record<string, SqlValue>[];
               return Promise.resolve({ results });
             },
             first(): Promise<Record<string, SqlValue> | null> {
+              const stmt = db.prepare(query);
               const row = stmt.get(...bound) as Record<string, SqlValue> | undefined;
               return Promise.resolve(row ?? null);
             },

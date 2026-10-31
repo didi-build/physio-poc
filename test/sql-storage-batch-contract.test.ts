@@ -410,6 +410,33 @@ describe("InMemorySqlStorage batch concurrency", () => {
 });
 
 describe("D1SqlStorage batch uses db.batch", () => {
+  it("never prepares CREATE TABLE DDL during batch or prerequisite run() calls", async () => {
+    const preparedQueries: string[] = [];
+    const d1 = createFakePhysioD1Database({
+      onPrepareQuery: (sql) => preparedQueries.push(sql),
+    });
+    await runFakeD1Statements(
+      d1,
+      "CREATE TABLE guarded (id TEXT PRIMARY KEY, status TEXT)",
+    );
+    for (const statement of splitSqlStatements(MIGRATION_0007_SQL)) {
+      await runFakeD1Statements(d1, statement);
+    }
+    preparedQueries.length = 0;
+    const sql = new D1SqlStorage(d1);
+    await sql.run("INSERT INTO guarded (id, status) VALUES (?, ?)", ["g-1", "open"]);
+    await sql.batch([
+      {
+        sql: "UPDATE guarded SET status = ? WHERE id = ? AND status = ?",
+        bindings: ["closed", "g-1", "open"],
+        minRowsAffected: 1,
+      },
+    ]);
+    for (const query of preparedQueries) {
+      expect(query.toUpperCase()).not.toContain("CREATE TABLE");
+    }
+  });
+
   it("maps duplicate programs.id through batch", async () => {
     const d1 = createFakePhysioD1Database();
     await runFakeD1Statements(
