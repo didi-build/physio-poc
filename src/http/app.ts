@@ -1,5 +1,4 @@
 import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
-import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
 import type { AuthPort, PractitionerSession } from "../auth/auth-port.js";
@@ -100,6 +99,7 @@ export async function handleRequest(
   }
 
   if (deps.enableFakeGoogleRoutes) {
+    const { handleFakeGoogleRequest } = await import("../auth/fake-google-http.js");
     const fakeGoogle = await handleFakeGoogleRequest(
       request,
       deps.config.auth.authBaseUrl,

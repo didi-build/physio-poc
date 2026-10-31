@@ -7,7 +7,7 @@ import {
   ALLOWLIST_REFUSAL_ERROR,
   isEmailAllowlisted,
 } from "../src/auth/allowed-emails.js";
-import { buildPhysioBetterAuthOptions } from "../src/adapters/node/create-better-auth.js";
+import { buildPhysioBetterAuthOptionsForConfig } from "../src/adapters/node/create-better-auth.js";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
 import { installFakeGoogleFetch } from "../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
@@ -81,7 +81,7 @@ function createBetterAuthWithAllowlistOnlyValidateUserInfo(
   serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
 ) {
   installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
-  const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
+  const options = buildPhysioBetterAuthOptionsForConfig(storage, serverConfig.auth);
   const auth = betterAuth({
     ...options,
     user: {

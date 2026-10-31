@@ -6,7 +6,7 @@ import type {
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
 
-/** Minimal D1 binding surface used by the Workers entry. */
+/** D1 binding for SqlStoragePort and Better Auth on Workers (DIDI-1153). */
 export type PhysioD1Database = {
   prepare(query: string): {
     bind(...values: SqlValue[]): {
@@ -15,6 +15,10 @@ export type PhysioD1Database = {
       first(): Promise<Record<string, SqlValue> | null>;
     };
   };
+  batch?(
+    statements: Array<{ run(): Promise<unknown> }>,
+  ): Promise<Array<{ meta?: { changes?: number } }>>;
+  exec?(query: string): Promise<unknown>;
 };
 
 function normalizeBinding(value: SqlValue): SqlValue {

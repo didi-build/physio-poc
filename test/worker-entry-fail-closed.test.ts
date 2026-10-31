@@ -6,8 +6,8 @@ import { handleRequest, MCP_PATH } from "../src/http/app.js";
 import worker from "../src/entry/worker.js";
 
 describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
-  it("never uses FakeAuthPort even when PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true", () => {
-    const deps = createWorkerAppDependencies({
+  it("never uses FakeAuthPort even when PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true", async () => {
+    const deps = await createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
     });
     expect(deps.auth).toBeInstanceOf(FailClosedAuthPort);
@@ -16,7 +16,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
   });
 
   it("does not mount fake Google routes on the Worker entry", async () => {
-    const deps = createWorkerAppDependencies({
+    const deps = await createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
     });
     const response = await handleRequest(

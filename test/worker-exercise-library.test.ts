@@ -66,8 +66,8 @@ function exerciseRouteCases(
 }
 
 describe("Worker exercise library routes (integration)", () => {
-  it("does not expose an unauthenticated exercise API bypass on the Worker entry", () => {
-    const deps = createWorkerAppDependencies({
+  it("does not expose an unauthenticated exercise API bypass on the Worker entry", async () => {
+    const deps = await createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
     });
     expect("enableUnauthenticatedApi" in deps).toBe(false);
@@ -104,7 +104,7 @@ describe("Worker exercise library routes (integration)", () => {
       }),
     ]);
 
-    const workerDeps = createWorkerAppDependencies({});
+    const workerDeps = await createWorkerAppDependencies({});
     const auth = new FakeAuthPort({
       practitioner: {
         practitionerId: practId,

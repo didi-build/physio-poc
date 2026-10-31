@@ -3,10 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { betterAuth } from "better-auth";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
-import {
-  buildPhysioBetterAuthOptions,
-  createDefaultPhysioValidateUserInfo,
-} from "../src/adapters/node/create-better-auth.js";
+import { createDefaultPhysioValidateUserInfo } from "../src/adapters/node/create-better-auth.js";
+import { buildPhysioBetterAuthOptionsForConfig } from "../src/adapters/node/create-better-auth.js";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
 import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
 import { ALLOWLIST_REFUSAL_ERROR } from "../src/auth/allowed-emails.js";
@@ -64,7 +62,7 @@ async function createAuthTestDeps(
   serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
 ): Promise<AppDependencies> {
   installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
-  const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
+  const options = buildPhysioBetterAuthOptionsForConfig(storage, serverConfig.auth);
   const runtime = betterAuth({
     ...options,
     database: storage.nativeDatabase(),

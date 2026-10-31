@@ -79,7 +79,7 @@ export async function createNodeAppDependencies(
     config,
     auth: authBundle.auth,
     mcp: mcpHandler,
-    mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config),
+    mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, storage),
     uiStatic: createDistUiStaticPort(),
     enableFakeGoogleRoutes: config.auth.fakeGoogleProviderEnabled,
     guardedAppWithoutSession: "redirect",
