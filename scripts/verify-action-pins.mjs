@@ -1,50 +1,54 @@
-import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import {
+  ACTIONS_DIR_ENV,
+  WORKFLOWS_DIR_ENV,
+  collectAllRemoteShaUses,
+  collectUsesProblems,
+} from "./lib/github-actions-uses-validation.mjs";
 
-const WORKFLOWS_DIR =
-  process.env.VERIFY_ACTION_PINS_WORKFLOWS_DIR ?? join(".github", "workflows");
-const PIN_RE = /uses:\s+([^@\s]+)@([0-9a-f]{40})\s+#\s*(v[^\s]+)/gi;
-const USES_LINE_RE = /^\s*-\s+uses:\s+(\S+)/;
-const FULL_SHA_REF_RE = /^[0-9a-f]{40}$/i;
+const workflowsDir = process.env[WORKFLOWS_DIR_ENV] ?? join(".github", "workflows");
+const actionsDir =
+  process.env[ACTIONS_DIR_ENV] === "none"
+    ? null
+    : (process.env[ACTIONS_DIR_ENV] ?? join(".github", "actions"));
 
-function listWorkflowFiles(dir) {
-  return readdirSync(dir).filter(
-    (name) => name.endsWith(".yml") || name.endsWith(".yaml"),
-  );
+let scan;
+try {
+  scan = collectUsesProblems({ workflowsDir, actionsDir });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
 }
 
-function collectUnpinnedUses() {
-  const problems = [];
-  for (const file of listWorkflowFiles(WORKFLOWS_DIR)) {
-    const text = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
-    for (const line of text.split("\n")) {
-      const match = line.match(USES_LINE_RE);
-      if (!match) continue;
-      const spec = match[1];
-      const at = spec.lastIndexOf("@");
-      if (at === -1) {
-        problems.push({ file, spec, reason: "missing @ ref" });
-        continue;
-      }
-      const ref = spec.slice(at + 1);
-      if (!FULL_SHA_REF_RE.test(ref)) {
-        problems.push({ file, spec, reason: "ref is not a 40-character commit SHA" });
-      }
-    }
+if (scan.problems.length > 0) {
+  for (const { file, spec, reason } of scan.problems) {
+    console.error(`FAIL  ${file}  ${spec}  (${reason})`);
   }
-  return problems;
+  process.exit(1);
+}
+
+if (scan.totalUses === 0) {
+  console.error("No uses: refs found under workflow and action directories.");
+  process.exit(1);
+}
+
+const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+if (!token) {
+  console.log(
+    `OK  ${scan.totalUses} uses: refs validated locally (skipped tag verification, no token)`,
+  );
+  process.exit(0);
 }
 
 function ghApi(path) {
   const out = execFileSync("gh", ["api", path], {
     encoding: "utf8",
-    env: { ...process.env, GH_TOKEN: process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN },
+    env: { ...process.env, GH_TOKEN: token },
   });
   return JSON.parse(out);
 }
 
-/** @returns {string} commit SHA the tag resolves to */
 function resolveTagToCommit(repo, tag) {
   const ref = ghApi(`repos/${repo}/git/ref/tags/${tag}`);
   const { sha, type } = ref.object;
@@ -59,69 +63,42 @@ function resolveTagToCommit(repo, tag) {
 function commitExists(repo, sha) {
   const result = spawnSync("gh", ["api", `repos/${repo}/commits/${sha}`], {
     encoding: "utf8",
-    env: { ...process.env, GH_TOKEN: process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN },
+    env: { ...process.env, GH_TOKEN: token },
   });
   if (result.status !== 0) return false;
   const data = JSON.parse(result.stdout);
   return data.sha === sha;
 }
 
-function collectPins() {
-  const pins = [];
-  for (const file of listWorkflowFiles(WORKFLOWS_DIR)) {
-    const text = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
-    for (const match of text.matchAll(PIN_RE)) {
-      pins.push({
-        file,
-        repo: match[1],
-        pin: match[2],
-        tag: match[3],
-      });
-    }
-  }
-  return pins;
-}
-
-const unpinned = collectUnpinnedUses();
-if (unpinned.length > 0) {
-  for (const { file, spec, reason } of unpinned) {
-    console.error(`FAIL  ${file}  ${spec}  (${reason})`);
-  }
+let refs;
+try {
+  refs = collectAllRemoteShaUses({ workflowsDir, actionsDir });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 
-const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
-if (!token) {
-  console.log(
-    "OK  all workflow uses: refs are 40-character SHAs (skipped tag verification, no token)",
-  );
-  process.exit(0);
-}
-
-const pins = collectPins();
-if (pins.length === 0) {
-  console.error("No pinned actions with version comments found in workflow files.");
+if (refs.length === 0) {
+  console.error("No remote SHA-pinned uses: refs found for tag verification.");
   process.exit(1);
 }
 
 let failed = false;
-for (const { file, repo, pin, tag } of pins) {
-  if (pin.length !== 40) {
-    failed = true;
-    console.log(
-      `FAIL  ${file}  ${repo}@${tag}  pin=${pin}  resolved=(invalid pin length ${pin.length})`,
-    );
-    continue;
+for (const { file, repo, sha, tag, spec } of refs) {
+  const commitOk = commitExists(repo, sha);
+  let tagOk = true;
+  if (tag) {
+    try {
+      tagOk = resolveTagToCommit(repo, tag) === sha;
+    } catch {
+      tagOk = false;
+    }
   }
-  const resolved = resolveTagToCommit(repo, tag);
-  const tagOk = resolved === pin;
-  const commitOk = commitExists(repo, pin);
-  const ok = tagOk && commitOk;
+  const ok = commitOk && tagOk;
   if (!ok) failed = true;
+  const tagNote = tag ? (tagOk ? "tag=OK" : "tag=MISMATCH") : "tag=(none)";
   const commitNote = commitOk ? "commit=OK" : "commit=MISSING";
-  console.log(
-    `${ok ? "OK" : "FAIL"}  ${file}  ${repo}@${tag}  pin=${pin}  resolved=${resolved}  ${commitNote}`,
-  );
+  console.log(`${ok ? "OK" : "FAIL"}  ${file}  ${spec}  ${commitNote}  ${tagNote}`);
 }
 
 process.exit(failed ? 1 : 0);

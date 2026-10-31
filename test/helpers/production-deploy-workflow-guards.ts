@@ -43,18 +43,24 @@ export function deployJobBlock(workflowText: string): string {
 
 export function deployJobSteps(workflowText: string): { name: string; text: string }[] {
   const jobBlock = deployJobBlock(workflowText);
-  const stepsIndex = jobBlock.indexOf("\n    steps:");
+  const deployStart = jobBlock.indexOf("\n  deploy:");
+  if (deployStart === -1) {
+    throw new Error("deploy job missing");
+  }
+  const stepsIndex = jobBlock.indexOf("\n    steps:", deployStart);
   if (stepsIndex === -1) {
     throw new Error("deploy job missing steps:");
   }
   const stepsSection = jobBlock.slice(stepsIndex + "\n    steps:".length);
-  const chunks = stepsSection.split(/\n {6}- /).filter(Boolean);
+  const nextJob = stepsSection.search(/\n {2}[a-zA-Z0-9_-]+:/);
+  const bounded = nextJob === -1 ? stepsSection : stepsSection.slice(0, nextJob);
+  const chunks = bounded.split(/\n {6}- /).filter(Boolean);
   return chunks.map((chunk, index) => {
     const nameMatch = chunk.match(/^name: (.+)$/m);
     if (nameMatch) {
       return { name: nameMatch[1]!.trim(), text: chunk };
     }
-    const usesMatch = chunk.match(/^uses: (.+)$/m);
+    const usesMatch = chunk.match(/^\s*uses: (.+)$/m);
     return {
       name: usesMatch ? `uses ${usesMatch[1]!.trim()}` : `step-${index + 1}`,
       text: chunk,
@@ -67,10 +73,25 @@ export function violationsInDeployJobStepText(text: string): string[] {
   if (/\bcat\b[^\n]*wrangler\.ci\.jsonc/.test(text)) {
     violations.push("cat-wrangler-config");
   }
+  if (/\bhead\b[^\n]*wrangler\.ci\.jsonc/.test(text)) {
+    violations.push("head-wrangler-config");
+  }
+  if (/\bgrep\b[^\n]*wrangler\.ci\.jsonc/.test(text)) {
+    violations.push("grep-wrangler-config");
+  }
+  if (
+    /\$GITHUB_STEP_SUMMARY[^\n]*wrangler\.ci\.jsonc/.test(text) ||
+    /wrangler\.ci\.jsonc[^\n]*\$GITHUB_STEP_SUMMARY/.test(text)
+  ) {
+    violations.push("github-step-summary-wrangler-config");
+  }
   if (/\bset\s+-x\b/.test(text) || /\bset\s+-o\s+xtrace\b/.test(text)) {
     violations.push("set-x");
   }
   for (const line of text.split("\n")) {
+    if (/\|\s*grep\b/.test(line)) {
+      continue;
+    }
     if (
       (/\becho\b/.test(line) || /\bprintf\b/.test(line)) &&
       D1_DERIVED_VALUE_IN_PRINT.test(line) &&
@@ -97,6 +118,18 @@ export function violationsInDeployWorkflow(workflowText: string): string[] {
     }
   }
   return violations;
+}
+
+export function fixtureDeployWorkflow(stepLines: string): string {
+  return [
+    "name: deploy-fixture",
+    "on: workflow_dispatch",
+    "jobs:",
+    "  deploy:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    stepLines,
+  ].join("\n");
 }
 
 export function stepBodiesAfterName(workflowText: string, stepName: string): string[] {
@@ -135,6 +168,14 @@ export const EXPECTED_PREPARE_WRANGLER_STEP_RUN = [
   '          TRIMMED="${TRIMMED%"${TRIMMED##*[![:space:]]}"}"',
   '          if [ "${PHYSIO_D1_DATABASE_ID}" != "${TRIMMED}" ]; then',
   '            echo "PHYSIO_D1_DATABASE_ID must not contain leading or trailing whitespace." >&2',
+  "            exit 1",
+  "          fi",
+  "          if ! printf '%s' \"${TRIMMED}\" | grep -Eq '^[0123456789abcdef]{8}-[0123456789abcdef]{4}-[0123456789abcdef]{4}-[0123456789abcdef]{4}-[0123456789abcdef]{12}$'; then",
+  '            echo "PHYSIO_D1_DATABASE_ID must be a lowercase UUID." >&2',
+  "            exit 1",
+  "          fi",
+  '          if [ "${TRIMMED}" = "00000000-0000-0000-0000-000000000001" ]; then',
+  '            echo "PHYSIO_D1_DATABASE_ID must not be the committed placeholder." >&2',
   "            exit 1",
   "          fi",
   '          echo "::add-mask::${TRIMMED}"',

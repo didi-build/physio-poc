@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { D1_PLACEHOLDER_PRODUCTION } from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { LOWERCASE_CANONICAL_UUID_RE } from "../scripts/lib/lowercase-canonical-uuid.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SCRIPT_PATH = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
@@ -158,6 +159,45 @@ describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
       expect(result.stderr).toContain("newline characters");
       assertOutputOmitsSecretMaterial(result.stderr, FIXTURE_DATABASE_ID);
       assertOutputOmitsSecretMaterial(result.stderr, "second-line");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects the committed placeholder UUID", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
+    const outputPath = join(tempDir, "wrangler.out.jsonc");
+    try {
+      const result = runPrepareWranglerConfig({
+        databaseId: D1_PLACEHOLDER_PRODUCTION,
+        outputPath,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("committed placeholder");
+      assertOutputOmitsSecretMaterial(result.stderr, D1_PLACEHOLDER_PRODUCTION);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["uppercase in first group", "ABCDEF01-0000-0000-0000-000000000002"],
+    ["uppercase in last group", "00000000-0000-0000-0000-00000000000B"],
+    ["missing hyphens", "00000000000000000000000000000002"],
+    ["extra hyphen segment", "00000000-0000-0000-0000-0000-000000000002"],
+    ["braced junk", "{00000000-0000-0000-0000-000000000002}"],
+    ["leading junk", "x00000000-0000-0000-0000-000000000002"],
+    ["trailing junk", "00000000-0000-0000-0000-000000000002y"],
+  ])("rejects invalid UUID shape: %s", (_label, candidate) => {
+    expect(LOWERCASE_CANONICAL_UUID_RE.test(candidate)).toBe(false);
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
+    const outputPath = join(tempDir, "wrangler.out.jsonc");
+    try {
+      const result = runPrepareWranglerConfig({ databaseId: candidate, outputPath });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("lowercase UUID");
+      assertOutputOmitsSecretMaterial(result.stderr, candidate);
+      assertOutputOmitsSecretMaterial(result.stdout, candidate);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

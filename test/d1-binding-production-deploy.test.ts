@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTestHarness } from "wrangler";
@@ -19,6 +20,7 @@ import {
   deployJobBlock,
   deployJobSteps,
   EXPECTED_PREPARE_WRANGLER_STEP_RUN,
+  fixtureDeployWorkflow,
   nonDeployWorkflowFilenames,
   normalizePrepareStepRunBody,
   prepareStepYamlBlock,
@@ -217,6 +219,120 @@ describe("Deploy job static leak guards (DIDI-1146)", () => {
       "actions-step-debug",
     );
   });
+
+  it("rejects head of wrangler.ci.jsonc", () => {
+    expect(violationsInDeployJobStepText("head wrangler.ci.jsonc")).toContain(
+      "head-wrangler-config",
+    );
+  });
+
+  it("rejects grep of wrangler.ci.jsonc", () => {
+    expect(
+      violationsInDeployJobStepText("grep database_id wrangler.ci.jsonc"),
+    ).toContain("grep-wrangler-config");
+  });
+
+  it("rejects writing wrangler.ci.jsonc into GITHUB_STEP_SUMMARY", () => {
+    expect(
+      violationsInDeployJobStepText('cat wrangler.ci.jsonc >> "$GITHUB_STEP_SUMMARY"'),
+    ).toContain("github-step-summary-wrangler-config");
+  });
+});
+
+describe("Deploy job scans every step (DIDI-1146 B2)", () => {
+  it("flags upload-artifact on a name-first uses step", () => {
+    const workflow = fixtureDeployWorkflow(
+      ["      - name: Upload config", "        uses: actions/upload-artifact@v4"].join(
+        "\n",
+      ),
+    );
+    expect(violationsInDeployWorkflow(workflow)).toContain(
+      "Upload config:upload-artifact",
+    );
+  });
+
+  it("flags a leak on the last deploy step", () => {
+    const workflow = fixtureDeployWorkflow(
+      [
+        "      - name: Prepare Wrangler config (production D1 ID)",
+        "        run: echo ok",
+        "      - name: Final step",
+        "        run: cat wrangler.ci.jsonc",
+      ].join("\n"),
+    );
+    expect(violationsInDeployWorkflow(workflow)).toContain(
+      "Final step:cat-wrangler-config",
+    );
+  });
+
+  it("flags a leak on a non-Prepare run step", () => {
+    const workflow = fixtureDeployWorkflow(
+      [
+        "      - name: Apply production D1 migrations",
+        "        run: grep secret wrangler.ci.jsonc",
+      ].join("\n"),
+    );
+    expect(violationsInDeployWorkflow(workflow)).toContain(
+      "Apply production D1 migrations:grep-wrangler-config",
+    );
+  });
+
+  it("flags a leak on a uses-only checkout step block", () => {
+    const workflow = fixtureDeployWorkflow(
+      [
+        "      - uses: actions/checkout@1234567890123456789012345678901234567890",
+        "      - name: Leak",
+        "        run: head wrangler.ci.jsonc",
+      ].join("\n"),
+    );
+    expect(violationsInDeployWorkflow(workflow)).toContain("Leak:head-wrangler-config");
+    expect(deployJobSteps(workflow)).toHaveLength(2);
+  });
+});
+
+function runCommittedPrepareStepUnderBash(physioD1DatabaseId: string): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  const result = spawnSync(
+    "bash",
+    ["-eu", "-o", "pipefail", "-c", EXPECTED_PREPARE_WRANGLER_STEP_RUN],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: { ...process.env, PHYSIO_D1_DATABASE_ID: physioD1DatabaseId },
+    },
+  );
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function assertBashPrepareRejects(value: string, secretMaterial: string): void {
+  const result = runCommittedPrepareStepUnderBash(value);
+  expect(result.status).toBe(1);
+  const combined = `${result.stdout}\n${result.stderr}`;
+  expect(combined).not.toMatch(/::add-mask::/);
+  expect(combined).not.toContain(secretMaterial);
+}
+
+describe("Prepare deploy step bash validation (DIDI-1146)", () => {
+  const valid = "00000000-0000-0000-0000-000000000002";
+
+  it.each([
+    ["uppercase", "00000000-0000-0000-0000-00000000000B"],
+    ["braced", "{00000000-0000-0000-0000-000000000002}"],
+    ["prefixed", "x00000000-0000-0000-0000-000000000002"],
+    ["hyphenless", "00000000000000000000000000000002"],
+    ["non-uuid", "not-a-uuid-value"],
+    ["placeholder", "00000000-0000-0000-0000-000000000001"],
+    ["newline", `${valid}\nline-two`],
+  ])("rejects %s before masking", (_label, candidate) => {
+    assertBashPrepareRejects(candidate, candidate.split("\n")[0]!);
+  });
 });
 
 describe("workflow glob for production D1 secret scan (DIDI-1146)", () => {
@@ -331,6 +447,34 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
 
       const boolRow = await sql.first<{ flag: number }>("SELECT ? as flag", [false]);
       expect(boolRow?.flag).toBe(0);
+
+      await sql.run(
+        "CREATE TABLE IF NOT EXISTS d1_adapter_bool_probe (id TEXT PRIMARY KEY, active INTEGER NOT NULL)",
+      );
+      await sql.run("INSERT INTO d1_adapter_bool_probe (id, active) VALUES (?, ?)", [
+        "bool-fixture",
+        true,
+      ]);
+      expect(
+        (
+          await sql.first<{ active: number }>(
+            "SELECT active FROM d1_adapter_bool_probe WHERE id = ?",
+            ["bool-fixture"],
+          )
+        )?.active,
+      ).toBe(1);
+      await sql.run("UPDATE d1_adapter_bool_probe SET active = ? WHERE id = ?", [
+        false,
+        "bool-fixture",
+      ]);
+      expect(
+        (
+          await sql.first<{ active: number }>(
+            "SELECT active FROM d1_adapter_bool_probe WHERE id = ?",
+            ["bool-fixture"],
+          )
+        )?.active,
+      ).toBe(0);
 
       await expect(
         sql.run(

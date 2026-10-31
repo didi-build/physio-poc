@@ -8,10 +8,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { D1_PLACEHOLDER_PRODUCTION } from "./lib/wrangler-d1-placeholders.mjs";
+import { LOWERCASE_CANONICAL_UUID_RE } from "./lib/lowercase-canonical-uuid.mjs";
 
 const SOURCE = resolve("wrangler.jsonc");
-const LOWERCASE_CANONICAL_UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function usage() {
   console.error("Usage: prepare-wrangler-config.mjs --output <path>");
@@ -60,7 +59,7 @@ function readProductionId() {
     console.error("PHYSIO_D1_DATABASE_ID must not be the committed placeholder.");
     process.exit(1);
   }
-  if (!LOWERCASE_CANONICAL_UUID.test(trimmed)) {
+  if (!LOWERCASE_CANONICAL_UUID_RE.test(trimmed)) {
     console.error("PHYSIO_D1_DATABASE_ID must be a lowercase UUID.");
     process.exit(1);
   }
