@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { NavLink } from "react-router-dom";
+import type { MouseEvent } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
 import { postAuthSignOut } from "../api/auth-client.js";
 import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
@@ -14,6 +15,7 @@ import {
   NAV_TAB_REQUESTS_PHONE,
   NAV_TAB_ROUTINES,
 } from "../copy/nav.js";
+import { useProgramLeaveGuard } from "../programs/program-leave-guard.js";
 
 export type MainNavProps = {
   requestsReviewCount: number;
@@ -48,6 +50,17 @@ const tabs = [
 ] as const;
 
 export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
+  const { guard } = useProgramLeaveGuard();
+  const location = useLocation();
+
+  const guardedNavClick = (event: MouseEvent, to: string) => {
+    if (!guard?.hasUnsavedEdits || location.pathname === to) {
+      return;
+    }
+    event.preventDefault();
+    guard.requestLeave(to);
+  };
+
   if (variant === "top") {
     return (
       <nav className="shell-top-nav" aria-label="Main">
@@ -59,6 +72,9 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
             className={({ isActive }) =>
               `shell-top-nav-link${isActive ? " shell-top-nav-link--active" : ""}`
             }
+            onClick={(event) => {
+              guardedNavClick(event, tab.to);
+            }}
           >
             <>
               {tab.desktopLabel}
@@ -76,7 +92,15 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
     <nav className="shell-tab-bar" aria-label="Main">
       <div className="shell-tab-bar-inner">
         {tabs.map((tab) => (
-          <NavLink key={tab.to} to={tab.to} end className="shell-tab-link">
+          <NavLink
+            key={tab.to}
+            to={tab.to}
+            end
+            className="shell-tab-link"
+            onClick={(event) => {
+              guardedNavClick(event, tab.to);
+            }}
+          >
             <>
               <span className="shell-tab-icon-wrap" aria-hidden />
               {tab.phoneLabel}
