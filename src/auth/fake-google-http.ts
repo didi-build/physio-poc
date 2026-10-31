@@ -114,12 +114,16 @@ export function fakeGoogleExpectedRedirectUri(authBaseUrl: string): string {
   return `${base}/api/auth/callback/google`;
 }
 
+export function isFakeGoogleOAuthPath(pathname: string): boolean {
+  return pathname.startsWith("/__fake-google/");
+}
+
 export async function handleFakeGoogleRequest(
   request: Request,
   authBaseUrl: string,
 ): Promise<Response | null> {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/__fake-google/")) {
+  if (!isFakeGoogleOAuthPath(url.pathname)) {
     return null;
   }
 

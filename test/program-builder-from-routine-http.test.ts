@@ -633,7 +633,7 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
         row: "http-worker-row",
         name: "Worker routine",
       });
-      const workerDeps = createWorkerAppDependencies({});
+      const workerDeps = await createWorkerAppDependencies({});
       const auth = new FakeAuthPort({
         practitioner: {
           practitionerId: practitionerA,

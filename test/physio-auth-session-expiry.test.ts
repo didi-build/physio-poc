@@ -70,6 +70,23 @@ describe("Physio Better Auth session expiry (unit)", () => {
     );
   });
 
+  it("pins baseURL and trustedOrigins on buildPhysioBetterAuthOptions (DIDI-1153 B1)", () => {
+    const storage = BetterSqliteStorage.openInMemory();
+    const config = createPhysioServerConfig({
+      auth: {
+        betterAuthSecret: PHYSIO_TEST_BETTER_AUTH_SECRET,
+        googleClientId: "fake",
+        googleClientSecret: "fake",
+        allowedGoogleEmails: new Set(["allowed@example.com"]),
+        fakeGoogleProviderEnabled: true,
+        authBaseUrl: BASE,
+      },
+    }).auth;
+    const options = buildPhysioBetterAuthOptions(storage, config);
+    expect(options.baseURL).toBe(BASE);
+    expect(options.trustedOrigins).toEqual([new URL(BASE).origin]);
+  });
+
   it("locks the pinned lifetime to seven days in seconds (mutant killer)", () => {
     expect(PHYSIO_BETTER_AUTH_SESSION_EXPIRES_IN_SECONDS).toBe(604_800);
     expect(PHYSIO_BETTER_AUTH_SESSION_EXPIRES_IN_SECONDS).toBe(60 * 60 * 24 * 7);

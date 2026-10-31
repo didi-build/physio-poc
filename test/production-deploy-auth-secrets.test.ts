@@ -21,7 +21,10 @@ import {
   COMMITTED_WEB_APP_BASE_URL,
   isExactHttpsOrigin,
 } from "../scripts/lib/wrangler-d1-placeholders.mjs";
-import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
+import {
+  createWorkerAppDependencies,
+  type WorkerEnv,
+} from "../src/adapters/workers/create-app-dependencies.js";
 import { parseAllowedGoogleEmails } from "../src/auth/allowed-emails.js";
 import { InvalidAuthConfigError, resolvePhysioAuthConfig } from "../src/http/config.js";
 
@@ -333,8 +336,8 @@ describe("committed production WEB_APP_BASE_URL (DIDI-1044 B1)", () => {
     expect(isExactHttpsOrigin(withUserinfo.href)).toBe(false);
   });
 
-  it("resolves Worker config webAppBaseUrl from WEB_APP_BASE_URL", () => {
-    const deps = createWorkerAppDependencies({
+  it("resolves Worker config webAppBaseUrl from WEB_APP_BASE_URL", async () => {
+    const deps = await createWorkerAppDependencies({
       WEB_APP_BASE_URL: COMMITTED_WEB_APP_BASE_URL,
     });
     expect(deps.config.webAppBaseUrl).toBe(COMMITTED_WEB_APP_BASE_URL);
@@ -357,13 +360,13 @@ describe("committed production WEB_APP_BASE_URL (DIDI-1044 B1)", () => {
 });
 
 describe("Worker production fake Google hardcode (DIDI-1044 L4)", () => {
-  it("forces fake Google provider off regardless of Worker env", () => {
-    const deps = createWorkerAppDependencies({
+  it("forces fake Google provider off regardless of Worker env", async () => {
+    const deps = await createWorkerAppDependencies({
       WEB_APP_BASE_URL: COMMITTED_WEB_APP_BASE_URL,
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-    });
+    } as WorkerEnv);
     expect(deps.config.auth.fakeGoogleProviderEnabled).toBe(false);
-    expect(deps.enableFakeGoogleRoutes).toBe(false);
+    expect(deps.fakeGooglePreAuth).toBeUndefined();
   });
 });
 

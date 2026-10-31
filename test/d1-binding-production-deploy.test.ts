@@ -220,8 +220,8 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
     expect(source).not.toContain("InMemorySqlStorage");
   });
 
-  it("constructs D1SqlStorage for Worker deps without requiring SQL on auth-only paths", () => {
-    const deps = createWorkerAppDependencies({});
+  it("constructs D1SqlStorage for Worker deps without requiring SQL on auth-only paths", async () => {
+    const deps = await createWorkerAppDependencies({});
     expect(deps.sql).toBeInstanceOf(D1SqlStorage);
   });
 });
