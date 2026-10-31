@@ -1,10 +1,13 @@
-import { createWorkerAppDependencies } from "../adapters/workers/create-app-dependencies.js";
-import type { WorkerEnv } from "../adapters/workers/create-app-dependencies.js";
+import {
+  createWorkerAppDependencies,
+  type WorkerEnv,
+} from "../adapters/workers/create-app-dependencies.js";
 import { handleRequest } from "../http/app.js";
 
-/** Cloudflare Workers entry. D1 is wired via createWorkerAppDependencies(env). */
+/** Cloudflare Workers entry. Production auth loads via createWorkerAppDependencies when env + D1 are valid. */
 export default {
-  fetch(request: Request, env: WorkerEnv): Promise<Response> {
-    return handleRequest(request, createWorkerAppDependencies(env));
+  async fetch(request: Request, env: WorkerEnv): Promise<Response> {
+    const deps = await createWorkerAppDependencies(env);
+    return handleRequest(request, deps);
   },
 };

@@ -12,6 +12,10 @@ import {
   MIGRATION_0006_ID,
   MIGRATION_0007_ID,
 } from "../../storage/migrations/apply.js";
+import {
+  handleFakeGoogleRequest,
+  isFakeGoogleOAuthPath,
+} from "../../auth/fake-google-http.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
 import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { createMcpBearerAuthHandler, createNodeAuthPort } from "./create-auth-port.js";
@@ -85,9 +89,14 @@ export async function createNodeAppDependencies(
     config,
     auth: authBundle.auth,
     mcp: mcpHandler,
-    mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config),
+    mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, storage),
     uiStatic: createDistUiStaticPort(),
-    enableFakeGoogleRoutes: config.auth.fakeGoogleProviderEnabled,
+    fakeGooglePreAuth: config.auth.fakeGoogleProviderEnabled
+      ? handleFakeGoogleRequest
+      : undefined,
+    extraSessionPublicPath: config.auth.fakeGoogleProviderEnabled
+      ? isFakeGoogleOAuthPath
+      : undefined,
     guardedAppWithoutSession: "redirect",
   };
 }

@@ -2,15 +2,15 @@ import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 import { MCP_PATH } from "../http/app.js";
 
 export type SessionGuardOptions = {
-  /** When true, `/__fake-google/*` skips the practitioner session guard (dev/test only). */
-  fakeGoogleRoutesEnabled?: boolean;
+  /** Dev/test only: marks paths public for session guard (set from Node entry, not Worker). */
+  extraSessionPublicPath?: (pathname: string) => boolean;
 };
 
 export type SessionPublicRouteSample = {
   readonly ruleId: string;
   readonly samplePath: string;
   readonly method: string;
-  readonly fakeGoogleRoutesEnabled?: boolean;
+  readonly extraSessionPublicPath?: (pathname: string) => boolean;
 };
 
 /**
@@ -28,12 +28,6 @@ export const SESSION_PUBLIC_ROUTE_SAMPLES: readonly SessionPublicRouteSample[] =
   { ruleId: "build-assets", samplePath: "/favicon.ico", method: "GET" },
   { ruleId: "build-assets", samplePath: "/vite.svg", method: "GET" },
   { ruleId: "options-preflight", samplePath: "/programs", method: "OPTIONS" },
-  {
-    ruleId: "fake-google-dev-test",
-    samplePath: "/__fake-google/o/oauth2/v2/auth",
-    method: "GET",
-    fakeGoogleRoutesEnabled: true,
-  },
 ] as const;
 
 export function isPublicAppPath(pathname: string): boolean {
@@ -73,8 +67,8 @@ export function requiresPractitionerSession(
   if (pathname.startsWith("/api/")) {
     return !isPublicApiAuthPath(pathname);
   }
-  if (pathname.startsWith("/__fake-google/")) {
-    return options.fakeGoogleRoutesEnabled !== true;
+  if (options.extraSessionPublicPath?.(pathname)) {
+    return false;
   }
   if (isPublicAppPath(pathname)) {
     return false;

@@ -88,6 +88,7 @@ function parseWranglerJsonc(text: string): Record<string, unknown> {
 
 const EXPECTED_WRANGLER_TOP_LEVEL_KEYS = [
   "compatibility_date",
+  "compatibility_flags",
   "d1_databases",
   "main",
   "name",

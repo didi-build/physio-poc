@@ -26,6 +26,7 @@ export type PhysioD1Database = {
   batch(
     statements: PhysioD1PreparedStatement[],
   ): Promise<{ meta: { changes?: number } }[]>;
+  exec?(query: string): Promise<unknown>;
 };
 
 function normalizeBinding(value: SqlValue): SqlValue {

@@ -1,5 +1,4 @@
 import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
-import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
 import type { AuthPort, PractitionerSession } from "../auth/auth-port.js";
@@ -28,6 +27,11 @@ export type McpBearerAuthHandler = (
   mcpHandler: McpHttpHandler,
 ) => Promise<Response>;
 
+export type FakeGooglePreAuthHandler = (
+  request: Request,
+  authBaseUrl: string,
+) => Promise<Response | null>;
+
 export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
 
 export type AppRouteHandlerContext = {
@@ -50,8 +54,10 @@ export type AppDependencies = {
   /** When set, /mcp requires a valid OAuth bearer token (DIDI-1043). */
   mcpBearerAuth?: McpBearerAuthHandler;
   uiStatic?: UiStaticPort;
-  /** Dev/test entries only; never true on the Worker entry. */
-  enableFakeGoogleRoutes?: boolean;
+  /** Dev/test Node entry only; never set on the Worker entry. */
+  fakeGooglePreAuth?: FakeGooglePreAuthHandler;
+  /** Dev/test only; session guard public paths (for example fake Google OAuth). */
+  extraSessionPublicPath?: (pathname: string) => boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
   /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
   extraRouteHandlers?: AppRouteHandler[];
@@ -79,7 +85,7 @@ export async function handleRequest(
   void deps.objects;
 
   const sessionGuardOptions = {
-    fakeGoogleRoutesEnabled: deps.enableFakeGoogleRoutes === true,
+    extraSessionPublicPath: deps.extraSessionPublicPath,
   };
 
   if (
@@ -99,8 +105,8 @@ export async function handleRequest(
     );
   }
 
-  if (deps.enableFakeGoogleRoutes) {
-    const fakeGoogle = await handleFakeGoogleRequest(
+  if (deps.fakeGooglePreAuth) {
+    const fakeGoogle = await deps.fakeGooglePreAuth(
       request,
       deps.config.auth.authBaseUrl,
     );
@@ -230,7 +236,7 @@ export async function handleRequest(
 async function guardAndRun(
   request: Request,
   deps: AppDependencies,
-  sessionGuardOptions: { fakeGoogleRoutesEnabled: boolean },
+  sessionGuardOptions: { extraSessionPublicPath?: (pathname: string) => boolean },
   next: () => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
