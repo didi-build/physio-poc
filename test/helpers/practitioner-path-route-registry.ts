@@ -1,5 +1,5 @@
-import { exerciseLibraryPractitionerPathHttpRouteCases } from "./routes/exercise-library.js";
-import { exerciseMediaHttpRouteCases } from "./routes/exercise-media.js";
+import { exerciseLibraryPractitionerPathHttpRouteCases } from "../../src/http/routes/exercise-library.js";
+import { exerciseMediaHttpRouteCases } from "../../src/http/routes/exercise-media.js";
 
 export type PractitionerPathRouteSample = {
   readonly ruleId: string;

@@ -1,10 +1,13 @@
 import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import { handleRequest } from "../../src/http/app.js";
-import { canonicalPractitionerPathRouteCaseKeys } from "../../src/http/practitioner-path-route-registry.js";
+import { canonicalPractitionerPathRouteCaseKeys } from "./practitioner-path-route-registry.js";
 import { mutatingAppApiRequestInit } from "./mutating-app-api-request.js";
 
-function probeRequestBody(path: string, method: string): string | undefined {
+export function practitionerPathProbeRequestBody(
+  path: string,
+  method: string,
+): string | undefined {
   if (method === "GET" || method === "DELETE") {
     return undefined;
   }
@@ -55,7 +58,7 @@ export async function probedPractitionerPathRouteKeys(
     const init = mutatingAppApiRequestInit(`${baseUrl}${samplePath}`, {
       method,
       headers: probeRequestHeaders(baseUrl, cookie, method),
-      body: probeRequestBody(samplePath, method),
+      body: practitionerPathProbeRequestBody(samplePath, method),
     });
     const response = await handleRequest(
       new Request(`${baseUrl}${samplePath}`, init),

@@ -216,6 +216,7 @@ export async function handleRequest(
 
   if (deps.extraRouteHandlers) {
     for (const handler of deps.extraRouteHandlers) {
+      // Non-/api/ fallthrough: no sessionPractitioner (exercise media routes are under /api/ only).
       const response = await handler(request, deps, {});
       if (response) {
         return response;

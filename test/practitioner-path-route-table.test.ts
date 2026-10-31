@@ -7,7 +7,8 @@ import {
   canonicalPractitionerPathRouteCaseKeys,
   practitionerPathRouteSampleKey,
   practitionerPathRouteSampleKeysFromHandlerTables,
-} from "../src/http/practitioner-path-route-registry.js";
+} from "./helpers/practitioner-path-route-registry.js";
+import { discoveredPractitionerPathRouteKeysFromHttpSources } from "./helpers/practitioner-path-route-discovery.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import {
@@ -21,31 +22,19 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { exerciseMediaExtraRouteHandlers } from "./helpers/exercise-media-http.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { probedPractitionerPathRouteKeys } from "./helpers/practitioner-path-route-dispatch-probe.js";
+import {
+  practitionerPathProbeRequestBody,
+  probedPractitionerPathRouteKeys,
+} from "./helpers/practitioner-path-route-dispatch-probe.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
 const PRACT_A = testOpaqueEntityId("path-route-a");
 const PRACT_B = testOpaqueEntityId("path-route-b");
+const PRACT_FOREIGN = testOpaqueEntityId("path-route-foreign");
 const EXERCISE_ID = testOpaqueEntityId("path-route-ex");
 const VERSION_ID = testOpaqueEntityId("path-route-ver");
-
-function requestBody(path: string, method: string): string | undefined {
-  if (method === "GET" || method === "DELETE") {
-    return undefined;
-  }
-  if (path.includes("/media/regenerate")) {
-    return JSON.stringify({ scope: "both", note: null });
-  }
-  if (path.includes("/media/generate")) {
-    return JSON.stringify({});
-  }
-  if (method === "PATCH") {
-    return JSON.stringify({ text_overrides: { title: "probe" } });
-  }
-  return JSON.stringify({ action: "save" });
-}
 
 async function seedRoutesFixture(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -81,15 +70,26 @@ async function seedRoutesFixture(
   ]);
 }
 
+function samplePathFor403(
+  sample: (typeof PRACTITIONER_PATH_ROUTE_SAMPLES)[number],
+): string {
+  return sample.samplePath
+    .replace("11111111-1111-4111-8111-111111111111", PRACT_B)
+    .replace("ex-example", EXERCISE_ID)
+    .replace("ver-example", FIXTURE_VERSION_ID);
+}
+
 describe("HTTP route table (practitioner path session binding)", () => {
-  it("pins practitioner path route samples to handler route tables", () => {
+  it("pins practitioner path route samples to handler route tables and HTTP source discovery", () => {
     const fromSamples = PRACTITIONER_PATH_ROUTE_SAMPLES.map(
       practitionerPathRouteSampleKey,
     ).sort();
     const fromTables = practitionerPathRouteSampleKeysFromHandlerTables();
     const canonical = canonicalPractitionerPathRouteCaseKeys();
+    const discovered = discoveredPractitionerPathRouteKeysFromHttpSources();
     expect(fromSamples).toEqual(fromTables);
     expect(fromSamples).toEqual(canonical);
+    expect(fromSamples).toEqual(discovered);
     expect(fromSamples.length).toBeGreaterThan(0);
   });
 
@@ -156,11 +156,8 @@ describe("HTTP route table (practitioner path session binding)", () => {
       };
 
       for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
-        const path = sample.samplePath
-          .replace("11111111-1111-4111-8111-111111111111", PRACT_B)
-          .replace("ex-example", EXERCISE_ID)
-          .replace("ver-example", FIXTURE_VERSION_ID);
-        const body = requestBody(path, sample.method);
+        const path = samplePathFor403(sample);
+        const body = practitionerPathProbeRequestBody(path, sample.method);
         const url = `${BASE}${path}`;
         const response = await handleRequest(
           new Request(
@@ -170,7 +167,7 @@ describe("HTTP route table (practitioner path session binding)", () => {
               headers: body
                 ? { cookie, "content-type": "application/json" }
                 : { cookie },
-              body: body ? JSON.stringify(JSON.parse(body)) : undefined,
+              body,
             }),
           ),
           deps,
@@ -178,6 +175,14 @@ describe("HTTP route table (practitioner path session binding)", () => {
         expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(403);
         await expect(response.json()).resolves.toEqual({ error: "forbidden" });
       }
+
+      const foreignPath = `${BASE}/api/practitioners/${PRACT_FOREIGN}/my-exercises`;
+      const foreignResponse = await handleRequest(
+        new Request(foreignPath, { headers: { cookie } }),
+        deps,
+      );
+      expect(foreignResponse.status).toBe(403);
+      await expect(foreignResponse.json()).resolves.toEqual({ error: "forbidden" });
     } finally {
       storage.close();
     }

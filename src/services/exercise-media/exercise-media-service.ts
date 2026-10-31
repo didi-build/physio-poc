@@ -17,6 +17,7 @@ import {
   ExerciseMediaSetsRepository,
   ExerciseVersionMediaRepository,
   MediaRegenerationsRepository,
+  type ExerciseVersionMediaRow,
   type MediaRegenerationScope,
 } from "../../storage/repositories/exercise-media.js";
 
@@ -119,11 +120,15 @@ export class ExerciseMediaService {
   }
 
   async generateInitialMediaForVersion(input: {
+    practitionerId: string;
     exerciseVersionId: string;
     regenerationNote?: string | null;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
-    const version = await this.requireVersion(input.exerciseVersionId);
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
     const visibility: MediaVisibility =
       version.status === "approved" ? "public" : "draft";
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
@@ -177,7 +182,10 @@ export class ExerciseMediaService {
       );
     }
 
-    const version = await this.requireVersion(input.exerciseVersionId);
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const existing = version.media_set_id
       ? await this.mediaSets.findById(version.media_set_id)
@@ -354,8 +362,15 @@ export class ExerciseMediaService {
   async getMediaForServing(
     exerciseVersionId: string,
     access: "internal" | "public",
+    sessionPractitionerId?: string,
   ): Promise<ExerciseMediaSetView | null> {
-    const version = await this.requireVersion(exerciseVersionId);
+    const version =
+      access === "internal"
+        ? await this.requireVersionForPractitioner(
+            exerciseVersionId,
+            sessionPractitionerId ?? "",
+          )
+        : await this.requireVersion(exerciseVersionId);
     if (!version.media_set_id) {
       return null;
     }
@@ -440,12 +455,30 @@ export class ExerciseMediaService {
   private async requireVersion(id: string) {
     const version = await this.versions.findVersion(id);
     if (!version) {
-      throw new ExerciseMediaServiceError(
-        "Exercise version not found",
-        "version_not_found",
-      );
+      throw this.versionNotFoundError();
     }
     return version;
+  }
+
+  private async requireVersionForPractitioner(
+    versionId: string,
+    practitionerId: string,
+  ): Promise<ExerciseVersionMediaRow> {
+    const version = await this.versions.findVersionWithExerciseOwner(versionId);
+    if (
+      !version ||
+      (version.status === "draft" && version.exercise_created_by !== practitionerId)
+    ) {
+      throw this.versionNotFoundError();
+    }
+    return version;
+  }
+
+  private versionNotFoundError(): ExerciseMediaServiceError {
+    return new ExerciseMediaServiceError(
+      "Exercise version not found",
+      "version_not_found",
+    );
   }
 }
 

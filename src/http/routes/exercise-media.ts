@@ -9,6 +9,7 @@ import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-ge
 import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
 import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
+import { jsonUnauthorized } from "../responses.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -136,9 +137,17 @@ export async function handleExerciseMediaRequest(
       );
     }
     try {
+      if (access === "internal") {
+        if (!sessionPractitioner) {
+          return jsonUnauthorized();
+        }
+      }
+      const sessionPractitionerId =
+        access === "internal" ? sessionPractitioner?.practitionerId : undefined;
       const view = await mediaService(deps).getMediaForServing(
         serveMatch[1] ?? "",
         access,
+        sessionPractitionerId,
       );
       if (!view) {
         return Response.json(
@@ -191,6 +200,7 @@ export async function handleExerciseMediaRequest(
     }
     try {
       const media = await service.generateInitialMediaForVersion({
+        practitionerId,
         exerciseVersionId,
         regenerationNote: body.note,
       });
