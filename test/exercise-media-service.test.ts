@@ -108,9 +108,10 @@ describe("ExerciseMediaService (integration)", () => {
   it("stores draft media as non-public until promotion", async () => {
     const storage = await openMigratedDatabase();
     try {
-      const { versionId } = await seedDraftVersion(storage);
+      const { versionId, practitionerId } = await seedDraftVersion(storage);
       const { service, media } = await createService(storage);
       const created = await service.generateInitialMediaForVersion({
+        practitionerId,
         exerciseVersionId: versionId,
       });
       expect(created.visibility).toBe("draft");
@@ -128,7 +129,10 @@ describe("ExerciseMediaService (integration)", () => {
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const { service } = await createService(storage);
-      await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
       for (let i = 0; i < 5; i += 1) {
         await service.regenerateMedia({
           practitionerId,
@@ -176,6 +180,7 @@ describe("ExerciseMediaService (integration)", () => {
       );
       const { service } = await createService(storage);
       await service.generateInitialMediaForVersion({
+        practitionerId,
         exerciseVersionId: approvedVersionId,
       });
       const result = await service.regenerateMedia({
@@ -229,7 +234,10 @@ describe("ExerciseMediaService (integration)", () => {
         () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
         () => testOpaqueEntityId(`media-id-${tick}`),
       );
-      await service.generateInitialMediaForVersion({ exerciseVersionId: versionId });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
       await service.regenerateMedia({
         practitionerId,
         exerciseVersionId: versionId,
