@@ -12,6 +12,7 @@ import {
   MIGRATION_0006_ID,
 } from "../../storage/migrations/apply.js";
 import { BetterSqliteStorage } from "./better-sqlite-sql-storage.js";
+import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { createMcpBearerAuthHandler, createNodeAuthPort } from "./create-auth-port.js";
 import { createDistUiStaticPort } from "./dist-ui-static-port.js";
@@ -59,6 +60,8 @@ export async function createNodeAppDependencies(
   options: {
     cimdMetadataFetch?: ClientMetadataResourceFetch;
     consentClock?: PhysioMcpConsentClock;
+    /** Test-only: wrap the SQL port before wiring auth (same instance for deps.sql and consent routes). */
+    wrapSqlPort?: (sql: SqlStoragePort) => SqlStoragePort;
   } = {},
 ): Promise<AppDependencies> {
   const config = resolveNodePhysioServerConfig(env, "127.0.0.1:8787");
@@ -68,13 +71,17 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
-  const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config, {
+  let sqlPort: SqlStoragePort = storage;
+  if (options.wrapSqlPort) {
+    sqlPort = options.wrapSqlPort(storage);
+  }
+  const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
     cimdMetadataFetch: options.cimdMetadataFetch ?? defaultCimdMetadataFetch,
     consentClock: options.consentClock,
   });
   const mcpHandler = createPhysioMcpHttpHandler(config);
   return {
-    sql: storage,
+    sql: sqlPort,
     objects: new InMemoryObjectStorage(),
     config,
     auth: authBundle.auth,

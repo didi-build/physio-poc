@@ -78,12 +78,18 @@ async function createCountedMcpOAuthTestDeps(
   pendingConsentSelectCount: () => number;
   resetPendingConsentSelectCount: () => void;
 }> {
-  const base = await createMcpOAuthTestDeps(...args);
-  const counted = wrapSqlStorageWithPendingSelectCounter(base.sql);
+  let counted!: ReturnType<typeof wrapSqlStorageWithPendingSelectCounter>;
+  const deps = await createMcpOAuthTestDeps(args[0], {
+    ...args[1],
+    wrapSqlPort: (inner) => {
+      counted = wrapSqlStorageWithPendingSelectCounter(inner);
+      return counted.sql;
+    },
+  });
   return {
-    deps: { ...base, sql: counted.sql },
-    pendingConsentSelectCount: counted.pendingConsentSelectCount,
-    resetPendingConsentSelectCount: counted.resetPendingConsentSelectCount,
+    deps,
+    pendingConsentSelectCount: () => counted.pendingConsentSelectCount(),
+    resetPendingConsentSelectCount: () => counted.resetPendingConsentSelectCount(),
   };
 }
 
@@ -978,7 +984,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(missingBadCsrf.body).toBe("");
   });
 
-  it("makes zero pending-row store reads on bad-CSRF POST for missing, live and expired rows", async () => {
+  it("makes zero pending-row store reads on bad CSRF or Origin POST (missing, live, expired) and counts reads on valid allow", async () => {
     let nowMs = 5_200_000_000_000;
     const clock = { nowMs: () => nowMs };
     const { deps, pendingConsentSelectCount, resetPendingConsentSelectCount } =
@@ -998,6 +1004,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
         resource: mcpResourceUrl(),
       }),
     );
+
     resetPendingConsentSelectCount();
     const liveBadCsrf = await requestWithJar(
       `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
@@ -1009,6 +1016,19 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(liveBadCsrf.status).toBe(403);
+    expect(pendingConsentSelectCount()).toBe(0);
+
+    resetPendingConsentSelectCount();
+    const liveBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(liveBadOrigin.status).toBe(403);
     expect(pendingConsentSelectCount()).toBe(0);
 
     nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
@@ -1023,6 +1043,19 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       },
     );
     expect(expiredBadCsrf.status).toBe(403);
+    expect(pendingConsentSelectCount()).toBe(0);
+
+    resetPendingConsentSelectCount();
+    const expiredBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(expiredBadOrigin.status).toBe(403);
     expect(pendingConsentSelectCount()).toBe(0);
 
     const jarMissing = new CookieJar();
@@ -1053,6 +1086,35 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     );
     expect(missingBadCsrf.status).toBe(403);
     expect(pendingConsentSelectCount()).toBe(0);
+
+    resetPendingConsentSelectCount();
+    const missingBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jarMissing,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(missingBadOrigin.status).toBe(403);
+    expect(pendingConsentSelectCount()).toBe(0);
+
+    const jarAllowControl = new CookieJar();
+    await completeGoogleSignIn(deps, jarAllowControl);
+    await followAuthorizeToConsent(
+      deps,
+      jarAllowControl,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    resetPendingConsentSelectCount();
+    await postConsentAllow(deps, jarAllowControl);
+    expect(pendingConsentSelectCount()).toBeGreaterThanOrEqual(1);
   });
 
   it("shows the expired page when the owner posts allow on expired or consumed pending rows", async () => {

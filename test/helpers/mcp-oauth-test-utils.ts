@@ -20,6 +20,7 @@ import {
   PHYSIO_MCP_CONSENT_CSRF_HEADER,
 } from "../../src/auth/mcp-oauth/consent-crypto.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./physio-test-auth-secret.js";
+import type { SqlStoragePort } from "../../src/storage/ports/sql-storage.js";
 
 export const MCP_OAUTH_TEST_BASE = "http://127.0.0.1:8787";
 
@@ -179,6 +180,7 @@ export async function createMcpOAuthTestDeps(
     allowedEmails?: string;
     seedPractitioner?: boolean;
     consentClock?: PhysioMcpConsentClock;
+    wrapSqlPort?: (sql: SqlStoragePort) => SqlStoragePort;
   } = {},
 ): Promise<AppDependencies> {
   const deps = await createNodeAppDependencies(
@@ -191,6 +193,7 @@ export async function createMcpOAuthTestDeps(
     {
       cimdMetadataFetch: createFakeCimdMetadataFetch(cimdDocuments),
       consentClock: options.consentClock,
+      wrapSqlPort: options.wrapSqlPort,
     },
   );
   if (options.seedPractitioner !== false) {
