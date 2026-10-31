@@ -195,6 +195,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           nameMinWidth: nameStyle.minWidth,
           nameColumnWidth: nameBox.width,
           nameLineRects: name.getClientRects().length,
+          nameWordBreak: nameStyle.wordBreak,
           wordsSingleLine: wordsStayOnSingleLines(name),
         };
       });
@@ -205,6 +206,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       );
       expect(Math.abs(boxes!.nameTop - boxes!.tagTop)).toBeLessThan(4);
       expect(boxes!.nameLineRects).toBe(1);
+      expect(boxes!.nameWordBreak).not.toBe("break-all");
       expect(boxes!.tagRight).toBeLessThanOrEqual(boxes!.contentRight + 0.5);
       expectTagPillWidth(boxes!.tagWidth);
       expect(boxes!.nameLeft - boxes!.leadRight).toBeGreaterThanOrEqual(5);
