@@ -8,16 +8,15 @@ import {
   missingProductionWorkerAuthSecretNames,
   PRODUCTION_WORKER_AUTH_SECRET_NAMES,
 } from "../scripts/lib/production-worker-auth-secrets.mjs";
-import {
-  PHYSIO_PRODUCTION_WEB_APP_BASE_URL_ENV,
-  WEB_APP_BASE_URL_PLACEHOLDER,
-} from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { PHYSIO_PRODUCTION_WEB_APP_BASE_URL } from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
 import { InvalidAuthConfigError, resolvePhysioAuthConfig } from "../src/http/config.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const ASSERT_SCRIPT = join(REPO_ROOT, "scripts/assert-production-deploy-secrets.mjs");
 const PUT_SCRIPT = join(REPO_ROOT, "scripts/put-production-worker-secrets.mjs");
 const PREPARE_SCRIPT = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
+const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
 const DEPLOY_WORKFLOW_PATH = join(
   REPO_ROOT,
   ".github/workflows/deploy-physio-mcp-worker.yml",
@@ -94,43 +93,37 @@ describe("production Worker auth secret guard (DIDI-1044)", () => {
   });
 });
 
-describe("prepare-wrangler-config production WEB_APP_BASE_URL (DIDI-1044)", () => {
-  it("substitutes WEB_APP_BASE_URL from PHYSIO_PRODUCTION_WEB_APP_BASE_URL", () => {
+describe("production wrangler WEB_APP_BASE_URL pin (DIDI-1044)", () => {
+  it("commits the production workers.dev origin on WEB_APP_BASE_URL", () => {
+    const text = readFileSync(WRANGLER_PATH, "utf8");
+    expect(text).toContain(
+      `"WEB_APP_BASE_URL": "${PHYSIO_PRODUCTION_WEB_APP_BASE_URL}"`,
+    );
+  });
+
+  it("resolves Worker config webAppBaseUrl from the committed production var", () => {
+    const deps = createWorkerAppDependencies({
+      WEB_APP_BASE_URL: PHYSIO_PRODUCTION_WEB_APP_BASE_URL,
+    });
+    expect(deps.config.webAppBaseUrl).toBe(PHYSIO_PRODUCTION_WEB_APP_BASE_URL);
+  });
+
+  it("prepare-wrangler-config leaves WEB_APP_BASE_URL unchanged when substituting D1 only", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
     const outputPath = join(tempDir, "wrangler.ci.jsonc");
-    const webAppBaseUrl = "https://physio-poc.example-subdomain.workers.dev";
     execFileSync(process.execPath, [PREPARE_SCRIPT, "--output", outputPath], {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         PHYSIO_D1_DATABASE_ID: "22222222-2222-2222-2222-222222222222",
-        [PHYSIO_PRODUCTION_WEB_APP_BASE_URL_ENV]: webAppBaseUrl,
       },
       stdio: "pipe",
     });
     const text = readFileSync(outputPath, "utf8");
-    expect(text).toContain(`"WEB_APP_BASE_URL": "${webAppBaseUrl}"`);
-    expect(text).not.toContain(WEB_APP_BASE_URL_PLACEHOLDER);
+    expect(text).toContain(
+      `"WEB_APP_BASE_URL": "${PHYSIO_PRODUCTION_WEB_APP_BASE_URL}"`,
+    );
     expect(text).toContain('"PHYSIO_USE_FAKE_GOOGLE_PROVIDER": "false"');
-  });
-
-  it("rejects a missing PHYSIO_PRODUCTION_WEB_APP_BASE_URL", () => {
-    const result = spawnSync(
-      process.execPath,
-      [PREPARE_SCRIPT, "--output", join(tmpdir(), "missing-base-url.jsonc")],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          PHYSIO_D1_DATABASE_ID: "22222222-2222-2222-2222-222222222222",
-        },
-        encoding: "utf8",
-      },
-    );
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      `${PHYSIO_PRODUCTION_WEB_APP_BASE_URL_ENV} is required.`,
-    );
   });
 });
 
@@ -179,10 +172,9 @@ describe("production deploy workflow auth wiring (DIDI-1044)", () => {
     expect(workflowText).not.toMatch(/wrangler secret bulk.*\$\{/);
   });
 
-  it("passes PHYSIO_PRODUCTION_WEB_APP_BASE_URL from production environment variables", () => {
-    expect(workflowText).toContain(
-      "PHYSIO_PRODUCTION_WEB_APP_BASE_URL: ${{ vars.PHYSIO_PRODUCTION_WEB_APP_BASE_URL }}",
-    );
+  it("does not read WEB_APP_BASE_URL from GitHub environment variables", () => {
+    expect(workflowText).not.toContain("PHYSIO_PRODUCTION_WEB_APP_BASE_URL");
+    expect(workflowText).not.toMatch(/vars\.PHYSIO_PRODUCTION/);
   });
 });
 

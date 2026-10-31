@@ -11,7 +11,7 @@ import {
   looksLikeCommittedProductionD1Id,
   PHYSIO_D1_BINDING,
   PHYSIO_D1_DATABASE_NAME,
-  WEB_APP_BASE_URL_PLACEHOLDER,
+  PHYSIO_PRODUCTION_WEB_APP_BASE_URL,
 } from "../scripts/lib/wrangler-d1-placeholders.mjs";
 import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
@@ -109,10 +109,10 @@ describe("D1 binding in wrangler.jsonc (DIDI-1031)", () => {
     expect(entry.migrations_dir).toBe("migrations");
   });
 
-  it("pins WEB_APP_BASE_URL placeholder and keeps fake Google provider off in committed vars", () => {
+  it("pins production WEB_APP_BASE_URL and keeps fake Google provider off in committed vars", () => {
     const parsed = parseWranglerJsonc(readFileSync(WRANGLER_PATH, "utf8"));
     const vars = parsed.vars as Record<string, string> | undefined;
-    expect(vars?.WEB_APP_BASE_URL).toBe(WEB_APP_BASE_URL_PLACEHOLDER);
+    expect(vars?.WEB_APP_BASE_URL).toBe(PHYSIO_PRODUCTION_WEB_APP_BASE_URL);
     expect(vars?.PHYSIO_USE_FAKE_GOOGLE_PROVIDER).toBe("false");
   });
 });
@@ -142,7 +142,7 @@ describe("production deploy workflow (DIDI-1031)", () => {
     expect(body).toContain("::add-mask::");
     expect(body).toContain("prepare-wrangler-config.mjs");
     expect(body).toContain("wrangler.ci.jsonc");
-    expect(workflowText).toContain("PHYSIO_PRODUCTION_WEB_APP_BASE_URL");
+    expect(workflowText).not.toContain("vars.PHYSIO_PRODUCTION_WEB_APP_BASE_URL");
     expect(body).not.toMatch(/\bcat\b.*wrangler\.ci\.jsonc/);
   });
 
