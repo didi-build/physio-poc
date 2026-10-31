@@ -17,6 +17,7 @@
     "dev": "tsx src/entry/node.ts",
     "build:ui": "vite build",
     "test": "vitest run",
+    "test:worker": "vitest run test/mcp-worker-local.test.ts test/d1-binding-production-deploy.test.ts",
     "test:watch": "vitest",
     "secrets": "secretlint \"**/*\"",
     "conflict-markers": "node scripts/check-conflict-markers.mjs",

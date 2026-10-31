@@ -32,6 +32,12 @@ jobs:
           PHYSIO_D1_DATABASE_ID: ${{ secrets.PHYSIO_D1_DATABASE_ID }}
         run: |
           set -euo pipefail
+          case "${PHYSIO_D1_DATABASE_ID}" in
+            *$'\n'*|*$'\r'*)
+              echo "PHYSIO_D1_DATABASE_ID must not contain newline characters." >&2
+              exit 1
+              ;;
+          esac
           TRIMMED="${PHYSIO_D1_DATABASE_ID#"${PHYSIO_D1_DATABASE_ID%%[![:space:]]*}"}"
           TRIMMED="${TRIMMED%"${TRIMMED##*[![:space:]]}"}"
           if [ "${PHYSIO_D1_DATABASE_ID}" != "${TRIMMED}" ]; then

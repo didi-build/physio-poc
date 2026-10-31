@@ -3,14 +3,13 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  D1_PLACEHOLDER_PRODUCTION,
-  looksLikeCommittedProductionD1Id,
-} from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { D1_PLACEHOLDER_PRODUCTION } from "../scripts/lib/wrangler-d1-placeholders.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const SCRIPT_PATH = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
 const FIXTURE_DATABASE_ID = "00000000-0000-0000-0000-000000000002";
+const FIXTURE_UPPERCASE_ID = "00000000-0000-0000-0000-00000000000B";
+const FIXTURE_NON_UUID = "not-a-uuid-value";
 
 function runPrepareWranglerConfig(options: {
   databaseId?: string;
@@ -38,12 +37,15 @@ function runPrepareWranglerConfig(options: {
   };
 }
 
+function assertOutputOmitsSecretMaterial(output: string, secretMaterial: string): void {
+  expect(output).not.toContain(secretMaterial);
+}
+
 describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
-  it("substitutes a valid UUID secret into the output config", () => {
+  it("substitutes a valid lowercase UUID secret into the output config", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
     const outputPath = join(tempDir, "wrangler.out.jsonc");
     try {
-      expect(looksLikeCommittedProductionD1Id(FIXTURE_DATABASE_ID)).toBe(true);
       const result = runPrepareWranglerConfig({
         databaseId: FIXTURE_DATABASE_ID,
         outputPath,
@@ -57,16 +59,19 @@ describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
     }
   });
 
-  it("rejects a secret with leading or trailing whitespace", () => {
+  it("rejects a secret with leading or trailing whitespace without echoing the value", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
     const outputPath = join(tempDir, "wrangler.out.jsonc");
+    const padded = `  ${FIXTURE_DATABASE_ID}  `;
     try {
       const result = runPrepareWranglerConfig({
-        databaseId: `  ${FIXTURE_DATABASE_ID}  `,
+        databaseId: padded,
         outputPath,
       });
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("leading or trailing whitespace");
+      assertOutputOmitsSecretMaterial(result.stderr, FIXTURE_DATABASE_ID);
+      assertOutputOmitsSecretMaterial(result.stdout, FIXTURE_DATABASE_ID);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -102,16 +107,57 @@ describe("prepare-wrangler-config.mjs (DIDI-1146)", () => {
     }
   });
 
-  it("rejects a secret that is not UUID-shaped", () => {
+  it("rejects a secret that is not UUID-shaped without echoing the value", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
     const outputPath = join(tempDir, "wrangler.out.jsonc");
     try {
       const result = runPrepareWranglerConfig({
-        databaseId: "not-a-uuid",
+        databaseId: FIXTURE_NON_UUID,
         outputPath,
       });
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("PHYSIO_D1_DATABASE_ID must be a UUID.");
+      expect(result.stderr).toContain(
+        "PHYSIO_D1_DATABASE_ID must be a lowercase UUID.",
+      );
+      assertOutputOmitsSecretMaterial(result.stderr, FIXTURE_NON_UUID);
+      assertOutputOmitsSecretMaterial(result.stdout, FIXTURE_NON_UUID);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects uppercase UUID letters without echoing the value", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
+    const outputPath = join(tempDir, "wrangler.out.jsonc");
+    try {
+      const result = runPrepareWranglerConfig({
+        databaseId: FIXTURE_UPPERCASE_ID,
+        outputPath,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "PHYSIO_D1_DATABASE_ID must be a lowercase UUID.",
+      );
+      assertOutputOmitsSecretMaterial(result.stderr, FIXTURE_UPPERCASE_ID);
+      assertOutputOmitsSecretMaterial(result.stdout, FIXTURE_UPPERCASE_ID);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects embedded newlines without echoing the value", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-wrangler-"));
+    const outputPath = join(tempDir, "wrangler.out.jsonc");
+    const multiline = `${FIXTURE_DATABASE_ID}\nsecond-line`;
+    try {
+      const result = runPrepareWranglerConfig({
+        databaseId: multiline,
+        outputPath,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("newline characters");
+      assertOutputOmitsSecretMaterial(result.stderr, FIXTURE_DATABASE_ID);
+      assertOutputOmitsSecretMaterial(result.stderr, "second-line");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

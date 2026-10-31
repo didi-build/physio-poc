@@ -7,12 +7,11 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  D1_PLACEHOLDER_PRODUCTION,
-  looksLikeCommittedProductionD1Id,
-} from "./lib/wrangler-d1-placeholders.mjs";
+import { D1_PLACEHOLDER_PRODUCTION } from "./lib/wrangler-d1-placeholders.mjs";
 
 const SOURCE = resolve("wrangler.jsonc");
+const LOWERCASE_CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function usage() {
   console.error("Usage: prepare-wrangler-config.mjs --output <path>");
@@ -46,6 +45,10 @@ function readProductionId() {
     console.error("PHYSIO_D1_DATABASE_ID is required.");
     process.exit(1);
   }
+  if (/[\r\n]/.test(raw)) {
+    console.error("PHYSIO_D1_DATABASE_ID must not contain newline characters.");
+    process.exit(1);
+  }
   const trimmed = raw.trim();
   if (raw !== trimmed) {
     console.error(
@@ -57,8 +60,8 @@ function readProductionId() {
     console.error("PHYSIO_D1_DATABASE_ID must not be the committed placeholder.");
     process.exit(1);
   }
-  if (!looksLikeCommittedProductionD1Id(trimmed)) {
-    console.error("PHYSIO_D1_DATABASE_ID must be a UUID.");
+  if (!LOWERCASE_CANONICAL_UUID.test(trimmed)) {
+    console.error("PHYSIO_D1_DATABASE_ID must be a lowercase UUID.");
     process.exit(1);
   }
   return trimmed;

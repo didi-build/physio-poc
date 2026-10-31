@@ -2,8 +2,39 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 
-const WORKFLOWS_DIR = ".github/workflows";
+const WORKFLOWS_DIR =
+  process.env.VERIFY_ACTION_PINS_WORKFLOWS_DIR ?? join(".github", "workflows");
 const PIN_RE = /uses:\s+([^@\s]+)@([0-9a-f]{40})\s+#\s*(v[^\s]+)/gi;
+const USES_LINE_RE = /^\s*-\s+uses:\s+(\S+)/;
+const FULL_SHA_REF_RE = /^[0-9a-f]{40}$/i;
+
+function listWorkflowFiles(dir) {
+  return readdirSync(dir).filter(
+    (name) => name.endsWith(".yml") || name.endsWith(".yaml"),
+  );
+}
+
+function collectUnpinnedUses() {
+  const problems = [];
+  for (const file of listWorkflowFiles(WORKFLOWS_DIR)) {
+    const text = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
+    for (const line of text.split("\n")) {
+      const match = line.match(USES_LINE_RE);
+      if (!match) continue;
+      const spec = match[1];
+      const at = spec.lastIndexOf("@");
+      if (at === -1) {
+        problems.push({ file, spec, reason: "missing @ ref" });
+        continue;
+      }
+      const ref = spec.slice(at + 1);
+      if (!FULL_SHA_REF_RE.test(ref)) {
+        problems.push({ file, spec, reason: "ref is not a 40-character commit SHA" });
+      }
+    }
+  }
+  return problems;
+}
 
 function ghApi(path) {
   const out = execFileSync("gh", ["api", path], {
@@ -37,8 +68,7 @@ function commitExists(repo, sha) {
 
 function collectPins() {
   const pins = [];
-  for (const file of readdirSync(WORKFLOWS_DIR)) {
-    if (!file.endsWith(".yml") && !file.endsWith(".yaml")) continue;
+  for (const file of listWorkflowFiles(WORKFLOWS_DIR)) {
     const text = readFileSync(join(WORKFLOWS_DIR, file), "utf8");
     for (const match of text.matchAll(PIN_RE)) {
       pins.push({
@@ -52,9 +82,25 @@ function collectPins() {
   return pins;
 }
 
+const unpinned = collectUnpinnedUses();
+if (unpinned.length > 0) {
+  for (const { file, spec, reason } of unpinned) {
+    console.error(`FAIL  ${file}  ${spec}  (${reason})`);
+  }
+  process.exit(1);
+}
+
+const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+if (!token) {
+  console.log(
+    "OK  all workflow uses: refs are 40-character SHAs (skipped tag verification, no token)",
+  );
+  process.exit(0);
+}
+
 const pins = collectPins();
 if (pins.length === 0) {
-  console.error("No pinned actions found in workflow files.");
+  console.error("No pinned actions with version comments found in workflow files.");
   process.exit(1);
 }
 

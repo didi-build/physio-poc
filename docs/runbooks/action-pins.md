@@ -10,6 +10,8 @@ From the repo root (requires `gh` authenticated for GitHub API):
 npm run verify-action-pins
 ```
 
-The script reads `.github/workflows/*.yml`, finds `uses: owner/repo@<sha> # v…` lines, resolves each tag via the GitHub API, and follows **annotated tags** (`object.type === "tag"`) to the underlying commit. It exits non-zero on any mismatch.
+The script reads `.github/workflows/*.{yml,yaml}`. Every `- uses:` line must reference a **40-character** commit SHA (`owner/repo@<sha>`). Tag refs such as `@v4` fail immediately without calling GitHub.
+
+When `GH_TOKEN` / `GITHUB_TOKEN` is set, pinned lines with a `# vX.Y.Z` comment are also checked against the GitHub API. Without a token, only the SHA ref shape check runs (exit 0 if all refs are SHAs).
 
 After changing a pin or tag comment, run this before merging.

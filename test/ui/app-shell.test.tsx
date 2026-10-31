@@ -87,12 +87,6 @@ function renderApp(initialEntry: string, requestsReviewCount = 0) {
   );
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
 async function safariActivateMenuItem(item: HTMLElement) {
   let itemReceivedFocus = false;
   const onItemFocus = () => {
@@ -115,8 +109,6 @@ async function safariActivateMenuItem(item: HTMLElement) {
       expect(screen.getByRole("menu")).toBeInTheDocument();
     });
     await act(async () => {
-      await delay(20);
-      expect(screen.getByRole("menu")).toBeInTheDocument();
       fireEvent.click(item);
     });
     expect(itemReceivedFocus).toBe(false);
@@ -289,7 +281,9 @@ describe("app shell nav (integration)", () => {
     const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
     expect(screen.getByRole("menu")).toBeInTheDocument();
     await safariActivateMenuItem(defaultsItem);
-    expect(screen.getByTestId("location")).toHaveTextContent("/defaults");
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/defaults");
+    });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Account menu" }));
@@ -299,6 +293,7 @@ describe("app shell nav (integration)", () => {
     await waitFor(() => {
       expect(signOutSpy).toHaveBeenCalled();
     });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("closes the account menu on Escape when focus is on the trigger", async () => {

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createTestHarness } from "wrangler";
@@ -14,16 +14,29 @@ import {
   PHYSIO_D1_BINDING,
   PHYSIO_D1_DATABASE_NAME,
 } from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import {
+  DEPLOY_WORKFLOW_FILENAME,
+  deployJobBlock,
+  deployJobSteps,
+  EXPECTED_PREPARE_WRANGLER_STEP_RUN,
+  nonDeployWorkflowFilenames,
+  normalizePrepareStepRunBody,
+  prepareStepYamlBlock,
+  stepBodiesAfterName,
+  violationsInDeployJobStepText,
+  violationsInDeployWorkflow,
+  workflowFilesReferencingProductionD1,
+  workflowReferencesProductionD1,
+} from "./helpers/production-deploy-workflow-guards.js";
 import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
 import { isSqlDuplicateIdError } from "../src/storage/errors/sql-duplicate-id-error.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const WORKFLOWS_DIR = join(REPO_ROOT, ".github/workflows");
-const DEPLOY_WORKFLOW_FILENAME = "deploy-physio-mcp-worker.yml";
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
 const DEPLOY_WORKFLOW_PATH = join(WORKFLOWS_DIR, DEPLOY_WORKFLOW_FILENAME);
-const CI_WORKFLOW_PATH = join(REPO_ROOT, ".github/workflows/ci.yml");
+const CI_WORKFLOW_PATH = join(WORKFLOWS_DIR, "ci.yml");
 const CREATE_DEPS_PATH = join(
   REPO_ROOT,
   "src/adapters/workers/create-app-dependencies.ts",
@@ -46,99 +59,12 @@ function parseWranglerJsonc(text: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function nonDeployWorkflowFilenames(workflowsDir: string): string[] {
-  return readdirSync(workflowsDir)
-    .filter((name) => name.endsWith(".yml") && name !== DEPLOY_WORKFLOW_FILENAME)
-    .sort();
-}
-
-function workflowFilesReferencingProductionD1(
-  workflowsDir: string,
-  readText: (path: string) => string = (path) => readFileSync(path, "utf8"),
-): string[] {
-  return nonDeployWorkflowFilenames(workflowsDir).filter((file) => {
-    const text = readText(join(workflowsDir, file));
-    return (
-      text.includes("PHYSIO_D1_DATABASE_ID") ||
-      text.includes("d1 migrations apply") ||
-      text.includes("--remote")
-    );
-  });
-}
-
-function violationsInPrepareWranglerStepRunBody(body: string): string[] {
-  const violations: string[] = [];
-  if (/\bcat\b[^\n]*wrangler\.ci\.jsonc/.test(body)) {
-    violations.push("cat-wrangler-config");
-  }
-  if (/\bset\s+-x\b/.test(body) || /\bset\s+-o\s+xtrace\b/.test(body)) {
-    violations.push("set-x");
-  }
-  for (const line of body.split("\n")) {
-    if (
-      /\becho\b/.test(line) &&
-      /\$\{?PHYSIO_D1_DATABASE_ID\}?/.test(line) &&
-      !/::add-mask::/.test(line)
-    ) {
-      violations.push("echo-secret");
-      break;
-    }
-    if (
-      /\bprintf\b/.test(line) &&
-      /\$\{?PHYSIO_D1_DATABASE_ID\}?/.test(line) &&
-      !/::add-mask::/.test(line)
-    ) {
-      violations.push("printf-secret");
-      break;
-    }
-  }
-  if (/\bupload-artifact\b/.test(body)) {
-    violations.push("upload-artifact");
-  }
-  if (/ACTIONS_STEP_DEBUG/.test(body)) {
-    violations.push("actions-step-debug");
-  }
-  return violations;
-}
-
-function assertPrepareWranglerStepDoesNotLeak(body: string): void {
-  expect(violationsInPrepareWranglerStepRunBody(body)).toEqual([]);
-}
-
 function readDeployWorkflowText(): string {
   return readFileSync(DEPLOY_WORKFLOW_PATH, "utf8");
 }
 
 function readCiWorkflowText(): string {
   return readFileSync(CI_WORKFLOW_PATH, "utf8");
-}
-
-function deployJobBlock(workflowText: string): string {
-  const jobsIndex = workflowText.indexOf("jobs:");
-  if (jobsIndex === -1) {
-    throw new Error("deploy workflow missing jobs:");
-  }
-  return workflowText.slice(jobsIndex);
-}
-
-function stepBodiesAfterName(workflowText: string, stepName: string): string[] {
-  const needle = `- name: ${stepName}`;
-  const bodies: string[] = [];
-  let searchFrom = 0;
-  while (true) {
-    const idx = workflowText.indexOf(needle, searchFrom);
-    if (idx === -1) break;
-    const runIdx = workflowText.indexOf("\n        run:", idx);
-    if (runIdx === -1) {
-      throw new Error(`step ${stepName} missing run block`);
-    }
-    const pipe = workflowText.indexOf("|", runIdx);
-    const nextStep = workflowText.indexOf("\n      - ", pipe + 1);
-    const end = nextStep === -1 ? workflowText.length : nextStep;
-    bodies.push(workflowText.slice(pipe + 1, end));
-    searchFrom = end;
-  }
-  return bodies;
 }
 
 function stepIndexByName(jobBlock: string, stepName: string): number {
@@ -179,25 +105,29 @@ describe("production deploy workflow (DIDI-1031)", () => {
     expect(workflowText).toContain("persist-credentials: false");
   });
 
-  it("runs only on main with environment production on the deploy job", () => {
-    expect(jobBlock).toContain("if: github.ref == 'refs/heads/main'");
+  it("requires the exact main-branch guard on the deploy job", () => {
+    expect(jobBlock).toMatch(/\n {4}if: github\.ref == 'refs\/heads\/main'\n/);
+    expect(jobBlock).not.toMatch(/if: github\.ref == 'refs\/heads\/main' \|\| true/);
     expect(jobBlock).toContain("environment: production");
   });
 
-  it("substitutes the D1 placeholder from PHYSIO_D1_DATABASE_ID without printing the config", () => {
+  it("uses the exact Prepare Wrangler config run script for trim, newline checks and masking", () => {
     const bodies = stepBodiesAfterName(
       workflowText,
       "Prepare Wrangler config (production D1 ID)",
     );
     expect(bodies).toHaveLength(1);
-    const body = bodies[0]!;
-    expect(body).toContain("PHYSIO_D1_DATABASE_ID");
-    expect(body).toContain("::add-mask::");
-    expect(body).toContain("prepare-wrangler-config.mjs");
-    expect(body).toContain("wrangler.ci.jsonc");
-    expect(body).toContain("TRIMMED");
-    expect(body).toContain("leading or trailing whitespace");
-    assertPrepareWranglerStepDoesNotLeak(body);
+    expect(normalizePrepareStepRunBody(bodies[0]!)).toBe(
+      EXPECTED_PREPARE_WRANGLER_STEP_RUN,
+    );
+  });
+
+  it("does not set continue-on-error on the Prepare Wrangler config step", () => {
+    expect(prepareStepYamlBlock(workflowText)).not.toMatch(/continue-on-error:\s*true/);
+  });
+
+  it("does not leak derived D1 id material across any deploy job step", () => {
+    expect(violationsInDeployWorkflow(workflowText)).toEqual([]);
   });
 
   it("applies remote D1 migrations before deploy using the prepared config", () => {
@@ -237,67 +167,79 @@ describe("production deploy workflow (DIDI-1031)", () => {
   });
 });
 
-describe("Prepare Wrangler config step leak guards (DIDI-1146)", () => {
-  it("passes on the production deploy workflow prepare step", () => {
-    const bodies = stepBodiesAfterName(
-      readDeployWorkflowText(),
-      "Prepare Wrangler config (production D1 ID)",
-    );
-    assertPrepareWranglerStepDoesNotLeak(bodies[0]!);
-  });
-
-  it("rejects cat of wrangler.ci.jsonc", () => {
-    expect(violationsInPrepareWranglerStepRunBody("cat wrangler.ci.jsonc")).toContain(
+describe("Deploy job static leak guards (DIDI-1146)", () => {
+  it("rejects cat of wrangler.ci.jsonc in any step run body", () => {
+    expect(violationsInDeployJobStepText("cat wrangler.ci.jsonc")).toContain(
       "cat-wrangler-config",
     );
   });
 
-  it("rejects set -x", () => {
-    expect(
-      violationsInPrepareWranglerStepRunBody("set -x\nnode scripts/run.mjs"),
-    ).toContain("set-x");
+  it("rejects set -x in a step run body", () => {
+    expect(violationsInDeployJobStepText("set -x\nnode scripts/run.mjs")).toContain(
+      "set-x",
+    );
   });
 
   it("rejects echo of PHYSIO_D1_DATABASE_ID outside add-mask", () => {
     expect(
-      violationsInPrepareWranglerStepRunBody('echo "secret=${PHYSIO_D1_DATABASE_ID}"'),
-    ).toContain("echo-secret");
+      violationsInDeployJobStepText('echo "secret=${PHYSIO_D1_DATABASE_ID}"'),
+    ).toContain("print-derived-d1-id");
   });
 
-  it("rejects printf of PHYSIO_D1_DATABASE_ID outside add-mask", () => {
-    expect(
-      violationsInPrepareWranglerStepRunBody('printf "%s" "${PHYSIO_D1_DATABASE_ID}"'),
-    ).toContain("printf-secret");
+  it("rejects echo of TRIMMED outside add-mask (Q3b)", () => {
+    expect(violationsInDeployJobStepText('echo "leak=${TRIMMED}"')).toContain(
+      "print-derived-d1-id",
+    );
   });
 
-  it("rejects upload-artifact", () => {
+  it("rejects printf of TRIMMED outside add-mask (Q3c)", () => {
+    expect(violationsInDeployJobStepText('printf "%s" "${TRIMMED}"')).toContain(
+      "print-derived-d1-id",
+    );
+  });
+
+  it("rejects upload-artifact in any deploy job step (Q12)", () => {
     expect(
-      violationsInPrepareWranglerStepRunBody("uses: actions/upload-artifact@v4"),
+      violationsInDeployJobStepText("- uses: actions/upload-artifact@v4"),
     ).toContain("upload-artifact");
   });
 
-  it("rejects ACTIONS_STEP_DEBUG", () => {
+  it("rejects cat in the migrations step run body (Q13)", () => {
     expect(
-      violationsInPrepareWranglerStepRunBody("env:\n  ACTIONS_STEP_DEBUG: true"),
-    ).toContain("actions-step-debug");
+      violationsInDeployJobStepText(
+        "set -euo pipefail\ncat wrangler.ci.jsonc\nnpx wrangler d1 migrations apply",
+      ),
+    ).toContain("cat-wrangler-config");
+  });
+
+  it("rejects ACTIONS_STEP_DEBUG", () => {
+    expect(violationsInDeployJobStepText("env:\n  ACTIONS_STEP_DEBUG: true")).toContain(
+      "actions-step-debug",
+    );
   });
 });
 
 describe("workflow glob for production D1 secret scan (DIDI-1146)", () => {
-  it("includes every non-deploy workflow file under .github/workflows", () => {
+  it("includes every non-deploy workflow file under .github/workflows (.yml and .yaml)", () => {
     const names = nonDeployWorkflowFilenames(WORKFLOWS_DIR);
     expect(names).toContain("ci.yml");
     expect(names).toContain("bootstrap.yml");
     expect(names).not.toContain(DEPLOY_WORKFLOW_FILENAME);
   });
 
+  it("flags d1 migrations apply without other production D1 markers", () => {
+    expect(
+      workflowReferencesProductionD1("npx wrangler d1 migrations apply PHYSIO_DB"),
+    ).toBe(true);
+  });
+
   it("picks up a newly added workflow file in the scan set", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-workflow-glob-"));
     try {
       writeFileSync(join(tempDir, "ci.yml"), "name: ci\n");
-      writeFileSync(join(tempDir, "extra-leak.yml"), "PHYSIO_D1_DATABASE_ID\n");
+      writeFileSync(join(tempDir, "extra-leak.yaml"), "d1 migrations apply\n");
       const flagged = workflowFilesReferencingProductionD1(tempDir);
-      expect(flagged).toEqual(["extra-leak.yml"]);
+      expect(flagged).toEqual(["extra-leak.yaml"]);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -350,61 +292,79 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
         } as { configPath: string },
       ],
     });
-    await server.listen();
-    const worker = server.getWorker<{ PHYSIO_DB: unknown }>();
-    await worker.applyD1Migrations("PHYSIO_DB");
-    const env = await worker.getEnv();
-    const sql = new D1SqlStorage(env.PHYSIO_DB as never);
+    try {
+      await server.listen();
+      const worker = server.getWorker<{ PHYSIO_DB: unknown }>();
+      await worker.applyD1Migrations("PHYSIO_DB");
+      const env = await worker.getEnv();
+      const deps = createWorkerAppDependencies({ PHYSIO_DB: env.PHYSIO_DB as never });
+      const sql = deps.sql;
 
-    const missing = await sql.all("SELECT id FROM programs WHERE id = ?", [
-      "00000000-0000-0000-0000-000000000099",
-    ]);
-    expect(missing).toEqual([]);
+      const missing = await sql.all("SELECT id FROM programs WHERE id = ?", [
+        "00000000-0000-0000-0000-000000000099",
+      ]);
+      expect(missing).toEqual([]);
 
-    await sql.run(
-      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
-      ["prac-d1-fixture", "prac-d1-fixture@example.com", "2026-01-01T00:00:00.000Z"],
-    );
-    await sql.run(
-      `INSERT INTO programs (
-        id, code, name, created_by, created_at, draft_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        "prog-d1-fixture",
-        "AAA111",
-        "Fixture plan",
-        "prac-d1-fixture",
-        "2026-01-01T00:00:00.000Z",
-        "2026-01-01T00:00:00.000Z",
-      ],
-    );
-
-    const row = await sql.first<{ name: string }>(
-      "SELECT name FROM programs WHERE id = ?",
-      ["prog-d1-fixture"],
-    );
-    expect(row?.name).toBe("Fixture plan");
-
-    const boolRow = await sql.first<{ flag: number }>("SELECT ? as flag", [false]);
-    expect(boolRow?.flag).toBe(0);
-
-    await expect(
-      sql.run(
+      await sql.run(
+        "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+        ["prac-d1-fixture", "prac-d1-fixture@example.com", "2026-01-01T00:00:00.000Z"],
+      );
+      await sql.run(
         `INSERT INTO programs (
           id, code, name, created_by, created_at, draft_updated_at
         ) VALUES (?, ?, ?, ?, ?, ?)`,
         [
           "prog-d1-fixture",
-          "BBB222",
-          "Duplicate",
+          "AAA111",
+          "Fixture plan",
           "prac-d1-fixture",
           "2026-01-01T00:00:00.000Z",
           "2026-01-01T00:00:00.000Z",
         ],
-      ),
-    ).rejects.toSatisfy((error: unknown) => isSqlDuplicateIdError(error));
+      );
 
-    await server.close();
-    rmSync(persist, { recursive: true, force: true });
+      const row = await sql.first<{ name: string }>(
+        "SELECT name FROM programs WHERE id = ?",
+        ["prog-d1-fixture"],
+      );
+      expect(row?.name).toBe("Fixture plan");
+
+      const boolRow = await sql.first<{ flag: number }>("SELECT ? as flag", [false]);
+      expect(boolRow?.flag).toBe(0);
+
+      await expect(
+        sql.run(
+          `INSERT INTO programs (
+            id, code, name, created_by, created_at, draft_updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            "prog-d1-fixture",
+            "BBB222",
+            "Duplicate",
+            "prac-d1-fixture",
+            "2026-01-01T00:00:00.000Z",
+            "2026-01-01T00:00:00.000Z",
+          ],
+        ),
+      ).rejects.toSatisfy((error: unknown) => isSqlDuplicateIdError(error));
+    } finally {
+      await server.close();
+      rmSync(persist, { recursive: true, force: true });
+    }
+    expect(existsSync(persist)).toBe(false);
   }, 120_000);
+});
+
+describe("deploy job step inventory", () => {
+  it("lists each deploy job step for static scanning", () => {
+    const steps = deployJobSteps(readDeployWorkflowText());
+    expect(steps.map((step) => step.name)).toEqual([
+      "uses actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0",
+      "uses actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0",
+      "npm ci",
+      "Prepare Wrangler config (production D1 ID)",
+      "Apply production D1 migrations",
+      "Deploy to Cloudflare Workers",
+    ]);
+  });
 });
