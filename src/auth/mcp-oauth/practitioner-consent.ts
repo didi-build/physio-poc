@@ -38,3 +38,21 @@ export async function deleteOAuthConsentRecordsForUserClient(
     clientId,
   ]);
 }
+
+export async function hasPhysioMcpRememberedConsent(
+  sql: SqlStoragePort,
+  input: {
+    practitionerId: string;
+    clientId: string;
+    redirectUri: string;
+    scopesJson: string;
+  },
+): Promise<boolean> {
+  const row = await sql.first<{ id: string }>(
+    `SELECT id FROM physio_mcp_practitioner_consent
+     WHERE practitioner_id = ? AND client_id = ? AND redirect_uri = ? AND scopes_json = ?
+     LIMIT 1`,
+    [input.practitionerId, input.clientId, input.redirectUri, input.scopesJson],
+  );
+  return row !== null;
+}

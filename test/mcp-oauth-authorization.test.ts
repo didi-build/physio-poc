@@ -62,9 +62,11 @@ async function runChatGptOAuthCodeFlow(deps: AppDependencies): Promise<{
       state: "chatgpt-state",
     }),
   );
-  expect(consentGet.status).toBe(403);
+  expect(consentGet.status).toBe(200);
+  expect(consentGet.headers.get("content-type")).toContain("text/html");
   expectConsentFrameHeaders(consentGet);
-  await expectPlainFailClosedAsync(consentGet);
+  const consentHtml = await consentGet.text();
+  expect(consentHtml).toContain("Allow read-only access to Didi Physio?");
   const redirect = await allowConsent(deps, jar);
   expect(redirect.searchParams.get("code")).toBeTruthy();
   expect(redirect.searchParams.get("iss")).toBe(`${MCP_OAUTH_TEST_BASE}/api/auth`);
@@ -113,7 +115,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           verifier,
         }),
       );
-      expect(consentGet.status).toBe(403);
+      expect(consentGet.status).toBe(200);
       const redirect = await allowConsent(deps, jar);
       const tokens = await exchangeAuthorizationCode({
         deps,
@@ -358,7 +360,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           state: "other-client",
         }),
       );
-      expect(secondConsent.status).toBe(403);
+      expect(secondConsent.status).toBe(200);
       expectConsentFrameHeaders(secondConsent);
     });
 
@@ -407,7 +409,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       await expectPlainFailClosedAsync(deny);
     });
 
-    it("GET consent fails closed with plain 403 and frame headers", async () => {
+    it("GET consent without session returns 401 with frame headers", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const response = await handleRequest(
         new Request(`${MCP_OAUTH_TEST_BASE}/oauth/consent`),
@@ -415,7 +417,6 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       );
       expect(response.status).toBe(401);
       expectConsentFrameHeaders(response);
-      await expectPlainFailClosedAsync(response);
     });
 
     it("mutation: emitting HTML on consent GET would not leave an empty body", async () => {
@@ -432,8 +433,8 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
           resource: mcpResourceUrl(),
         }),
       );
-      expect(consent.status).toBe(403);
-      await expectPlainFailClosedAsync(consent);
+      expect(consent.status).toBe(200);
+      expect((await consent.text()).length).toBeGreaterThan(0);
     });
 
     it("mutation: weakening consent frame headers would fail literal expectations", () => {
@@ -452,7 +453,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
   });
 
   describe("repeat authorization for the same client", () => {
-    it("still redirects to /oauth/consent when physio_mcp_practitioner_consent exists", async () => {
+    it("skips the consent page when the same client, redirect_uri and scopes were remembered", async () => {
       const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
       const jar = new CookieJar();
       await completeGoogleSignIn(deps, jar);
@@ -485,7 +486,15 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         { redirect: "manual" },
       );
       expect(second.status).toBe(302);
-      expect(second.headers.get("location")).toContain("/oauth/consent");
+      const consentFollow = await requestWithJar(
+        new URL(second.headers.get("location")!, MCP_OAUTH_TEST_BASE).toString(),
+        deps,
+        jar,
+        { redirect: "manual" },
+      );
+      expect(consentFollow.status).toBe(302);
+      expect(consentFollow.headers.get("location")).toContain("code=");
+      expect(consentFollow.headers.get("location")).not.toContain("/oauth/consent");
     });
   });
 
@@ -658,6 +667,7 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       const redirect = await allowConsent(deps, jar);
       expect(redirect.searchParams.get("code")).toBeTruthy();
 
+      await deps.sql.run("DELETE FROM physio_mcp_practitioner_consent");
       nowMs = 1_700_000_000_000;
       const jarLate = new CookieJar();
       await completeGoogleSignIn(deps, jarLate);
@@ -678,9 +688,9 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         jarLate,
         { method: "POST" },
       );
-      expect(expiredAllow.status).toBe(403);
+      expect(expiredAllow.status).toBe(200);
       expectConsentFrameHeaders(expiredAllow);
-      await expectPlainFailClosedAsync(expiredAllow);
+      expect(await expiredAllow.text()).toContain("This request has expired");
     });
 
     it("mutation: eleven-minute pending TTL would accept allow after ten minutes", async () => {
@@ -708,7 +718,8 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         jar,
         { method: "POST" },
       );
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain("This request has expired");
     });
 
     it("refuses reusing a consumed pending consent allow", async () => {
@@ -732,9 +743,9 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         jar,
         { method: "POST" },
       );
-      expect(reuse.status).toBe(403);
+      expect(reuse.status).toBe(200);
       expectConsentFrameHeaders(reuse);
-      await expectPlainFailClosedAsync(reuse);
+      expect(await reuse.text()).toContain("This request has expired");
     });
 
     it("allows exactly one of three parallel consent allow POSTs (consumed-row mutant)", async () => {
@@ -758,17 +769,17 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
         postConsentAllow(deps, jar),
       ]);
       const responses = [first, second, third];
-      const redirects = responses.filter((response) => response.status === 302);
-      const forbidden = responses.filter((response) => response.status === 403);
-      expect(redirects).toHaveLength(1);
-      expect(forbidden).toHaveLength(2);
-      for (const response of forbidden) {
-        expectConsentFrameHeaders(response);
-        await expectPlainFailClosedAsync(response);
-        expect(authorizationCodeFromConsentRedirect(response)).toBeNull();
+      const codes: string[] = [];
+      for (const response of responses) {
+        const code = await authorizationCodeFromConsentRedirect(response.clone());
+        if (code) {
+          codes.push(code);
+        }
       }
-      const winningCode = authorizationCodeFromConsentRedirect(redirects[0]!);
-      expect(winningCode).toBeTruthy();
+      expect(codes).toHaveLength(1);
+      for (const response of responses) {
+        expectConsentFrameHeaders(response);
+      }
       expect(await countStoredAuthorizationCodes(deps)).toBe(codesBefore + 1);
     });
 
@@ -788,10 +799,10 @@ describe("MCP OAuth authorization (DIDI-1043)", () => {
       );
       await denyConsent(deps, jar);
       const allow = await postConsentAllow(deps, jar);
-      expect(allow.status).toBe(403);
+      expect(allow.status).toBe(200);
       expectConsentFrameHeaders(allow);
-      await expectPlainFailClosedAsync(allow);
-      expect(authorizationCodeFromConsentRedirect(allow)).toBeNull();
+      expect(await authorizationCodeFromConsentRedirect(allow.clone())).toBeNull();
+      expect(await allow.text()).toContain("This request has expired");
       expect(await countStoredAuthorizationCodes(deps)).toBe(0);
     });
   });

@@ -511,7 +511,7 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
         expect(allow.status).toBe(403);
         expectConsentFrameHeaders(allow);
         await expectPlainFailClosedAsync(allow);
-        expect(authorizationCodeFromConsentRedirect(allow)).toBeNull();
+        expect(await authorizationCodeFromConsentRedirect(allow)).toBeNull();
         expect(await countPractitionerConsentAudit(deps)).toBe(auditBefore);
         expect(await countUnconsumedPending(deps)).toBe(unconsumedBefore);
 
@@ -630,8 +630,11 @@ describe("MCP OAuth consent security (DIDI-1043 QA)", () => {
         practitioner,
         verifyOAuthQueryParams: async () => true,
       });
-      expect(response?.status).toBe(403);
+      expect(response?.status).toBe(200);
       expect(await countPendingConsent(deps)).toBeGreaterThan(pendingBefore);
+      expect(await response?.text()).toContain(
+        "Allow read-only access to Didi Physio?",
+      );
       expect(verifyOAuthQueryParams).toBeDefined();
     });
   });

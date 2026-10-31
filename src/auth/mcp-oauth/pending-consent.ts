@@ -48,6 +48,17 @@ export async function findPhysioMcpPendingConsentById(
   );
 }
 
+export async function findPhysioMcpPendingConsentForPractitioner(
+  sql: SqlStoragePort,
+  id: string,
+  practitionerId: string,
+): Promise<PhysioMcpPendingConsentRow | null> {
+  return sql.first<PhysioMcpPendingConsentRow>(
+    "SELECT * FROM physio_mcp_pending_consent WHERE id = ? AND practitioner_id = ? LIMIT 1",
+    [id, practitionerId],
+  );
+}
+
 export async function markPhysioMcpPendingConsentConsumed(
   sql: SqlStoragePort,
   id: string,
