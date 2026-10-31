@@ -986,7 +986,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0006_mcp_oauth.sql
       verified: true
-      notes: Better Auth OAuth consent rows; cleared after each Allow so consent is never skipped (DIDI-1043)
+      notes: Better Auth OAuth consent rows; cleared after each Allow so Better Auth does not skip the Physio consent UI (DIDI-1043); remembered skip uses physio_mcp_practitioner_consent (DIDI-1126)
     columns:
       id:
         whose: operational
@@ -1141,7 +1141,7 @@ d1_tables:
       who_can_see: owner_only
       source: migrations/0006_mcp_oauth.sql
       verified: true
-      notes: Allow audit rows; not used to skip consent (DIDI-1043)
+      notes: Remembered-consent audit and skip key (practitioner_id, client_id, redirect_uri, scope set) per DIDI-1126
     columns:
       id:
         whose: operational
@@ -1159,6 +1159,25 @@ d1_tables:
         whose: operational
       created_at:
         whose: operational
+
+  __sql_batch_min_rows_guard:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: indefinite
+      who_can_see: operational
+      source: migrations/0007_sql_batch_min_rows_guard.sql
+      verified: true
+      notes: Internal batch guard only. No rows are stored; CHECK aborts failed minRowsAffected guards.
+    columns:
+      v:
+        whose: operational
+        data: None (table stays empty)
+        purpose: failed batch row-count guard only
+        processors: [Cloudflare]
+        retention: not applicable
+
 other_items:
   - id: d1.physio_db
     binding: PHYSIO_DB

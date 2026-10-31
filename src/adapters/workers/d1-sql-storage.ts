@@ -1,20 +1,31 @@
 import { SqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
+import {
+  expandSqlBatchStatementsWithMinRowsGuards,
+  isSqlBatchGuardAbortError,
+} from "../../storage/sql-batch-min-rows-guard.js";
 import type {
+  SqlBatchStatement,
   SqlBindings,
   SqlRunResult,
   SqlStoragePort,
   SqlValue,
 } from "../../storage/ports/sql-storage.js";
 
+export type PhysioD1PreparedStatement = {
+  run(): Promise<{ meta: { changes?: number } }>;
+  all(): Promise<{ results?: Record<string, SqlValue>[] }>;
+  first(): Promise<Record<string, SqlValue> | null>;
+};
+
 /** Minimal D1 binding surface used by the Workers entry. */
 export type PhysioD1Database = {
   prepare(query: string): {
-    bind(...values: SqlValue[]): {
-      run(): Promise<{ meta: { changes?: number } }>;
-      all(): Promise<{ results?: Record<string, SqlValue>[] }>;
-      first(): Promise<Record<string, SqlValue> | null>;
-    };
+    bind(...values: SqlValue[]): PhysioD1PreparedStatement;
   };
+  batch(
+    statements: PhysioD1PreparedStatement[],
+  ): Promise<{ meta: { changes?: number } }[]>;
 };
 
 function normalizeBinding(value: SqlValue): SqlValue {
@@ -36,6 +47,16 @@ function mapD1UniqueIdConstraint(error: unknown): unknown {
   return error;
 }
 
+function mapBatchError(error: unknown): unknown {
+  if (error instanceof SqlBatchGuardError) {
+    return error;
+  }
+  if (isSqlBatchGuardAbortError(error)) {
+    return new SqlBatchGuardError();
+  }
+  return mapD1UniqueIdConstraint(error);
+}
+
 /**
  * D1-backed SqlStoragePort for the Workers entry (production binding).
  */
@@ -55,7 +76,7 @@ export class D1SqlStorage implements SqlStoragePort {
       const result = await stmt.bind(...bindings.map(normalizeBinding)).run();
       return { rowsAffected: result.meta.changes ?? 0 };
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 
@@ -68,7 +89,7 @@ export class D1SqlStorage implements SqlStoragePort {
       const result = await stmt.bind(...bindings.map(normalizeBinding)).all();
       return (result.results ?? []) as T[];
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
     }
   }
 
@@ -81,7 +102,23 @@ export class D1SqlStorage implements SqlStoragePort {
       const row = await stmt.bind(...bindings.map(normalizeBinding)).first();
       return (row as T | null) ?? null;
     } catch (error) {
-      throw mapD1UniqueIdConstraint(error);
+      throw mapBatchError(error);
+    }
+  }
+
+  async batch(statements: readonly SqlBatchStatement[]): Promise<void> {
+    if (statements.length === 0) {
+      return;
+    }
+    const db = this.requireDb();
+    const expanded = expandSqlBatchStatementsWithMinRowsGuards(statements);
+    const prepared = expanded.map((statement) =>
+      db.prepare(statement.sql).bind(...statement.bindings.map(normalizeBinding)),
+    );
+    try {
+      await db.batch(prepared);
+    } catch (error) {
+      throw mapBatchError(error);
     }
   }
 }

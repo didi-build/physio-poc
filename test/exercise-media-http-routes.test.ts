@@ -78,6 +78,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       ]) {
         const response = await handleRequest(mediaRequest(url, deps), deps);
         expect(response.status).toBe(400);
+        expect(response.headers.get("cache-control")).toBe("no-store");
         const payload = (await response.json()) as { error?: string };
         expect(payload.error).toBe("invalid_input");
       }
@@ -113,6 +114,7 @@ describe("Exercise media HTTP routes (integration)", () => {
         deps,
       );
       expect(publicServe.status).toBe(404);
+      expect(publicServe.headers.get("cache-control")).toBe("no-store");
 
       const internalServe = await handleRequest(
         mediaRequest(
@@ -122,6 +124,7 @@ describe("Exercise media HTTP routes (integration)", () => {
         deps,
       );
       expect(internalServe.status).toBe(200);
+      expect(internalServe.headers.get("cache-control")).toBe("no-store");
     } finally {
       storage.close();
     }
