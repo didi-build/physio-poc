@@ -12,6 +12,14 @@ export function programsDeletedListPath(): string {
   return `${PROGRAMS_API_BASE}/deleted`;
 }
 
+export function programsFromRoutinePath(): string {
+  return `${PROGRAMS_API_BASE}/from-routine`;
+}
+
+export function routineSentProgramsPath(routineId: string): string {
+  return `/api/me/routines/${encodeURIComponent(routineId)}/sent-programs`;
+}
+
 export function programPath(programId: string): string {
   return `${PROGRAMS_API_BASE}/${encodeURIComponent(programId)}`;
 }

@@ -778,6 +778,8 @@ describe("Program builder HTTP routes (integration)", () => {
         exerciseId: FIXTURE_EXERCISE_ID,
         orderedRowIds: [rowId],
         duplicateNewRowId: id("row-dup-never"),
+        routineId: id("routine-never"),
+        fromRoutineRowIds: [id("from-routine-row-never")],
       };
 
       for (const routeCase of programBuilderProgram404ParityRouteCases(
@@ -957,6 +959,8 @@ describe("Program builder HTTP routes (integration)", () => {
         exerciseId: FIXTURE_EXERCISE_ID,
         orderedRowIds: [rowId],
         duplicateNewRowId: id("row-dup-evil"),
+        routineId: id("routine-evil"),
+        fromRoutineRowIds: [id("from-routine-row-evil")],
       };
 
       const placements: PractitionerIdPlacement[] = ["top", "nested", "array"];

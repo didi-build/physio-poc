@@ -16,6 +16,7 @@ import { jsonUnauthorized, redirectResponse } from "./responses.js";
 import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import { handleRoutinesRequest } from "./routes/routines.js";
 import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
@@ -160,6 +161,12 @@ export async function handleRequest(
       });
       if (programBuilderResponse) {
         return programBuilderResponse;
+      }
+      const routinesResponse = await handleRoutinesRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (routinesResponse) {
+        return routinesResponse;
       }
       const exerciseResponse = await handleExerciseLibraryRequest(request, deps, {
         sessionPractitioner,

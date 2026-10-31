@@ -6,6 +6,7 @@ import type { PractitionerSession } from "../../auth/auth-port.js";
 import {
   ProgramBuilderService,
   ProgramBuilderServiceError,
+  type RoutineProgramSource,
 } from "../../services/programs/index.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
@@ -13,6 +14,20 @@ import { requirePractitioner } from "../require-practitioner.js";
 const JSON_HEADERS = { "content-type": "application/json" };
 
 const PROGRAMS_ME_PREFIX = /^\/api\/me\/programs(?:\/(.*))?$/;
+
+const FROM_ROUTINE_BODY_KEYS = new Set([
+  "program_id",
+  "routine_id",
+  "source",
+  "row_ids",
+]);
+
+function canonicalInvalidInputResponse(): Response {
+  return Response.json(
+    { error: "invalid_input", message: "invalid_input" },
+    { status: 400, headers: JSON_HEADERS },
+  );
+}
 
 function service(deps: AppDependencies): ProgramBuilderService {
   return new ProgramBuilderService(deps.sql);
@@ -81,6 +96,43 @@ function parseStringField(body: Record<string, unknown>, key: string): string | 
     return null;
   }
   return value;
+}
+
+function parseFromRoutineBody(body: Record<string, unknown>):
+  | {
+      programId: string;
+      routineId: string;
+      source: RoutineProgramSource;
+      rowIds: string[];
+    }
+  | Response {
+  for (const key of Object.keys(body)) {
+    if (!FROM_ROUTINE_BODY_KEYS.has(key)) {
+      return canonicalInvalidInputResponse();
+    }
+  }
+  const programId = parseStringField(body, "program_id");
+  const routineId = parseStringField(body, "routine_id");
+  if (!programId || !routineId) {
+    return canonicalInvalidInputResponse();
+  }
+  const sourceRaw = body.source;
+  if (sourceRaw !== "my_copy" && sourceRaw !== "community") {
+    return canonicalInvalidInputResponse();
+  }
+  const rowIdsRaw = body.row_ids;
+  if (
+    !Array.isArray(rowIdsRaw) ||
+    rowIdsRaw.some((entry) => typeof entry !== "string" || entry.trim().length === 0)
+  ) {
+    return canonicalInvalidInputResponse();
+  }
+  return {
+    programId,
+    routineId,
+    source: sourceRaw,
+    rowIds: rowIdsRaw,
+  };
 }
 
 function safeDecodePathSegment(segment: string): string | null {
@@ -188,6 +240,32 @@ export async function handleProgramBuilderRequest(
     try {
       const items = await service(deps).listRecentlyDeletedPrograms(practitionerId);
       return Response.json({ items }, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  if (remainder === "from-routine" && request.method === "POST") {
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const rejected = rejectBodyPractitionerId(body);
+    if (rejected) {
+      return rejected;
+    }
+    const parsed = parseFromRoutineBody(body);
+    if (parsed instanceof Response) {
+      return parsed;
+    }
+    try {
+      const result = await service(deps).createProgramFromRoutine(practitionerId, {
+        programId: parsed.programId,
+        routineId: parsed.routineId,
+        source: parsed.source,
+        rowIds: parsed.rowIds,
+      });
+      return Response.json(result, { status: 201, headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
     }
