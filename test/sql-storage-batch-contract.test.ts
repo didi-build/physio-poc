@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -46,6 +46,18 @@ describe("service and repository SQL transaction guard", () => {
     expect(pattern.test('await sql.run("SAVEPOINT link_tx");')).toBe(true);
     expect(pattern.test('await this.sql.run("rollback");')).toBe(true);
     expect(pattern.test('await sql.run("SELECT 1");')).toBe(false);
+  });
+
+  it("pins BEGIN IMMEDIATE, savepoint, backtick, batch, and variable forms in guard patterns", () => {
+    const guardSource = readFileSync(
+      join(import.meta.dirname, "sql-storage-transaction-guard.ts"),
+      "utf8",
+    );
+    expect(guardSource).toContain("IMMEDIATE|DEFERRED|EXCLUSIVE|TRANSACTION");
+    expect(guardSource).toContain("SAVEPOINT");
+    expect(guardSource).toContain("batch\\s*\\(\\s*\\[\\s*\\{");
+    expect(guardSource).toContain("run\\(\\s*[a-zA-Z_$]");
+    expect(guardSource.match(/"`" \+/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
 
   it("pins the scanned root directories", () => {
@@ -244,6 +256,23 @@ describe.each(ADAPTERS)("SqlStoragePort.batch contract ($label)", ({ create }) =
 });
 
 describe("InMemorySqlStorage batch concurrency", () => {
+  it("pins mutex serialization on the storage lock tail", () => {
+    const source = readFileSync(
+      join(
+        import.meta.dirname,
+        "..",
+        "src",
+        "storage",
+        "adapters",
+        "memory",
+        "in-memory-sql-storage.ts",
+      ),
+      "utf8",
+    );
+    expect(source).toMatch(/this\.tail = new Promise/);
+    expect(source).toMatch(/await wait;/);
+  });
+
   it("serializes concurrent run with batch via the storage lock", async () => {
     const sql = new InMemorySqlStorage();
     await sql.run("CREATE TABLE widgets (id TEXT PRIMARY KEY, label TEXT)");
