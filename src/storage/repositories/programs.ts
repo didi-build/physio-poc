@@ -333,6 +333,15 @@ export class ProgramsRepository {
     return null;
   }
 
+  /** Exact canonical code match only (no lenient search keys). */
+  async findByExactCode(normalizedCode: string): Promise<ProgramRecord | null> {
+    return this.sql.first<ProgramRecord>(
+      `SELECT ${PROGRAM_SELECT}
+       FROM programs WHERE code = ? COLLATE NOCASE LIMIT 1`,
+      [normalizedCode],
+    );
+  }
+
   async listForPractitioner(input: {
     practitionerId: string;
     searchQuery?: string;
@@ -1024,6 +1033,17 @@ export class ShareLinksRepository {
       `SELECT id, program_id, token, expires_at, closed_at, created_at
        FROM share_links
        WHERE program_id = ? AND closed_at IS NULL
+       LIMIT 1`,
+      [programId],
+    );
+  }
+
+  async findLatestByProgramId(programId: string): Promise<ShareLinkRecord | null> {
+    return this.sql.first<ShareLinkRecord>(
+      `SELECT id, program_id, token, expires_at, closed_at, created_at
+       FROM share_links
+       WHERE program_id = ?
+       ORDER BY created_at DESC, id DESC
        LIMIT 1`,
       [programId],
     );
