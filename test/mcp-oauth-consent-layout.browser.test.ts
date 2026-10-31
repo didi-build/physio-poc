@@ -101,8 +101,32 @@ async function consentPageHtml(options: { clientName?: string }): Promise<string
 }
 
 function expectTagPillWidth(width: number): void {
-  expect(width).toBeGreaterThan(95);
-  expect(width).toBeLessThan(125);
+  expect(width).toBeGreaterThan(109);
+  expect(width).toBeLessThan(117);
+}
+
+async function setViewportWidth(page: Page, width: number, height: number): Promise<void> {
+  if (Number.isInteger(width)) {
+    await page.setViewportSize({ width, height });
+    return;
+  }
+  const session = await page.context().newCDPSession(page);
+  const scale = 10;
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    width: Math.round(width * scale),
+    height: Math.round(height * scale),
+    deviceScaleFactor: scale,
+    mobile: false,
+  });
+}
+
+async function expectInter700Ready(page: Page): Promise<void> {
+  const ready = await page.evaluate(async () => {
+    await document.fonts.load('700 11px "Inter"');
+    await document.fonts.ready;
+    return document.fonts.check('700 11px "Inter"');
+  });
+  expect(ready).toBe(true);
 }
 
 describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
@@ -113,6 +137,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       const page = await browser.newPage();
       await page.setViewportSize({ width: 1280, height: 900 });
       await loadConsentHtmlInPage(page, html);
+      await expectInter700Ready(page);
       const boxes = await page.evaluate(() => {
         const card = document.querySelector(".consent-card");
         const lead = document.querySelector(".consent-name-lead");
@@ -177,6 +202,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       });
       expect(weightsOnly400).not.toContain("700");
       await loadConsentHtmlInPage(page, html, [400, 600, 700]);
+      await expectInter700Ready(page);
       const weightsAll = await page.evaluate(async () => {
         await document.fonts.ready;
         return [...document.fonts]
@@ -184,6 +210,10 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           .map((face) => face.weight);
       });
       expect(weightsAll).toContain("700");
+      const inter700Ready = await page.evaluate(() =>
+        document.fonts.check('700 11px "Inter"'),
+      );
+      expect(inter700Ready).toBe(true);
     } finally {
       await browser.close();
     }
@@ -196,11 +226,13 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       const page = await browser.newPage();
       await page.setViewportSize({ width: 390, height: 844 });
       await loadConsentHtmlInPage(page, html);
+      await expectInter700Ready(page);
       const layout = await page.evaluate(() => {
+        const card = document.querySelector(".consent-card");
         const lead = document.querySelector(".consent-name-lead");
         const name = document.querySelector(".consent-name-inline");
         const tag = document.querySelector(".consent-tag");
-        if (!lead || !name || !tag) {
+        if (!card || !lead || !name || !tag) {
           return null;
         }
         const leadBox = lead.getBoundingClientRect();
@@ -212,6 +244,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
           nameBottom: nameBox.bottom,
           tagTop: tagBox.top,
           tagWidth: tagBox.width,
+          cardClientWidth: card.clientWidth,
           leadRight: leadBox.right,
           nameLeft: nameBox.left,
           tagFontWeight: getComputedStyle(tag).fontWeight,
@@ -220,6 +253,7 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       expect(layout).not.toBeNull();
       expect(Math.abs(layout!.leadTop - layout!.nameTop)).toBeLessThan(4);
       expect(layout!.nameLeft - layout!.leadRight).toBeGreaterThanOrEqual(5);
+      expect(layout!.tagWidth).toBeLessThan(layout!.cardClientWidth * 0.45);
       expect(layout!.tagTop).toBeGreaterThanOrEqual(layout!.nameBottom - 2);
       expectTagPillWidth(layout!.tagWidth);
       expect(layout!.tagFontWeight).toBe("700");
@@ -329,33 +363,48 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
     120_000,
   );
 
-  it("uses phone layout below 640 px and desktop layout at 640 px", async () => {
+  it.each([639, 639.5, 640])(
+    "uses phone layout below 640 px and desktop layout at 640 px (viewport %s)",
+    async (viewportWidth) => {
     const html = await consentPageHtml({});
     const browser = await chromium.launch();
     try {
       const page = await browser.newPage();
-      await page.setViewportSize({ width: 639, height: 800 });
+      await setViewportWidth(page, viewportWidth, 800);
       await loadConsentHtmlInPage(page, html);
-      const phoneTagWidth = await page.evaluate(() => {
-        const tag = document.querySelector(".consent-tag");
-        return tag ? tag.getBoundingClientRect().width : 0;
-      });
-      expectTagPillWidth(phoneTagWidth);
-      await page.setViewportSize({ width: 640, height: 800 });
-      await loadConsentHtmlInPage(page, html);
-      const desktopGap = await page.evaluate(() => {
-        const lead = document.querySelector(".consent-name-lead");
-        const name = document.querySelector(".consent-name-inline");
-        if (!lead || !name) {
-          return 0;
-        }
-        const leadBox = lead.getBoundingClientRect();
-        const nameBox = name.getBoundingClientRect();
-        return nameBox.left - leadBox.right;
-      });
-      expect(desktopGap).toBeGreaterThanOrEqual(7);
+      if (viewportWidth < 640) {
+        await expectInter700Ready(page);
+        const phoneLayout = await page.evaluate(() => {
+          const card = document.querySelector(".consent-card");
+          const tag = document.querySelector(".consent-tag");
+          if (!card || !tag) {
+            return null;
+          }
+          return {
+            tagWidth: tag.getBoundingClientRect().width,
+            cardClientWidth: card.clientWidth,
+          };
+        });
+        expect(phoneLayout).not.toBeNull();
+        expectTagPillWidth(phoneLayout!.tagWidth);
+        expect(phoneLayout!.tagWidth).toBeLessThan(phoneLayout!.cardClientWidth * 0.45);
+      } else {
+        const desktopGap = await page.evaluate(() => {
+          const lead = document.querySelector(".consent-name-lead");
+          const name = document.querySelector(".consent-name-inline");
+          if (!lead || !name) {
+            return 0;
+          }
+          const leadBox = lead.getBoundingClientRect();
+          const nameBox = name.getBoundingClientRect();
+          return nameBox.left - leadBox.right;
+        });
+        expect(desktopGap).toBeGreaterThanOrEqual(7);
+      }
     } finally {
       await browser.close();
     }
-  }, 120_000);
+  },
+  120_000,
+  );
 });
