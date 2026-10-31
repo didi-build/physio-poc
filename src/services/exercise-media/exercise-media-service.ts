@@ -370,10 +370,7 @@ export class ExerciseMediaService {
             exerciseVersionId,
             sessionPractitionerId ?? "",
           )
-        : await this.requireVersionForPublicServing(
-            exerciseVersionId,
-            sessionPractitionerId,
-          );
+        : await this.requireVersionForPublicServing(exerciseVersionId);
     if (!version.media_set_id) {
       return null;
     }
@@ -465,16 +462,12 @@ export class ExerciseMediaService {
 
   private async requireVersionForPublicServing(
     versionId: string,
-    sessionPractitionerId?: string,
   ): Promise<ExerciseVersionMediaRow> {
     const version = await this.versions.findVersionWithExerciseOwner(versionId);
     if (!version) {
       throw this.versionNotFoundError();
     }
-    if (
-      version.status === "draft" &&
-      version.exercise_created_by !== sessionPractitionerId
-    ) {
+    if (version.status === "draft") {
       throw this.versionNotFoundError();
     }
     return version;

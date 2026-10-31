@@ -166,9 +166,12 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
-      expect(
-        await service.getMediaForServing(draftVersionId, "public", practitionerId),
-      ).toBeNull();
+      await expect(
+        service.getMediaForServing(draftVersionId, "public"),
+      ).rejects.toMatchObject({ code: "version_not_found" });
+      await expect(
+        service.getMediaForServing(draftVersionId, "public", practitionerId),
+      ).rejects.toMatchObject({ code: "version_not_found" });
       expect(
         await service.getMediaForServing(draftVersionId, "internal", practitionerId),
       ).not.toBeNull();
