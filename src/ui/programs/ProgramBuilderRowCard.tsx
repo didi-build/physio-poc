@@ -187,7 +187,6 @@ export function ProgramBuilderRowCard({
         <button
           type="button"
           className="pg-row-icon-btn"
-          data-pg-reorder="up"
           aria-label={reorderRowAriaLabel(title, index + 1)}
           disabled={actionsDisabled || index === 0}
           onClick={onMoveUp}
@@ -197,7 +196,6 @@ export function ProgramBuilderRowCard({
         <button
           type="button"
           className="pg-row-icon-btn"
-          data-pg-reorder="down"
           aria-label={reorderRowAriaLabel(title, index + 2)}
           disabled={actionsDisabled || index >= total - 1}
           onClick={onMoveDown}

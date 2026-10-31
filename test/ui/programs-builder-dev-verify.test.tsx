@@ -483,8 +483,8 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    expect(screen.queryByText("Exercise types")).not.toBeInTheDocument();
     const rowCard = await screen.findByRole("article", { name: /Alpha move/i });
+    expect(within(rowCard).queryByText("Exercise types")).not.toBeInTheDocument();
     expect(
       within(rowCard).getByRole("combobox", { name: "Alpha move" }),
     ).toBeInTheDocument();
@@ -495,8 +495,11 @@ describe("Programs builder dev verification", () => {
     const down = within(rowCard).getByRole("button", {
       name: /Reorder Alpha move, position 2/,
     });
-    expect(up.getAttribute("data-pg-reorder")).toBe("up");
-    expect(down.getAttribute("data-pg-reorder")).toBe("down");
+    const actionBar = rowCard.querySelector(".pg-row-actions");
+    expect(actionBar).toBeTruthy();
+    const actionButtons = within(actionBar as HTMLElement).getAllByRole("button");
+    expect(actionButtons[0]).toBe(up);
+    expect(actionButtons[1]).toBe(down);
     expect(up.querySelector("svg path")?.getAttribute("d")).not.toBe(
       down.querySelector("svg path")?.getAttribute("d"),
     );
@@ -661,7 +664,11 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     await screen.findByRole("textbox", { name: "Program name" });
-    expect(document.querySelector(".pg-builder-status-card--phone")).toBeTruthy();
+    const phoneStatusCard = document.querySelector(
+      ".pg-builder-status-card--phone",
+    ) as HTMLElement;
+    expect(phoneStatusCard).toBeTruthy();
+    expect(within(phoneStatusCard).getByText("Not published yet")).toBeInTheDocument();
     const bar = document.querySelector(".pg-publish-phone-bar");
     expect(bar).toBeTruthy();
     expect(
@@ -748,6 +755,81 @@ describe("Programs builder dev verification", () => {
       .join(" ");
     expect(statusText).toContain("Saving...");
     expect(statusText).not.toContain("Saved");
+    vi.useRealTimers();
+  });
+
+  it("stays Saving... after one row note save completes while another is still debounced", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const rows = [
+      exerciseRow("row-a", "Alpha move"),
+      exerciseRow("row-b", "Beta move"),
+    ];
+    rows[1]!.position = 2;
+    let finishAlphaSave: (() => void) | undefined;
+    const updateRow = vi.fn().mockImplementation(async (_progId, rowId, patch) => {
+      if (rowId === "row-a") {
+        return new Promise<{ program: ProgramBuilderView }>((resolve) => {
+          finishAlphaSave = () =>
+            resolve({
+              program: builderView({
+                rows: rows.map((row) =>
+                  row.id === rowId ? { ...row, note: patch.note ?? row.note } : row,
+                ),
+              }),
+            });
+        });
+      }
+      return {
+        program: builderView({
+          rows: rows.map((row) =>
+            row.id === rowId ? { ...row, note: patch.note ?? row.note } : row,
+          ),
+        }),
+      };
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={builderStubs({
+            getProgram: vi
+              .fn()
+              .mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+            updateRow,
+          })}
+        />
+      </MemoryRouter>,
+    );
+    const notes = await screen.findAllByLabelText("Notes for this exercise (optional)");
+    await userEvent.type(notes[0]!, "alpha");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() =>
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-a", { note: "alpha" }),
+    );
+    await userEvent.type(notes[1]!, "beta");
+    finishAlphaSave!();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const statusText = Array.from(document.querySelectorAll(".pg-autosave-status"))
+      .map((node) => node.textContent ?? "")
+      .join(" ");
+    expect(statusText).toContain("Saving...");
+    expect(statusText).not.toContain("Saved");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    await waitFor(() =>
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-b", { note: "beta" }),
+    );
+    await waitFor(() => {
+      const after = Array.from(document.querySelectorAll(".pg-autosave-status"))
+        .map((node) => node.textContent ?? "")
+        .join(" ");
+      expect(after).toContain("Saved");
+    });
     vi.useRealTimers();
   });
 });
