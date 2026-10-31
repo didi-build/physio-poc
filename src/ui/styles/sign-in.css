@@ -16,6 +16,33 @@
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
 }
 
+.sign-in-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.sign-in-wordmark-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.sign-in-wordmark-text {
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: #0f172a;
+}
+
 .sign-in-google-button {
   display: flex;
   align-items: center;

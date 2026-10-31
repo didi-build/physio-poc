@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DidiPhysioWordmark } from "../components/DidiPhysioWordmark.js";
 import { normalizeReturnTo } from "../routing/return-to.js";
 import { postAuthSignInSocial } from "../api/auth-client.js";
 import { SIGN_IN_WITH_GOOGLE_LABEL, AUTH_ERROR_MESSAGE } from "../copy/sign-in.js";
@@ -32,6 +33,7 @@ export function SignInPage({ returnTo, authError }: SignInPageProps) {
   return (
     <div className="sign-in-root">
       <div className="sign-in-card">
+        <DidiPhysioWordmark />
         {AUTH_ERROR_MESSAGE && authError ? (
           <p className="sign-in-auth-error">{AUTH_ERROR_MESSAGE}</p>
         ) : null}
