@@ -101,6 +101,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         () => id(`media-id-${tick}`),
       );
       await service.generateInitialMediaForVersion({
+        practitionerId,
         exerciseVersionId: approvedVersionId,
       });
       putSpy.mockClear();
@@ -165,9 +166,11 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
-      expect(await service.getMediaForServing(draftVersionId, "public")).toBeNull();
       expect(
-        await service.getMediaForServing(draftVersionId, "internal"),
+        await service.getMediaForServing(draftVersionId, "public", practitionerId),
+      ).toBeNull();
+      expect(
+        await service.getMediaForServing(draftVersionId, "internal", practitionerId),
       ).not.toBeNull();
     } finally {
       storage.close();

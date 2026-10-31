@@ -2,7 +2,7 @@ import { isAuthAppApiPath } from "../auth/auth-app-api-prefix.js";
 import { handleFakeGoogleRequest } from "../auth/fake-google-http.js";
 import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
-import type { AuthPort } from "../auth/auth-port.js";
+import type { AuthPort, PractitionerSession } from "../auth/auth-port.js";
 import type { ImageGenerationPort } from "../storage/ports/image-generation.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
@@ -30,10 +30,15 @@ export type McpBearerAuthHandler = (
 
 export type GuardedAppWithoutSession = "redirect" | "service-unavailable";
 
+export type AppRouteHandlerContext = {
+  sessionPractitioner?: PractitionerSession | null;
+};
+
 /** Returns a Response when the handler owns the request; null to try the next handler. */
 export type AppRouteHandler = (
   request: Request,
   deps: AppDependencies,
+  context?: AppRouteHandlerContext,
 ) => Promise<Response | null>;
 
 export type AppDependencies = {
@@ -182,7 +187,7 @@ export async function handleRequest(
       }
       if (deps.extraRouteHandlers) {
         for (const handler of deps.extraRouteHandlers) {
-          const response = await handler(request, deps);
+          const response = await handler(request, deps, { sessionPractitioner });
           if (response) {
             return response;
           }
@@ -211,7 +216,8 @@ export async function handleRequest(
 
   if (deps.extraRouteHandlers) {
     for (const handler of deps.extraRouteHandlers) {
-      const response = await handler(request, deps);
+      // Non-/api/ fallthrough: no sessionPractitioner (exercise media routes are under /api/ only).
+      const response = await handler(request, deps, {});
       if (response) {
         return response;
       }
