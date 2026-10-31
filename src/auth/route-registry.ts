@@ -12,7 +12,6 @@ import {
 export const HANDLE_REQUEST_BRANCHES = [
   "health-read",
   "health-post",
-  "fake-google-oauth",
   "better-auth-api",
   "ui-static-asset",
   "mcp",
@@ -26,19 +25,13 @@ export type HandleRequestRouteSample = {
   readonly branchId: HandleRequestBranchId;
   readonly samplePath: string;
   readonly method: string;
-  readonly fakeGoogleRoutesEnabled?: boolean;
+  readonly extraSessionPublicPath?: (pathname: string) => boolean;
 };
 
 const HANDLE_REQUEST_ROUTE_SAMPLES: readonly HandleRequestRouteSample[] = [
   { branchId: "health-read", samplePath: "/health", method: "GET" },
   { branchId: "health-read", samplePath: "/health", method: "HEAD" },
   { branchId: "health-post", samplePath: "/health", method: "POST" },
-  {
-    branchId: "fake-google-oauth",
-    samplePath: "/__fake-google/o/oauth2/v2/auth",
-    method: "GET",
-    fakeGoogleRoutesEnabled: true,
-  },
   {
     branchId: "better-auth-api",
     samplePath: "/api/auth/sign-in/social",
@@ -69,7 +62,7 @@ export function handleRequestRouteSamples(): readonly HandleRequestRouteSample[]
 
 export function sessionGuardedForSample(sample: HandleRequestRouteSample): boolean {
   return requiresPractitionerSession(sample.samplePath, sample.method, {
-    fakeGoogleRoutesEnabled: sample.fakeGoogleRoutesEnabled === true,
+    extraSessionPublicPath: sample.extraSessionPublicPath,
   });
 }
 

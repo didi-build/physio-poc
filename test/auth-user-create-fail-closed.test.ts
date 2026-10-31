@@ -7,9 +7,13 @@ import {
   ALLOWLIST_REFUSAL_ERROR,
   isEmailAllowlisted,
 } from "../src/auth/allowed-emails.js";
-import { buildPhysioBetterAuthOptions } from "../src/adapters/node/create-better-auth.js";
+import { buildPhysioBetterAuthOptionsForConfig } from "../src/adapters/node/create-better-auth.js";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
-import { installFakeGoogleFetch } from "../src/auth/fake-google-http.js";
+import {
+  installFakeGoogleFetch,
+  handleFakeGoogleRequest,
+  isFakeGoogleOAuthPath,
+} from "../src/auth/fake-google-http.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import {
   PhysioPractitionerBindingError,
@@ -81,7 +85,7 @@ function createBetterAuthWithAllowlistOnlyValidateUserInfo(
   serverConfig: ReturnType<typeof resolveTestPhysioServerConfig>,
 ) {
   installFakeGoogleFetch(serverConfig.auth.authBaseUrl);
-  const options = buildPhysioBetterAuthOptions(storage, serverConfig.auth);
+  const options = buildPhysioBetterAuthOptionsForConfig(storage, serverConfig.auth);
   const auth = betterAuth({
     ...options,
     user: {
@@ -135,7 +139,8 @@ describe("OAuth user-create hook fail-closed (integration)", () => {
         config: serverConfig,
         auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
         mcp: createPhysioMcpHttpHandler(serverConfig),
-        enableFakeGoogleRoutes: true,
+        fakeGooglePreAuth: handleFakeGoogleRequest,
+        extraSessionPublicPath: isFakeGoogleOAuthPath,
       };
 
       const { lastResponse } = await completeGoogleSignIn(BASE, deps, "allowed");

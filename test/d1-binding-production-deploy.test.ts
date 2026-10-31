@@ -443,8 +443,8 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
     expect(source).not.toContain("InMemorySqlStorage");
   });
 
-  it("constructs D1SqlStorage for Worker deps without requiring SQL on auth-only paths", () => {
-    const deps = createWorkerAppDependencies({});
+  it("constructs D1SqlStorage for Worker deps without requiring SQL on auth-only paths", async () => {
+    const deps = await createWorkerAppDependencies({});
     expect(deps.sql).toBeInstanceOf(D1SqlStorage);
   });
 
@@ -458,6 +458,7 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
           name: "physio-d1-adapter-test",
           main: join(REPO_ROOT, "src/entry/worker.ts"),
           compatibility_date: "2025-10-29",
+          compatibility_flags: ["nodejs_compat"],
           d1_databases: [
             {
               binding: "PHYSIO_DB",
@@ -486,7 +487,9 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
       const worker = server.getWorker<{ PHYSIO_DB: unknown }>();
       await worker.applyD1Migrations("PHYSIO_DB");
       const env = await worker.getEnv();
-      const deps = createWorkerAppDependencies({ PHYSIO_DB: env.PHYSIO_DB as never });
+      const deps = await createWorkerAppDependencies({
+        PHYSIO_DB: env.PHYSIO_DB as never,
+      });
       const sql = deps.sql;
 
       const missing = await sql.all("SELECT id FROM programs WHERE id = ?", [

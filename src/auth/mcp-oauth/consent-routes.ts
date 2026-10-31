@@ -254,23 +254,13 @@ async function handleConsentGet(
   const pendingIdFromCookie = readCookie(request, PENDING_COOKIE);
 
   if (!oauthQuery && pendingIdFromCookie) {
-    let existing = await findPhysioMcpPendingConsentById(sql, pendingIdFromCookie);
+    const existing = await findPhysioMcpPendingConsentById(sql, pendingIdFromCookie);
     const nowMs = (clock ?? systemPhysioMcpConsentClock).nowMs();
     if (!existing) {
       return expiredResponse(authBaseUrl);
     }
     if (!isPhysioMcpPendingConsentUsable(existing, nowMs)) {
       return expiredResponse(authBaseUrl);
-    }
-    if (existing.practitioner_id !== practitioner.practitionerId) {
-      await sql.run(
-        "UPDATE physio_mcp_pending_consent SET practitioner_id = ? WHERE id = ?",
-        [practitioner.practitionerId, existing.id],
-      );
-      existing = {
-        ...existing,
-        practitioner_id: practitioner.practitionerId,
-      };
     }
     oauthQuery = existing.oauth_query;
   }
@@ -385,6 +375,7 @@ async function handleConsentGet(
   );
 }
 
+/** Consent POST load order (DIDI-1150 CTO): Origin + header/cookie CSRF, scoped lookup, stored hash, usability. */
 async function loadPendingForConsentPost(
   input: HandlePhysioMcpConsentRoutesInput,
 ): Promise<

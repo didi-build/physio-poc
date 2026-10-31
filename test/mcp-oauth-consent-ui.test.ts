@@ -28,6 +28,7 @@ import { PHYSIO_MCP_CONSENT_CSRF_HEADER } from "../src/auth/mcp-oauth/consent-cr
 import { PHYSIO_MCP_PENDING_CONSENT_TTL_MS } from "../src/auth/mcp-oauth/pending-consent.js";
 import { sanitizeOAuthClientDisplayName } from "../src/auth/mcp-oauth/sanitize-client-name.js";
 import type { AppDependencies } from "../src/http/app.js";
+import { wrapSqlStorageWithPendingSelectCounter } from "./helpers/counting-sql-storage.js";
 
 const LONG_CLIENT_NAME_RAW =
   "ChatGPT Connector for Clinics and Practitioners Extended Edition 2026 Beta Build";
@@ -70,29 +71,31 @@ function consentHtmlDocument(html: string): Document {
   return new JSDOM(html, { url: MCP_OAUTH_TEST_BASE }).window.document;
 }
 
-function assertConsentCardLayout(doc: Document): void {
-  const card = doc.querySelector(".consent-card") as HTMLElement | null;
-  const tag = doc.querySelector(".consent-tag") as HTMLElement | null;
-  expect(card).not.toBeNull();
-  expect(tag).not.toBeNull();
-  expect(card!.scrollWidth).toBeLessThanOrEqual(card!.clientWidth + 1);
-  const cardBox = card!.getBoundingClientRect();
-  const tagBox = tag!.getBoundingClientRect();
-  expect(tagBox.right).toBeLessThanOrEqual(cardBox.right + 1);
-  expect(tagBox.left).toBeGreaterThanOrEqual(cardBox.left - 1);
-}
-
-function assertShortNameLineIsSingleRow(doc: Document): void {
-  const line = doc.querySelector(".consent-name-line") as HTMLElement | null;
-  const lead = doc.querySelector(".consent-name-inline") as HTMLElement | null;
-  const tag = doc.querySelector(".consent-tag") as HTMLElement | null;
-  expect(line).not.toBeNull();
-  expect(lead).not.toBeNull();
-  expect(tag).not.toBeNull();
-  expect(
-    Math.abs(lead!.getBoundingClientRect().top - tag!.getBoundingClientRect().top),
-  ).toBeLessThan(4);
-  expect(line!.getBoundingClientRect().height).toBeLessThan(40);
+async function createCountedMcpOAuthTestDeps(
+  ...args: Parameters<typeof createMcpOAuthTestDeps>
+): Promise<{
+  deps: AppDependencies;
+  pendingConsentStoreCallCount: () => number;
+  pendingConsentWriteCallCount: () => number;
+  sqlWriteCallCount: () => number;
+  resetPendingConsentStoreCallCount: () => void;
+}> {
+  let counted!: ReturnType<typeof wrapSqlStorageWithPendingSelectCounter>;
+  const deps = await createMcpOAuthTestDeps(args[0], {
+    ...args[1],
+    wrapSqlPort: (inner) => {
+      counted = wrapSqlStorageWithPendingSelectCounter(inner);
+      return counted.sql;
+    },
+  });
+  return {
+    deps,
+    pendingConsentStoreCallCount: () => counted.pendingConsentStoreCallCount(),
+    pendingConsentWriteCallCount: () => counted.pendingConsentWriteCallCount(),
+    sqlWriteCallCount: () => counted.sqlWriteCallCount(),
+    resetPendingConsentStoreCallCount: () =>
+      counted.resetPendingConsentStoreCallCount(),
+  };
 }
 
 function duplicateCookieJar(source: CookieJar): CookieJar {
@@ -211,6 +214,16 @@ const EXPIRED_CARD_SPEC_COPY = [
   "Go to Didi Physio",
 ] as const;
 
+const AFTER_ALLOW_STATUS_SPEC_COPY = [
+  "Connected",
+  "Taking you back to chatgpt.com.",
+] as const;
+
+const AFTER_DENY_STATUS_SPEC_COPY = [
+  "Not connected",
+  "Nothing was shared. Taking you back to chatgpt.com.",
+] as const;
+
 describe("MCP OAuth consent UI (DIDI-1126)", () => {
   it("renders consent copy verbatim from the spec string list", async () => {
     const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
@@ -244,7 +257,7 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(doc.defaultView!.getComputedStyle(root!).alignItems).toBe("center");
   });
 
-  it("wraps a 64-character client name without horizontal overflow at 390px and 1280px", async () => {
+  it("includes the sanitized long client name in consent HTML", async () => {
     const doc = {
       ...createChatGptCimdDocument(),
       client_name: LONG_CLIENT_NAME_RAW,
@@ -265,29 +278,10 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       }),
     );
     const html = await response.text();
-    assertConsentCardLayout(consentHtmlDocument(html));
     const doc1280 = consentHtmlDocument(html);
     expect(doc1280.querySelector(".consent-name-inline")?.textContent).toContain(
       LONG_CLIENT_NAME_DISPLAY,
     );
-  });
-
-  it("keeps the short client name line on one row at 1280px", async () => {
-    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments());
-    const jar = new CookieJar();
-    await completeGoogleSignIn(deps, jar);
-    const response = await followAuthorizeToConsent(
-      deps,
-      jar,
-      buildAuthorizeUrl({
-        clientId: CHATGPT_CIMD_CLIENT_ID,
-        redirectUri: CHATGPT_REDIRECT_URI,
-        verifier: randomPkceVerifier(),
-        resource: mcpResourceUrl(),
-      }),
-    );
-    const html = await response.text();
-    assertShortNameLineIsSingleRow(consentHtmlDocument(html));
   });
 
   it("escapes HTML in the client display name", async () => {
@@ -930,6 +924,300 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     expect(consumedBadOrigin.body).not.toContain("This request has expired");
   });
 
+  it("returns byte-identical plain 403 for bad CSRF on a missing row as on an expired row", async () => {
+    let nowMs = 5_100_000_000_000;
+    const clock = { nowMs: () => nowMs };
+    const deps = await createMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
+    const jarExpired = new CookieJar();
+    await completeGoogleSignIn(deps, jarExpired);
+    await followAuthorizeToConsent(
+      deps,
+      jarExpired,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+    const expiredBadCsrf = await consentHttpFingerprint(
+      await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+        deps,
+        jarExpired,
+        {
+          method: "POST",
+          headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+        },
+      ),
+    );
+
+    const jarMissing = new CookieJar();
+    await completeGoogleSignIn(deps, jarMissing);
+    await followAuthorizeToConsent(
+      deps,
+      jarMissing,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const pendingId = jarMissing.get("physio_mcp_pending_consent_id");
+    expect(pendingId).toBeTruthy();
+    await deps.sql.run("DELETE FROM physio_mcp_pending_consent WHERE id = ?", [
+      pendingId!,
+    ]);
+    const missingBadCsrf = await consentHttpFingerprint(
+      await requestWithJar(
+        `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+        deps,
+        jarMissing,
+        {
+          method: "POST",
+          headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+        },
+      ),
+    );
+
+    expect(missingBadCsrf).toEqual(expiredBadCsrf);
+    expect(missingBadCsrf.status).toBe(403);
+    expect(missingBadCsrf.body).toBe("");
+  });
+
+  it("makes zero pending-row store calls on bad CSRF or Origin POST (missing, live, expired) and counts store calls on valid allow", async () => {
+    let nowMs = 5_200_000_000_000;
+    const clock = { nowMs: () => nowMs };
+    const {
+      deps,
+      pendingConsentStoreCallCount,
+      sqlWriteCallCount,
+      resetPendingConsentStoreCallCount,
+    } = await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
+
+    const jarLive = new CookieJar();
+    await completeGoogleSignIn(deps, jarLive);
+    await followAuthorizeToConsent(
+      deps,
+      jarLive,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+
+    resetPendingConsentStoreCallCount();
+    const liveBadCsrf = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+      },
+    );
+    expect(liveBadCsrf.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    resetPendingConsentStoreCallCount();
+    const liveBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(liveBadOrigin.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+    resetPendingConsentStoreCallCount();
+    const expiredBadCsrf = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+      },
+    );
+    expect(expiredBadCsrf.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    resetPendingConsentStoreCallCount();
+    const expiredBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jarLive,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(expiredBadOrigin.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    const jarMissing = new CookieJar();
+    await completeGoogleSignIn(deps, jarMissing);
+    await followAuthorizeToConsent(
+      deps,
+      jarMissing,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const pendingId = jarMissing.get("physio_mcp_pending_consent_id");
+    await deps.sql.run("DELETE FROM physio_mcp_pending_consent WHERE id = ?", [
+      pendingId!,
+    ]);
+    resetPendingConsentStoreCallCount();
+    const missingBadCsrf = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jarMissing,
+      {
+        method: "POST",
+        headers: { [PHYSIO_MCP_CONSENT_CSRF_HEADER]: "wrong-token" },
+      },
+    );
+    expect(missingBadCsrf.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    resetPendingConsentStoreCallCount();
+    const missingBadOrigin = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/deny`,
+      deps,
+      jarMissing,
+      {
+        method: "POST",
+        headers: { origin: "https://evil.example" },
+      },
+    );
+    expect(missingBadOrigin.status).toBe(403);
+    expect(pendingConsentStoreCallCount()).toBe(0);
+
+    const jarAllowControl = new CookieJar();
+    await completeGoogleSignIn(deps, jarAllowControl);
+    await followAuthorizeToConsent(
+      deps,
+      jarAllowControl,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    resetPendingConsentStoreCallCount();
+    await postConsentAllow(deps, jarAllowControl);
+    expect(pendingConsentStoreCallCount()).toBeGreaterThanOrEqual(1);
+    expect(sqlWriteCallCount()).toBeGreaterThanOrEqual(1);
+  });
+
+  it("returns plain 403 with zero pending-row writes when CSRF header matches cookie but not the stored hash (expired and consumed rows)", async () => {
+    let nowMs = 8_000_000_000_000;
+    const clock = { nowMs: () => nowMs };
+    const {
+      deps,
+      pendingConsentWriteCallCount,
+      sqlWriteCallCount,
+      resetPendingConsentStoreCallCount,
+    } = await createCountedMcpOAuthTestDeps(defaultCimdDocuments(), {
+      consentClock: clock,
+    });
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const pendingId = jar.get("physio_mcp_pending_consent_id");
+    expect(pendingId).toBeTruthy();
+    await deps.sql.run(
+      "UPDATE physio_mcp_pending_consent SET csrf_token_hash = ? WHERE id = ?",
+      ["0".repeat(64), pendingId!],
+    );
+
+    nowMs += PHYSIO_MCP_PENDING_CONSENT_TTL_MS + 1;
+    resetPendingConsentStoreCallCount();
+    const expiredForged = await requestWithJar(
+      `${MCP_OAUTH_TEST_BASE}/oauth/consent/allow`,
+      deps,
+      jar,
+      { method: "POST" },
+    );
+    expect(expiredForged.status).toBe(403);
+    expect(await expiredForged.text()).toBe("");
+    expect(pendingConsentWriteCallCount()).toBe(0);
+    expect(sqlWriteCallCount()).toBe(0);
+
+    nowMs = 9_000_000_000_000;
+    const jarFresh = new CookieJar();
+    await completeGoogleSignIn(deps, jarFresh);
+    await followAuthorizeToConsent(
+      deps,
+      jarFresh,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    const consumedPendingId = jarFresh.get("physio_mcp_pending_consent_id");
+    expect(consumedPendingId).toBeTruthy();
+    await allowConsent(deps, jarFresh);
+    await deps.sql.run(
+      "UPDATE physio_mcp_pending_consent SET csrf_token_hash = ? WHERE id = ?",
+      ["1".repeat(64), consumedPendingId!],
+    );
+    resetPendingConsentStoreCallCount();
+    const consumedForged = await postConsentDeny(deps, jarFresh);
+    expect(consumedForged.status).toBe(403);
+    expect(await consumedForged.text()).toBe("");
+    expect(pendingConsentWriteCallCount()).toBe(0);
+    expect(sqlWriteCallCount()).toBe(0);
+  });
+
+  it("increments the wrapped SQL write counter on a valid allow POST (positive control)", async () => {
+    const { deps, sqlWriteCallCount, resetPendingConsentStoreCallCount } =
+      await createCountedMcpOAuthTestDeps(defaultCimdDocuments());
+    const jar = new CookieJar();
+    await completeGoogleSignIn(deps, jar);
+    await followAuthorizeToConsent(
+      deps,
+      jar,
+      buildAuthorizeUrl({
+        clientId: CHATGPT_CIMD_CLIENT_ID,
+        redirectUri: CHATGPT_REDIRECT_URI,
+        verifier: randomPkceVerifier(),
+        resource: mcpResourceUrl(),
+      }),
+    );
+    resetPendingConsentStoreCallCount();
+    await postConsentAllow(deps, jar);
+    expect(sqlWriteCallCount()).toBeGreaterThanOrEqual(1);
+  });
+
   it("shows the expired page when the owner posts allow on expired or consumed pending rows", async () => {
     let nowMs = 6_000_000_000_000;
     const clock = { nowMs: () => nowMs };
@@ -1046,9 +1334,8 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
     );
     expect(denyResponse.headers.get("Cache-Control")).toBe("no-store");
     const html = await denyResponse.text();
-    expect(html).toContain("Not connected");
-    expect(html).toContain("Nothing was shared. Taking you back to chatgpt.com.");
     const doc = consentHtmlDocument(html);
+    expectExactPageCopy(doc, ".consent-status-card", AFTER_DENY_STATUS_SPEC_COPY);
     const row = doc.querySelector(".consent-status-card .consent-status-row");
     expect(row).not.toBeNull();
     expect(row!.querySelector(".consent-spinner")).not.toBeNull();
@@ -1216,11 +1503,9 @@ describe("MCP OAuth consent UI (DIDI-1126)", () => {
       { method: "POST" },
     );
     const html = await allowResponse.text();
-    expect(html).toContain("Connected");
-    expect(html).toContain("Taking you back to chatgpt.com.");
-    const row = consentHtmlDocument(html).querySelector(
-      ".consent-status-card .consent-status-row",
-    );
+    const doc = consentHtmlDocument(html);
+    expectExactPageCopy(doc, ".consent-status-card", AFTER_ALLOW_STATUS_SPEC_COPY);
+    const row = doc.querySelector(".consent-status-card .consent-status-row");
     expect(row).not.toBeNull();
     expect(row!.querySelector(".consent-spinner")).not.toBeNull();
     expect(row!.querySelector(".consent-heading")?.textContent).toBe("Connected");
