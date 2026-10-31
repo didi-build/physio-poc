@@ -41,6 +41,7 @@ import {
   type ProgramBuilderHttpRouteCase,
 } from "./helpers/program-builder-http-route-cases.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
+import { expectInvalidInputQueryGuardResponse } from "./helpers/invalid-input-query-guard.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
@@ -161,11 +162,6 @@ const INVALID_INPUT_BODY = {
   message: "invalid_input",
 } as const;
 
-async function expectInvalidInputQueryGuardResponse(response: Response): Promise<void> {
-  expect(response.status).toBe(400);
-  expect(await response.text()).toBe(JSON.stringify(INVALID_INPUT_BODY));
-}
-
 function practitionerIdQuerySuffix(otherPractitionerId: string): string {
   return `?practitionerId=${encodeURIComponent(otherPractitionerId)}`;
 }
@@ -235,12 +231,6 @@ async function seedOpenExerciseRequest(
     createdAt: TS,
     updatedAt: TS,
   });
-}
-
-function sortedHeaderEntries(response: Response): [string, string][] {
-  return [...response.headers.entries()].sort((left, right) =>
-    left[0].localeCompare(right[0]),
-  );
 }
 
 describe("Program builder HTTP routes (integration)", () => {
@@ -338,16 +328,10 @@ describe("Program builder HTTP routes (integration)", () => {
 
       expect(ownDuplicate.status).toBe(400);
       expect(foreignDuplicate.status).toBe(400);
-      expect(await foreignDuplicate.clone().text()).toBe(
-        await ownDuplicate.clone().text(),
-      );
-      expect(sortedHeaderEntries(foreignDuplicate)).toEqual(
-        sortedHeaderEntries(ownDuplicate),
-      );
-      const ownBody = await ownDuplicate.json();
-      const foreignBody = await foreignDuplicate.json();
-      expect(foreignBody).toEqual(ownBody);
-      expect(ownBody).toEqual(INVALID_INPUT_BODY);
+      await expectInvalidInputQueryGuardResponse(ownDuplicate.clone());
+      await expectInvalidInputQueryGuardResponse(foreignDuplicate.clone());
+      expect(await ownDuplicate.json()).toEqual(INVALID_INPUT_BODY);
+      expect(await foreignDuplicate.json()).toEqual(INVALID_INPUT_BODY);
       expectDbStateUnchanged(
         beforeA,
         await snapshotProgramDbState(storage, sharedProgramId),
@@ -397,8 +381,7 @@ describe("Program builder HTTP routes (integration)", () => {
           ),
           deps,
         );
-        expect(listResponse.status).toBe(400);
-        expect(await listResponse.json()).toEqual(INVALID_INPUT_BODY);
+        await expectInvalidInputQueryGuardResponse(listResponse);
 
         const deletedResponse = await handleRequest(
           authedRequest(
@@ -407,8 +390,7 @@ describe("Program builder HTTP routes (integration)", () => {
           ),
           deps,
         );
-        expect(deletedResponse.status).toBe(400);
-        expect(await deletedResponse.json()).toEqual(INVALID_INPUT_BODY);
+        await expectInvalidInputQueryGuardResponse(deletedResponse);
 
         const getResponse = await handleRequest(
           authedRequest(
@@ -417,8 +399,7 @@ describe("Program builder HTTP routes (integration)", () => {
           ),
           deps,
         );
-        expect(getResponse.status).toBe(400);
-        expect(await getResponse.json()).toEqual(INVALID_INPUT_BODY);
+        await expectInvalidInputQueryGuardResponse(getResponse);
 
         const patchUrl = `${BASE}${programPath(programA)}${querySuffix(practitionerB)}`;
         const patchResponse = await handleRequest(
@@ -432,8 +413,7 @@ describe("Program builder HTTP routes (integration)", () => {
           ),
           deps,
         );
-        expect(patchResponse.status).toBe(400);
-        expect(await patchResponse.json()).toEqual(INVALID_INPUT_BODY);
+        await expectInvalidInputQueryGuardResponse(patchResponse);
 
         expect(await programCount(storage, practitionerB)).toBe(beforeCountB);
         expect(
@@ -689,6 +669,7 @@ describe("Program builder HTTP routes (integration)", () => {
               row_id: rowId,
               exercise_request_id: requestId,
               prescription_type: "stretching",
+              note: "Fixture note",
             }),
           }),
         ),
@@ -699,6 +680,50 @@ describe("Program builder HTTP routes (integration)", () => {
       expect(row?.exercise_request_id).toBe(requestId);
       expect(row?.exercise_id).toBeNull();
       expect(row?.exercise_version_id).toBeNull();
+      expect(row?.prescription_type).toBe("stretching");
+      expect(row?.note).toBe("Fixture note");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("stores null note when POST placeholder row omits note", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-post-ph-no-note");
+      const requestId = id("req-post-ph-no-note");
+      const rowId = id("row-post-ph-no-note");
+      await seedOpenExerciseRequest(
+        storage,
+        practitionerId,
+        requestId,
+        "Pending hinge",
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(practitionerId, { programId });
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const addRowUrl = `${BASE}${programRowsPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          addRowUrl,
+          mutatingAppApiRequestInit(addRowUrl, {
+            method: "POST",
+            headers: { cookie },
+            body: JSON.stringify({
+              row_id: rowId,
+              exercise_request_id: requestId,
+              prescription_type: "stretching",
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const row = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(row?.prescription_type).toBe("stretching");
+      expect(row?.note).toBeNull();
     } finally {
       storage.close();
     }

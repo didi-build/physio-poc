@@ -31,6 +31,7 @@ import {
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import { likeContainsPattern } from "../../domain/sql-like.js";
+import { isSqlDuplicateIdError } from "../errors/sql-duplicate-id-error.js";
 import {
   loadPublishedRoutineVersionForRoutine,
   validateProgramRoutineOriginTrio,
@@ -48,6 +49,8 @@ export class ProgramRepositoryError extends Error {
     this.name = "ProgramRepositoryError";
   }
 }
+
+export const PROGRAM_ID_ALREADY_IN_USE = "Program id is already in use";
 
 export type ProgramRow = {
   id: string;
@@ -183,13 +186,14 @@ export class ProgramsRepository {
             id, code, name, created_by, created_at,
             draft_version, draft_updated_at,
             source_routine_id, source_routine_version_id, source_routine_origin
-          ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             code,
             name,
             input.createdBy,
             input.createdAt,
+            1,
             input.createdAt,
             sourceRoutineId,
             sourceRoutineVersionId,
@@ -202,6 +206,9 @@ export class ProgramsRepository {
         }
         return created;
       } catch (error) {
+        if (isSqlDuplicateIdError(error)) {
+          throw new ProgramRepositoryError(PROGRAM_ID_ALREADY_IN_USE);
+        }
         if (input.code) {
           if (isUniqueConstraintError(error)) {
             throw new ProgramRepositoryError("Program code is already in use");

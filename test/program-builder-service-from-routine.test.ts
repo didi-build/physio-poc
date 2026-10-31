@@ -25,6 +25,7 @@ import {
   VERSION_INSERT_SQL,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { hideProgramFindByIdSqlPort } from "./helpers/hide-program-find-by-id-sql-port.js";
 
 const BODY_REGION_KNEE = "br-knee";
 
@@ -1239,6 +1240,56 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       expect((await programs.findById(id("shared-program-id")))?.name).toBe(
         "Taken program id",
       );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps duplicate program id at create after findById miss to invalid_input for own and foreign callers", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const baseService = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "prog-race-routine",
+        draftVersion: "prog-race-rv",
+        row: "prog-race-rvr",
+        name: "Race routine",
+      });
+      const sharedProgramId = id("race-shared-program-id");
+      await baseService.createProgram(practitionerA, {
+        programId: sharedProgramId,
+        name: "Taken before race",
+      });
+      const raceSql = hideProgramFindByIdSqlPort(storage, sharedProgramId);
+      const raceService = new ProgramBuilderService(raceSql);
+      const ownErr = await expectServiceRejection(() =>
+        raceService.createProgramFromRoutine(practitionerA, {
+          programId: sharedProgramId,
+          routineId: id("prog-race-routine"),
+          source: "community",
+          rowIds: [id("race-row-own")],
+        }),
+      );
+      const foreignErr = await expectServiceRejection(() =>
+        raceService.createProgramFromRoutine(practitionerB, {
+          programId: sharedProgramId,
+          routineId: id("prog-race-routine"),
+          source: "community",
+          rowIds: [id("race-row-foreign")],
+        }),
+      );
+      expect(ownErr).toEqual(DUPLICATE_ID_INVALID_INPUT_ERROR);
+      expect(foreignErr).toEqual(ownErr);
+      expect(
+        await new ProgramRowsRepository(storage).findById(id("race-row-own")),
+      ).toBeNull();
+      expect(
+        await new ProgramRowsRepository(storage).findById(id("race-row-foreign")),
+      ).toBeNull();
+      expect(
+        (await new ProgramsRepository(storage).findById(sharedProgramId))?.name,
+      ).toBe("Taken before race");
     } finally {
       storage.close();
     }
