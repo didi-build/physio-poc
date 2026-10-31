@@ -1,4 +1,5 @@
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
+import { CANCEL } from "../copy/my-defaults.js";
 import {
   NEW_PROGRAM_CHOOSER_INTRO,
   NEW_PROGRAM_FROM_SCRATCH,
@@ -26,7 +27,7 @@ export function NewProgramSheet({
       subtitle={NEW_PROGRAM_CHOOSER_INTRO}
       footer={
         <button type="button" className="pg-btn pg-btn--secondary" onClick={onClose}>
-          Cancel
+          {CANCEL}
         </button>
       }
     >

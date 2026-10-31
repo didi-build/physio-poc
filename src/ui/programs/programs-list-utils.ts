@@ -1,4 +1,3 @@
-import type { ProgramListItem } from "../../services/programs/types.js";
 import type { ProgramSearchResult } from "../../services/programs/types.js";
 
 /** Accept only when matched_code and an item code both equal the URL segment exactly. */
@@ -15,27 +14,6 @@ export function resolveProgramIdForBuilderCode(
   }
   const item = result.items.find((entry) => entry.code === code);
   return item?.program_id ?? null;
-}
-
-export function filterProgramsClientSide(
-  items: ProgramListItem[],
-  query: string,
-): ProgramListItem[] {
-  const trimmed = query.trim().toLowerCase();
-  if (trimmed.length === 0) {
-    return items;
-  }
-  return items.filter((item) => {
-    const name = (item.name ?? "").toLowerCase();
-    const code = item.code.toLowerCase();
-    const codeNoPrefix = code.replace(/^prg-/, "");
-    const queryNoPrefix = trimmed.replace(/^prg-/, "");
-    return (
-      name.includes(trimmed) ||
-      code.includes(trimmed) ||
-      codeNoPrefix.includes(queryNoPrefix)
-    );
-  });
 }
 
 export function highlightMatchedCode(

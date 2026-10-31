@@ -26,9 +26,11 @@ export function BuilderPublishCard({
     <aside className="pg-publish-card">
       <p className="pg-publish-card-status">{statusLine}</p>
       <AutoSaveStatus
+        className="pg-autosave--desktop"
         state={saveUiState}
         failureAlertShown={failureAlertShown}
         onTryAgain={onTryAgain}
+        showFailureAlert={false}
       />
       <p className="pg-publish-card-note">{AUTO_SAVE_NOTE}</p>
       <button

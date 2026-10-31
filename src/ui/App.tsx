@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useRoutes } from "react-router-dom";
 import type { ExerciseLibraryClient } from "./api/exercise-library-client.js";
 import { ExerciseLibraryApiProvider } from "./api/exercise-library-context.js";
@@ -12,6 +13,10 @@ import { MyDefaultsPage } from "./my-defaults/MyDefaultsPage.js";
 import { ProgramBuilderPage } from "./programs/ProgramBuilderPage.js";
 import { ProgramsListPage } from "./programs/ProgramsListPage.js";
 import { ProgramsNewPage } from "./programs/ProgramsNewPage.js";
+import {
+  ProgramLeaveGuardProvider,
+  type ProgramLeaveGuard,
+} from "./programs/program-leave-guard.js";
 import { AppShell } from "./layout/AppShell.js";
 import { createPhysioAppRouteObjects } from "./physio-app-match-routes.js";
 
@@ -28,6 +33,7 @@ export function PhysioApp({
   myDefaultsClient,
   programsClient,
 }: PhysioAppProps) {
+  const [leaveGuard, setLeaveGuard] = useState<ProgramLeaveGuard | null>(null);
   const routeTree = createPhysioAppRouteObjects(
     <AppShell requestsReviewCount={requestsReviewCount} />,
     {
@@ -46,7 +52,9 @@ export function PhysioApp({
     <ExerciseLibraryApiProvider client={exerciseLibraryClient}>
       <MyDefaultsApiProvider client={myDefaultsClient}>
         <ProgramsApiProvider client={programsClient}>
-          {useRoutes(routeTree)}
+          <ProgramLeaveGuardProvider guard={leaveGuard} setGuard={setLeaveGuard}>
+            {useRoutes(routeTree)}
+          </ProgramLeaveGuardProvider>
         </ProgramsApiProvider>
       </MyDefaultsApiProvider>
     </ExerciseLibraryApiProvider>

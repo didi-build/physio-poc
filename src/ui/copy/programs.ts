@@ -71,6 +71,38 @@ export const AUTO_SAVE_NOTE =
 
 export const DELETE_PROGRAM = "Delete program";
 export const DELETE_PROGRAM_SHEET_TITLE = "Delete this program?";
+export const DELETE_SHEET_MOVES_TO = "It moves to";
+export const DELETE_SHEET_RESTORE_SUFFIX =
+  ". You can restore it for 30 days, then it's gone for good.";
+export const DELETE_SHEET_ALSO = "It also";
+export const DELETE_SHEET_CLOSES_LINK = "closes its share link";
+export const DELETE_SHEET_LINK_CLOSED_SUFFIX =
+  ', so anyone who opens it sees "This link was closed".';
+export const DELETE_SHEET_ALREADY_CLOSED = "Its share link is already closed.";
+export const DELETE_SHEET_SHARE_HINT =
+  "To stop sharing but keep the program, close the link on the Share screen instead.";
+export const THIS_LINK_WAS_CLOSED = "This link was closed";
+
+export function deleteProgramSheetBody(openShareLink: boolean): string {
+  const intro = `${DELETE_SHEET_MOVES_TO} ${RECENTLY_DELETED}${DELETE_SHEET_RESTORE_SUFFIX}`;
+  if (openShareLink) {
+    return `${intro} ${DELETE_SHEET_ALSO} ${DELETE_SHEET_CLOSES_LINK}${DELETE_SHEET_LINK_CLOSED_SUFFIX}`;
+  }
+  return `${intro} ${DELETE_SHEET_ALREADY_CLOSED}`;
+}
+
+export function formatProgramPublishedAt(iso: string): string {
+  const instant = Date.parse(iso);
+  if (Number.isNaN(instant)) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Toronto",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(instant));
+}
 
 export const ADD_EXERCISE = "Add exercise";
 export const EXERCISES_SECTION = "Exercises";
@@ -246,7 +278,7 @@ export function addExerciseChoiceLabel(name: string): string {
 }
 
 export function builderPublishedStatus(publishedAt: string): string {
-  return `${BUILDER_PUBLISHED_PREFIX} ${publishedAt}`;
+  return `${BUILDER_PUBLISHED_PREFIX} ${formatProgramPublishedAt(publishedAt)}`;
 }
 
 export function formatAutoSaveStatus(

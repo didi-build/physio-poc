@@ -15,6 +15,8 @@ export type UseProgramAutoSaveResult = {
   tryAgain: () => void;
   failureAlertShown: boolean;
   publishAllowed: boolean;
+  runSave: (task?: () => Promise<void>) => Promise<void>;
+  scheduleDebouncedSave: (task: () => Promise<void>, debounceMs?: number) => void;
 };
 
 export function useProgramAutoSave({
@@ -28,11 +30,13 @@ export function useProgramAutoSave({
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveRef = useRef(save);
   saveRef.current = save;
+  const pendingTaskRef = useRef<(() => Promise<void>) | null>(null);
 
-  const runSave = useCallback(async () => {
+  const runSave = useCallback(async (task?: () => Promise<void>) => {
+    const run = task ?? saveRef.current;
     setState("saving");
     try {
-      await saveRef.current();
+      await run();
       setState("saved");
       setHasUnsavedEdits(false);
       setFailureAlertShown(false);
@@ -43,19 +47,27 @@ export function useProgramAutoSave({
         clearTimeout(retryTimerRef.current);
       }
       retryTimerRef.current = setTimeout(() => {
-        void runSave();
+        void runSave(pendingTaskRef.current ?? undefined);
       }, 1500);
     }
   }, []);
 
+  const scheduleDebouncedSave = useCallback(
+    (task: () => Promise<void>, delayMs = debounceMs) => {
+      pendingTaskRef.current = task;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => {
+        void runSave(task);
+      }, delayMs);
+    },
+    [debounceMs, runSave],
+  );
+
   const scheduleSave = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
-    timerRef.current = setTimeout(() => {
-      void runSave();
-    }, debounceMs);
-  }, [debounceMs, runSave]);
+    scheduleDebouncedSave(saveRef.current);
+  }, [scheduleDebouncedSave]);
 
   const markDirty = useCallback(() => {
     setHasUnsavedEdits(true);
@@ -69,7 +81,7 @@ export function useProgramAutoSave({
   }, []);
 
   const tryAgain = useCallback(() => {
-    void runSave();
+    void runSave(pendingTaskRef.current ?? undefined);
   }, [runSave]);
 
   useEffect(() => {
@@ -93,5 +105,7 @@ export function useProgramAutoSave({
     tryAgain,
     failureAlertShown,
     publishAllowed,
+    runSave,
+    scheduleDebouncedSave,
   };
 }

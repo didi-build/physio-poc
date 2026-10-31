@@ -4,43 +4,89 @@ import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import {
   DUPLICATE,
-  PLACEHOLDER_ROW_NOTE,
-  ROW_NOTES_LABEL,
-  TIMES_PER_DAY,
   duplicateRowAriaLabel,
   removeRowAriaLabel,
   reorderRowAriaLabel,
+  ROW_NOTES_LABEL,
 } from "../copy/programs.js";
-import { TYPE_LABELS } from "../copy/my-defaults.js";
+import { EXERCISE_TYPES_HEADING, TYPE_LABELS } from "../copy/my-defaults.js";
 
 export type ProgramBuilderRowCardProps = {
   row: ProgramBuilderRow;
   index: number;
   total: number;
+  noteDraft: string;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
   onNoteChange: (note: string) => void;
   onTypeChange: (type: PrescriptionType) => void;
-  busy?: boolean;
+  actionsDisabled?: boolean;
 };
+
+function RowGripIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" width={20} height={20} fill="currentColor">
+      <circle cx="9" cy="7" r="1.5" />
+      <circle cx="15" cy="7" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="17" r="1.5" />
+      <circle cx="15" cy="17" r="1.5" />
+    </svg>
+  );
+}
+
+function RowCopyIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <rect x="9" y="9" width="11" height="11" rx="1" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function RowTrashIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M4 7h16M9 7V5h6v2M10 11v6M14 11v6M6 7l1 12h10l1-12" />
+    </svg>
+  );
+}
 
 export function ProgramBuilderRowCard({
   row,
   index,
   total,
+  noteDraft,
   onMoveUp,
   onMoveDown,
   onDuplicate,
   onRemove,
   onNoteChange,
   onTypeChange,
-  busy = false,
+  actionsDisabled = false,
 }: ProgramBuilderRowCardProps) {
-  const title =
-    row.kind === "placeholder" ? PLACEHOLDER_ROW_NOTE : row.text_snapshot.title;
+  const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
+  const typeLabelId = `pg-row-type-label-${row.id}`;
 
   return (
     <article
@@ -48,7 +94,7 @@ export function ProgramBuilderRowCard({
       aria-labelledby={titleId}
       tabIndex={0}
       onKeyDown={(event) => {
-        if (busy) {
+        if (actionsDisabled) {
           return;
         }
         if (event.key === "ArrowUp" && index > 0) {
@@ -61,20 +107,23 @@ export function ProgramBuilderRowCard({
         }
       }}
     >
-      <h3 id={titleId} className="pg-row-title">
-        {title}
-      </h3>
+      <div className="pg-row-header">
+        <span className="pg-row-grip" aria-hidden>
+          <RowGripIcon />
+        </span>
+        <h3 id={titleId} className="pg-row-title">
+          {title}
+        </h3>
+      </div>
       {row.kind === "exercise" ? (
         <>
           <label className="pg-row-type-label">
-            <span id={`pg-row-type-label-${row.id}`}>
-              {TYPE_LABELS[row.prescription_type]}
-            </span>
+            <span id={typeLabelId}>{EXERCISE_TYPES_HEADING}</span>
             <select
               className="pg-row-type-select"
-              aria-labelledby={`pg-row-type-label-${row.id}`}
+              aria-labelledby={typeLabelId}
               value={row.prescription_type}
-              disabled={busy}
+              disabled={actionsDisabled}
               onChange={(event) => {
                 onTypeChange(event.target.value as PrescriptionType);
               }}
@@ -89,24 +138,13 @@ export function ProgramBuilderRowCard({
           <p className="pg-row-readout" aria-labelledby={titleId}>
             {formatExerciseParams(row.params)}
           </p>
-          {row.params.per_day !== undefined ? (
-            <p className="pg-row-dose">
-              <span id={`pg-row-per-day-${row.id}`}>{TIMES_PER_DAY}</span>
-              <span aria-labelledby={`pg-row-per-day-${row.id} ${titleId}`}>
-                {typeof row.params.per_day === "number"
-                  ? String(row.params.per_day)
-                  : `${row.params.per_day.min}-${row.params.per_day.max}`}
-              </span>
-            </p>
-          ) : null}
         </>
       ) : null}
       <label className="pg-row-notes">
         <span id={`pg-row-notes-label-${row.id}`}>{ROW_NOTES_LABEL}</span>
         <textarea
           aria-labelledby={`pg-row-notes-label-${row.id}`}
-          value={row.note ?? ""}
-          disabled={busy}
+          value={noteDraft}
           onChange={(event) => {
             onNoteChange(event.target.value);
           }}
@@ -115,32 +153,41 @@ export function ProgramBuilderRowCard({
       <div className="pg-row-actions">
         <button
           type="button"
-          className="pg-row-reorder pg-sr-only-focusable"
+          className="pg-row-icon-btn"
           aria-label={reorderRowAriaLabel(title, index + 1)}
-          disabled={busy || index === 0}
+          disabled={actionsDisabled || index === 0}
           onClick={onMoveUp}
-        />
-        <button
-          type="button"
-          className="pg-row-reorder pg-sr-only-focusable"
-          aria-label={reorderRowAriaLabel(title, index + 2)}
-          disabled={busy || index >= total - 1}
-          onClick={onMoveDown}
-        />
-        <button
-          type="button"
-          aria-label={duplicateRowAriaLabel(title)}
-          disabled={busy || row.kind === "placeholder"}
-          onClick={onDuplicate}
         >
-          {DUPLICATE}
+          <RowGripIcon />
         </button>
         <button
           type="button"
+          className="pg-row-icon-btn"
+          aria-label={reorderRowAriaLabel(title, index + 2)}
+          disabled={actionsDisabled || index >= total - 1}
+          onClick={onMoveDown}
+        >
+          <RowGripIcon />
+        </button>
+        <button
+          type="button"
+          className="pg-row-icon-btn pg-row-icon-btn--text"
+          aria-label={duplicateRowAriaLabel(title)}
+          disabled={actionsDisabled || row.kind === "placeholder"}
+          onClick={onDuplicate}
+        >
+          <RowCopyIcon />
+          <span>{DUPLICATE}</span>
+        </button>
+        <button
+          type="button"
+          className="pg-row-icon-btn"
           aria-label={removeRowAriaLabel(title)}
-          disabled={busy}
+          disabled={actionsDisabled}
           onClick={onRemove}
-        />
+        >
+          <RowTrashIcon />
+        </button>
       </div>
     </article>
   );

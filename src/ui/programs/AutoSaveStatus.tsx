@@ -13,12 +13,16 @@ export type AutoSaveStatusProps = {
   state: AutoSaveUiState;
   failureAlertShown: boolean;
   onTryAgain: () => void;
+  className?: string;
+  showFailureAlert?: boolean;
 };
 
 export function AutoSaveStatus({
   state,
   failureAlertShown,
   onTryAgain,
+  className,
+  showFailureAlert = true,
 }: AutoSaveStatusProps) {
   const statusText =
     state === "saving"
@@ -30,12 +34,15 @@ export function AutoSaveStatus({
           : AUTO_SAVE_SAVED;
 
   return (
-    <div className="pg-autosave" aria-live="polite">
+    <div
+      className={className ? `pg-autosave ${className}` : "pg-autosave"}
+      aria-live="polite"
+    >
       <p className="pg-autosave-status">{statusText}</p>
       {state === "failed" ? (
         <>
           <p className="pg-autosave-helper">{AUTO_SAVE_FAILURE_HELPER}</p>
-          {failureAlertShown ? (
+          {failureAlertShown && showFailureAlert ? (
             <p className="pg-autosave-alert" role="alert">
               {AUTO_SAVE_FAILURE_ALERT}
             </p>

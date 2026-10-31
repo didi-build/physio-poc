@@ -42,7 +42,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
   });
 
   it("announces publish card status from the visible status line, not a fixed Not published yet label", () => {
-    const publishedAt = "Oct 24, 3:15 PM";
+    const publishedAt = "2026-10-24T15:15:00.000Z";
     const { container } = render(
       <BuilderPublishCard
         autoSaveStatus={{ kind: "published", published_at: publishedAt }}

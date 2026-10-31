@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, Navigate } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
@@ -9,7 +9,6 @@ import { CANCEL } from "../copy/my-defaults.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   ADD_EXERCISE,
-  AUTO_SAVE_NOTE,
   BUILDER_EMPTY_ROWS,
   BUILDER_ROWS_HINT,
   DELETE_PROGRAM,
@@ -26,6 +25,7 @@ import {
 import { AddExerciseSheet } from "./AddExerciseSheet.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
 import { BuilderPublishCard } from "./BuilderPublishCard.js";
+import { DeleteProgramSheetBody } from "./DeleteProgramSheetBody.js";
 import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
@@ -35,6 +35,15 @@ import {
 } from "./ProgramsStates.js";
 import { resolveProgramIdForBuilderCode } from "./programs-list-utils.js";
 import { useProgramAutoSave } from "./use-program-auto-save.js";
+import { useProgramLeaveGuard } from "./program-leave-guard.js";
+
+function noteDraftsFromProgram(program: ProgramBuilderView): Record<string, string> {
+  const drafts: Record<string, string> = {};
+  for (const row of program.rows) {
+    drafts[row.id] = row.note ?? "";
+  }
+  return drafts;
+}
 
 export function ProgramBuilderPage() {
   const client = useProgramsApi();
@@ -49,7 +58,10 @@ export function ProgramBuilderPage() {
   const [nameDraft, setNameDraft] = useState("");
   const nameDraftRef = useRef(nameDraft);
   nameDraftRef.current = nameDraft;
-  const [rowBusy, setRowBusy] = useState(false);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const noteDraftsRef = useRef(noteDrafts);
+  noteDraftsRef.current = noteDrafts;
+  const [rowMutationBusy, setRowMutationBusy] = useState(false);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -61,19 +73,36 @@ export function ProgramBuilderPage() {
     if (!current) {
       return;
     }
-    const trimmed = nameDraftRef.current.trim();
+    const draftAtSaveStart = nameDraftRef.current;
+    const trimmed = draftAtSaveStart.trim();
     const nextName = trimmed.length > 0 ? trimmed : null;
     if (nextName === current.name) {
       return;
     }
     const result = await client.updateProgramName(current.program_id, nextName);
     setProgram(result.program);
-    setNameDraft(result.program.name ?? "");
+    if (nameDraftRef.current === draftAtSaveStart) {
+      setNameDraft(result.program.name ?? "");
+    }
   }, [client]);
 
   const autoSave = useProgramAutoSave({ save: saveName });
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
+  const { setGuard } = useProgramLeaveGuard();
+
+  useEffect(() => {
+    setGuard({
+      hasUnsavedEdits: autoSave.hasUnsavedEdits,
+      requestLeave: (to: string) => {
+        setPendingLeaveTo(to);
+        setLeaveOpen(true);
+      },
+    });
+    return () => {
+      setGuard(null);
+    };
+  }, [autoSave.hasUnsavedEdits, setGuard]);
 
   const loadProgram = useCallback(
     (programId: string) => {
@@ -84,6 +113,7 @@ export function ProgramBuilderPage() {
         .then((view) => {
           setProgram(view);
           setNameDraft(view.name ?? "");
+          setNoteDrafts(noteDraftsFromProgram(view));
           autoSaveRef.current.markSaved();
         })
         .catch(() => {
@@ -119,7 +149,7 @@ export function ProgramBuilderPage() {
         setRedirectToList(true);
         setLoading(false);
       });
-  }, [client, loadProgram, navigate, programCode]);
+  }, [client, loadProgram, programCode]);
 
   const requestLeave = (to: string) => {
     if (autoSave.hasUnsavedEdits) {
@@ -128,6 +158,10 @@ export function ProgramBuilderPage() {
       return;
     }
     navigate(to);
+  };
+
+  const applyProgram = (view: ProgramBuilderView) => {
+    setProgram(view);
   };
 
   const publishedAt =
@@ -143,14 +177,31 @@ export function ProgramBuilderPage() {
     [program?.rows],
   );
 
-  const refreshProgram = (view: ProgramBuilderView) => {
-    setProgram(view);
-    setNameDraft(view.name ?? "");
-  };
-
   const onNameChange = (value: string) => {
     setNameDraft(value);
     autoSave.markDirty();
+  };
+
+  const onNoteChange = (rowId: string, note: string) => {
+    setNoteDrafts((prev) => ({ ...prev, [rowId]: note }));
+    autoSave.markDirty();
+    autoSave.scheduleDebouncedSave(async () => {
+      const current = programRef.current;
+      if (!current) {
+        return;
+      }
+      const result = await client.updateRow(current.program_id, rowId, {
+        note: note.length > 0 ? note : null,
+      });
+      applyProgram(result.program);
+      setNoteDrafts((prev) => {
+        const serverNote = result.program.rows.find((r) => r.id === rowId)?.note ?? "";
+        if (prev[rowId] === note) {
+          return { ...prev, [rowId]: serverNote };
+        }
+        return prev;
+      });
+    });
   };
 
   const onAddExercise = (exerciseId: string) => {
@@ -158,18 +209,19 @@ export function ProgramBuilderPage() {
       return;
     }
     setAddExerciseOpen(false);
-    setRowBusy(true);
-    const rowId = crypto.randomUUID();
-    void client
-      .addExerciseRow(program.program_id, {
-        row_id: rowId,
-        exercise_id: exerciseId,
-      })
-      .then((result) => {
-        refreshProgram(result.program);
+    setRowMutationBusy(true);
+    void autoSave
+      .runSave(async () => {
+        const rowId = crypto.randomUUID();
+        const result = await client.addExerciseRow(program.program_id, {
+          row_id: rowId,
+          exercise_id: exerciseId,
+        });
+        applyProgram(result.program);
+        setNoteDrafts(noteDraftsFromProgram(result.program));
       })
       .finally(() => {
-        setRowBusy(false);
+        setRowMutationBusy(false);
       });
   };
 
@@ -183,14 +235,14 @@ export function ProgramBuilderPage() {
       return;
     }
     ids.splice(toIndex, 0, moved);
-    setRowBusy(true);
-    void client
-      .reorderRows(program.program_id, ids)
-      .then((result) => {
-        refreshProgram(result.program);
+    setRowMutationBusy(true);
+    void autoSave
+      .runSave(async () => {
+        const result = await client.reorderRows(program.program_id, ids);
+        applyProgram(result.program);
       })
       .finally(() => {
-        setRowBusy(false);
+        setRowMutationBusy(false);
       });
   };
 
@@ -198,11 +250,16 @@ export function ProgramBuilderPage() {
     if (!program) {
       return;
     }
-    void client.deleteProgram(program.program_id).then((result) => {
-      showToast({ message: deletedProgramToast(result.program.name) });
-      setDeleteOpen(false);
-      navigate(fillPhysioAppRoutePattern("programs"), { replace: true });
-    });
+    void client
+      .deleteProgram(program.program_id)
+      .then((result) => {
+        showToast({ message: deletedProgramToast(result.program.name) });
+        setDeleteOpen(false);
+        navigate(fillPhysioAppRoutePattern("programs"), { replace: true });
+      })
+      .catch(() => {
+        setDeleteOpen(false);
+      });
   };
 
   if (redirectToList) {
@@ -229,8 +286,10 @@ export function ProgramBuilderPage() {
     );
   }
 
+  const rowActionsDisabled = rowMutationBusy;
+
   return (
-    <section className="pg-builder" aria-busy={rowBusy ? true : undefined}>
+    <section className="pg-builder" aria-busy={rowMutationBusy ? true : undefined}>
       <button
         type="button"
         className="ex-back-link"
@@ -257,6 +316,7 @@ export function ProgramBuilderPage() {
       <div className="pg-builder-layout">
         <div className="pg-builder-main">
           <AutoSaveStatus
+            className="pg-autosave--phone"
             state={autoSave.state}
             failureAlertShown={autoSave.failureAlertShown}
             onTryAgain={autoSave.tryAgain}
@@ -265,27 +325,33 @@ export function ProgramBuilderPage() {
             <LibraryUpdatePrompt
               key={prompt.row_id}
               prompt={prompt}
-              busy={rowBusy}
+              busy={rowActionsDisabled}
               onApply={() => {
-                setRowBusy(true);
-                void client
-                  .applyLibraryUpdate(program.program_id, prompt.row_id)
-                  .then((result) => {
-                    refreshProgram(result.program);
+                setRowMutationBusy(true);
+                void autoSave
+                  .runSave(async () => {
+                    const result = await client.applyLibraryUpdate(
+                      program.program_id,
+                      prompt.row_id,
+                    );
+                    applyProgram(result.program);
                   })
                   .finally(() => {
-                    setRowBusy(false);
+                    setRowMutationBusy(false);
                   });
               }}
               onKeep={() => {
-                setRowBusy(true);
-                void client
-                  .keepLibraryUpdate(program.program_id, prompt.row_id)
-                  .then((result) => {
-                    refreshProgram(result.program);
+                setRowMutationBusy(true);
+                void autoSave
+                  .runSave(async () => {
+                    const result = await client.keepLibraryUpdate(
+                      program.program_id,
+                      prompt.row_id,
+                    );
+                    applyProgram(result.program);
                   })
                   .finally(() => {
-                    setRowBusy(false);
+                    setRowMutationBusy(false);
                   });
               }}
             />
@@ -302,7 +368,8 @@ export function ProgramBuilderPage() {
                   row={row}
                   index={index}
                   total={program.rows.length}
-                  busy={rowBusy}
+                  noteDraft={noteDrafts[row.id] ?? row.note ?? ""}
+                  actionsDisabled={rowActionsDisabled}
                   onMoveUp={() => {
                     reorder(index, index - 1);
                   }}
@@ -310,55 +377,58 @@ export function ProgramBuilderPage() {
                     reorder(index, index + 1);
                   }}
                   onDuplicate={() => {
-                    setRowBusy(true);
+                    setRowMutationBusy(true);
                     const newRowId = crypto.randomUUID();
-                    void client
-                      .duplicateRow(program.program_id, row.id, newRowId)
-                      .then((result) => {
-                        refreshProgram(result.program);
+                    void autoSave
+                      .runSave(async () => {
+                        const result = await client.duplicateRow(
+                          program.program_id,
+                          row.id,
+                          newRowId,
+                        );
+                        applyProgram(result.program);
+                        setNoteDrafts(noteDraftsFromProgram(result.program));
                         showToast({
                           message: duplicatedRowToast(row.text_snapshot.title),
                         });
                       })
                       .finally(() => {
-                        setRowBusy(false);
+                        setRowMutationBusy(false);
                       });
                   }}
                   onRemove={() => {
-                    setRowBusy(true);
-                    void client
-                      .deleteRow(program.program_id, row.id)
-                      .then((result) => {
-                        refreshProgram(result.program);
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(async () => {
+                        const result = await client.deleteRow(
+                          program.program_id,
+                          row.id,
+                        );
+                        applyProgram(result.program);
+                        setNoteDrafts(noteDraftsFromProgram(result.program));
                       })
                       .finally(() => {
-                        setRowBusy(false);
+                        setRowMutationBusy(false);
                       });
                   }}
                   onNoteChange={(note) => {
-                    setRowBusy(true);
-                    void client
-                      .updateRow(program.program_id, row.id, {
-                        note: note.length > 0 ? note : null,
-                      })
-                      .then((result) => {
-                        refreshProgram(result.program);
-                      })
-                      .finally(() => {
-                        setRowBusy(false);
-                      });
+                    onNoteChange(row.id, note);
                   }}
                   onTypeChange={(type: PrescriptionType) => {
-                    setRowBusy(true);
-                    void client
-                      .updateRow(program.program_id, row.id, {
-                        prescription_type: type,
-                      })
-                      .then((result) => {
-                        refreshProgram(result.program);
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(async () => {
+                        const result = await client.updateRow(
+                          program.program_id,
+                          row.id,
+                          {
+                            prescription_type: type,
+                          },
+                        );
+                        applyProgram(result.program);
                       })
                       .finally(() => {
-                        setRowBusy(false);
+                        setRowMutationBusy(false);
                       });
                   }}
                 />
@@ -375,7 +445,6 @@ export function ProgramBuilderPage() {
             {ADD_EXERCISE}
           </button>
           <p className="pg-footnote">{ROW_DEFAULTS_FOOTNOTE}</p>
-          <p className="pg-footnote">{AUTO_SAVE_NOTE}</p>
           <button
             type="button"
             className="pg-btn pg-btn--danger"
@@ -431,7 +500,9 @@ export function ProgramBuilderPage() {
             </button>
           </>
         }
-      />
+      >
+        <DeleteProgramSheetBody program={program} />
+      </ConfirmSheet>
 
       <LeaveWithoutSavingSheet
         open={leaveOpen}

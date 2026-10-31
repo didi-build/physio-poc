@@ -18,15 +18,16 @@ import {
   SEARCH_BY_NAME_OR_CODE,
   SEARCH_PROGRAMS_HELPER,
   SEARCH_PROGRAMS_LABEL,
+  UNTITLED_PROGRAM,
+  cardExerciseCountLine,
   listCountLabel,
+  programCodeChipLabel,
   programsSearchNoMatch,
   restoredProgramToast,
-  UNTITLED_PROGRAM,
 } from "../copy/programs.js";
 import { ProgramListCard } from "./ProgramListCard.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
-import { filterProgramsClientSide } from "./programs-list-utils.js";
 
 export function ProgramsListPage() {
   const client = useProgramsApi();
@@ -34,6 +35,7 @@ export function ProgramsListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
   const [items, setItems] = useState<ProgramListItem[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [matchedCode, setMatchedCode] = useState<string | null>(null);
   const [deletedItems, setDeletedItems] = useState<ProgramListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,28 +44,43 @@ export function ProgramsListPage() {
   const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const query = searchParams.get("q") ?? "";
+  const trimmedQuery = query.trim();
 
   const load = useCallback(() => {
     setLoading(true);
     setLoadFailed(false);
-    void Promise.all([
-      client.listPrograms(query || undefined),
-      client.listDeletedPrograms(),
-    ])
+    const listPromise =
+      trimmedQuery.length > 0
+        ? Promise.all([client.listPrograms(trimmedQuery), client.listPrograms()]).then(
+            ([filtered, all]) => ({
+              items: filtered.items,
+              matched_code: filtered.matched_code,
+              totalCount: all.items.length,
+            }),
+          )
+        : client.listPrograms().then((result) => ({
+            items: result.items,
+            matched_code: result.matched_code,
+            totalCount: result.items.length,
+          }));
+
+    void Promise.all([listPromise, client.listDeletedPrograms()])
       .then(([listResult, deletedResult]) => {
         setItems(listResult.items);
         setMatchedCode(listResult.matched_code);
+        setTotalCount(listResult.totalCount);
         setDeletedItems(deletedResult.items);
       })
       .catch(() => {
         setLoadFailed(true);
         setItems([]);
+        setTotalCount(0);
         setDeletedItems([]);
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [client, query]);
+  }, [client, trimmedQuery]);
 
   useEffect(() => {
     load();
@@ -75,20 +92,18 @@ export function ProgramsListPage() {
     }
   }, [searchParams]);
 
-  const filtered = useMemo(
-    () => filterProgramsClientSide(items, query),
-    [items, query],
+  const countLabel = useMemo(
+    () =>
+      trimmedQuery.length > 0
+        ? listCountLabel(totalCount, items.length)
+        : listCountLabel(totalCount),
+    [items.length, totalCount, trimmedQuery.length],
   );
 
-  const countLabel = listCountLabel(items.length, filtered.length);
   const showEmpty =
-    !loading && !loadFailed && items.length === 0 && query.trim().length === 0;
+    !loading && !loadFailed && totalCount === 0 && trimmedQuery.length === 0;
   const showNoMatch =
-    !loading &&
-    !loadFailed &&
-    items.length > 0 &&
-    filtered.length === 0 &&
-    query.trim().length > 0;
+    !loading && !loadFailed && trimmedQuery.length > 0 && items.length === 0;
 
   const openNewSheet = () => {
     setNewSheetOpen(true);
@@ -118,6 +133,9 @@ export function ProgramsListPage() {
       .then((result) => {
         showToast({ message: restoredProgramToast(result.program.name) });
         load();
+      })
+      .catch(() => {
+        /* leave list unchanged */
       })
       .finally(() => {
         setRestoringId(null);
@@ -200,9 +218,9 @@ export function ProgramsListPage() {
         </div>
       ) : null}
 
-      {!loading && !loadFailed && filtered.length > 0 ? (
+      {!loading && !loadFailed && items.length > 0 ? (
         <ul className="pg-card-list">
-          {filtered.map((item) => (
+          {items.map((item) => (
             <li key={item.program_id}>
               <ProgramListCard item={item} matchedCode={matchedCode} />
             </li>
@@ -221,7 +239,17 @@ export function ProgramsListPage() {
           <ul className="pg-deleted-list">
             {deletedItems.map((item) => (
               <li key={item.program_id} className="pg-deleted-item">
-                <span>{item.name?.trim() ? item.name : UNTITLED_PROGRAM}</span>
+                <div className="pg-deleted-item-main">
+                  <span className="pg-deleted-item-name">
+                    {item.name?.trim() ? item.name : UNTITLED_PROGRAM}
+                  </span>
+                  <span className="pg-code-chip">
+                    {programCodeChipLabel(item.code)}
+                  </span>
+                  <span className="pg-deleted-item-count">
+                    {cardExerciseCountLine(item.exercise_count)}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="pg-btn pg-btn--secondary"

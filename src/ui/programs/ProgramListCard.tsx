@@ -6,7 +6,6 @@ import {
   NOT_PUBLISHED_YET,
   UNTITLED_PROGRAM,
   CODE_CHIP_PREFIX,
-  cardExerciseCountAccessible,
   cardExerciseCountLine,
   libraryUpdatesToReviewFlag,
   programCodeChipLabel,
@@ -22,7 +21,6 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
   const title = item.name?.trim() ? item.name.trim() : UNTITLED_PROGRAM;
   const codeHighlight = highlightMatchedCode(item.code, matchedCode);
   const countLine = cardExerciseCountLine(item.exercise_count);
-  const accessibleCount = cardExerciseCountAccessible(item.exercise_count);
 
   const flags: string[] = [];
   if (item.auto_save_status.kind === "not_published_yet") {
@@ -57,9 +55,7 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
           <span className="pg-code-chip">{programCodeChipLabel(item.code)}</span>
         )}
       </p>
-      <p className="pg-card-count" aria-label={accessibleCount}>
-        {countLine}
-      </p>
+      <p className="pg-card-count">{countLine}</p>
       {flags.length > 0 ? (
         <ul className="pg-card-flags">
           {flags.map((flag) => (

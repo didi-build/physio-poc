@@ -211,18 +211,26 @@ describe("Programs UI (integration, jsdom)", () => {
     const items = [
       LIST_ITEM,
       { ...LIST_ITEM, program_id: "prog-2", code: "PRG-TWO", name: "Other program" },
+      { ...LIST_ITEM, program_id: "prog-3", code: "PRG-THREE", name: "Third program" },
     ];
+    const listPrograms = vi.fn((q?: string) => {
+      if (!q?.trim()) {
+        return Promise.resolve({ items, matched_code: null });
+      }
+      if (q.toLowerCase().includes("knee")) {
+        return Promise.resolve({ items: [LIST_ITEM], matched_code: null });
+      }
+      return Promise.resolve({ items: [], matched_code: null });
+    });
     render(
       <MemoryRouter initialEntries={["/programs?q=knee"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
-          programsClient={stubProgramsClient({
-            listPrograms: vi.fn().mockResolvedValue({ items, matched_code: null }),
-          })}
+          programsClient={stubProgramsClient({ listPrograms })}
         />
       </MemoryRouter>,
     );
-    expect(await screen.findByText(listCountLabel(2, 1)!)).toBeInTheDocument();
+    expect(await screen.findByText(listCountLabel(3, 1)!)).toBeInTheDocument();
   });
 
   it("leaves builder without a leave dialog when there are no unsaved edits", async () => {
@@ -383,9 +391,7 @@ describe("Programs UI (integration, jsdom)", () => {
       expect(updateProgramName).toHaveBeenCalled();
     });
     expect(screen.getAllByText(AUTO_SAVE_NOT_SAVED).length).toBeGreaterThan(0);
-    expect(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("button", { name: PUBLISH })).toBeDisabled();
     await userEvent.click(
       screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
@@ -550,15 +556,18 @@ describe("Programs UI (integration, jsdom)", () => {
   });
 
   it("clears search from no match state", async () => {
+    const all = [LIST_ITEM];
+    const listPrograms = vi.fn((q?: string) => {
+      if (!q?.trim()) {
+        return Promise.resolve({ items: all, matched_code: null });
+      }
+      return Promise.resolve({ items: [], matched_code: null });
+    });
     render(
       <MemoryRouter initialEntries={["/programs?q=nomatch"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
-          programsClient={stubProgramsClient({
-            listPrograms: vi
-              .fn()
-              .mockResolvedValue({ items: [LIST_ITEM], matched_code: null }),
-          })}
+          programsClient={stubProgramsClient({ listPrograms })}
         />
       </MemoryRouter>,
     );
