@@ -1,12 +1,19 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  MIN_PRODUCTION_BETTER_AUTH_SECRET_LENGTH,
+  productionDeployWebAppBaseUrlProblemNames,
+  readWebAppBaseUrlFromWranglerSource,
+  resolveProductionWranglerSourcePath,
+} from "../scripts/lib/production-deploy-preflight.mjs";
+import {
   buildWorkerAuthSecretsPayload,
   invalidProductionWorkerAuthSecretNames,
   missingProductionWorkerAuthSecretNames,
+  productionDeployBetterAuthSecretLengthProblemNames,
   PRODUCTION_WORKER_AUTH_SECRET_NAMES,
 } from "../scripts/lib/production-worker-auth-secrets.mjs";
 import {
@@ -28,13 +35,45 @@ const FIXTURE_SECRET_VALUES = {
   PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
 };
 
-function runAssertScript(env: NodeJS.ProcessEnv): {
+const FIXTURE_BETTER_AUTH_SECRET_31_CHARS = "fixture-better-auth-secret-31c";
+const FIXTURE_BETTER_AUTH_SECRET_32_CHARS = "fixture-better-auth-secret-32ch";
+
+function assertStderrNamesVariablesOnly(stderr: string, forbiddenSubstrings: string[]) {
+  for (const fragment of forbiddenSubstrings) {
+    expect(stderr).not.toContain(fragment);
+  }
+}
+
+function writeWranglerFixtureWithWebAppBaseUrl(
+  dir: string,
+  webAppBaseUrl: string,
+): string {
+  const base = readFileSync(WRANGLER_PATH, "utf8");
+  const patched = base.replace(
+    /"WEB_APP_BASE_URL":\s*"[^"]+"/,
+    `"WEB_APP_BASE_URL": "${webAppBaseUrl}"`,
+  );
+  const path = join(dir, "wrangler.fixture.jsonc");
+  writeFileSync(path, patched, "utf8");
+  return path;
+}
+
+function runAssertScript(
+  env: NodeJS.ProcessEnv,
+  options?: { wranglerSourcePath?: string },
+): {
   status: number | null;
   stderr: string;
 } {
   const result = spawnSync(process.execPath, [ASSERT_SCRIPT], {
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env },
+    env: {
+      ...process.env,
+      ...env,
+      ...(options?.wranglerSourcePath
+        ? { PHYSIO_WRANGLER_SOURCE_PATH: options.wranglerSourcePath }
+        : {}),
+    },
     encoding: "utf8",
   });
   return { status: result.status, stderr: result.stderr ?? "" };
@@ -110,6 +149,107 @@ describe("production Worker auth secret guard (DIDI-1044)", () => {
       [...PRODUCTION_WORKER_AUTH_SECRET_NAMES].sort(),
     );
     expect(payload.GOOGLE_CLIENT_ID).toBe("id");
+  });
+});
+
+describe("production deploy preflight (DIDI-1153 3(b))", () => {
+  it("requires BETTER_AUTH_SECRET length 32, not 31, without echoing the value", () => {
+    expect(FIXTURE_BETTER_AUTH_SECRET_31_CHARS).toHaveLength(31);
+    expect(FIXTURE_BETTER_AUTH_SECRET_32_CHARS).toHaveLength(32);
+    expect(MIN_PRODUCTION_BETTER_AUTH_SECRET_LENGTH).toBe(32);
+
+    expect(
+      productionDeployBetterAuthSecretLengthProblemNames({
+        BETTER_AUTH_SECRET: FIXTURE_BETTER_AUTH_SECRET_31_CHARS,
+      }),
+    ).toEqual(["BETTER_AUTH_SECRET"]);
+    expect(
+      productionDeployBetterAuthSecretLengthProblemNames({
+        BETTER_AUTH_SECRET: FIXTURE_BETTER_AUTH_SECRET_32_CHARS,
+      }),
+    ).toEqual([]);
+
+    const tooShort = runAssertScript({
+      ...FIXTURE_SECRET_VALUES,
+      BETTER_AUTH_SECRET: FIXTURE_BETTER_AUTH_SECRET_31_CHARS,
+    });
+    expect(tooShort.status).toBe(1);
+    expect(tooShort.stderr).toContain(
+      "BETTER_AUTH_SECRET must be at least 32 characters for production deploy.",
+    );
+    assertStderrNamesVariablesOnly(tooShort.stderr, [
+      FIXTURE_BETTER_AUTH_SECRET_31_CHARS,
+    ]);
+
+    const ok = runAssertScript({
+      ...FIXTURE_SECRET_VALUES,
+      BETTER_AUTH_SECRET: FIXTURE_BETTER_AUTH_SECRET_32_CHARS,
+    });
+    expect(ok.status).toBe(0);
+  });
+
+  it("requires committed WEB_APP_BASE_URL https origin without path, query, or fragment", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-wrangler-preflight-"));
+
+    const httpPath = writeWranglerFixtureWithWebAppBaseUrl(
+      tempDir,
+      "http://physio-poc.example.workers.dev",
+    );
+    const httpRun = runAssertScript(FIXTURE_SECRET_VALUES, {
+      wranglerSourcePath: httpPath,
+    });
+    expect(httpRun.status).toBe(1);
+    expect(httpRun.stderr).toContain(
+      "WEB_APP_BASE_URL must be an https origin for production deploy.",
+    );
+    assertStderrNamesVariablesOnly(httpRun.stderr, [
+      "http://physio-poc.example.workers.dev",
+    ]);
+
+    const withPath = writeWranglerFixtureWithWebAppBaseUrl(
+      tempDir,
+      "https://physio-poc.example.workers.dev/programs",
+    );
+    expect(
+      productionDeployWebAppBaseUrlProblemNames(readFileSync(withPath, "utf8")),
+    ).toEqual(["WEB_APP_BASE_URL"]);
+    const pathRun = runAssertScript(FIXTURE_SECRET_VALUES, {
+      wranglerSourcePath: withPath,
+    });
+    expect(pathRun.status).toBe(1);
+    expect(pathRun.stderr).toContain(
+      "WEB_APP_BASE_URL must be an https origin for production deploy.",
+    );
+    assertStderrNamesVariablesOnly(pathRun.stderr, ["/programs"]);
+
+    expect(resolveProductionWranglerSourcePath({})).toBe(
+      join(REPO_ROOT, "wrangler.jsonc"),
+    );
+    expect(
+      readWebAppBaseUrlFromWranglerSource(readFileSync(WRANGLER_PATH, "utf8")),
+    ).toBe(COMMITTED_WEB_APP_BASE_URL);
+  });
+
+  it("rejects empty and whitespace-only PHYSIO_ALLOWED_GOOGLE_EMAILS without echoing values", () => {
+    const empty = runAssertScript({
+      ...FIXTURE_SECRET_VALUES,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "",
+    });
+    expect(empty.status).toBe(1);
+    expect(empty.stderr).toContain(
+      "PHYSIO_ALLOWED_GOOGLE_EMAILS is required for production deploy.",
+    );
+
+    const fixtureAllowlist = FIXTURE_SECRET_VALUES.PHYSIO_ALLOWED_GOOGLE_EMAILS;
+    const whitespace = runAssertScript({
+      ...FIXTURE_SECRET_VALUES,
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "   \t  ",
+    });
+    expect(whitespace.status).toBe(1);
+    expect(whitespace.stderr).toContain(
+      "PHYSIO_ALLOWED_GOOGLE_EMAILS is required for production deploy.",
+    );
+    assertStderrNamesVariablesOnly(whitespace.stderr, [fixtureAllowlist, "   \t  "]);
   });
 });
 

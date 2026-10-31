@@ -1,3 +1,5 @@
+export const MIN_PRODUCTION_BETTER_AUTH_SECRET_LENGTH = 32;
+
 /** GitHub `production` environment secrets uploaded to the Worker at deploy (DIDI-1042). */
 export const PRODUCTION_WORKER_AUTH_SECRET_NAMES = [
   "GOOGLE_CLIENT_ID",
@@ -43,6 +45,27 @@ export function invalidProductionWorkerAuthSecretNames(env) {
 }
 
 /**
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string[]}
+ */
+export function productionDeployBetterAuthSecretLengthProblemNames(env) {
+  const value = env.BETTER_AUTH_SECRET;
+  if (typeof value !== "string") {
+    return [];
+  }
+  if (/[\r\n]/.test(value)) {
+    return [];
+  }
+  if (value.trim().length === 0) {
+    return [];
+  }
+  if (value.trim().length < MIN_PRODUCTION_BETTER_AUTH_SECRET_LENGTH) {
+    return ["BETTER_AUTH_SECRET"];
+  }
+  return [];
+}
+
+/**
  * @param {Record<string, string>} payload
  * @returns {string}
  */
@@ -66,6 +89,13 @@ export function buildWorkerAuthSecretsPayload(env) {
     const err = new Error("production Worker auth secrets are incomplete");
     err.code = "MISSING_PRODUCTION_WORKER_AUTH_SECRETS";
     err.missing = missing;
+    throw err;
+  }
+  const shortSecretNames = productionDeployBetterAuthSecretLengthProblemNames(env);
+  if (shortSecretNames.length > 0) {
+    const err = new Error("production Worker auth secrets are invalid");
+    err.code = "INVALID_PRODUCTION_WORKER_AUTH_SECRETS";
+    err.invalid = shortSecretNames;
     throw err;
   }
   /** @type {Record<string, string>} */

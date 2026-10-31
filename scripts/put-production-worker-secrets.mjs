@@ -3,6 +3,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import {
+  collectProductionDeployPreflightErrorLines,
+  loadProductionWranglerSourceText,
+} from "./lib/production-deploy-preflight.mjs";
+import {
   buildWorkerAuthSecretsPayload,
   invalidProductionWorkerAuthSecretNames,
   missingProductionWorkerAuthSecretNames,
@@ -55,8 +59,23 @@ function reportSecretProblemsAndExit() {
   }
 }
 
+function assertProductionDeployPreflightOrExit() {
+  const wranglerSource = loadProductionWranglerSourceText(process.env);
+  const errors = collectProductionDeployPreflightErrorLines(
+    process.env,
+    wranglerSource,
+  );
+  if (errors.length > 0) {
+    for (const line of errors) {
+      console.error(line);
+    }
+    process.exit(1);
+  }
+}
+
 function main() {
   const { config } = parseArgs(process.argv.slice(2));
+  assertProductionDeployPreflightOrExit();
   let payload;
   try {
     payload = buildWorkerAuthSecretsPayload(process.env);
