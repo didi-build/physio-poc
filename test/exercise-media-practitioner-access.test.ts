@@ -39,6 +39,36 @@ async function responseSnapshot(response: Response): Promise<HttpSnapshot> {
   return { status: response.status, body: await response.json() };
 }
 
+type HttpResponseFingerprint = {
+  status: number;
+  headerLines: string[];
+  body: string;
+};
+
+async function httpResponseFingerprint(
+  response: Response,
+): Promise<HttpResponseFingerprint> {
+  const headerLines: string[] = [];
+  response.headers.forEach((value, name) => {
+    headerLines.push(`${name.toLowerCase()}: ${value}`);
+  });
+  if (typeof response.headers.getSetCookie === "function") {
+    for (const cookie of response.headers.getSetCookie()) {
+      headerLines.push(`set-cookie: ${cookie}`);
+    }
+  }
+  headerLines.sort();
+  return {
+    status: response.status,
+    headerLines,
+    body: await response.text(),
+  };
+}
+
+function publicServeRequest(url: string, cookie: string): Request {
+  return new Request(url, { headers: { cookie } });
+}
+
 describe("Exercise media cross-practitioner draft access (integration)", () => {
   async function seedPractitionerBDraft(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -170,7 +200,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
     }
   });
 
-  it("GET public serve: practitioner A on B draft matches missing version response", async () => {
+  it("GET public serve: practitioner A on B draft matches missing version response byte for byte", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practA, draftVersionId } = await seedPractitionerBDraft(storage);
@@ -180,33 +210,33 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const missing = await responseSnapshot(
+      const missing = await httpResponseFingerprint(
         await handleRequest(
-          new Request(
+          publicServeRequest(
             `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=public`,
-            { headers: { cookie } },
+            cookie,
           ),
           deps,
         ),
       );
-      const foreign = await responseSnapshot(
+      const foreign = await httpResponseFingerprint(
         await handleRequest(
-          new Request(
+          publicServeRequest(
             `${BASE}/api/exercise-versions/${draftVersionId}/media?access=public`,
-            { headers: { cookie } },
+            cookie,
           ),
           deps,
         ),
       );
       expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
-      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
       expect(foreign).toEqual(missing);
     } finally {
       storage.close();
     }
   });
 
-  it("GET public serve: exercise owner on own draft matches missing version response", async () => {
+  it("GET public serve: exercise owner on own draft matches missing version response byte for byte", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practB = await seedPractitioner(
@@ -231,27 +261,79 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         displayName: "B",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const missing = await responseSnapshot(
+      const missing = await httpResponseFingerprint(
         await handleRequest(
-          new Request(
+          publicServeRequest(
             `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=public`,
-            { headers: { cookie } },
+            cookie,
           ),
           deps,
         ),
       );
-      const ownDraft = await responseSnapshot(
+      const ownDraft = await httpResponseFingerprint(
         await handleRequest(
-          new Request(
+          publicServeRequest(
             `${BASE}/api/exercise-versions/${draftVersionId}/media?access=public`,
-            { headers: { cookie } },
+            cookie,
           ),
           deps,
         ),
       );
       expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
-      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
       expect(ownDraft).toEqual(missing);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET public serve: unknown signed-in practitioner on draft matches missing version response byte for byte", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const unknownId = testOpaqueEntityId("media-unknown-session");
+      const practB = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("media-unknown-owner-b"),
+        "b@example.com",
+      );
+      const exerciseId = await seedExercise(storage, practB);
+      const draftVersionId = testOpaqueEntityId("media-unknown-draft-ver");
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: draftVersionId,
+          exercise_id: exerciseId,
+          status: "draft",
+          title: "Draft for unknown session",
+          starting_position: "Supine",
+        }),
+      ]);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: unknownId,
+        email: "unknown@example.com",
+        displayName: "Unknown",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const missing = await httpResponseFingerprint(
+        await handleRequest(
+          publicServeRequest(
+            `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=public`,
+            cookie,
+          ),
+          deps,
+        ),
+      );
+      const draftServe = await httpResponseFingerprint(
+        await handleRequest(
+          publicServeRequest(
+            `${BASE}/api/exercise-versions/${draftVersionId}/media?access=public`,
+            cookie,
+          ),
+          deps,
+        ),
+      );
+      expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(draftServe).toEqual(missing);
     } finally {
       storage.close();
     }
