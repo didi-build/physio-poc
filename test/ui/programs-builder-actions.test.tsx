@@ -39,6 +39,8 @@ const LIST_ITEM: ProgramListItem = {
   draft_updated_at: "2026-10-24T12:00:00.000Z",
   auto_save_status: { kind: "not_published_yet" },
   library_updates_to_review: 0,
+  share_link_status: "none",
+  last_sent_at: null,
   deleted_at: null,
   routine_origin: null,
 };
@@ -74,6 +76,8 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     library_updates_to_review: 0,
     rows: [],
     open_share_link: false,
+    share_link_status: "none",
+    last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
     ...overrides,

@@ -2,6 +2,7 @@ import { exerciseLibraryMutatingHttpRouteCases } from "./exercise-library-mutati
 import type { ExerciseLibraryMutatingHttpRouteCase } from "./exercise-library-mutating-route-cases.js";
 import { programBuilderMutatingHttpRouteCases } from "./program-builder-http-route-cases.js";
 import type { ProgramBuilderHttpRouteCase } from "./program-builder-http-route-cases.js";
+import { exerciseRequestsMutatingHttpRouteCases } from "./exercise-requests-http-route-cases.js";
 import {
   exerciseMediaHttpRouteCases,
   type ExerciseMediaHttpRouteCase,
@@ -44,6 +45,10 @@ export const MUTATING_APP_API_HANDLER_ROUTE_TABLES: readonly MutatingAppApiHandl
     {
       ruleId: "program-builder",
       routes: () => programBuilderMutatingHttpRouteCases(),
+    },
+    {
+      ruleId: "exercise-requests",
+      routes: () => exerciseRequestsMutatingHttpRouteCases(),
     },
   ];
 

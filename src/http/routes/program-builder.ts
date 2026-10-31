@@ -6,6 +6,7 @@ import type { PractitionerSession } from "../../auth/auth-port.js";
 import {
   ProgramBuilderService,
   ProgramBuilderServiceError,
+  type ProgramOriginFilter,
   type RoutineProgramSource,
 } from "../../services/programs/index.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
@@ -150,6 +151,21 @@ function programNotFoundResponse(): Response {
   );
 }
 
+function parseProgramOriginFilter(url: URL): ProgramOriginFilter | Response {
+  if (!url.searchParams.has("origin")) {
+    return "all";
+  }
+  const values = url.searchParams.getAll("origin");
+  if (values.length !== 1) {
+    return canonicalInvalidInputResponse();
+  }
+  const value = values[0];
+  if (value === "all" || value === "from_routine" || value === "from_scratch") {
+    return value;
+  }
+  return canonicalInvalidInputResponse();
+}
+
 function programRowNotFoundResponse(): Response {
   return Response.json(
     { error: "program_row_not_found", message: "Program row not found" },
@@ -180,10 +196,15 @@ export async function handleProgramBuilderRequest(
   const remainder = match[1] ?? "";
 
   if (remainder === "" && request.method === "GET") {
+    const originFilter = parseProgramOriginFilter(url);
+    if (originFilter instanceof Response) {
+      return originFilter;
+    }
     try {
       const searchQuery = url.searchParams.get("q") ?? undefined;
       const result = await service(deps).listPrograms(practitionerId, {
         searchQuery,
+        originFilter,
       });
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
@@ -277,6 +298,22 @@ export async function handleProgramBuilderRequest(
       { error: "not_found", message: "Not found" },
       { status: 404, headers: JSON_HEADERS },
     );
+  }
+
+  if (segments[0] === "by-code" && segments.length === 2 && request.method === "GET") {
+    const programCodeRaw = safeDecodePathSegment(segments[1]!);
+    if (programCodeRaw === null) {
+      return programNotFoundResponse();
+    }
+    try {
+      const result = await service(deps).getProgramByCode(
+        practitionerId,
+        programCodeRaw,
+      );
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
   }
 
   const programIdRaw = safeDecodePathSegment(segments[0]!);
@@ -537,6 +574,20 @@ export async function handleProgramBuilderRequest(
             { status: 400, headers: JSON_HEADERS },
           );
         }
+        const exerciseVersionIdRaw = body.exercise_version_id;
+        const exerciseVersionId =
+          exerciseVersionIdRaw === undefined
+            ? undefined
+            : typeof exerciseVersionIdRaw === "string" &&
+                exerciseVersionIdRaw.trim().length > 0
+              ? exerciseVersionIdRaw
+              : undefined;
+        if (exerciseVersionIdRaw !== undefined && exerciseVersionId === undefined) {
+          return Response.json(
+            { error: "invalid_input", message: "invalid_input" },
+            { status: 400, headers: JSON_HEADERS },
+          );
+        }
         try {
           const result = await service(deps).updateRow(
             practitionerId,
@@ -546,6 +597,7 @@ export async function handleProgramBuilderRequest(
               prescriptionType: prescriptionType ?? undefined,
               params,
               note,
+              exerciseVersionId,
             },
           );
           return Response.json(result, { headers: JSON_HEADERS });
