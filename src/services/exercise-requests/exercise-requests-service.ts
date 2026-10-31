@@ -389,30 +389,8 @@ export class ExerciseRequestsService {
 
     let draft: ExerciseRequestDraftView["draft"] = null;
     if (row.exercise_id) {
-      const versionRow = await this.sql.first<{
-        id: string;
-        version_number: number;
-        title: string;
-        description: string;
-        equipment: string;
-        starting_position: string;
-        steps: string;
-        common_mistakes: string;
-        regressions: string;
-        progressions: string;
-        precautions: string;
-        cue_stretching: string | null;
-        cue_isometric: string | null;
-        cue_concentric: string | null;
-        cue_eccentric: string | null;
-      }>(
-        `SELECT id, version_number, title, description, equipment, starting_position, steps,
-                common_mistakes, regressions, progressions, precautions,
-                cue_stretching, cue_isometric, cue_concentric, cue_eccentric
-         FROM exercise_versions
-         WHERE exercise_id = ? AND status = 'draft'
-         ORDER BY version_number DESC LIMIT 1`,
-        [row.exercise_id],
+      const versionRow = await this.versions.findDraftVersionDetailForExercise(
+        row.exercise_id,
       );
       if (versionRow) {
         draft = {
@@ -491,6 +469,7 @@ export class ExerciseRequestsService {
       id: row.id,
       status: "drafting",
       updatedAt: this.now(),
+      allowedFromStatuses: ["open", "drafting"],
     });
 
     return this.getRequest({ practitionerId: input.practitionerId, requestId: row.id });
@@ -525,6 +504,7 @@ export class ExerciseRequestsService {
       id: row.id,
       status: "approved",
       updatedAt: approvedAt,
+      allowedFromStatuses: ["drafting"],
     });
 
     await this.practitionerExercises.upsert({

@@ -3,26 +3,41 @@ import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
 import {
+  exerciseRequestApprovePath,
+  exerciseRequestDraftPath,
+  exerciseRequestPath,
   exerciseRequestsCollectionPath,
+  exerciseRequestsInProgressCountPath,
   exerciseRequestsInProgressPath,
   EXERCISE_REQUESTS_API_BASE,
 } from "../src/exercise-requests-api-paths.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import {
-  exerciseRequestsHttpRouteCases,
-  exerciseRequestsMutatingHttpRouteCases,
-} from "../src/http/routes/exercise-requests.js";
-import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+  ExerciseRequestsRepository,
+  ExerciseVersionsRepository,
+} from "../src/storage/repositories/exercise-data.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   openMigratedDatabase,
+  seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
+import { apiMeHttpRouteCases } from "./helpers/api-me-http-route-cases.js";
 import {
+  EXERCISE_REQUESTS_HTTP_ROUTE_TABLE,
   exerciseRequestsHttpJsonBody,
-  exerciseRequestsHttpRouteCases as helperExerciseRequestsHttpRouteCases,
+  exerciseRequestsHttpRouteCases,
+  exerciseRequestsMutatingHttpRouteCases,
 } from "./helpers/exercise-requests-http-route-cases.js";
 import {
+  buildMutatingAppApiRouteSamples,
+  MUTATING_APP_API_HANDLER_ROUTE_TABLES,
+} from "./helpers/mutating-app-api-route-registry.js";
+import {
+  expectInvalidInputQueryGuardResponse,
+  practitionerAsQuerySuffix,
   practitionerIdQuerySuffix,
   practitionerUnderscoreIdQuerySuffix,
 } from "./helpers/invalid-input-query-guard.js";
@@ -32,6 +47,7 @@ import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
+const AFTER_FORM = "2026-10-30T11:00:00.000Z";
 
 function authedRequest(url: string, cookie: string, init: RequestInit = {}): Request {
   const headers = new Headers(init.headers);
@@ -70,11 +86,56 @@ function apiDeps(
   };
 }
 
+async function seedDraftingRequestForPractitioner(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  requestedName: string,
+): Promise<{ requestId: string; exerciseId: string }> {
+  const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+    now: () => AFTER_FORM,
+  });
+  const created = await service.submitRequest({
+    practitionerId,
+    requestedName,
+    formOpenedAt: FORM_OPENED,
+  });
+  expect(created.outcome).toBe("created");
+  if (created.outcome !== "created") {
+    throw new Error("expected created request");
+  }
+  return { requestId: created.request_id, exerciseId: created.exercise_id! };
+}
+
 describe("Exercise requests HTTP routes (integration)", () => {
-  it("pins exerciseRequestsHttpRouteCases in the test helper list", () => {
-    expect(helperExerciseRequestsHttpRouteCases()).toEqual(
-      exerciseRequestsHttpRouteCases(),
+  it("pins the seven exercise request routes as literal method and path pairs", () => {
+    expect(exerciseRequestsHttpRouteCases()).toEqual([
+      ...EXERCISE_REQUESTS_HTTP_ROUTE_TABLE,
+    ]);
+  });
+
+  it("includes all seven exercise request routes in the api/me route table helper", () => {
+    const apiMe = apiMeHttpRouteCases();
+    for (const routeCase of EXERCISE_REQUESTS_HTTP_ROUTE_TABLE) {
+      expect(apiMe).toContainEqual(routeCase);
+    }
+  });
+
+  it("includes exercise request mutating routes in the CSRF handler registry", () => {
+    const samples = buildMutatingAppApiRouteSamples();
+    const table = MUTATING_APP_API_HANDLER_ROUTE_TABLES.find(
+      (entry) => entry.ruleId === "exercise-requests",
     );
+    expect(table).toBeDefined();
+    for (const routeCase of exerciseRequestsMutatingHttpRouteCases()) {
+      expect(
+        samples.some(
+          (sample) =>
+            sample.ruleId === "exercise-requests" &&
+            sample.method === routeCase.method &&
+            sample.samplePath === routeCase.path,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("returns 401 without a session on every exercise request route", async () => {
@@ -93,6 +154,50 @@ describe("Exercise requests HTTP routes (integration)", () => {
         const response = await handleRequest(new Request(url, init), deps);
         expect(response.status, routeCase.path).toBe(401);
         await expect(response.json()).resolves.toEqual({ error: "unauthorized" });
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitionerId, practitioner_id and as query spoofing on every exercise request route", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-spoof-b");
+      await seedPractitioner(storage, practitionerB, "spoof-b@example.com");
+      const { requestId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Spoof target draft",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+
+      const querySuffixBuilders = [
+        practitionerIdQuerySuffix,
+        practitionerUnderscoreIdQuerySuffix,
+        practitionerAsQuerySuffix,
+      ] as const;
+
+      for (const routeCase of exerciseRequestsHttpRouteCases(requestId)) {
+        for (const suffixBuilder of querySuffixBuilders) {
+          const suffix = suffixBuilder(practitionerB);
+          const url = `${BASE}${routeCase.path}${suffix}`;
+          let response: Response;
+          if (routeCase.method === "GET") {
+            response = await handleRequest(authedRequest(url, cookie), deps);
+          } else {
+            const body = exerciseRequestsHttpJsonBody(routeCase);
+            response = await handleRequest(
+              authedJsonRequest(`${routeCase.path}${suffix}`, cookie, {
+                method: routeCase.method,
+                body: body ?? "{}",
+              }),
+              deps,
+            );
+          }
+          await expectInvalidInputQueryGuardResponse(response);
+        }
       }
     } finally {
       storage.close();
@@ -140,6 +245,46 @@ describe("Exercise requests HTTP routes (integration)", () => {
         ["Heel slide unique name"],
       );
       expect(row?.requested_by).toBe(practitionerA);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET similar, count and item return 200 for session A without query spoofing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-get-b");
+      await seedPractitioner(storage, practitionerB, "get-b@example.com");
+      await seedApprovedExerciseVersion(storage, practitionerA);
+      const { requestId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Shared review draft",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+
+      const similar = await handleRequest(
+        authedRequest(`${BASE}${EXERCISE_REQUESTS_API_BASE}/similar?q=Shared`, cookie),
+        deps,
+      );
+      expect(similar.status).toBe(200);
+
+      const count = await handleRequest(
+        authedRequest(`${BASE}${exerciseRequestsInProgressCountPath()}`, cookie),
+        deps,
+      );
+      expect(count.status).toBe(200);
+      const countBody = (await count.json()) as { in_progress_count: number };
+      expect(countBody.in_progress_count).toBeGreaterThanOrEqual(1);
+
+      const item = await handleRequest(
+        authedRequest(`${BASE}${exerciseRequestPath(requestId)}`, cookie),
+        deps,
+      );
+      expect(item.status).toBe(200);
+      const itemBody = (await item.json()) as { request_id: string };
+      expect(itemBody.request_id).toBe(requestId);
     } finally {
       storage.close();
     }
@@ -225,6 +370,148 @@ describe("Exercise requests HTTP routes (integration)", () => {
     }
   });
 
+  it("PATCH draft rejects practitionerId and practitioner_id in body with invalid_input and leaves draft unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-patch-b");
+      await seedPractitioner(storage, practitionerB, "patch-b@example.com");
+      const { requestId, exerciseId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Patch guard draft",
+      );
+      const versions = new ExerciseVersionsRepository(storage);
+      const beforeDraft = await versions.findDraftForExercise(exerciseId);
+      expect(beforeDraft?.title).toBe("Patch guard draft");
+
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      for (const body of [
+        { practitionerId: practitionerB, title: "Evil title" },
+        { practitioner_id: practitionerB, title: "Evil title" },
+      ]) {
+        const response = await handleRequest(
+          authedJsonRequest(exerciseRequestDraftPath(requestId), cookie, {
+            method: "PATCH",
+            body: JSON.stringify(body),
+          }),
+          deps,
+        );
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          error: "invalid_input",
+          message: "invalid_input",
+        });
+      }
+
+      const afterDraft = await versions.findDraftForExercise(exerciseId);
+      expect(afterDraft?.title).toBe("Patch guard draft");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("PATCH draft as session A updates B request draft fields", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-patch-ok-b");
+      await seedPractitioner(storage, practitionerB, "patch-ok-b@example.com");
+      const { requestId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Patch ok draft",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestDraftPath(requestId), cookie, {
+          method: "PATCH",
+          body: JSON.stringify({ title: "Edited by approver" }),
+        }),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { draft: { title: string } | null };
+      expect(body.draft?.title).toBe("Edited by approver");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST approve rejects body practitionerId with invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-appr-body-b");
+      await seedPractitioner(storage, practitionerB, "appr-body-b@example.com");
+      const { requestId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Approve body guard",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestApprovePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({ practitionerId: practitionerB }),
+        }),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "invalid_input",
+        message: "invalid_input",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST approve as session A sets approved_by to A and saves My exercises for requester B", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-appr-myex-b");
+      await seedPractitioner(storage, practitionerB, "appr-myex-b@example.com");
+      const { requestId, exerciseId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Approve my exercises",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestApprovePath(requestId), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        approved_by: string;
+        exercise_id: string;
+      };
+      expect(body.approved_by).toBe(practitionerA);
+      expect(body.exercise_id).toBe(exerciseId);
+
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      const mineB = await library.listMyExercises({ practitionerId: practitionerB });
+      expect(
+        mineB.sections.new_from_requests.some(
+          (item) => item.exercise_id === exerciseId,
+        ),
+      ).toBe(true);
+      const mineA = await library.listMyExercises({ practitionerId: practitionerA });
+      expect(
+        mineA.sections.new_from_requests.some(
+          (item) => item.exercise_id === exerciseId,
+        ),
+      ).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns not_found for POST on the similar route", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -242,15 +529,5 @@ describe("Exercise requests HTTP routes (integration)", () => {
     } finally {
       storage.close();
     }
-  });
-
-  it("pins mutating exercise request routes for CSRF registry", () => {
-    const mutating = exerciseRequestsMutatingHttpRouteCases();
-    expect(
-      mutating.every((routeCase) => ["POST", "PATCH"].includes(routeCase.method)),
-    ).toBe(true);
-    expect(
-      mutating.some((routeCase) => routeCase.path === exerciseRequestsCollectionPath()),
-    ).toBe(true);
   });
 });

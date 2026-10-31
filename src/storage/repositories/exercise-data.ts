@@ -222,6 +222,34 @@ export class ExerciseVersionsRepository {
     );
   }
 
+  async findDraftVersionDetailForExercise(exerciseId: string): Promise<{
+    id: string;
+    version_number: number;
+    title: string;
+    description: string;
+    equipment: string;
+    starting_position: string;
+    steps: string;
+    common_mistakes: string;
+    regressions: string;
+    progressions: string;
+    precautions: string;
+    cue_stretching: string | null;
+    cue_isometric: string | null;
+    cue_concentric: string | null;
+    cue_eccentric: string | null;
+  } | null> {
+    return this.sql.first(
+      `SELECT id, version_number, title, description, equipment, starting_position, steps,
+              common_mistakes, regressions, progressions, precautions,
+              cue_stretching, cue_isometric, cue_concentric, cue_eccentric
+       FROM exercise_versions
+       WHERE exercise_id = ? AND status = 'draft'
+       ORDER BY version_number DESC LIMIT 1`,
+      [exerciseId],
+    );
+  }
+
   async updateDraftFields(
     versionId: string,
     patch: Partial<{
@@ -538,10 +566,20 @@ export class ExerciseRequestsRepository {
     id: string;
     status: ExerciseRequestStatus;
     updatedAt: string;
+    allowedFromStatuses?: readonly ExerciseRequestStatus[];
   }): Promise<boolean> {
+    const allowed = input.allowedFromStatuses;
+    const statusFilter =
+      allowed && allowed.length > 0
+        ? ` AND status IN (${allowed.map(() => "?").join(", ")})`
+        : "";
+    const bindings: SqlValue[] = [input.status, input.updatedAt, input.id];
+    if (allowed && allowed.length > 0) {
+      bindings.push(...allowed);
+    }
     const result = await this.sql.run(
-      `UPDATE exercise_requests SET status = ?, updated_at = ? WHERE id = ?`,
-      [input.status, input.updatedAt, input.id],
+      `UPDATE exercise_requests SET status = ?, updated_at = ? WHERE id = ?${statusFilter}`,
+      bindings,
     );
     return result.rowsAffected > 0;
   }

@@ -190,7 +190,7 @@ d1_tables:
         whose: operational
       requested_name:
         whose: operational
-        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+        notes: exercise name; must never hold patient details; patient_detail_risk; validateFreeTextForPatientDetails on write
       note:
         whose: operational
         notes: exercise note; must never hold patient details; patient_detail_risk; validateFreeTextForPatientDetails on write

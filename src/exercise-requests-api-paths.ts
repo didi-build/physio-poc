@@ -1,11 +1,6 @@
 /** Session-only exercise requests API (DIDI-1006 route convention). */
 export const EXERCISE_REQUESTS_API_BASE = "/api/me/exercise-requests";
 
-export function exerciseRequestsSimilarPath(query = ""): string {
-  const suffix = query ? `?${query}` : "";
-  return `${EXERCISE_REQUESTS_API_BASE}/similar${suffix}`;
-}
-
 export function exerciseRequestsInProgressPath(): string {
   return `${EXERCISE_REQUESTS_API_BASE}/in-progress`;
 }

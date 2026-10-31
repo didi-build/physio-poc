@@ -3,9 +3,6 @@ import type { PractitionerSession } from "../../auth/auth-port.js";
 import { FreeTextValidationError } from "../../domain/exercise-free-text.js";
 import { OpaqueEntityIdValidationError } from "../../domain/opaque-entity-id.js";
 import {
-  exerciseRequestApprovePath,
-  exerciseRequestDraftPath,
-  exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
   exerciseRequestsInProgressPath,
@@ -28,34 +25,6 @@ const SUBMIT_RESOLUTIONS = new Set<SubmitResolution>([
   "merge",
   "submit_anyway",
 ]);
-
-export type ExerciseRequestsHttpRouteCase = {
-  readonly method: string;
-  readonly path: string;
-};
-
-/** Paths handled by `handleExerciseRequestsHttpRequest` (Worker 401 and route table tests). */
-export function exerciseRequestsHttpRouteCases(
-  requestId = "00000000-0000-4000-8000-00001f7b01a3",
-): readonly ExerciseRequestsHttpRouteCase[] {
-  return [
-    { method: "GET", path: `${EXERCISE_REQUESTS_API_BASE}/similar` },
-    { method: "GET", path: exerciseRequestsInProgressPath() },
-    { method: "GET", path: exerciseRequestsInProgressCountPath() },
-    { method: "POST", path: exerciseRequestsCollectionPath() },
-    { method: "GET", path: exerciseRequestPath(requestId) },
-    { method: "PATCH", path: exerciseRequestDraftPath(requestId) },
-    { method: "POST", path: exerciseRequestApprovePath(requestId) },
-  ];
-}
-
-export function exerciseRequestsMutatingHttpRouteCases(
-  requestId = "00000000-0000-4000-8000-00001f7b01a3",
-): readonly ExerciseRequestsHttpRouteCase[] {
-  return exerciseRequestsHttpRouteCases(requestId).filter((routeCase) =>
-    ["POST", "PATCH"].includes(routeCase.method),
-  );
-}
 
 function service(deps: AppDependencies): ExerciseRequestsService {
   return new ExerciseRequestsService(deps.sql, deps.config);
@@ -96,8 +65,20 @@ function errorResponse(error: unknown): Response {
 async function readJsonObjectBody(
   request: Request,
 ): Promise<Record<string, unknown> | Response> {
+  let text: string;
   try {
-    const body = (await request.json()) as unknown;
+    text = await request.text();
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  if (text.trim() === "") {
+    return {};
+  }
+  try {
+    const body = JSON.parse(text) as unknown;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return Response.json(
         { error: "invalid_input", message: "Invalid JSON body" },
@@ -264,6 +245,14 @@ export async function handleExerciseRequestsHttpRequest(
   ).exec(path);
   if (approveMatch && request.method === "POST") {
     const requestId = decodeURIComponent(approveMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
     try {
       const result = await service(deps).approveRequest({ practitionerId, requestId });
       return Response.json(result, { headers: JSON_HEADERS });

@@ -28,6 +28,7 @@ import {
 } from "./helpers/api-me-http-route-cases.js";
 import {
   expectInvalidInputQueryGuardResponse,
+  practitionerAsQuerySuffix,
   practitionerIdQuerySuffix,
   practitionerUnderscoreIdQuerySuffix,
 } from "./helpers/invalid-input-query-guard.js";
@@ -201,6 +202,7 @@ describe("/api/me query practitioner id guard (route table)", () => {
       const querySuffixBuilders = [
         practitionerIdQuerySuffix,
         practitionerUnderscoreIdQuerySuffix,
+        practitionerAsQuerySuffix,
       ] as const;
 
       const { deps, cookie } = apiDeps(storage, practitionerA);

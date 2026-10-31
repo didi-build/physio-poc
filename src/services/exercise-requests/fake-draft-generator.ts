@@ -1,4 +1,5 @@
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
+import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 import {
   ExerciseAliasesRepository,
   ExerciseRequestsRepository,
@@ -110,8 +111,10 @@ export async function appendMergeToDraftRequest(input: {
         alias: aliasName,
         createdAt: input.now,
       });
-    } catch {
-      // duplicate alias is fine
+    } catch (error) {
+      if (!isSqlDuplicateIdError(error)) {
+        throw error;
+      }
     }
   }
 }

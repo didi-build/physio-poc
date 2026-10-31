@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
-import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
+import {
+  ExerciseRequestsRepository,
+  PractitionerExercisesRepository,
+} from "../src/storage/repositories/exercise-data.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -173,6 +176,13 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         return;
       }
 
+      const requestsRepo = new ExerciseRequestsRepository(storage);
+      await requestsRepo.updateNote({
+        id: existing.request_id,
+        note: "owner baseline note",
+        updatedAt: AFTER_FORM,
+      });
+
       const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:00:00.000Z",
       });
@@ -190,6 +200,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         practitionerId: owner,
         requestId: existing.request_id,
       });
+      expect(view.exercise_note).toContain("owner baseline note");
       expect(view.exercise_note).toContain("rehab version");
 
       const aliasRow = await storage.first<{ alias: string }>(
@@ -197,6 +208,146 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         [existing.exercise_id!, "Copenhagen plank short lever"],
       );
       expect(aliasRow?.alias).toBe("Copenhagen plank short lever");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects merge into an approved target with conflict_target_not_found and adds no alias", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-owner"),
+        "merge-approved-owner@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-merger"),
+        "merge-approved-merger@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pract-merge-approved-app"),
+        "merge-approved-app@example.com",
+      );
+
+      const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const created = await ownerService.submitRequest({
+        practitionerId: owner,
+        requestedName: "Approved merge target",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        return;
+      }
+
+      const approveService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T14:00:00.000Z",
+      });
+      await approveService.approveRequest({
+        practitionerId: approver,
+        requestId: created.request_id,
+      });
+
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T15:00:00.000Z",
+      });
+      await expect(
+        mergeService.submitRequest({
+          practitionerId: merger,
+          requestedName: "Approved merge target alias",
+          formOpenedAt: FORM_OPENED,
+          resolution: "merge",
+          conflictRequestId: created.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "conflict_target_not_found" });
+
+      const aliasRow = await storage.first<{ alias: string }>(
+        "SELECT alias FROM exercise_aliases WHERE exercise_id = ? AND alias = ? COLLATE NOCASE",
+        [created.exercise_id!, "Approved merge target alias"],
+      );
+      expect(aliasRow).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("merge applies only to conflict_request_id when two similar open requests exist", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerOne = await seedPractitioner(
+        storage,
+        id("pract-merge-two-a"),
+        "merge-two-a@example.com",
+      );
+      const ownerTwo = await seedPractitioner(
+        storage,
+        id("pract-merge-two-b"),
+        "merge-two-b@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-two-merger"),
+        "merge-two-merger@example.com",
+      );
+
+      const serviceOne = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => BEFORE_FORM,
+      });
+      const first = await serviceOne.submitRequest({
+        practitionerId: ownerOne,
+        requestedName: "Dual open plank",
+        exerciseNote: "first note",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(first.outcome).toBe("created");
+      if (first.outcome !== "created") {
+        return;
+      }
+
+      const serviceTwo = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const second = await serviceTwo.submitRequest({
+        practitionerId: ownerTwo,
+        requestedName: "Dual open plank side",
+        exerciseNote: "second note",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(second.outcome).toBe("created");
+      if (second.outcome !== "created") {
+        return;
+      }
+
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:30:00.000Z",
+      });
+      const merged = await mergeService.submitRequest({
+        practitionerId: merger,
+        requestedName: "Dual open plank merged alias",
+        exerciseNote: "merger note",
+        formOpenedAt: FORM_OPENED,
+        resolution: "merge",
+        conflictRequestId: first.request_id,
+      });
+      expect(merged.outcome).toBe("merged");
+
+      const firstView = await serviceOne.getRequest({
+        practitionerId: ownerOne,
+        requestId: first.request_id,
+      });
+      expect(firstView.exercise_note).toContain("first note");
+      expect(firstView.exercise_note).toContain("merger note");
+
+      const secondRow = await storage.first<{ note: string | null }>(
+        "SELECT note FROM exercise_requests WHERE id = ?",
+        [second.request_id],
+      );
+      expect(secondRow?.note).toBe("second note");
     } finally {
       storage.close();
     }
