@@ -1,13 +1,27 @@
 export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches sign-in chrome from src/ui/styles/sign-in.css. */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
 .consent-root {
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 1.5rem;
   background: #f8fafc;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   color: #0f172a;
+}
+
+@media (min-width: 640px) {
+  .consent-root {
+    align-items: center;
+  }
 }
 
 .consent-card {
@@ -74,12 +88,14 @@ export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches 
 
 .consent-name-line {
   font-size: 0.9375rem;
-  margin: 0 0 0.35rem;
+  margin: 0 0 1rem;
+  line-height: 1.5;
 }
 
 .consent-tag {
   display: inline-block;
-  margin-top: 0.35rem;
+  margin-left: 0.35rem;
+  vertical-align: middle;
   padding: 0.125rem 0.5rem;
   border-radius: 9999px;
   border: 1px dashed #cbd5e1;
@@ -115,19 +131,30 @@ export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches 
   margin-bottom: 0.5rem;
 }
 
-.consent-list-icon {
+.consent-list-icon-wrap {
+  display: inline-flex;
   flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
-  margin-top: 0.15rem;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.05rem;
+  border-radius: 9999px;
 }
 
-.consent-list-icon-can {
+.consent-list-icon-wrap-can {
+  background: #ccfbf1;
   color: #0f766e;
 }
 
-.consent-list-icon-cant {
+.consent-list-icon-wrap-cant {
+  background: #f1f5f9;
   color: #94a3b8;
+}
+
+.consent-list-icon {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .consent-muted-line {
@@ -190,13 +217,14 @@ export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches 
 }
 
 .consent-sign-out-link {
-  display: inline;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
   color: #0f766e;
   font-weight: 600;
   text-decoration: none;
-  background: none;
-  border: none;
   cursor: pointer;
   font-size: 0.8125rem;
   font-family: inherit;
@@ -243,7 +271,9 @@ export const CONSENT_PAGE_STYLES = `/* OAuth consent pages (DIDI-1126). Matches 
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
   min-height: 2.75rem;
   padding: 0.75rem 1rem;
   border-radius: 9999px;

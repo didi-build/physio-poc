@@ -3,9 +3,9 @@ import { CONSENT_PAGE_STYLES } from "./consent-page-styles.js";
 
 const CONSENT_TAB_TITLE = "Connect an app · Didi Physio";
 
-const CONSENT_LIST_ICON_CAN = `<svg class="consent-list-icon consent-list-icon-can" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
+const CONSENT_LIST_ICON_CAN = `<svg class="consent-list-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`;
 
-const CONSENT_LIST_ICON_CANT = `<svg class="consent-list-icon consent-list-icon-cant" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
+const CONSENT_LIST_ICON_CANT = `<svg class="consent-list-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>`;
 
 function wordmarkHtml(centered = false): string {
   const centerClass = centered ? " consent-wordmark-centered" : "";
@@ -15,8 +15,11 @@ function wordmarkHtml(centered = false): string {
 </div>`;
 }
 
-function consentListItem(icon: string, text: string): string {
-  return `<li>${icon}<span>${escapeHtml(text)}</span></li>`;
+function consentListItem(kind: "can" | "cant", text: string): string {
+  const icon = kind === "can" ? CONSENT_LIST_ICON_CAN : CONSENT_LIST_ICON_CANT;
+  const wrapClass =
+    kind === "can" ? "consent-list-icon-wrap-can" : "consent-list-icon-wrap-cant";
+  return `<li><span class="consent-list-icon-wrap ${wrapClass}">${icon}</span><span>${escapeHtml(text)}</span></li>`;
 }
 
 function pageShell(title: string, body: string, extraHead = ""): string {
@@ -93,7 +96,8 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
   if (denyBtn) denyBtn.addEventListener("click", function () { postDecision("/oauth/consent/deny"); });
   if (allowBtn) allowBtn.addEventListener("click", function () { postDecision("/oauth/consent/allow"); });
   var signOut = document.getElementById("consent-sign-out");
-  if (signOut) signOut.addEventListener("click", function () {
+  if (signOut) signOut.addEventListener("click", function (e) {
+    e.preventDefault();
     fetch("/api/auth/sign-out", { method: "POST", credentials: "include" }).then(function () {
       window.location.href = ${signInReturnJson};
     });
@@ -106,19 +110,18 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
     ${wordmarkHtml()}
     <p class="consent-host-line">Request from <span class="consent-host-mono">${host}</span></p>
     <h1 id="consent-heading" class="consent-heading">Allow read-only access to Didi Physio?</h1>
-    <p class="consent-name-line">The app calls itself “${name}”</p>
-    <p class="consent-tag">Self-reported</p>
+    <p class="consent-name-line">The app calls itself “${name}” <span class="consent-tag">Self-reported</span></p>
     <p class="consent-list-heading">It can</p>
     <ul class="consent-list">
-      ${consentListItem(CONSENT_LIST_ICON_CAN, "Search your approved exercises")}
-      ${consentListItem(CONSENT_LIST_ICON_CAN, "Search your routines")}
-      ${consentListItem(CONSENT_LIST_ICON_CAN, "See your programs and their share links")}
+      ${consentListItem("can", "Search your approved exercises")}
+      ${consentListItem("can", "Search your routines")}
+      ${consentListItem("can", "See your programs and their share links")}
     </ul>
     <p class="consent-list-heading">It can’t</p>
     <ul class="consent-list">
-      ${consentListItem(CONSENT_LIST_ICON_CANT, "Create, edit, publish or delete anything")}
+      ${consentListItem("cant", "Create, edit, publish or delete anything")}
       ${consentListItem(
-        CONSENT_LIST_ICON_CANT,
+        "cant",
         "For changes, it sends you a link to the right page here instead",
       )}
     </ul>
@@ -129,7 +132,7 @@ export function renderConsentPageHtml(model: ConsentPageViewModel): string {
       <button type="button" class="consent-btn consent-btn-allow" id="consent-allow">Allow</button>
     </div>
     <p class="consent-account-line">Signed in as ${email}</p>
-    <p class="consent-sign-out-wrap"><button type="button" class="consent-sign-out-link" id="consent-sign-out">Not you? Sign out</button></p>
+    <p class="consent-sign-out-wrap"><a href="#" class="consent-sign-out-link" id="consent-sign-out">Not you? Sign out</a></p>
   </section>
 </main>
 ${script}`;
