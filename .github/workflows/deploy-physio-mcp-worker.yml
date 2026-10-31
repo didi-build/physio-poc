@@ -32,8 +32,14 @@ jobs:
           PHYSIO_D1_DATABASE_ID: ${{ secrets.PHYSIO_D1_DATABASE_ID }}
         run: |
           set -euo pipefail
-          echo "::add-mask::${PHYSIO_D1_DATABASE_ID}"
-          node scripts/prepare-wrangler-config.mjs --output wrangler.ci.jsonc
+          TRIMMED="${PHYSIO_D1_DATABASE_ID#"${PHYSIO_D1_DATABASE_ID%%[![:space:]]*}"}"
+          TRIMMED="${TRIMMED%"${TRIMMED##*[![:space:]]}"}"
+          if [ "${PHYSIO_D1_DATABASE_ID}" != "${TRIMMED}" ]; then
+            echo "PHYSIO_D1_DATABASE_ID must not contain leading or trailing whitespace." >&2
+            exit 1
+          fi
+          echo "::add-mask::${TRIMMED}"
+          PHYSIO_D1_DATABASE_ID="${TRIMMED}" node scripts/prepare-wrangler-config.mjs --output wrangler.ci.jsonc
       - name: Apply production D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

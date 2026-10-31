@@ -7,7 +7,10 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { D1_PLACEHOLDER_PRODUCTION } from "./lib/wrangler-d1-placeholders.mjs";
+import {
+  D1_PLACEHOLDER_PRODUCTION,
+  looksLikeCommittedProductionD1Id,
+} from "./lib/wrangler-d1-placeholders.mjs";
 
 const SOURCE = resolve("wrangler.jsonc");
 
@@ -37,17 +40,33 @@ function assertNoPlaceholderLeft(text) {
   }
 }
 
-function main() {
-  const { output } = parseArgs(process.argv.slice(2));
-  const productionId = process.env.PHYSIO_D1_DATABASE_ID?.trim();
-  if (!productionId) {
+function readProductionId() {
+  const raw = process.env.PHYSIO_D1_DATABASE_ID;
+  if (raw === undefined || raw === "") {
     console.error("PHYSIO_D1_DATABASE_ID is required.");
     process.exit(1);
   }
-  if (productionId === D1_PLACEHOLDER_PRODUCTION) {
+  const trimmed = raw.trim();
+  if (raw !== trimmed) {
+    console.error(
+      "PHYSIO_D1_DATABASE_ID must not contain leading or trailing whitespace.",
+    );
+    process.exit(1);
+  }
+  if (trimmed === D1_PLACEHOLDER_PRODUCTION) {
     console.error("PHYSIO_D1_DATABASE_ID must not be the committed placeholder.");
     process.exit(1);
   }
+  if (!looksLikeCommittedProductionD1Id(trimmed)) {
+    console.error("PHYSIO_D1_DATABASE_ID must be a UUID.");
+    process.exit(1);
+  }
+  return trimmed;
+}
+
+function main() {
+  const { output } = parseArgs(process.argv.slice(2));
+  const productionId = readProductionId();
   const sourceText = readFileSync(SOURCE, "utf8");
   const text = sourceText.replaceAll(D1_PLACEHOLDER_PRODUCTION, productionId);
   assertNoPlaceholderLeft(text);
