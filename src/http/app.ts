@@ -58,8 +58,6 @@ export type AppDependencies = {
   fakeGooglePreAuth?: FakeGooglePreAuthHandler;
   /** Dev/test only; session guard public paths (for example fake Google OAuth). */
   extraSessionPublicPath?: (pathname: string) => boolean;
-  /** @deprecated Use fakeGooglePreAuth; kept for tests that assert the flag. */
-  enableFakeGoogleRoutes?: boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
   /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
   extraRouteHandlers?: AppRouteHandler[];

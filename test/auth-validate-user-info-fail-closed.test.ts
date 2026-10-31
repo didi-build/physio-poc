@@ -79,7 +79,6 @@ async function createAuthTestDeps(
     mcp: createPhysioMcpHttpHandler(serverConfig),
     fakeGooglePreAuth: handleFakeGoogleRequest,
     extraSessionPublicPath: isFakeGoogleOAuthPath,
-    enableFakeGoogleRoutes: true,
   };
 }
 

@@ -1,10 +1,10 @@
 import { parseAllowedGoogleEmails } from "./allowed-emails.js";
 import type { WorkerProductionAuthEnv } from "./worker-production-auth-env.js";
+import { resolveWorkerProductionWebAppBaseUrl } from "./worker-production-web-app-base-url.js";
 import {
   InvalidAuthConfigError,
   InvalidWebAppBaseUrlError,
   resolveBetterAuthSecretForRuntime,
-  resolveWebAppBaseUrl,
 } from "../http/config.js";
 
 /** Fixed log line when production auth env is present but invalid (no env values). */
@@ -16,7 +16,7 @@ export function assertWorkerProductionAuthConfigValid(
   env: WorkerProductionAuthEnv,
 ): void {
   try {
-    resolveWebAppBaseUrl(env.WEB_APP_BASE_URL);
+    resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL);
   } catch (error) {
     if (error instanceof InvalidWebAppBaseUrlError) {
       throw error;

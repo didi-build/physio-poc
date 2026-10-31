@@ -1,44 +1,50 @@
-import {
-  createPhysioServerConfig,
-  resolvePhysioAuthConfig,
-  resolveWebAppBaseUrl,
-  type PhysioServerConfig,
-} from "../../http/config.js";
+import type { PhysioAuthConfig, PhysioServerConfig } from "../../http/config.js";
+import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
+import { parseAllowedGoogleEmails } from "../../auth/allowed-emails.js";
+import { resolveWorkerProductionWebAppBaseUrl } from "../../auth/worker-production-web-app-base-url.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
 
-function workerProductionAuthBaseUrl(env: WorkerEnv): string {
-  return resolveWebAppBaseUrl(env.WEB_APP_BASE_URL);
+function workerProductionAuthConfig(env: WorkerEnv): PhysioAuthConfig {
+  const webAppBaseUrl = resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL);
+  const secret = resolveBetterAuthSecretForRuntime(env.BETTER_AUTH_SECRET ?? "");
+  return {
+    betterAuthSecret: secret,
+    googleClientId: env.GOOGLE_CLIENT_ID?.trim() ?? "",
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET?.trim() ?? "",
+    allowedGoogleEmails: parseAllowedGoogleEmails(env.PHYSIO_ALLOWED_GOOGLE_EMAILS),
+    fakeGoogleProviderEnabled: false,
+    authBaseUrl: webAppBaseUrl,
+  };
 }
 
 export function resolveWorkerPhysioServerConfig(env: WorkerEnv): PhysioServerConfig {
-  const webAppBaseUrl = workerProductionAuthBaseUrl(env);
-  const auth = resolvePhysioAuthConfig({
-    betterAuthSecret: env.BETTER_AUTH_SECRET,
-    googleClientId: env.GOOGLE_CLIENT_ID,
-    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
-    allowedGoogleEmails: env.PHYSIO_ALLOWED_GOOGLE_EMAILS,
-    fakeGoogleProvider: "false",
-    authBaseUrl: webAppBaseUrl,
-    fallbackHost: new URL(webAppBaseUrl).host,
-    nodeEnv: "production",
-  });
-  return createPhysioServerConfig({ webAppBaseUrl, auth });
+  const webAppBaseUrl = resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL);
+  return {
+    webAppBaseUrl,
+    auth: workerProductionAuthConfig(env),
+  };
 }
 
 export function resolveWorkerFailClosedPhysioServerConfig(
   env: WorkerEnv,
 ): PhysioServerConfig {
-  let webAppBaseUrl = env.WEB_APP_BASE_URL;
+  let webAppBaseUrl: string | undefined;
   try {
-    resolveWebAppBaseUrl(webAppBaseUrl);
+    webAppBaseUrl = resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL);
   } catch {
     webAppBaseUrl = undefined;
   }
-  const auth = resolvePhysioAuthConfig({
-    fakeGoogleProvider: "false",
-    authBaseUrl: webAppBaseUrl,
-    fallbackHost: "example.workers.dev",
-    nodeEnv: "production",
-  });
-  return createPhysioServerConfig({ webAppBaseUrl, auth });
+  const fallbackBase = "https://example.workers.dev";
+  const auth: PhysioAuthConfig = {
+    betterAuthSecret: "",
+    googleClientId: "",
+    googleClientSecret: "",
+    allowedGoogleEmails: new Set(),
+    fakeGoogleProviderEnabled: false,
+    authBaseUrl: webAppBaseUrl ?? fallbackBase,
+  };
+  return {
+    webAppBaseUrl: webAppBaseUrl ?? fallbackBase,
+    auth,
+  };
 }

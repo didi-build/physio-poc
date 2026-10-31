@@ -141,7 +141,6 @@ describe("OAuth user-create hook fail-closed (integration)", () => {
         mcp: createPhysioMcpHttpHandler(serverConfig),
         fakeGooglePreAuth: handleFakeGoogleRequest,
         extraSessionPublicPath: isFakeGoogleOAuthPath,
-        enableFakeGoogleRoutes: true,
       };
 
       const { lastResponse } = await completeGoogleSignIn(BASE, deps, "allowed");

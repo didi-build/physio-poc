@@ -91,7 +91,6 @@ export async function createNodeAppDependencies(
     extraSessionPublicPath: config.auth.fakeGoogleProviderEnabled
       ? isFakeGoogleOAuthPath
       : undefined,
-    enableFakeGoogleRoutes: config.auth.fakeGoogleProviderEnabled,
     guardedAppWithoutSession: "redirect",
   };
 }

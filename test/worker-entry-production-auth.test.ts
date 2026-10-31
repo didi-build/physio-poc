@@ -28,12 +28,37 @@ import {
 import {
   buildWorkerProductionAuthEnv,
   createWorkerProductionAuthTestDeps,
+  FIXTURE_GOOGLE_CLIENT_SECRET,
   WORKER_PRODUCTION_TEST_BASE,
 } from "./helpers/worker-production-auth-test-utils.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 
 const WORKER_BASE = WORKER_PRODUCTION_TEST_BASE;
 const FIXTURE_GOOGLE_CLIENT_ID = "fixture-worker-google-client-id";
+
+const MALFORMED_WEB_APP_BASE_URL_WITH_USERINFO = (() => {
+  const url = new URL("https://example.workers.dev");
+  url.username = "user";
+  url.password = "pass";
+  return url.toString();
+})();
+
+const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
+
+function spyAllConsoleMethods() {
+  return Object.fromEntries(
+    CONSOLE_METHODS.map((method) => [
+      method,
+      vi.spyOn(console, method).mockImplementation(() => {}),
+    ]),
+  ) as Record<(typeof CONSOLE_METHODS)[number], ReturnType<typeof vi.spyOn>>;
+}
+
+function joinedConsoleOutput(
+  spies: Record<(typeof CONSOLE_METHODS)[number], ReturnType<typeof vi.spyOn>>,
+): string {
+  return CONSOLE_METHODS.flatMap((method) => spies[method].mock.calls.flat()).join(" ");
+}
 
 function clearWorkerProductionAuthEnvKey(
   env: WorkerEnv,
@@ -139,6 +164,8 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     const env = {
       ...buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 }),
       AUTH_BASE_URL: overrideAuthBase,
+      BETTER_AUTH_URL: overrideAuthBase,
+      BETTER_AUTH_TRUSTED_ORIGINS: overrideAuthBase,
     } as WorkerEnv;
 
     const signIn = await worker.fetch(
@@ -211,10 +238,10 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     },
   );
 
-  it("never uses FakeAuthPort even when PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true", async () => {
+  it("never uses FakeAuthPort even when PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true in env", async () => {
     const { deps } = await createWorkerProductionAuthTestDeps({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-    });
+    } as Partial<WorkerEnv>);
     expect(deps.auth).toBeInstanceOf(BetterAuthPort);
     expect(deps.auth).not.toBeInstanceOf(FakeAuthPort);
     expect(deps.config.auth.fakeGoogleProviderEnabled).toBe(false);
@@ -291,12 +318,32 @@ describe("Worker entry production auth (DIDI-1153)", () => {
         env: { WEB_APP_BASE_URL: "http://not-https.example" },
       },
       {
+        label: "WEB_APP_BASE_URL with path",
+        env: { WEB_APP_BASE_URL: "https://example.workers.dev/programs" },
+      },
+      {
+        label: "WEB_APP_BASE_URL with query",
+        env: { WEB_APP_BASE_URL: "https://example.workers.dev?x=1" },
+      },
+      {
+        label: "WEB_APP_BASE_URL with fragment",
+        env: { WEB_APP_BASE_URL: "https://example.workers.dev#x" },
+      },
+      {
+        label: "WEB_APP_BASE_URL with userinfo",
+        env: { WEB_APP_BASE_URL: MALFORMED_WEB_APP_BASE_URL_WITH_USERINFO },
+      },
+      {
+        label: "WEB_APP_BASE_URL with trailing slash",
+        env: { WEB_APP_BASE_URL: "https://example.workers.dev/" },
+      },
+      {
         label: "empty allowlist",
         env: { PHYSIO_ALLOWED_GOOGLE_EMAILS: "  ,  " },
       },
     ])("$label", async ({ env: overrides }) => {
       resetWorkerProductionAuthCacheForTests();
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const spies = spyAllConsoleMethods();
       const { d1 } = await openWorkerAuthTestDatabase();
       const env = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1, ...overrides });
       const health = await worker.fetch(new Request(`${WORKER_BASE}/health`), env);
@@ -306,16 +353,48 @@ describe("Worker entry production auth (DIDI-1153)", () => {
         env,
       );
       expect(auth.status).toBe(503);
-      expect(logSpy).toHaveBeenCalledWith(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
-      const logged = logSpy.mock.calls.flat().join(" ");
+      expect(spies.log).toHaveBeenCalledWith(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
+      expect(spies.log.mock.calls).toEqual([[WORKER_PRODUCTION_AUTH_MISCONFIG_LOG]]);
+      for (const method of CONSOLE_METHODS) {
+        if (method === "log") {
+          continue;
+        }
+        expect(spies[method].mock.calls).toEqual([]);
+      }
+      const logged = joinedConsoleOutput(spies);
       expect(logged).not.toContain(PHYSIO_TEST_BETTER_AUTH_SECRET);
+      expect(logged).not.toContain(FIXTURE_GOOGLE_CLIENT_SECRET);
       if (overrides.WEB_APP_BASE_URL) {
         expect(logged).not.toContain(String(overrides.WEB_APP_BASE_URL));
       }
       if (overrides.BETTER_AUTH_SECRET) {
         expect(logged).not.toContain(String(overrides.BETTER_AUTH_SECRET));
       }
-      logSpy.mockRestore();
+      for (const method of CONSOLE_METHODS) {
+        spies[method].mockRestore();
+      }
+    });
+
+    it("logs misconfig at most once per isolate across repeated auth requests", async () => {
+      resetWorkerProductionAuthCacheForTests();
+      const spies = spyAllConsoleMethods();
+      const { d1 } = await openWorkerAuthTestDatabase();
+      const env = buildWorkerProductionAuthEnv({
+        PHYSIO_DB: d1,
+        BETTER_AUTH_SECRET: "too-short",
+      });
+      await worker.fetch(
+        new Request(`${WORKER_BASE}/api/auth/sign-in/social`, { method: "POST" }),
+        env,
+      );
+      await worker.fetch(
+        new Request(`${WORKER_BASE}/api/auth/sign-in/social`, { method: "POST" }),
+        env,
+      );
+      expect(spies.log.mock.calls).toEqual([[WORKER_PRODUCTION_AUTH_MISCONFIG_LOG]]);
+      for (const method of CONSOLE_METHODS) {
+        spies[method].mockRestore();
+      }
     });
   });
 });

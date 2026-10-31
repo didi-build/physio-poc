@@ -2,6 +2,7 @@ import { handleFakeGoogleRequest } from "../../src/auth/fake-google-http.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import {
   createWorkerAppDependencies,
+  resetWorkerProductionAuthCacheForTests,
   type WorkerEnv,
 } from "../../src/adapters/workers/create-app-dependencies.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../../src/auth/fake-google-http.js";
@@ -13,7 +14,7 @@ import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./physio-test-auth-secret.js";
 
 export const WORKER_PRODUCTION_TEST_BASE = "https://example.workers.dev";
 const FIXTURE_GOOGLE_CLIENT_ID = "fixture-worker-google-client-id";
-const FIXTURE_GOOGLE_CLIENT_SECRET = "fixture-worker-google-client-secret";
+export const FIXTURE_GOOGLE_CLIENT_SECRET = "fixture-worker-google-client-secret";
 
 export function buildWorkerProductionAuthEnv(
   overrides: Partial<WorkerEnv> = {},
@@ -24,7 +25,6 @@ export function buildWorkerProductionAuthEnv(
     GOOGLE_CLIENT_ID: FIXTURE_GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: FIXTURE_GOOGLE_CLIENT_SECRET,
     PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
-    PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "false",
     ...overrides,
   };
 }
@@ -35,6 +35,7 @@ export async function createWorkerProductionAuthTestDeps(
   deps: AppDependencies;
   env: WorkerEnv;
 }> {
+  resetWorkerProductionAuthCacheForTests();
   const { d1, storage } = await openWorkerAuthTestDatabase();
   await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
   const env = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1, ...envOverrides });

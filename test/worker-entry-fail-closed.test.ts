@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createWorkerAppDependencies } from "../src/adapters/workers/create-app-dependencies.js";
+import {
+  createWorkerAppDependencies,
+  type WorkerEnv,
+} from "../src/adapters/workers/create-app-dependencies.js";
 import { FailClosedAuthPort } from "../src/auth/fail-closed-auth-port.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest, MCP_PATH } from "../src/http/app.js";
@@ -9,7 +12,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
   it("never uses FakeAuthPort even when PHYSIO_USE_FAKE_GOOGLE_PROVIDER=true", async () => {
     const deps = await createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-    });
+    } as WorkerEnv);
     expect(deps.auth).toBeInstanceOf(FailClosedAuthPort);
     expect(deps.auth).not.toBeInstanceOf(FakeAuthPort);
     expect(deps.fakeGooglePreAuth).toBeUndefined();
@@ -18,7 +21,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
   it("does not mount fake Google routes on the Worker entry", async () => {
     const deps = await createWorkerAppDependencies({
       PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-    });
+    } as WorkerEnv);
     const response = await handleRequest(
       new Request("https://example.workers.dev/__fake-google/start"),
       deps,
@@ -31,7 +34,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
       new Request(`https://example.workers.dev${MCP_PATH}`),
       {
         PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      },
+      } as WorkerEnv,
     );
     expect(mcp.status).toBe(401);
 
@@ -39,7 +42,7 @@ describe("Worker entry fail-closed auth (DIDI-1044 deferral)", () => {
       new Request("https://example.workers.dev/programs"),
       {
         PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      },
+      } as WorkerEnv,
     );
     expect(app.status).toBe(503);
     expect(await app.text()).toBe("");
