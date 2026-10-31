@@ -238,7 +238,9 @@ export class ProgramBuilderService {
     if (rows.length === 0) {
       return { statements: [], skippedCount: 0 };
     }
-    const version = await this.libraryRead.getApprovedVersionById(versionId);
+    const version =
+      (await this.libraryRead.getApprovedVersionById(versionId)) ??
+      (await this.libraryRead.getVersionForApproveLinkCompose(versionId));
     if (!version) {
       throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
     }
