@@ -14,6 +14,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { MAX_LENGTH_ROW_NOTES } from "../src/mcp-connector/text-limits.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -427,7 +428,31 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
           exerciseNote: "contact patient@example.com",
           formOpenedAt: FORM_OPENED,
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: expect.stringMatching(/^Exercise note:/),
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("pins Exercise note as the field label when the note exceeds the max length", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
+      await expect(
+        service.submitRequest({
+          practitionerId: practId,
+          requestedName: "Safe name",
+          exerciseNote: "x".repeat(MAX_LENGTH_ROW_NOTES + 1),
+          formOpenedAt: FORM_OPENED,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: `Exercise note must be at most ${String(MAX_LENGTH_ROW_NOTES)} characters`,
+      });
     } finally {
       storage.close();
     }

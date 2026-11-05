@@ -371,14 +371,14 @@ export class ExerciseRequestsService {
   }): Promise<ExerciseRequestDraftView> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
-    const row = await this.requests.findById(requestId);
-    if (!row || !["open", "drafting"].includes(row.status)) {
+    const row = await this.requestsRead.findInProgressRequestById(requestId);
+    if (!row) {
       throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
     }
 
     let draft: ExerciseRequestDraftView["draft"] = null;
     if (row.exercise_id) {
-      const versionRow = await this.versions.findDraftVersionDetailForExercise(
+      const versionRow = await this.requestsRead.findDraftVersionDetailForExercise(
         row.exercise_id,
       );
       if (versionRow) {

@@ -250,34 +250,6 @@ export class ExerciseVersionsRepository {
     );
   }
 
-  async findDraftVersionDetailForExercise(exerciseId: string): Promise<{
-    id: string;
-    version_number: number;
-    title: string;
-    description: string;
-    equipment: string;
-    starting_position: string;
-    steps: string;
-    common_mistakes: string;
-    regressions: string;
-    progressions: string;
-    precautions: string;
-    cue_stretching: string | null;
-    cue_isometric: string | null;
-    cue_concentric: string | null;
-    cue_eccentric: string | null;
-  } | null> {
-    return this.sql.first(
-      `SELECT id, version_number, title, description, equipment, starting_position, steps,
-              common_mistakes, regressions, progressions, precautions,
-              cue_stretching, cue_isometric, cue_concentric, cue_eccentric
-       FROM exercise_versions
-       WHERE exercise_id = ? AND status = 'draft'
-       ORDER BY version_number DESC LIMIT 1`,
-      [exerciseId],
-    );
-  }
-
   async updateDraftFields(
     versionId: string,
     patch: Partial<{
