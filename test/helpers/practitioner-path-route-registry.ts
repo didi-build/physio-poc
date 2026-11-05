@@ -20,7 +20,7 @@ const EXAMPLE_PRACTITIONER_ID = "11111111-1111-4111-8111-111111111111";
 const EXAMPLE_EXERCISE_ID = "ex-example";
 const EXAMPLE_VERSION_ID = "ver-example";
 
-/** Handler-owned route tables merged into practitioner path route samples. */
+/** Handler-owned route tables merged into practitioner-scoped `/api/me/` route samples. */
 export const PRACTITIONER_PATH_ROUTE_HANDLER_TABLES: readonly PractitionerPathRouteHandlerTable[] =
   [
     {
@@ -30,9 +30,9 @@ export const PRACTITIONER_PATH_ROUTE_HANDLER_TABLES: readonly PractitionerPathRo
     },
     {
       ruleId: "exercise-media",
-      routes: (practitionerId, _exerciseId, versionId) =>
-        exerciseMediaHttpRouteCases(practitionerId, versionId).filter((routeCase) =>
-          routeCase.path.startsWith("/api/practitioners/"),
+      routes: (_practitionerId, _exerciseId, versionId) =>
+        exerciseMediaHttpRouteCases(versionId).filter((routeCase) =>
+          routeCase.path.startsWith("/api/me/"),
         ),
     },
   ];
@@ -91,8 +91,8 @@ export function canonicalPractitionerPathRouteCaseKeys(
   )) {
     keys.push(routeCaseKey(routeCase));
   }
-  for (const routeCase of exerciseMediaHttpRouteCases(practitionerId, versionId)) {
-    if (!routeCase.path.startsWith("/api/practitioners/")) {
+  for (const routeCase of exerciseMediaHttpRouteCases(versionId)) {
+    if (!routeCase.path.startsWith("/api/me/")) {
       continue;
     }
     keys.push(routeCaseKey(routeCase));

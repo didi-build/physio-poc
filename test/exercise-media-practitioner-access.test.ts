@@ -107,7 +107,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/generate`;
       const foreignUrl = `${apiA}/exercise-versions/${draftVersionId}/media/generate`;
       const init = (url: string) =>
@@ -140,7 +140,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const body = JSON.stringify({ scope: "both", note: null });
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/regenerate`;
       const foreignUrl = `${apiA}/exercise-versions/${draftVersionId}/media/regenerate`;
@@ -446,7 +446,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "B",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const url = `${BASE}/api/practitioners/${practB}/exercise-versions/${approvedVersionId}/media/generate`;
+      const url = `${BASE}/api/me/exercise-versions/${approvedVersionId}/media/generate`;
       const response = await handleRequest(
         new Request(
           url,
@@ -475,7 +475,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "B",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const url = `${BASE}/api/practitioners/${practB}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const url = `${BASE}/api/me/exercise-versions/${approvedVersionId}/media/regenerate`;
       const response = await handleRequest(
         new Request(
           url,
@@ -530,7 +530,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/generate`;
       const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/generate`;
       const init = (url: string) =>
@@ -564,7 +564,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const body = JSON.stringify({ scope: "both", note: null });
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/regenerate`;
       const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/regenerate`;
@@ -662,7 +662,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/generate`;
       const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/generate`;
       const init = (url: string) =>
@@ -696,7 +696,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiA = `${BASE}/api/practitioners/${practA}`;
+      const apiA = `${BASE}/api/me`;
       const body = JSON.stringify({ scope: "both", note: null });
       const missingUrl = `${apiA}/exercise-versions/${MISSING_VERSION_ID}/media/regenerate`;
       const foreignUrl = `${apiA}/exercise-versions/${approvedVersionId}/media/regenerate`;
@@ -768,8 +768,8 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "B",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const apiB = `${BASE}/api/practitioners/${practB}`;
-      const generateUrl = `${apiB}/exercise-versions/${approvedVersionId}/media/generate`;
+      const apiBase = `${BASE}/api/me`;
+      const generateUrl = `${apiBase}/exercise-versions/${approvedVersionId}/media/generate`;
       const generateResponse = await handleRequest(
         new Request(
           generateUrl,
@@ -782,7 +782,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         deps,
       );
       expect(generateResponse.status).toBe(201);
-      const regenerateUrl = `${apiB}/exercise-versions/${approvedVersionId}/media/regenerate`;
+      const regenerateUrl = `${apiBase}/exercise-versions/${approvedVersionId}/media/regenerate`;
       const regenerateResponse = await handleRequest(
         new Request(
           regenerateUrl,
@@ -841,10 +841,9 @@ describe("Exercise media practitioner auth (integration)", () => {
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
 
-      for (const routeCase of exerciseMediaHttpRouteCases(
-        practId,
-        FIXTURE_VERSION_ID,
-      ).filter((sample) => sample.path.startsWith("/api/practitioners/"))) {
+      for (const routeCase of exerciseMediaHttpRouteCases(FIXTURE_VERSION_ID).filter(
+        (sample) => sample.path.startsWith("/api/me/"),
+      )) {
         const response = await handleRequest(
           new Request(`${BASE}${routeCase.path}`, { method: routeCase.method }),
           deps,
@@ -876,7 +875,7 @@ describe("Exercise media practitioner auth (integration)", () => {
         email: "coach@example.com",
         displayName: "Coach",
       });
-      const base = `/api/practitioners/${practId}`;
+      const base = `/api/me`;
       const cases = [
         { method: "GET", path: `${base}/media-regeneration-quota` },
         {

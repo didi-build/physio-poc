@@ -19,16 +19,12 @@ describe("mutating app API CSRF (unit)", () => {
     expect(isNonSafeHttpMethod("HEAD")).toBe(false);
     expect(isNonSafeHttpMethod("OPTIONS")).toBe(false);
     expect(isNonSafeHttpMethod("POST")).toBe(true);
-    expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises/y", "POST")).toBe(
-      true,
-    );
+    expect(requiresAppApiCsrfGuard("/api/me/my-exercises/y", "POST")).toBe(true);
     expect(requiresAppApiCsrfGuard("/api/auth/sign-out", "POST")).toBe(false);
     expect(requiresAppApiCsrfGuard("/api/auth", "POST")).toBe(true);
     expect(isCsrfExemptAppApiAuthPath("/api/authx/sign-out")).toBe(false);
     expect(requiresAppApiCsrfGuard("/api/authx/sign-out", "POST")).toBe(true);
-    expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises", "GET")).toBe(
-      false,
-    );
+    expect(requiresAppApiCsrfGuard("/api/me/my-exercises", "GET")).toBe(false);
     expect(requiresAppApiCsrfGuard("/API/AUTH/x", "POST")).toBe(true);
     expect(AUTH_APP_API_PREFIX).toBe("/api/auth/");
   });
@@ -152,9 +148,7 @@ describe("mutating app API CSRF regression guards (mutant killers)", () => {
   });
 
   it("guards PUT on app API paths", () => {
-    expect(requiresAppApiCsrfGuard("/api/practitioners/x/my-exercises/y", "PUT")).toBe(
-      true,
-    );
+    expect(requiresAppApiCsrfGuard("/api/me/my-exercises/y", "PUT")).toBe(true);
     const request = new Request("https://physio.test.example/api/x", {
       method: "PUT",
       headers: {

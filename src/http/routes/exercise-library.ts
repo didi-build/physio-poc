@@ -10,20 +10,28 @@ import {
   type TextOverrideKey,
 } from "../../domain/exercise-text-overrides.js";
 import {
+  EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
+  EXERCISE_LIBRARY_MY_EXERCISES_PATH,
+  exerciseLibraryExerciseDetailsPath,
+  exerciseLibraryMyExerciseItemPath,
+} from "../../exercise-library-api-paths.js";
+import {
   ExerciseLibraryService,
   ExerciseLibraryServiceError,
   parseExerciseMutationUndo,
   type ExerciseSearchSort,
 } from "../../services/exercise-library/index.js";
-import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
+import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
+import { requirePractitioner } from "../require-practitioner.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+const EXERCISE_LIBRARY_ME_PATH =
+  /^\/api\/me\/(?:exercises\/approved\/search|exercises\/([^/]+)|my-exercises(?:\/([^/]+))?)$/;
+
 export function isExerciseLibraryApiPath(pathname: string): boolean {
-  return /^\/api\/practitioners\/[^/]+\/(exercises\/approved\/search|exercises\/[^/]+|my-exercises(?:\/[^/]+)?)$/.test(
-    pathname,
-  );
+  return EXERCISE_LIBRARY_ME_PATH.test(pathname);
 }
 
 function service(deps: AppDependencies): ExerciseLibraryService {
@@ -86,6 +94,7 @@ function parsePrescriptionType(raw: string | null): PrescriptionType | undefined
     ? (raw as PrescriptionType)
     : undefined;
 }
+
 function parseTextOverridePatch(
   raw: unknown,
 ): Partial<Record<TextOverrideKey, string>> {
@@ -105,11 +114,36 @@ function parseTextOverridePatch(
   return result;
 }
 
-function bindPathPractitioner(
-  pathPractitionerId: string,
-  sessionPractitioner: PractitionerSession | null | undefined,
-): string | Response {
-  return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
+async function readJsonObjectBody(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    const body = (await request.json()) as unknown;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid JSON body" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    return body as Record<string, unknown>;
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+}
+
+function rejectSpoofedPractitionerIdInBody(
+  body: Record<string, unknown>,
+  options: { allowUndoPayload?: boolean } = {},
+): Response | null {
+  if (options.allowUndoPayload) {
+    const rest = { ...body };
+    delete rest.undo;
+    return rejectBodyPractitionerId(rest);
+  }
+  return rejectBodyPractitionerId(body);
 }
 
 export type HandleExerciseLibraryOptions = {
@@ -121,21 +155,19 @@ export async function handleExerciseLibraryRequest(
   deps: AppDependencies,
   options: HandleExerciseLibraryOptions = {},
 ): Promise<Response | null> {
-  const sessionPractitioner = options.sessionPractitioner;
   const url = new URL(request.url);
   const path = url.pathname;
+  const match = EXERCISE_LIBRARY_ME_PATH.exec(path);
+  if (!match) {
+    return null;
+  }
 
-  const approvedSearchMatch =
-    /^\/api\/practitioners\/([^/]+)\/exercises\/approved\/search$/.exec(path);
-  if (approvedSearchMatch && request.method === "GET") {
-    const pathPractitionerId = approvedSearchMatch[1];
-    const practitionerId = bindPathPractitioner(
-      pathPractitionerId,
-      sessionPractitioner,
-    );
-    if (practitionerId instanceof Response) {
-      return practitionerId;
-    }
+  const practitionerId = requirePractitioner(options.sessionPractitioner);
+  if (practitionerId instanceof Response) {
+    return practitionerId;
+  }
+
+  if (path === EXERCISE_LIBRARY_APPROVED_SEARCH_PATH && request.method === "GET") {
     const categoryRaw = url.searchParams.get("category");
     const category = categoryRaw ? parseExerciseCategoryLabel(categoryRaw) : undefined;
     if (categoryRaw && !category) {
@@ -179,34 +211,24 @@ export async function handleExerciseLibraryRequest(
     }
   }
 
-  const detailsMatch = /^\/api\/practitioners\/([^/]+)\/exercises\/([^/]+)$/.exec(path);
-  if (detailsMatch && request.method === "GET") {
-    const [, pathPractitionerId, exerciseId] = detailsMatch;
-    const practitionerId = bindPathPractitioner(
-      pathPractitionerId,
-      sessionPractitioner,
-    );
-    if (practitionerId instanceof Response) {
-      return practitionerId;
-    }
+  const exerciseIdFromPath = match[1];
+  if (
+    exerciseIdFromPath &&
+    path === exerciseLibraryExerciseDetailsPath(exerciseIdFromPath) &&
+    request.method === "GET"
+  ) {
     try {
-      const result = await service(deps).getExerciseDetails(practitionerId, exerciseId);
+      const result = await service(deps).getExerciseDetails(
+        practitionerId,
+        exerciseIdFromPath,
+      );
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
     }
   }
 
-  const myListMatch = /^\/api\/practitioners\/([^/]+)\/my-exercises$/.exec(path);
-  if (myListMatch && request.method === "GET") {
-    const pathPractitionerId = myListMatch[1];
-    const practitionerId = bindPathPractitioner(
-      pathPractitionerId,
-      sessionPractitioner,
-    );
-    if (practitionerId instanceof Response) {
-      return practitionerId;
-    }
+  if (path === EXERCISE_LIBRARY_MY_EXERCISES_PATH && request.method === "GET") {
     const categoryRaw = url.searchParams.get("category");
     const category = categoryRaw ? parseExerciseCategoryLabel(categoryRaw) : undefined;
     if (categoryRaw && !category) {
@@ -228,23 +250,39 @@ export async function handleExerciseLibraryRequest(
     }
   }
 
-  const myItemMatch = /^\/api\/practitioners\/([^/]+)\/my-exercises\/([^/]+)$/.exec(
-    path,
-  );
-  if (myItemMatch) {
-    const [, pathPractitionerId, exerciseId] = myItemMatch;
-    const practitionerId = bindPathPractitioner(
-      pathPractitionerId,
-      sessionPractitioner,
-    );
-    if (practitionerId instanceof Response) {
-      return practitionerId;
-    }
+  const myExerciseId = match[2];
+  if (myExerciseId && path === exerciseLibraryMyExerciseItemPath(myExerciseId)) {
     if (request.method === "DELETE") {
+      const contentType = request.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const rawBody = await request.text();
+        if (rawBody.trim().length > 0) {
+          let body: Record<string, unknown>;
+          try {
+            const parsed = JSON.parse(rawBody) as unknown;
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              return Response.json(
+                { error: "invalid_input", message: "Invalid JSON body" },
+                { status: 400, headers: JSON_HEADERS },
+              );
+            }
+            body = parsed as Record<string, unknown>;
+          } catch {
+            return Response.json(
+              { error: "invalid_input", message: "Invalid JSON body" },
+              { status: 400, headers: JSON_HEADERS },
+            );
+          }
+          const rejected = rejectBodyPractitionerId(body);
+          if (rejected) {
+            return rejected;
+          }
+        }
+      }
       try {
         const result = await service(deps).removeFromMyExercises(
           practitionerId,
-          exerciseId,
+          myExerciseId,
         );
         return Response.json(result, { headers: JSON_HEADERS });
       } catch (error) {
@@ -252,21 +290,22 @@ export async function handleExerciseLibraryRequest(
       }
     }
     if (request.method === "POST") {
-      let body: Record<string, unknown> = {};
-      try {
-        body = (await request.json()) as Record<string, unknown>;
-      } catch {
-        return Response.json(
-          { error: "invalid_input", message: "Invalid JSON body" },
-          { status: 400, headers: JSON_HEADERS },
-        );
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
       }
       const action = body.action;
+      const rejected = rejectSpoofedPractitionerIdInBody(body, {
+        allowUndoPayload: action === "undo",
+      });
+      if (rejected) {
+        return rejected;
+      }
       if (action === "save") {
         try {
           const result = await service(deps).saveToMyExercises(
             practitionerId,
-            exerciseId,
+            myExerciseId,
           );
           return Response.json(result, { headers: JSON_HEADERS });
         } catch (error) {
@@ -283,7 +322,7 @@ export async function handleExerciseLibraryRequest(
         try {
           const result = await service(deps).setPinned(
             practitionerId,
-            exerciseId,
+            myExerciseId,
             body.pinned,
           );
           return Response.json(result, { headers: JSON_HEADERS });
@@ -294,7 +333,7 @@ export async function handleExerciseLibraryRequest(
       if (action === "undo") {
         try {
           const undoPayload = parseExerciseMutationUndo(body.undo);
-          await service(deps).applyUndo(practitionerId, exerciseId, undoPayload);
+          await service(deps).applyUndo(practitionerId, myExerciseId, undoPayload);
           return Response.json({ ok: true }, { headers: JSON_HEADERS });
         } catch (error) {
           return errorResponse(error);
@@ -302,14 +341,13 @@ export async function handleExerciseLibraryRequest(
       }
     }
     if (request.method === "PATCH") {
-      let body: Record<string, unknown> = {};
-      try {
-        body = (await request.json()) as Record<string, unknown>;
-      } catch {
-        return Response.json(
-          { error: "invalid_input", message: "Invalid JSON body" },
-          { status: 400, headers: JSON_HEADERS },
-        );
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
       }
       const useLibraryVersion = Array.isArray(body.use_library_version)
         ? body.use_library_version.filter((key): key is TextOverrideKey =>
@@ -332,7 +370,7 @@ export async function handleExerciseLibraryRequest(
       try {
         const result = await service(deps).updateMyCopy({
           practitionerId,
-          exerciseId,
+          exerciseId: myExerciseId,
           textOverrides,
           paramOverrides:
             body.param_overrides && typeof body.param_overrides === "object"

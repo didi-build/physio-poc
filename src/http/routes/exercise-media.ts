@@ -7,8 +7,15 @@ import {
 } from "../../services/exercise-media/index.js";
 import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
 import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
-import { resolveExerciseRoutePractitionerId } from "../bind-route-practitioner.js";
+import {
+  EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
+  exerciseMediaGeneratePath,
+  exerciseMediaRegeneratePath,
+  exerciseMediaServePath,
+} from "../../exercise-media-api-paths.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
+import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
+import { requirePractitioner } from "../require-practitioner.js";
 import { jsonUnauthorized } from "../responses.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
@@ -17,6 +24,9 @@ const SERVE_JSON_HEADERS = {
   ...JSON_HEADERS,
   "cache-control": "no-store",
 };
+
+const EXERCISE_MEDIA_ME_VERSION_PATH =
+  /^\/api\/me\/exercise-versions\/([^/]+)\/media\/(generate|regenerate)$/;
 
 function serveJson(body: unknown, status: number): Response {
   return Response.json(body, { status, headers: SERVE_JSON_HEADERS });
@@ -33,32 +43,30 @@ export type ExerciseMediaHttpRouteCase = {
   path: string;
 };
 
-/** Paths used by Worker 404 tests; registered only via Node dev/test extraRouteHandlers. */
+/** Paths used by route registry and Worker 404 tests. */
 export function exerciseMediaHttpRouteCases(
-  practitionerId = "pract-1",
   exerciseVersionId = "ver-1",
 ): ExerciseMediaHttpRouteCase[] {
-  const base = `/api/practitioners/${practitionerId}`;
   return [
     {
       method: "POST",
-      path: `${base}/exercise-versions/${exerciseVersionId}/media/generate`,
+      path: exerciseMediaGeneratePath(exerciseVersionId),
     },
     {
       method: "POST",
-      path: `${base}/exercise-versions/${exerciseVersionId}/media/regenerate`,
+      path: exerciseMediaRegeneratePath(exerciseVersionId),
     },
     {
       method: "GET",
-      path: `${base}/media-regeneration-quota`,
+      path: EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
     },
     {
       method: "GET",
-      path: `/api/exercise-versions/${exerciseVersionId}/media?access=public`,
+      path: `${exerciseMediaServePath(exerciseVersionId)}?access=public`,
     },
     {
       method: "GET",
-      path: `/api/exercise-versions/${exerciseVersionId}/media?access=internal`,
+      path: `${exerciseMediaServePath(exerciseVersionId)}?access=internal`,
     },
   ];
 }
@@ -104,6 +112,26 @@ async function readJsonBody(request: Request): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
+async function readJsonObjectBody(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    const body = await readJsonBody(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid JSON body" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    return body as Record<string, unknown>;
+  } catch {
+    return Response.json(
+      { error: "invalid_input", message: "Invalid JSON body" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+}
+
 export async function handleExerciseMediaRequest(
   request: Request,
   deps: AppDependencies,
@@ -113,16 +141,8 @@ export async function handleExerciseMediaRequest(
   const url = new URL(request.url);
   const path = url.pathname;
 
-  function bindPathPractitioner(pathPractitionerId: string): string | Response {
-    return resolveExerciseRoutePractitionerId(pathPractitionerId, sessionPractitioner);
-  }
-
-  const quotaMatch = path.match(
-    /^\/api\/practitioners\/([^/]+)\/media-regeneration-quota$/,
-  );
-  if (quotaMatch && request.method === "GET") {
-    const pathPractitionerId = quotaMatch[1] ?? "";
-    const practitionerId = bindPathPractitioner(pathPractitionerId);
+  if (path === EXERCISE_MEDIA_REGENERATION_QUOTA_PATH && request.method === "GET") {
+    const practitionerId = requirePractitioner(sessionPractitioner);
     if (practitionerId instanceof Response) {
       return practitionerId;
     }
@@ -176,21 +196,18 @@ export async function handleExerciseMediaRequest(
     }
   }
 
-  const versionMatch = path.match(
-    /^\/api\/practitioners\/([^/]+)\/exercise-versions\/([^/]+)\/media\/(generate|regenerate)$/,
-  );
+  const versionMatch = EXERCISE_MEDIA_ME_VERSION_PATH.exec(path);
   if (!versionMatch) {
     return null;
   }
 
-  const pathPractitionerId = versionMatch[1] ?? "";
-  const boundPractitionerId = bindPathPractitioner(pathPractitionerId);
-  if (boundPractitionerId instanceof Response) {
-    return boundPractitionerId;
+  const practitionerId = requirePractitioner(sessionPractitioner);
+  if (practitionerId instanceof Response) {
+    return practitionerId;
   }
-  const practitionerId = boundPractitionerId;
-  const exerciseVersionId = versionMatch[2] ?? "";
-  const action = versionMatch[3];
+
+  const exerciseVersionId = versionMatch[1] ?? "";
+  const action = versionMatch[2];
   const service = mediaService(deps);
 
   if (action === "generate") {
@@ -200,20 +217,22 @@ export async function handleExerciseMediaRequest(
         { status: 405, headers: JSON_HEADERS },
       );
     }
-    let body: { note?: string | null } = {};
-    try {
-      body = (await readJsonBody(request)) as { note?: string | null };
-    } catch {
-      return Response.json(
-        { error: "invalid_input", message: "Invalid JSON body" },
-        { status: 400, headers: JSON_HEADERS },
-      );
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const rejected = rejectBodyPractitionerId(body);
+    if (rejected) {
+      return rejected;
     }
     try {
       const media = await service.generateInitialMediaForVersion({
         practitionerId,
         exerciseVersionId,
-        regenerationNote: body.note,
+        regenerationNote:
+          typeof body.note === "string" || body.note === null
+            ? (body.note as string | null)
+            : undefined,
       });
       return Response.json({ media }, { status: 201, headers: JSON_HEADERS });
     } catch (error) {
@@ -232,14 +251,13 @@ export async function handleExerciseMediaRequest(
     );
   }
 
-  let body: { scope?: string; note?: string | null } = {};
-  try {
-    body = (await readJsonBody(request)) as { scope?: string; note?: string | null };
-  } catch {
-    return Response.json(
-      { error: "invalid_input", message: "Invalid JSON body" },
-      { status: 400, headers: JSON_HEADERS },
-    );
+  const body = await readJsonObjectBody(request);
+  if (body instanceof Response) {
+    return body;
+  }
+  const rejected = rejectBodyPractitionerId(body);
+  if (rejected) {
+    return rejected;
   }
 
   const scope = body.scope as MediaRegenerationScope | undefined;
@@ -255,7 +273,7 @@ export async function handleExerciseMediaRequest(
       practitionerId,
       exerciseVersionId,
       scope,
-      note: body.note,
+      note: typeof body.note === "string" || body.note === null ? body.note : undefined,
     });
     return Response.json(result, { headers: JSON_HEADERS });
   } catch (error) {

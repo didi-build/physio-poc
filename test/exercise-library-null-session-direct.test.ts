@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { handleExerciseLibraryRequest } from "../src/http/routes/exercise-library.js";
+import {
+  EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
+  EXERCISE_LIBRARY_MY_EXERCISES_PATH,
+  exerciseLibraryExerciseDetailsPath,
+  exerciseLibraryMyExerciseItemPath,
+} from "../src/exercise-library-api-paths.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
@@ -30,45 +36,45 @@ const NULL_SESSION_ROUTE_CASES: DirectRouteCase[] = [
   {
     label: "search",
     method: "GET",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/exercises/approved/search`,
+    path: `${BASE}${EXERCISE_LIBRARY_APPROVED_SEARCH_PATH}`,
   },
   {
     label: "details",
     method: "GET",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryExerciseDetailsPath(EX_ID)}`,
   },
   {
     label: "list",
     method: "GET",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises`,
+    path: `${BASE}${EXERCISE_LIBRARY_MY_EXERCISES_PATH}`,
   },
   {
     label: "patch my copy",
     method: "PATCH",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_ID)}`,
     body: JSON.stringify({ text_overrides: { title: "mine" } }),
   },
   {
     label: "delete",
     method: "DELETE",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_ID)}`,
   },
   {
     label: "save",
     method: "POST",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_ID)}`,
     body: JSON.stringify({ action: "save" }),
   },
   {
     label: "pin",
     method: "POST",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_ID)}`,
     body: JSON.stringify({ action: "pin", pinned: true }),
   },
   {
     label: "undo",
     method: "POST",
-    path: `${BASE}/api/practitioners/${PRACT_ID}/my-exercises/${EX_ID}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_ID)}`,
     body: JSON.stringify({
       action: "undo",
       undo: {

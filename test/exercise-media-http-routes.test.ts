@@ -94,7 +94,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       const deps = mediaHttpDeps(storage, practitionerId);
       const generate = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/generate`,
           deps,
           {
             method: "POST",
@@ -137,7 +137,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       const deps = mediaHttpDeps(storage, practitionerId);
       await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/generate`,
           deps,
           {
             method: "POST",
@@ -151,7 +151,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       for (let i = 0; i < 5; i += 1) {
         const regen = await handleRequest(
           mediaRequest(
-            `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+            `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,
             deps,
             {
               method: "POST",
@@ -166,7 +166,7 @@ describe("Exercise media HTTP routes (integration)", () => {
 
       const capped = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,
           deps,
           {
             method: "POST",
@@ -210,7 +210,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       const deps = mediaHttpDeps(storage, practitionerId);
       const response = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,
           deps,
           {
             method: "POST",
@@ -243,7 +243,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       });
       const response = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/generate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/generate`,
           deps,
           {
             method: "POST",

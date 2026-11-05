@@ -142,8 +142,7 @@ function lookalikeRefererForAllowedOrigin(allowedOrigin: string): string {
   return `${lookalikeOriginWithAttackerSuffix(allowedOrigin)}/programs`;
 }
 
-const MUTATING_POST_PATH = (): string =>
-  `/api/practitioners/${PRACTITIONER_ID}/my-exercises/${EXERCISE_ID}`;
+const MUTATING_POST_PATH = (): string => `/api/me/my-exercises/${EXERCISE_ID}`;
 
 function mutatingBody(path: string, method: string): string | undefined {
   if (method === "DELETE") {
@@ -333,7 +332,7 @@ describe("mutating app API CSRF guard", () => {
 
   it("allows same-origin JSON mutating requests", async () => {
     const { deps, cookie } = await sessionDeps();
-    const path = `/api/practitioners/${PRACTITIONER_ID}/my-exercises/${EXERCISE_ID}`;
+    const path = `/api/me/my-exercises/${EXERCISE_ID}`;
     const response = await handleRequest(
       new Request(`${BASE}${path}`, {
         method: "POST",
@@ -346,12 +345,9 @@ describe("mutating app API CSRF guard", () => {
   });
 
   it("does not guard GET app API routes", async () => {
-    const request = new Request(
-      `${BASE}/api/practitioners/${PRACTITIONER_ID}/my-exercises`,
-      {
-        method: "GET",
-      },
-    );
+    const request = new Request(`${BASE}/api/me/my-exercises`, {
+      method: "GET",
+    });
     expect(rejectMutatingAppApiCsrf(request, MCP_TEST_CONFIG)).toBeNull();
   });
 });
@@ -639,7 +635,7 @@ describe("mutating app API CSRF guard via handleRequest (CTO ruling)", () => {
 
   it("lets GET HEAD and OPTIONS reach dispatch without CSRF rejection", async () => {
     const { deps, cookie } = await sessionDeps();
-    const listPath = `/api/practitioners/${PRACTITIONER_ID}/my-exercises`;
+    const listPath = `/api/me/my-exercises`;
     for (const method of ["GET", "HEAD", "OPTIONS"] as const) {
       expect(requiresAppApiCsrfGuard(listPath, method)).toBe(false);
       const response = await handleRequest(

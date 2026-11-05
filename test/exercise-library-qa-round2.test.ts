@@ -468,7 +468,7 @@ describe("Exercise library QA round 2 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
       const { sessionCookie, ...deps } = apiDeps(storage, practId);
-      const base = `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`;
+      const base = `https://example.test/api/me/my-exercises/${exerciseId}`;
 
       const missingSnapshot = await handleRequest(
         new Request(base, {

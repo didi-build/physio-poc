@@ -8,7 +8,7 @@ import {
   practitionerPathRouteSampleKey,
   practitionerPathRouteSampleKeysFromHandlerTables,
 } from "./helpers/practitioner-path-route-registry.js";
-import { discoveredPractitionerPathRouteKeysFromHttpSources } from "./helpers/practitioner-path-route-discovery.js";
+import { assertNoPractitionerIdInHttpRouteSources } from "./helpers/no-practitioner-id-in-http-path.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import {
@@ -32,7 +32,6 @@ import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 const BASE = "https://physio.test.example";
 const PRACT_A = testOpaqueEntityId("path-route-a");
 const PRACT_B = testOpaqueEntityId("path-route-b");
-const PRACT_FOREIGN = testOpaqueEntityId("path-route-foreign");
 const EXERCISE_ID = testOpaqueEntityId("path-route-ex");
 const VERSION_ID = testOpaqueEntityId("path-route-ver");
 
@@ -70,28 +69,28 @@ async function seedRoutesFixture(
   ]);
 }
 
-function samplePathForPractitioner(
+function samplePathForSession(
   sample: (typeof PRACTITIONER_PATH_ROUTE_SAMPLES)[number],
-  practitionerId: string,
 ): string {
   return sample.samplePath
-    .replace("11111111-1111-4111-8111-111111111111", practitionerId)
     .replace("ex-example", EXERCISE_ID)
     .replace("ver-example", FIXTURE_VERSION_ID);
 }
 
-describe("HTTP route table (practitioner path session binding)", () => {
-  it("pins practitioner path route samples to handler route tables and HTTP source discovery", () => {
+describe("HTTP route table (practitioner-scoped session routes)", () => {
+  it("pins practitioner-scoped route samples to handler route tables and forbids practitioner id path segments", () => {
+    assertNoPractitionerIdInHttpRouteSources();
     const fromSamples = PRACTITIONER_PATH_ROUTE_SAMPLES.map(
       practitionerPathRouteSampleKey,
     ).sort();
     const fromTables = practitionerPathRouteSampleKeysFromHandlerTables();
     const canonical = canonicalPractitionerPathRouteCaseKeys();
-    const discovered = discoveredPractitionerPathRouteKeysFromHttpSources();
     expect(fromSamples).toEqual(fromTables);
     expect(fromSamples).toEqual(canonical);
-    expect(fromSamples).toEqual(discovered);
     expect(fromSamples.length).toBeGreaterThan(0);
+    for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
+      expect(sample.samplePath.startsWith("/api/me/"), sample.samplePath).toBe(true);
+    }
   });
 
   it("matches handler route tables to routes handleRequest dispatches", async () => {
@@ -132,7 +131,7 @@ describe("HTTP route table (practitioner path session binding)", () => {
     }
   });
 
-  it("returns 403 when session practitioner A targets practitioner B on every practitioner path route", async () => {
+  it("returns 404 for legacy practitioner id paths even with a session", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
@@ -157,9 +156,10 @@ describe("HTTP route table (practitioner path session binding)", () => {
       };
 
       for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
-        const path = samplePathForPractitioner(sample, PRACT_B);
-        const body = practitionerPathProbeRequestBody(path, sample.method);
-        const url = `${BASE}${path}`;
+        const mePath = samplePathForSession(sample);
+        const legacyPath = mePath.replace("/api/me/", `/api/practitioners/${practB}/`);
+        const body = practitionerPathProbeRequestBody(mePath, sample.method);
+        const url = `${BASE}${legacyPath}`;
         const response = await handleRequest(
           new Request(
             url,
@@ -173,15 +173,15 @@ describe("HTTP route table (practitioner path session binding)", () => {
           ),
           deps,
         );
-        expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(403);
-        await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+        expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(404);
+        await expect(response.json()).resolves.toEqual({ error: "not_found" });
       }
     } finally {
       storage.close();
     }
   });
 
-  it("returns 403 when session targets an unknown practitioner id on every practitioner path route", async () => {
+  it("uses session identity on /api/me routes so practitioner B data is unreachable from session A", async () => {
     expect(PRACTITIONER_PATH_ROUTE_SAMPLES.length).toBeGreaterThan(0);
     expect(
       PRACTITIONER_PATH_ROUTE_SAMPLES.map(practitionerPathRouteSampleKey).sort(),
@@ -190,7 +190,8 @@ describe("HTTP route table (practitioner path session binding)", () => {
     const storage = await openMigratedDatabase();
     try {
       const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
-      await seedRoutesFixture(storage, practA);
+      const practB = await seedPractitioner(storage, PRACT_B, "b@example.com");
+      await seedRoutesFixture(storage, practB);
 
       const auth = new FakeAuthPort({
         practitioner: {
@@ -209,31 +210,95 @@ describe("HTTP route table (practitioner path session binding)", () => {
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
 
-      const probedKeys: string[] = [];
-      for (const sample of PRACTITIONER_PATH_ROUTE_SAMPLES) {
-        const path = samplePathForPractitioner(sample, PRACT_FOREIGN);
-        const body = practitionerPathProbeRequestBody(path, sample.method);
-        const url = `${BASE}${path}`;
-        const response = await handleRequest(
-          new Request(
-            url,
-            mutatingAppApiRequestInit(url, {
-              method: sample.method,
-              headers: body
-                ? { cookie, "content-type": "application/json" }
-                : { cookie },
-              body,
-            }),
-          ),
-          deps,
-        );
-        expect(response.status, practitionerPathRouteSampleKey(sample)).toBe(403);
-        await expect(response.json()).resolves.toEqual({ error: "forbidden" });
-        probedKeys.push(practitionerPathRouteSampleKey(sample));
-      }
-      expect(probedKeys.sort()).toEqual(
-        PRACTITIONER_PATH_ROUTE_SAMPLES.map(practitionerPathRouteSampleKey).sort(),
+      const listUrl = `${BASE}/api/me/my-exercises`;
+      const listResponse = await handleRequest(
+        new Request(
+          listUrl,
+          mutatingAppApiRequestInit(listUrl, { headers: { cookie } }),
+        ),
+        deps,
       );
+      expect(listResponse.status).toBe(200);
+      const listBody = (await listResponse.json()) as {
+        sections: {
+          pinned: { exercise_id: string }[];
+          recently_used_and_saved: { exercise_id: string }[];
+          new_from_requests: { exercise_id: string }[];
+        };
+      };
+      const listedIds = [
+        ...listBody.sections.pinned,
+        ...listBody.sections.recently_used_and_saved,
+        ...listBody.sections.new_from_requests,
+      ].map((item) => item.exercise_id);
+      expect(listedIds.includes(EXERCISE_ID)).toBe(false);
+
+      const deleteUrl = `${BASE}/api/me/my-exercises/${EXERCISE_ID}`;
+      const deleteResponse = await handleRequest(
+        new Request(
+          deleteUrl,
+          mutatingAppApiRequestInit(deleteUrl, {
+            method: "DELETE",
+            headers: { cookie, "content-type": "application/json" },
+          }),
+        ),
+        deps,
+      );
+      expect(deleteResponse.status).toBe(404);
+
+      const row = await storage.first<{ favourite: number }>(
+        `SELECT favourite FROM practitioner_exercises
+         WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1`,
+        [practB, EXERCISE_ID],
+      );
+      expect(row?.favourite).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 400 when a mutating /api/me exercise-library body includes practitionerId", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+      await seedRoutesFixture(storage, practA);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practA,
+          email: "a@example.com",
+          displayName: "A",
+        },
+      });
+      const cookie = auth.createSessionCookieHeader();
+      const deps = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
+      };
+      const path = `/api/me/my-exercises/${EXERCISE_ID}`;
+      const url = `${BASE}${path}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              practitionerId: practA,
+              text_overrides: { title: "x" },
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+        message: "invalid_input",
+      });
     } finally {
       storage.close();
     }
