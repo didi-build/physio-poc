@@ -60,6 +60,7 @@ function exerciseRow(id: string, title: string, position: number): ProgramBuilde
     text_snapshot: { title },
     note: null,
     library_update: null,
+    exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
   };
 }
 
@@ -277,7 +278,7 @@ describe("Programs builder row actions (integration, jsdom)", () => {
 });
 
 function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
-  return {
+  const base: Partial<ProgramsClient> = {
     listPrograms: vi.fn().mockResolvedValue({
       items: [LIST_ITEM],
       matched_code: "PRG-TEST",
@@ -285,6 +286,7 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn().mockResolvedValue(builderView()),
+    getProgramByCode: vi.fn().mockResolvedValue(builderView()),
     updateProgramName: vi.fn(),
     deleteProgram: vi.fn(),
     restoreProgram: vi.fn(),
@@ -296,6 +298,11 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
     applyLibraryUpdate: vi.fn(),
     keepLibraryUpdate: vi.fn(),
     addPlaceholderRow: vi.fn(),
-    ...overrides,
-  } as unknown as ProgramsClient;
+  };
+  const merged = { ...base, ...overrides } as ProgramsClient;
+  if (overrides.getProgram && !overrides.getProgramByCode) {
+    merged.getProgramByCode =
+      overrides.getProgram as ProgramsClient["getProgramByCode"];
+  }
+  return merged;
 }

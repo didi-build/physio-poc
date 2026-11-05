@@ -65,6 +65,7 @@ function stubProgramsClient(): ProgramsClient {
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn(),
+    getProgramByCode: vi.fn(),
     updateProgramName: vi.fn(),
     deleteProgram: vi.fn(),
     restoreProgram: vi.fn(),

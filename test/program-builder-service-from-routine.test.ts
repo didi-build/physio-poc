@@ -2022,6 +2022,18 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
         rowIds: string[],
       ) => {
+        const choicesA = [
+          { exercise_version_id: verA1, version_number: 1 },
+          { exercise_version_id: verA2, version_number: 2 },
+        ];
+        const choicesB = [
+          { exercise_version_id: verB1, version_number: 1 },
+          { exercise_version_id: verB2, version_number: 2 },
+        ];
+        const choicesC = [
+          { exercise_version_id: verC1, version_number: 1 },
+          { exercise_version_id: verC2, version_number: 2 },
+        ];
         expect(view.routine_origin).toEqual({
           routine_id: id("tri-routine"),
           routine_version_id: v1.id,
@@ -2050,6 +2062,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             pinned_version_number: 1,
             latest_version_number: 2,
           },
+          exercise_version_choices: choicesA,
         });
         expect(view.rows[1]).toEqual({
           id: rowIds[1],
@@ -2071,6 +2084,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             pinned_version_number: 1,
             latest_version_number: 2,
           },
+          exercise_version_choices: choicesB,
         });
         expect(view.rows[2]).toEqual({
           id: rowIds[2],
@@ -2092,6 +2106,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             pinned_version_number: 1,
             latest_version_number: 2,
           },
+          exercise_version_choices: choicesC,
         });
       };
 
@@ -2099,6 +2114,18 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         view: Awaited<ReturnType<ProgramBuilderService["getProgram"]>>,
         rowIds: string[],
       ) => {
+        const choicesA = [
+          { exercise_version_id: verA1, version_number: 1 },
+          { exercise_version_id: verA2, version_number: 2 },
+        ];
+        const choicesB = [
+          { exercise_version_id: verB1, version_number: 1 },
+          { exercise_version_id: verB2, version_number: 2 },
+        ];
+        const choicesC = [
+          { exercise_version_id: verC1, version_number: 1 },
+          { exercise_version_id: verC2, version_number: 2 },
+        ];
         expect(view.routine_origin).toEqual({
           routine_id: id("tri-routine"),
           routine_version_id: id("tri-rv2"),
@@ -2121,6 +2148,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           text_snapshot: textSnapshotA2,
           note: null,
           library_update: null,
+          exercise_version_choices: choicesA,
         });
         expect(view.rows[1]).toEqual({
           id: rowIds[1],
@@ -2136,6 +2164,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           text_snapshot: textSnapshotB2,
           note: null,
           library_update: null,
+          exercise_version_choices: choicesB,
         });
         expect(view.rows[2]).toEqual({
           id: rowIds[2],
@@ -2151,6 +2180,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           text_snapshot: textSnapshotC2,
           note: null,
           library_update: null,
+          exercise_version_choices: choicesC,
         });
       };
 

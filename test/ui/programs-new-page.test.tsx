@@ -57,6 +57,7 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn(),
+    getProgramByCode: vi.fn(),
     updateProgramName: vi.fn(),
     deleteProgram: vi.fn(),
     restoreProgram: vi.fn(),
@@ -97,6 +98,7 @@ function listAndBuilderStubs() {
       matched_code: "PRG-NEW",
     }),
     getProgram: vi.fn().mockResolvedValue(builderView()),
+    getProgramByCode: vi.fn().mockResolvedValue(builderView()),
   };
 }
 
