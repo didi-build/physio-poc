@@ -72,4 +72,16 @@ DIDI-1163 `verify-action-pins` rows were run at this branch head (`/tmp/didi-116
 
 Totals: 63 mutants run, 61 killed, 1 equivalent, 0 survived, 1 deferred (Q15).
 
-Per [CTO ruling de77fd55](https://linear.app/didi-build/issue/DIDI-1146#comment-de77fd55), [CTO ruling 10b4492f](https://linear.app/didi-build/issue/DIDI-1146#comment-10b4492f), and [CTO ruling a9b6a82e](https://linear.app/didi-build/issue/DIDI-1146#comment-a9b6a82e) (verify-action-pins hardening). Items 1, 3 and 5 remain in DIDI-1154.
+Per [CTO ruling de77fd55](https://linear.app/didi-build/issue/DIDI-1146#comment-de77fd55), [CTO ruling 10b4492f](https://linear.app/didi-build/issue/DIDI-1146#comment-10b4492f), and [CTO ruling a9b6a82e](https://linear.app/didi-build/issue/DIDI-1146#comment-a9b6a82e) (verify-action-pins hardening on DIDI-1163). Items 1, 3 and 5 remain in DIDI-1154.
+
+## DIDI-1156 (consent lead colour and phone body font)
+
+Pure style pins; no production mutants were run. Killing tests are computed-style assertions in `test/mcp-oauth-consent-layout.browser.test.ts`:
+
+| Pin                                   | Assertion                                                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Lead uses shell-slate-600 (`#475569`) | `getComputedStyle(.consent-name-lead).color === rgb(71, 85, 105)` at 390 px and 1280 px                        |
+| Phone body font 14 px                 | `getComputedStyle(.consent-name-line).fontSize === 14px` at 390 px (consent card body paragraph; QA mockup 01) |
+| Desktop body font unchanged           | `getComputedStyle(.consent-name-line).fontSize === 15px` at 1280 px                                            |
+
+Production CSS: `.consent-name-line` and `.consent-body` default to `0.875rem`, stepping up to `0.9375rem` from `640px` (lists and host line stay `0.875rem` at all widths).
