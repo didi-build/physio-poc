@@ -71,6 +71,7 @@ describe("Exercise request approve batch (integration)", () => {
         [rowId],
       );
       expect(linked?.exercise_version_id).toBe(approved.exercise_version_id);
+      expect(approved.skipped_count).toBe(0);
 
       const requestRow = await storage.first<{ status: string }>(
         "SELECT status FROM exercise_requests WHERE id = ?",
@@ -138,11 +139,12 @@ describe("Exercise request approve batch (integration)", () => {
         prescriptionType: "stretching",
         params: { hold_s: 12 },
       });
+      const batchCallsBeforeApprove = batchCalls;
       await service.approveRequest({
         practitionerId: approver,
         requestId: created.request_id,
       });
-      expect(batchCalls).toBe(1);
+      expect(batchCalls - batchCallsBeforeApprove).toBe(1);
       expect(approveVersionRunCalls).toBe(0);
     } finally {
       storage.close();

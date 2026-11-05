@@ -106,11 +106,12 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
 }
 
 function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
-  return {
+  const base: Partial<ProgramsClient> = {
     listPrograms: vi.fn().mockResolvedValue({ items: [LIST_ITEM], matched_code: null }),
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn().mockResolvedValue({ program: builderView() }),
     getProgram: vi.fn().mockResolvedValue(builderView()),
+    getProgramByCode: vi.fn().mockResolvedValue(builderView()),
     updateProgramName: vi.fn().mockImplementation(async (_id, name) => ({
       program: builderView({ name }),
     })),
@@ -141,6 +142,9 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
             text_snapshot: { title: "Heel raise" },
             note: null,
             library_update: null,
+            exercise_version_choices: [
+              { exercise_version_id: "v1", version_number: 1 },
+            ],
           },
         ],
       }),
@@ -152,8 +156,13 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
     applyLibraryUpdate: vi.fn(),
     keepLibraryUpdate: vi.fn(),
     addPlaceholderRow: vi.fn(),
-    ...overrides,
-  } as unknown as ProgramsClient;
+  };
+  const merged = { ...base, ...overrides } as ProgramsClient;
+  if (overrides.getProgram && !overrides.getProgramByCode) {
+    merged.getProgramByCode =
+      overrides.getProgram as ProgramsClient["getProgramByCode"];
+  }
+  return merged;
 }
 
 describe("Programs UI (integration, jsdom)", () => {
@@ -217,7 +226,8 @@ describe("Programs UI (integration, jsdom)", () => {
       { ...LIST_ITEM, program_id: "prog-2", code: "PRG-TWO", name: "Other program" },
       { ...LIST_ITEM, program_id: "prog-3", code: "PRG-THREE", name: "Third program" },
     ];
-    const listPrograms = vi.fn((q?: string) => {
+    const listPrograms = vi.fn((q?: string, origin?: string) => {
+      void origin;
       if (!q?.trim()) {
         return Promise.resolve({ items, matched_code: null });
       }
@@ -280,18 +290,14 @@ describe("Programs UI (integration, jsdom)", () => {
     await screen.findByText(listCountLabel(2)!);
   });
 
-  it("redirects to list when code lookup is not exact", async () => {
-    const getProgramNearMiss = vi.fn().mockResolvedValue(builderView());
+  it("redirects to list when by-code lookup fails", async () => {
+    const getProgramByCode = vi.fn().mockRejectedValue(new Error("not found"));
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
           programsClient={stubProgramsClient({
-            listPrograms: vi.fn().mockResolvedValue({
-              items: [{ ...LIST_ITEM, code: "PRG-TESTX" }],
-              matched_code: "PRG-TEST",
-            }),
-            getProgram: getProgramNearMiss,
+            getProgramByCode,
           })}
         />
       </MemoryRouter>,
@@ -301,30 +307,26 @@ describe("Programs UI (integration, jsdom)", () => {
         screen.getByRole("heading", { name: PROGRAMS_PAGE_TITLE, level: 1 }),
       ).toBeInTheDocument();
     });
-    expect(getProgramNearMiss).not.toHaveBeenCalled();
+    expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST");
     expect(
       screen.queryByRole("textbox", { name: "Program name" }),
     ).not.toBeInTheDocument();
   });
 
-  it("loads builder when code lookup matches exactly", async () => {
-    const getProgram = vi.fn().mockResolvedValue(builderView());
+  it("loads builder when by-code lookup succeeds", async () => {
+    const getProgramByCode = vi.fn().mockResolvedValue(builderView());
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
           programsClient={stubProgramsClient({
-            listPrograms: vi.fn().mockResolvedValue({
-              items: [LIST_ITEM],
-              matched_code: "PRG-TEST",
-            }),
-            getProgram,
+            getProgramByCode,
           })}
         />
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(getProgram).toHaveBeenCalledWith("prog-1");
+      expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST");
     });
     expect(
       await screen.findByRole("textbox", { name: "Program name" }),
@@ -577,7 +579,8 @@ describe("Programs UI (integration, jsdom)", () => {
 
   it("clears search from no match state", async () => {
     const all = [LIST_ITEM];
-    const listPrograms = vi.fn((q?: string) => {
+    const listPrograms = vi.fn((q?: string, origin?: string) => {
+      void origin;
       if (!q?.trim()) {
         return Promise.resolve({ items: all, matched_code: null });
       }
