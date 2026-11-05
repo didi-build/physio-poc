@@ -1,6 +1,6 @@
 # Exercise request approve link mutants (DIDI-1137)
 
-Branch head at generation time: set when PR is pushed (see PR body head SHA). Temp dir: `TMPDIR=/tmp/didi-1137-tmp`. Each mutant was applied alone on production sources, then `npm test` (full Vitest suite) ran with `GIT_CONFIG_*` unset. The touched file was reverted with `git checkout HEAD -- <path>` before the next row.
+Branch head at generation time: `e794050509bfd741acf9bbcad829f6c2f7c08e21`. Temp dir: `TMPDIR=/tmp/didi-1137-tmp`. Each mutant was applied alone on production sources, then `npm test` (full Vitest suite) ran with `GIT_CONFIG_*` unset. The touched file was reverted with `git checkout HEAD -- <path>` before the next row.
 
 Every mutant in this table was run against the full suite (`npm test`).
 
