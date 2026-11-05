@@ -98,6 +98,7 @@ type ConflictPayload = {
   requested_name: string;
   exercise_note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: "open" | "drafting";
   exercise_id: string | null;
   draft_title: string | null;
@@ -110,6 +111,7 @@ function mapSimilarRow(row: SimilarInProgressRow): ConflictPayload {
     requested_name: row.requested_name,
     exercise_note: row.note,
     requested_by: row.requested_by,
+    requested_by_email: row.requested_by_email,
     status: row.status as "open" | "drafting",
     exercise_id: row.exercise_id,
     draft_title: row.draft_title,
@@ -211,6 +213,8 @@ export class ExerciseRequestsService {
         status: row.status as "open" | "drafting",
         exercise_id: row.exercise_id,
         draft_title: row.draft_title,
+        requested_by: row.requested_by,
+        requested_by_email: row.requested_by_email,
       })),
     };
   }
@@ -353,6 +357,7 @@ export class ExerciseRequestsService {
         exercise_note: row.note,
         status: row.status as "open" | "drafting",
         requested_by: row.requested_by,
+        requested_by_email: row.requested_by_email,
         exercise_id: row.exercise_id,
         draft_title: row.draft_title,
         updated_at: row.updated_at,
@@ -408,6 +413,8 @@ export class ExerciseRequestsService {
       exercise_note: row.note,
       status: row.status as "open" | "drafting",
       requested_by: row.requested_by,
+      requested_by_email:
+        (await this.practitioners.findById(row.requested_by))?.email ?? "",
       exercise_id: row.exercise_id,
       draft,
     };

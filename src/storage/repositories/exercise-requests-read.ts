@@ -8,6 +8,7 @@ export type InProgressRequestRow = {
   requested_name: string;
   note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: string;
   exercise_id: string | null;
   draft_title: string | null;
@@ -20,6 +21,7 @@ export type SimilarInProgressRow = {
   requested_name: string;
   note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: string;
   exercise_id: string | null;
   created_at: string;
@@ -37,6 +39,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         (
@@ -49,6 +52,7 @@ export class ExerciseRequestsReadRepository {
         er.created_at,
         er.updated_at
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')
       ORDER BY er.updated_at DESC, er.id ASC
       `,
@@ -70,6 +74,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         er.created_at,
@@ -81,6 +86,7 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')
         AND (
           er.requested_name LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
@@ -110,6 +116,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         er.created_at,
@@ -121,6 +128,7 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.requested_by <> ?
         AND er.status IN ('open', 'drafting')
         AND er.created_at > ?
