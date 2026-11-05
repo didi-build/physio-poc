@@ -567,6 +567,42 @@ describe("Exercise requests HTTP routes (integration)", () => {
     }
   });
 
+  it("POST approve twice returns 409 request_already_approved", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(storage);
+      const practitionerB = testOpaqueEntityId("ex-req-double-appr-b");
+      await seedPractitioner(storage, practitionerB, "double-appr-b@example.com");
+      const { requestId } = await seedDraftingRequestForPractitioner(
+        storage,
+        practitionerB,
+        "Double approve HTTP",
+      );
+      const { deps, cookie } = apiDeps(storage, practitionerA);
+      const first = await handleRequest(
+        authedJsonRequest(exerciseRequestApprovePath(requestId), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        deps,
+      );
+      expect(first.status).toBe(200);
+      const second = await handleRequest(
+        authedJsonRequest(exerciseRequestApprovePath(requestId), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        deps,
+      );
+      expect(second.status).toBe(409);
+      expect(await second.json()).toMatchObject({
+        error: "request_already_approved",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns not_found for POST on the similar route", async () => {
     const storage = await openMigratedDatabase();
     try {

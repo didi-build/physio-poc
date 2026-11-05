@@ -14,6 +14,7 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { MAX_LENGTH_ROW_NOTES } from "../src/mcp-connector/text-limits.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -208,6 +209,58 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         [existing.exercise_id!, "Copenhagen plank short lever"],
       );
       expect(aliasRow?.alias).toBe("Copenhagen plank short lever");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects merge when combined notes exceed the character cap with invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pract-merge-cap-owner"),
+        "merge-cap-owner@example.com",
+      );
+      const merger = await seedPractitioner(
+        storage,
+        id("pract-merge-cap-merger"),
+        "merge-cap-merger@example.com",
+      );
+      const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+      });
+      const existing = await ownerService.submitRequest({
+        practitionerId: owner,
+        requestedName: "Merge cap move",
+        formOpenedAt: BEFORE_FORM,
+      });
+      expect(existing.outcome).toBe("created");
+      if (existing.outcome !== "created") {
+        return;
+      }
+      const requestsRepo = new ExerciseRequestsRepository(storage);
+      const baselineLen = MAX_LENGTH_ROW_NOTES - 10;
+      await requestsRepo.updateNote({
+        id: existing.request_id,
+        note: "x".repeat(baselineLen),
+        updatedAt: AFTER_FORM,
+      });
+      const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T12:00:00.000Z",
+      });
+      await expect(
+        mergeService.submitRequest({
+          practitionerId: merger,
+          requestedName: "Merge cap alias",
+          exerciseNote: "yyyyyyyyyy",
+          formOpenedAt: FORM_OPENED,
+          resolution: "merge",
+          conflictRequestId: existing.request_id,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const row = await requestsRepo.findById(existing.request_id);
+      expect(row?.note).toBe("x".repeat(baselineLen));
     } finally {
       storage.close();
     }
@@ -938,7 +991,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     }
   });
 
-  it("rejects a second approve with draft_not_ready", async () => {
+  it("rejects a second approve with request_already_approved", async () => {
     const storage = await openMigratedDatabase();
     try {
       const requester = await seedPractitioner(
@@ -972,7 +1025,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
           practitionerId: approver,
           requestId: created.request_id,
         }),
-      ).rejects.toMatchObject({ code: "draft_not_ready" });
+      ).rejects.toMatchObject({ code: "request_already_approved" });
     } finally {
       storage.close();
     }
