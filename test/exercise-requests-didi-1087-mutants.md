@@ -1,6 +1,6 @@
 # DIDI-1087 mutation table (getRequest read repository, NOTE_FOR_AI label)
 
-Branch head at generation: `PLACEHOLDER_SHA`. Temp dir: `TMPDIR=/tmp/didi-1087-tmp`.
+Branch head at generation: `c4f4bebf9ba550a749bde2e60206c6dd3595b659`. Temp dir: `TMPDIR=/tmp/didi-1087-tmp`.
 
 Every row was applied alone, then the full Vitest suite was run with `npm test`. After each run, only the touched paths were reverted with `git checkout -- .` before the next mutant.
 
