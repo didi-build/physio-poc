@@ -28,6 +28,7 @@ import {
 } from "./helpers/practitioner-path-route-dispatch-probe.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { exerciseMediaGeneratePath } from "../src/exercise-media-api-paths.js";
 
 const BASE = "https://physio.test.example";
 const PRACT_A = testOpaqueEntityId("path-route-a");
@@ -290,6 +291,50 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
               practitionerId: practA,
               text_overrides: { title: "x" },
             }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_input",
+        message: "invalid_input",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 400 when a mutating /api/me exercise-media body includes practitioner_id", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
+      await seedRoutesFixture(storage, practA);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practA,
+          email: "a@example.com",
+          displayName: "A",
+        },
+      });
+      const cookie = auth.createSessionCookieHeader();
+      const deps = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
+      };
+      const path = exerciseMediaGeneratePath(FIXTURE_VERSION_ID);
+      const url = `${BASE}${path}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ practitioner_id: practA, note: null }),
           }),
         ),
         deps,
