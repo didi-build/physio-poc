@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const UI_ROOT = join(import.meta.dirname, "../../src/ui");
 const ALLOWED_API_CLIENT_MODULES = new Set([
   "api/exercise-library-client.ts",
+  "api/exercise-requests-client.ts",
+  "api/exercise-media-client.ts",
   "api/auth-client.ts",
   "api/my-defaults-client.ts",
   "api/programs-client.ts",

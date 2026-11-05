@@ -13,6 +13,9 @@ import {
   exerciseLibraryMyExerciseItemPath,
 } from "../../exercise-library-api-paths.js";
 
+/** Dev fixture id for exercise-request UI ownership labels until full session UI (DIDI-1009). */
+export const DEV_PRACTITIONER_ID = "00000000-0000-4000-8000-000000000001";
+
 export type FetchFn = (
   input: RequestInfo | URL,
   init?: RequestInit,
