@@ -36,12 +36,8 @@ import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 const WORKER_BASE = WORKER_PRODUCTION_TEST_BASE;
 const FIXTURE_GOOGLE_CLIENT_ID = "fixture-worker-google-client-id";
 
-const MALFORMED_WEB_APP_BASE_URL_WITH_USERINFO = (() => {
-  const url = new URL("https://example.workers.dev");
-  url.username = "user";
-  url.password = "pass";
-  return url.toString();
-})();
+/** Literal userinfo URL with no trailing slash (reaches userinfo check before trailing-slash rule). */
+const MALFORMED_WEB_APP_BASE_URL_WITH_USERINFO = "https://user@example.workers.dev";
 
 const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
 
@@ -156,6 +152,28 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     expect(first.auth).toBe(second.auth);
   });
 
+  it("rebuilds production deps when the auth env cache key changes", async () => {
+    resetWorkerProductionAuthCacheForTests();
+    const { d1, storage } = await openWorkerAuthTestDatabase();
+    await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+    const baseEnv = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 });
+    const first = await createWorkerAppDependencies(baseEnv);
+    const rotatedSecret = await createWorkerAppDependencies({
+      ...baseEnv,
+      BETTER_AUTH_SECRET: `${PHYSIO_TEST_BETTER_AUTH_SECRET}x`,
+    });
+    expect(rotatedSecret.auth).not.toBe(first.auth);
+
+    resetWorkerProductionAuthCacheForTests();
+    const { d1: d1Second, storage: storageSecond } = await openWorkerAuthTestDatabase();
+    await seedPractitioner(storageSecond, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+    const envFirstDb = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 });
+    const envSecondDb = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1Second });
+    const depsFirstDb = await createWorkerAppDependencies(envFirstDb);
+    const depsSecondDb = await createWorkerAppDependencies(envSecondDb);
+    expect(depsSecondDb.auth).not.toBe(depsFirstDb.auth);
+  });
+
   it("ignores stray AUTH_BASE_URL in Worker env for issuer and trusted origin via worker.fetch", async () => {
     resetWorkerProductionAuthCacheForTests();
     const overrideAuthBase = "https://override.example";
@@ -167,6 +185,14 @@ describe("Worker entry production auth (DIDI-1153)", () => {
       BETTER_AUTH_URL: overrideAuthBase,
       BETTER_AUTH_TRUSTED_ORIGINS: overrideAuthBase,
     } as WorkerEnv;
+
+    const metadata = await worker.fetch(
+      new Request(`${WORKER_BASE}/.well-known/oauth-authorization-server`),
+      env,
+    );
+    expect(metadata.status).toBe(200);
+    const metadataBody = (await metadata.json()) as { issuer?: string };
+    expect(metadataBody.issuer).toBe(`${WORKER_BASE}/api/auth`);
 
     const signIn = await worker.fetch(
       new Request(`${WORKER_BASE}/api/auth/sign-in/social`, {

@@ -12,6 +12,7 @@ export default tseslint.config(
       "test-results/",
       "design/",
       "test/fixtures/mcp-stub-import-guard/**",
+      "test/fixtures/worker-auth-import-guard/**",
     ],
   },
   eslint.configs.recommended,
