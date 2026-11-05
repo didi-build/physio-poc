@@ -2,7 +2,7 @@
 
 Each mutant was applied alone on `src/auth/mcp-oauth/consent-page-styles.ts`, then the full `npm test` suite ran with `GIT_CONFIG_*` unset. Restored with `git checkout --` on that file after each run.
 
-Verified at head `9d0f58a07139ec598acc479709ef20e7b4739902`.
+Verified at head `25bfeba8d1cc54f356d33bec799d82a279f7b06a`.
 
 | Id  | Mutant                                                              | Result | Killing test(s)                                                  |
 | --- | ------------------------------------------------------------------- | ------ | ---------------------------------------------------------------- |
