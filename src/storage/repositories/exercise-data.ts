@@ -178,6 +178,16 @@ export class ExercisesRepository {
       [id, row.category, createdBy, row.created_at],
     );
   }
+
+  buildInsertBatchStatement(row: ExerciseRow): SqlBatchStatement {
+    const id = validateOpaqueEntityId(row.id, "Exercise id");
+    const createdBy = validateOpaqueEntityId(row.created_by, "Practitioner id");
+    return {
+      sql: "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+      bindings: [id, row.category, createdBy, row.created_at],
+      minRowsAffected: 1,
+    };
+  }
 }
 
 export type BodyRegionRow = {
@@ -502,6 +512,28 @@ export class ExerciseVersionsRepository {
       ],
     );
   }
+
+  buildInsertMinimalDraftBatchStatement(input: {
+    id: string;
+    exerciseId: string;
+    title: string;
+    createdAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise version id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const title = validateExerciseTitle(input.title);
+    return {
+      sql: `INSERT INTO exercise_versions (
+        id, exercise_id, version_number, status, approved_by, approved_at,
+        title, description, equipment, starting_position, steps,
+        common_mistakes, regressions, progressions, precautions,
+        cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+        media_set_id, change_summary, created_at
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, '', '', '', '', '', '', '', '', NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+      bindings: [id, exerciseId, title, input.createdAt],
+      minRowsAffected: 1,
+    };
+  }
 }
 
 export class ExerciseAliasesRepository {
@@ -614,6 +646,59 @@ export class ExerciseRequestsRepository {
         input.updatedAt,
       ],
     );
+  }
+
+  buildInsertBatchStatement(input: {
+    id: string;
+    requestedName: string;
+    note?: string | null;
+    requestedBy: string;
+    status: ExerciseRequestStatus;
+    exerciseId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const requestedName = validateRequestedExerciseName(input.requestedName);
+    const note = validateRequestNote(input.note);
+    const requestedBy = validateOpaqueEntityId(input.requestedBy, "Practitioner id");
+    const exerciseId =
+      input.exerciseId === null || input.exerciseId === undefined
+        ? null
+        : validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    return {
+      sql: `INSERT INTO exercise_requests (
+        id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      bindings: [
+        id,
+        requestedName,
+        note,
+        requestedBy,
+        input.status,
+        exerciseId,
+        input.createdAt,
+        input.updatedAt,
+      ],
+      minRowsAffected: 1,
+    };
+  }
+
+  buildUpdateAfterDraftLinkBatchStatement(input: {
+    id: string;
+    status: ExerciseRequestStatus;
+    exerciseId: string;
+    updatedAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    return {
+      sql: `UPDATE exercise_requests
+       SET status = ?, exercise_id = ?, updated_at = ?
+       WHERE id = ? AND status IN ('open', 'drafting')`,
+      bindings: [input.status, exerciseId, input.updatedAt, id],
+      minRowsAffected: 1,
+    };
   }
 
   async updateAfterDraftLink(input: {
