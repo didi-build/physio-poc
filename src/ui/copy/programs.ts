@@ -34,6 +34,49 @@ export const RESTORE = "Restore";
 
 export const BUILT_FROM_SCRATCH = "Built from scratch";
 
+/** design/app/programs/spec.md Copy inventory line 455. */
+export const PROGRAM_CARD_NO_LINK_YET = "No link yet";
+
+/** design/app/programs/spec.md Copy inventory line 456. */
+export const PROGRAM_CARD_LINK_CLOSED_KEEP = "Link closed. Program kept to reuse.";
+
+export function formatProgramSentListDate(iso: string): string {
+  const instant = Date.parse(iso);
+  if (Number.isNaN(instant)) {
+    return iso;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(instant));
+}
+
+export function programCardCountAndSentLine(
+  exerciseCount: number,
+  lastSentAt: string | null,
+): string {
+  if (exerciseCount === 0) {
+    return CARD_NO_EXERCISES_YET;
+  }
+  const countLine = cardExerciseCountLine(exerciseCount);
+  if (!lastSentAt) {
+    return countLine;
+  }
+  return `${countLine} · Sent ${formatProgramSentListDate(lastSentAt)}`;
+}
+
+export function programCardLinkStatusLine(
+  shareLinkStatus: import("../../services/programs/types.js").ShareLinkStatus,
+): string | null {
+  if (shareLinkStatus === "none") {
+    return PROGRAM_CARD_NO_LINK_YET;
+  }
+  if (shareLinkStatus === "closed") {
+    return PROGRAM_CARD_LINK_CLOSED_KEEP;
+  }
+  return null;
+}
+
 export const CODE_CHIP_PREFIX = "Code";
 
 export function programCodeChipLabel(code: string): string {

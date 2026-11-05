@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
+import type { ProgramOriginFilter } from "../../services/programs/types.js";
 import { useProgramsApi } from "../api/programs-context.js";
 import { useToast } from "../components/Toast.js";
 import {
@@ -27,7 +28,15 @@ import {
 } from "../copy/programs.js";
 import { ProgramListCard } from "./ProgramListCard.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
+import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
+
+function parseOriginFilter(value: string | null): ProgramOriginFilter {
+  if (value === "from_routine" || value === "from_scratch") {
+    return value;
+  }
+  return "all";
+}
 
 export function ProgramsListPage() {
   const client = useProgramsApi();
@@ -45,19 +54,24 @@ export function ProgramsListPage() {
 
   const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
+  const originFilter = parseOriginFilter(searchParams.get("origin"));
 
   const load = useCallback(() => {
     setLoading(true);
     setLoadFailed(false);
     const listPromise =
-      trimmedQuery.length > 0
-        ? Promise.all([client.listPrograms(trimmedQuery), client.listPrograms()]).then(
-            ([filtered, all]) => ({
-              items: filtered.items,
-              matched_code: filtered.matched_code,
-              totalCount: all.items.length,
-            }),
-          )
+      trimmedQuery.length > 0 || originFilter !== "all"
+        ? Promise.all([
+            client.listPrograms(
+              trimmedQuery.length > 0 ? trimmedQuery : undefined,
+              originFilter,
+            ),
+            client.listPrograms(),
+          ]).then(([filtered, all]) => ({
+            items: filtered.items,
+            matched_code: filtered.matched_code,
+            totalCount: all.items.length,
+          }))
         : client.listPrograms().then((result) => ({
             items: result.items,
             matched_code: result.matched_code,
@@ -80,7 +94,7 @@ export function ProgramsListPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [client, trimmedQuery]);
+  }, [client, trimmedQuery, originFilter]);
 
   useEffect(() => {
     load();
@@ -94,10 +108,10 @@ export function ProgramsListPage() {
 
   const countLabel = useMemo(
     () =>
-      trimmedQuery.length > 0
+      trimmedQuery.length > 0 || originFilter !== "all"
         ? listCountLabel(totalCount, items.length)
         : listCountLabel(totalCount),
-    [items.length, totalCount, trimmedQuery.length],
+    [items.length, totalCount, trimmedQuery.length, originFilter],
   );
 
   const showEmpty =
@@ -142,6 +156,16 @@ export function ProgramsListPage() {
       });
   };
 
+  const setOriginFilter = (filter: ProgramOriginFilter) => {
+    const next = new URLSearchParams(searchParams);
+    if (filter === "all") {
+      next.delete("origin");
+    } else {
+      next.set("origin", filter);
+    }
+    setSearchParams(next);
+  };
+
   return (
     <section
       className="pg-page ex-page"
@@ -169,15 +193,18 @@ export function ProgramsListPage() {
               value={query}
               onChange={(event) => {
                 const value = event.target.value;
+                const next = new URLSearchParams(searchParams);
                 if (value.trim().length === 0) {
-                  setSearchParams({});
+                  next.delete("q");
                 } else {
-                  setSearchParams({ q: value });
+                  next.set("q", value);
                 }
+                setSearchParams(next);
               }}
             />
           </label>
           <p className="pg-search-helper">{SEARCH_PROGRAMS_HELPER}</p>
+          <ProgramOriginFilterPills active={originFilter} onSelect={setOriginFilter} />
           {countLabel ? (
             <p className="pg-list-count" aria-live="polite">
               {countLabel}
@@ -210,7 +237,9 @@ export function ProgramsListPage() {
             type="button"
             className="pg-btn pg-btn--secondary"
             onClick={() => {
-              setSearchParams({});
+              const next = new URLSearchParams(searchParams);
+              next.delete("q");
+              setSearchParams(next);
             }}
           >
             {CLEAR_SEARCH}

@@ -6,10 +6,13 @@ import {
   NOT_PUBLISHED_YET,
   UNTITLED_PROGRAM,
   CODE_CHIP_PREFIX,
-  cardExerciseCountLine,
   libraryUpdatesToReviewFlag,
+  programCardCountAndSentLine,
+  programCardLinkStatusLine,
   programCodeChipLabel,
 } from "../copy/programs.js";
+import { ProgramCardOriginLine } from "./ProgramCardOriginLine.js";
+import { ProgramCardSentAndLinkStatus } from "./ProgramCardSentAndLinkStatus.js";
 import { highlightMatchedCode } from "./programs-list-utils.js";
 
 export type ProgramListCardProps = {
@@ -20,7 +23,11 @@ export type ProgramListCardProps = {
 export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
   const title = item.name?.trim() ? item.name.trim() : UNTITLED_PROGRAM;
   const codeHighlight = highlightMatchedCode(item.code, matchedCode);
-  const countLine = cardExerciseCountLine(item.exercise_count);
+  const countAndSentLine = programCardCountAndSentLine(
+    item.exercise_count,
+    item.last_sent_at,
+  );
+  const linkStatusLine = programCardLinkStatusLine(item.share_link_status);
 
   const flags: string[] = [];
   if (item.auto_save_status.kind === "not_published_yet") {
@@ -55,7 +62,11 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
           <span className="pg-code-chip">{programCodeChipLabel(item.code)}</span>
         )}
       </p>
-      <p className="pg-card-count">{countLine}</p>
+      <ProgramCardSentAndLinkStatus
+        countAndSentLine={countAndSentLine}
+        linkStatusLine={linkStatusLine}
+      />
+      <ProgramCardOriginLine origin={item.routine_origin} />
       {flags.length > 0 ? (
         <ul className="pg-card-flags">
           {flags.map((flag) => (

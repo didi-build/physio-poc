@@ -289,6 +289,20 @@ export class ExerciseLibraryReadRepository {
     return row?.count ?? 0;
   }
 
+  async listApprovedVersionChoices(
+    exerciseId: string,
+  ): Promise<{ id: string; version_number: number }[]> {
+    return this.sql.all<{ id: string; version_number: number }>(
+      `
+      SELECT ev.id, ev.version_number
+      FROM exercise_versions ev
+      WHERE ev.exercise_id = ? AND ev.status = 'approved'
+      ORDER BY ev.version_number ASC
+      `,
+      [exerciseId],
+    );
+  }
+
   async getLatestApprovedByExerciseId(
     exerciseId: string,
   ): Promise<LatestApprovedVersionRow | null> {
