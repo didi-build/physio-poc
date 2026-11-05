@@ -1,6 +1,6 @@
 # DIDI-1162 mutation table (consent env-switch and REPLACE write counter)
 
-Verified on branch head `ecd27707e8e0af551f930fc958b5790b345b99d0` (full `npm test` per mutant, then `git checkout --` on the touched production or helper file).
+Verified on branch head `ebd3f88d0c8fac5511890159202490c68a95bd71` (mutants applied on `ecd27707e8e0af551f930fc958b5790b345b99d0`, the test commit; full `npm test` per mutant, then `git checkout --` on the touched file).
 
 | Id  | Mutant                                                                  | Killing test(s)                                                                                                                                                                                                    | Result |
 | --- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
