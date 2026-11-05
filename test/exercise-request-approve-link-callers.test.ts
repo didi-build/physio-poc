@@ -43,4 +43,9 @@ describe("Exercise request approve placeholder linking callers (DIDI-1137)", () 
     const files = grepProduction(".buildLinkApprovedPlaceholderStatements(");
     expect(files).toEqual(["src/services/programs/program-builder-service.ts"]);
   });
+
+  it("does not reference linkApprovedPlaceholders under src/http", () => {
+    const files = grepProduction("linkApprovedPlaceholders");
+    expect(files.every((file) => !file.startsWith("src/http/"))).toBe(true);
+  });
 });
