@@ -26,8 +26,66 @@ export type SimilarInProgressRow = {
   draft_title: string | null;
 };
 
+export type InProgressRequestDetailRow = {
+  id: string;
+  requested_name: string;
+  note: string | null;
+  requested_by: string;
+  status: string;
+  exercise_id: string | null;
+};
+
+export type DraftVersionDetailRow = {
+  id: string;
+  version_number: number;
+  title: string;
+  description: string;
+  equipment: string;
+  starting_position: string;
+  steps: string;
+  common_mistakes: string;
+  regressions: string;
+  progressions: string;
+  precautions: string;
+  cue_stretching: string | null;
+  cue_isometric: string | null;
+  cue_concentric: string | null;
+  cue_eccentric: string | null;
+};
+
 export class ExerciseRequestsReadRepository {
   constructor(private readonly sql: SqlStoragePort) {}
+
+  async findInProgressRequestById(
+    requestId: string,
+  ): Promise<InProgressRequestDetailRow | null> {
+    return this.sql.first<InProgressRequestDetailRow>(
+      `
+      SELECT id, requested_name, note, requested_by, status, exercise_id
+      FROM exercise_requests
+      WHERE id = ? AND status IN ('open', 'drafting')
+      LIMIT 1
+      `,
+      [requestId],
+    );
+  }
+
+  async findDraftVersionDetailForExercise(
+    exerciseId: string,
+  ): Promise<DraftVersionDetailRow | null> {
+    return this.sql.first<DraftVersionDetailRow>(
+      `
+      SELECT id, version_number, title, description, equipment, starting_position, steps,
+             common_mistakes, regressions, progressions, precautions,
+             cue_stretching, cue_isometric, cue_concentric, cue_eccentric
+      FROM exercise_versions
+      WHERE exercise_id = ? AND status = 'draft'
+      ORDER BY version_number DESC
+      LIMIT 1
+      `,
+      [exerciseId],
+    );
+  }
 
   async listInProgress(): Promise<InProgressRequestRow[]> {
     return this.sql.all<InProgressRequestRow>(

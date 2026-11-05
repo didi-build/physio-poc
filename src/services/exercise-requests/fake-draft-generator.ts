@@ -10,7 +10,9 @@ import {
   ExercisesRepository,
 } from "../../storage/repositories/exercise-data.js";
 import {
+  FreeTextValidationError,
   validateExerciseTitle,
+  validateRequestNote,
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
 import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
@@ -49,34 +51,56 @@ export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);
 
-  await deps.exercises.insert({
-    id: exerciseId,
-    category: "stretch",
-    created_by: input.requestedBy,
-    created_at: input.now,
-  });
+  const batchStatements: SqlBatchStatement[] = [
+    deps.requests.buildInsertBatchStatement({
+      id: input.requestId,
+      requestedName: input.requestedName,
+      note: input.exerciseNote,
+      requestedBy: input.requestedBy,
+      status: "open",
+      createdAt: input.now,
+      updatedAt: input.now,
+    }),
+    deps.exercises.buildInsertBatchStatement({
+      id: exerciseId,
+      category: "stretch",
+      created_by: input.requestedBy,
+      created_at: input.now,
+    }),
+    deps.versions.buildInsertMinimalDraftBatchStatement({
+      id: versionId,
+      exerciseId,
+      title,
+      createdAt: input.now,
+    }),
+    deps.requests.buildUpdateAfterDraftLinkBatchStatement({
+      id: input.requestId,
+      status: "drafting",
+      exerciseId,
+      updatedAt: input.now,
+    }),
+  ];
 
-  await deps.versions.insert({
-    id: versionId,
-    exerciseId,
-    versionNumber: 1,
-    status: "draft",
-    approvedBy: null,
-    approvedAt: null,
-    title,
-    description: "",
-    createdAt: input.now,
-  });
-
-  await deps.requests.updateAfterDraftLink({
-    id: input.requestId,
-    status: "drafting",
-    exerciseId,
-    updatedAt: input.now,
-  });
+  try {
+    await input.sql.batch(batchStatements);
+  } catch (error) {
+    if (error instanceof SqlBatchGuardError) {
+      throw new ExerciseRequestsServiceError("Submit failed", "submit_failed", {
+        cause: error,
+      });
+    }
+    throw error;
+  }
 
   return { exerciseId, versionId };
 };
+
+function mapMergedNoteValidationError(err: unknown): never {
+  if (err instanceof FreeTextValidationError) {
+    throw new ExerciseRequestsServiceError(err.message, "invalid_input");
+  }
+  throw err;
+}
 
 export async function appendMergeToDraftRequest(input: {
   sql: SqlStoragePort;
@@ -99,7 +123,14 @@ export async function appendMergeToDraftRequest(input: {
   if (input.mergedNote) {
     mergedParts.push(input.mergedNote);
   }
-  const mergedNote = mergedParts.length > 0 ? mergedParts.join("\n") : null;
+  let mergedNote = mergedParts.length > 0 ? mergedParts.join("\n") : null;
+  if (mergedNote !== null) {
+    try {
+      mergedNote = validateRequestNote(mergedNote);
+    } catch (err) {
+      mapMergedNoteValidationError(err);
+    }
+  }
 
   const aliasName = validateRequestedExerciseName(input.mergedName);
   const versions = new ExerciseVersionsRepository(input.sql);
@@ -146,6 +177,9 @@ export async function appendMergeToDraftRequest(input: {
       throw new ExerciseRequestsServiceError("Alias conflict", "alias_conflict", {
         cause: error,
       });
+    }
+    if (error instanceof FreeTextValidationError) {
+      mapMergedNoteValidationError(error);
     }
     throw error;
   }
