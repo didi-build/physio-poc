@@ -301,31 +301,33 @@ export class ExerciseRequestsService {
 
       const requestId = generateOpaqueEntityId();
       const timestamp = this.now();
-      await this.requests.insert({
-        id: requestId,
-        requestedName,
-        note: exerciseNote,
-        requestedBy: input.practitionerId,
-        status: "open",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      });
-
-      await this.draftGenerator(
-        {
-          sql: this.sql,
-          requestId,
-          requestedName,
-          exerciseNote,
-          requestedBy: input.practitionerId,
-          now: timestamp,
-        },
-        {
-          exercises: this.exercises,
-          versions: this.versions,
-          requests: this.requests,
-        },
-      );
+      try {
+        await this.draftGenerator(
+          {
+            sql: this.sql,
+            requestId,
+            requestedName,
+            exerciseNote,
+            requestedBy: input.practitionerId,
+            now: timestamp,
+          },
+          {
+            exercises: this.exercises,
+            versions: this.versions,
+            requests: this.requests,
+          },
+        );
+      } catch (error) {
+        if (error instanceof ExerciseRequestsServiceError) {
+          throw error;
+        }
+        if (error instanceof SqlBatchGuardError) {
+          throw new ExerciseRequestsServiceError("Submit failed", "submit_failed", {
+            cause: error,
+          });
+        }
+        throw error;
+      }
 
       const updated = await this.requests.findById(requestId);
       return {
@@ -480,7 +482,16 @@ export class ExerciseRequestsService {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
     const row = await this.requests.findById(requestId);
-    if (!row || row.status !== "drafting" || !row.exercise_id) {
+    if (!row) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
+    if (row.status === "approved") {
+      throw new ExerciseRequestsServiceError(
+        "Request already approved",
+        "request_already_approved",
+      );
+    }
+    if (row.status !== "drafting" || !row.exercise_id) {
       throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
     }
     const draft = await this.versions.findDraftForExercise(row.exercise_id);

@@ -6,6 +6,8 @@ export type ExerciseRequestsServiceErrorCode =
   | "conflict_target_not_found"
   | "merge_target_not_ready"
   | "approve_failed"
+  | "request_already_approved"
+  | "submit_failed"
   | "alias_conflict";
 
 export class ExerciseRequestsServiceError extends Error {
