@@ -200,11 +200,11 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
   }, 120_000);
 
   it.each([
-    { width: 390, nameLineFontSize: "14px" },
-    { width: 1280, nameLineFontSize: "15px" },
+    { width: 390, bodyFontSize: "14px" },
+    { width: 1280, bodyFontSize: "15px" },
   ] as const)(
-    "pins consent name lead colour and name line font size at %i px",
-    async ({ width, nameLineFontSize }) => {
+    "pins consent name lead colour and phone body font at %i px",
+    async ({ width, bodyFontSize }) => {
       const html = await consentPageHtml({});
       const browser = await chromium.launch();
       try {
@@ -213,18 +213,18 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
         await loadConsentHtmlInPage(page, html);
         const styles = await page.evaluate(() => {
           const lead = document.querySelector(".consent-name-lead");
-          const nameLine = document.querySelector(".consent-name-line");
-          if (!lead || !nameLine) {
+          const bodyParagraph = document.querySelector(".consent-name-line");
+          if (!lead || !bodyParagraph) {
             return null;
           }
           return {
             leadColor: getComputedStyle(lead).color,
-            nameLineFontSize: getComputedStyle(nameLine).fontSize,
+            bodyFontSize: getComputedStyle(bodyParagraph).fontSize,
           };
         });
         expect(styles).not.toBeNull();
         expect(styles!.leadColor).toBe(CONSENT_NAME_LEAD_COLOR);
-        expect(styles!.nameLineFontSize).toBe(nameLineFontSize);
+        expect(styles!.bodyFontSize).toBe(bodyFontSize);
       } finally {
         await browser.close();
       }

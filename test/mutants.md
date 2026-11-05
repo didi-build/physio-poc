@@ -54,12 +54,14 @@ Totals: 42 mutants run, 41 killed, 1 equivalent, 0 survived, 1 deferred (Q15).
 
 Per [CTO ruling de77fd55](https://linear.app/didi-build/issue/DIDI-1146#comment-de77fd55) and [CTO ruling 10b4492f](https://linear.app/didi-build/issue/DIDI-1146#comment-10b4492f). The 10b4492f table expected 41 run and 40 killed with Q15 deferred; this regeneration executed 42 mutants (the prior 41 plus `L-bool-d1-roundtrip-branch-removal` as Equivalent) and reports 41 killed. `verify-action-pins` hardening moved to DIDI-1163. Items 1, 3 and 5 remain in DIDI-1154.
 
-## DIDI-1156 (consent lead colour and phone name-line size)
+## DIDI-1156 (consent lead colour and phone body font)
 
 Pure style pins; no production mutants were run. Killing tests are computed-style assertions in `test/mcp-oauth-consent-layout.browser.test.ts`:
 
-| Pin                                   | Assertion                                                                               |
-| ------------------------------------- | --------------------------------------------------------------------------------------- |
-| Lead uses shell-slate-600 (`#475569`) | `getComputedStyle(.consent-name-lead).color === rgb(71, 85, 105)` at 390 px and 1280 px |
-| Phone name line 14 px                 | `getComputedStyle(.consent-name-line).fontSize === 14px` at 390 px                      |
-| Desktop name line unchanged           | `getComputedStyle(.consent-name-line).fontSize === 15px` at 1280 px                     |
+| Pin                                   | Assertion                                                                                                      |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Lead uses shell-slate-600 (`#475569`) | `getComputedStyle(.consent-name-lead).color === rgb(71, 85, 105)` at 390 px and 1280 px                        |
+| Phone body font 14 px                 | `getComputedStyle(.consent-name-line).fontSize === 14px` at 390 px (consent card body paragraph; QA mockup 01) |
+| Desktop body font unchanged           | `getComputedStyle(.consent-name-line).fontSize === 15px` at 1280 px                                            |
+
+Production CSS: `.consent-name-line` and `.consent-body` default to `0.875rem`, stepping up to `0.9375rem` from `640px` (lists and host line stay `0.875rem` at all widths).
