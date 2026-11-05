@@ -7,6 +7,8 @@ export type DraftInProgressSummary = {
   status: "open" | "drafting";
   exercise_id: string | null;
   draft_title: string | null;
+  requested_by: string;
+  requested_by_email: string;
 };
 
 export type SimilarExercisesResult = {
@@ -21,6 +23,7 @@ export type ConflictSimilarRequest = {
   requested_name: string;
   exercise_note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: "open" | "drafting";
   exercise_id: string | null;
   draft_title: string | null;
@@ -59,6 +62,7 @@ export type InProgressRequestListItem = {
   exercise_note: string | null;
   status: "open" | "drafting";
   requested_by: string;
+  requested_by_email: string;
   exercise_id: string | null;
   draft_title: string | null;
   updated_at: string;
@@ -75,6 +79,7 @@ export type ExerciseRequestDraftView = {
   exercise_note: string | null;
   status: "open" | "drafting";
   requested_by: string;
+  requested_by_email: string;
   exercise_id: string | null;
   draft: {
     exercise_version_id: string;

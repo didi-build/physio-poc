@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createNodeServer } from "../src/entry/node.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
@@ -59,15 +61,21 @@ describe("Node entry server (integration)", () => {
     });
   });
 
-  it("GET /unknown returns 404 through the Node bridge", async () => {
+  it("GET /unknown returns 404 or SPA index when UI assets exist", async () => {
     const server = createNodeServer({ port: 0, host: "127.0.0.1" });
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
 
     const response = await fetch(`http://127.0.0.1:${port}/unknown`);
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    const hasUi = existsSync(join(process.cwd(), "dist/ui/index.html"));
+    if (hasUi) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+    } else {
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual({ error: "not_found" });
+    }
 
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

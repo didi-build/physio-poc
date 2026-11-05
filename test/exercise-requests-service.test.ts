@@ -859,7 +859,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     }
   });
 
-  it("lists in-progress requests without practitioner email fields", async () => {
+  it("lists in-progress requests with requested_by_email for practitioner display", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(
@@ -876,10 +876,8 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         formOpenedAt: FORM_OPENED,
       });
       const list = await service.listInProgress({ practitionerId: practId });
-      const serialized = JSON.stringify(list);
-      expect(serialized).not.toContain("hidden@example.com");
-      expect(serialized).not.toContain("requester_email");
       expect(list.requests[0]?.requested_by).toBe(practId);
+      expect(list.requests[0]?.requested_by_email).toBe("hidden@example.com");
     } finally {
       storage.close();
     }

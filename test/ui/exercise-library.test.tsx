@@ -15,6 +15,10 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import {
+  ExerciseRequestsClient,
+  setExerciseRequestsClientForTests,
+} from "../../src/ui/api/exercise-requests-client.js";
 import type { ExerciseDetailsResult } from "../../src/services/exercise-library/types.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
 import {
@@ -60,16 +64,30 @@ import { ToastProvider } from "../../src/ui/components/Toast.js";
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
+  setExerciseRequestsClientForTests(null);
 });
 
 function mockClient(methods: Partial<ExerciseLibraryClient>): ExerciseLibraryClient {
   return methods as ExerciseLibraryClient;
 }
 
+function stubRequestsClient(): ExerciseRequestsClient {
+  return {
+    getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+    listSimilar: vi.fn().mockResolvedValue({
+      library_matches: [],
+      drafts_in_progress: [],
+    }),
+  } as unknown as ExerciseRequestsClient;
+}
+
 function renderPhysio(initialEntry: string, client: ExerciseLibraryClient) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <PhysioApp exerciseLibraryClient={client} />
+      <PhysioApp
+        exerciseLibraryClient={client}
+        exerciseRequestsClient={stubRequestsClient()}
+      />
     </MemoryRouter>,
   );
 }
