@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { NOTE_FOR_AI } from "../src/ui/copy/exercise-library.js";
+import {
+  FreeTextValidationError,
+  validateRequestNote,
+} from "../src/domain/exercise-free-text.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
@@ -430,31 +435,26 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         }),
       ).rejects.toMatchObject({
         code: "invalid_input",
-        message: expect.stringMatching(/^Exercise note:/),
+        message: expect.stringMatching(
+          new RegExp(`^${NOTE_FOR_AI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`),
+        ),
       });
     } finally {
       storage.close();
     }
   });
 
-  it("pins Exercise note as the field label when the note exceeds the max length", async () => {
-    const storage = await openMigratedDatabase();
+  it("uses NOTE_FOR_AI in validateRequestNote max-length errors", () => {
+    expect(() => validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1))).toThrow(
+      FreeTextValidationError,
+    );
     try {
-      const practId = await seedPractitioner(storage);
-      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG);
-      await expect(
-        service.submitRequest({
-          practitionerId: practId,
-          requestedName: "Safe name",
-          exerciseNote: "x".repeat(MAX_LENGTH_ROW_NOTES + 1),
-          formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({
-        code: "invalid_input",
-        message: `Exercise note must be at most ${String(MAX_LENGTH_ROW_NOTES)} characters`,
-      });
-    } finally {
-      storage.close();
+      validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1));
+    } catch (error) {
+      expect(error).toBeInstanceOf(FreeTextValidationError);
+      expect((error as FreeTextValidationError).message).toBe(
+        `${NOTE_FOR_AI} must be at most ${String(MAX_LENGTH_ROW_NOTES)} characters`,
+      );
     }
   });
 
