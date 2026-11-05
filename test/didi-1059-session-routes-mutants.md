@@ -1,6 +1,6 @@
 # DIDI-1059 session routes mutants (PR #73)
 
-Branch head at generation time: `8ddb989` (update on each push). Temp dir: `TMPDIR=/tmp/didi-1059-tmp`. Each row applied one production or guard change, ran the full suite (`npm test` or `npm run test:worker` as noted), then reverted with `git checkout -- .` before the next row. No single-file test filters were used for mutant verdicts.
+Branch head at generation time: `0d42c0e` (update on each push). Temp dir: `TMPDIR=/tmp/didi-1059-tmp`. Each row applied one production or guard change, ran the full suite (`npm test` or `npm run test:worker` as noted), then reverted with `git checkout -- .` before the next row. No single-file test filters were used for mutant verdicts.
 
 ## Totals
 
