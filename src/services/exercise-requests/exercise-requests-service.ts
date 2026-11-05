@@ -490,9 +490,6 @@ export class ExerciseRequestsService {
 
     const approvedAt = this.now();
     const programBuilder = new ProgramBuilderService(this.sql, () => approvedAt);
-    const { statements: linkStatements } =
-      await programBuilder.buildLinkApprovedPlaceholderStatements(requestId, draft.id);
-
     const batchStatements = [
       this.versions.buildApproveDraftBatchStatement({
         versionId: draft.id,
@@ -510,8 +507,12 @@ export class ExerciseRequestsService {
         exerciseId: row.exercise_id,
         savedAt: approvedAt,
       }),
-      ...linkStatements,
     ];
+    const skippedCount = await programBuilder.linkApprovedPlaceholders(
+      requestId,
+      draft.id,
+      { appendStatementsTo: batchStatements },
+    );
 
     try {
       await this.sql.batch(batchStatements);
@@ -529,6 +530,7 @@ export class ExerciseRequestsService {
       version_number: 1,
       approved_by: input.practitionerId,
       approved_at: approvedAt,
+      skipped_count: skippedCount,
     };
   }
 
