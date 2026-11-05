@@ -1003,10 +1003,14 @@ export class ProgramBuilderService {
         text_snapshot: textSnapshot,
         note: row.note,
         library_update: null,
+        exercise_version_choices: [],
       };
     }
     const pinned = await this.libraryRead.getApprovedVersionById(
       row.exercise_version_id!,
+    );
+    const versionChoices = await this.libraryRead.listApprovedVersionChoices(
+      row.exercise_id!,
     );
     const latest =
       row.exercise_id !== null
@@ -1038,6 +1042,10 @@ export class ProgramBuilderService {
       text_snapshot: textSnapshot,
       note: row.note,
       library_update: libraryUpdate,
+      exercise_version_choices: versionChoices.map((choice) => ({
+        exercise_version_id: choice.id,
+        version_number: choice.version_number,
+      })),
     };
   }
 

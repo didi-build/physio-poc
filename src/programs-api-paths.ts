@@ -1,12 +1,29 @@
 /** Session-only programs API (DIDI-1122). */
+import type { ProgramOriginFilter } from "./services/programs/types.js";
+
 export const PROGRAMS_API_BASE = "/api/me/programs";
 
-export function programsCollectionPath(searchQuery?: string): string {
-  if (!searchQuery) {
+export function programsCollectionPath(
+  searchQuery?: string,
+  origin?: ProgramOriginFilter,
+): string {
+  const params = new URLSearchParams();
+  const trimmed = searchQuery?.trim();
+  if (trimmed && trimmed.length > 0) {
+    params.set("q", trimmed);
+  }
+  if (origin && origin !== "all") {
+    params.set("origin", origin);
+  }
+  const query = params.toString();
+  if (query.length === 0) {
     return PROGRAMS_API_BASE;
   }
-  const params = new URLSearchParams({ q: searchQuery.trim() });
-  return `${PROGRAMS_API_BASE}?${params.toString()}`;
+  return `${PROGRAMS_API_BASE}?${query}`;
+}
+
+export function programByCodePath(programCode: string): string {
+  return `${PROGRAMS_API_BASE}/by-code/${encodeURIComponent(programCode.trim())}`;
 }
 
 export function programsDeletedListPath(): string {

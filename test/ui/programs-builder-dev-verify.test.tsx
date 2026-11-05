@@ -81,6 +81,7 @@ function exerciseRow(id: string, title: string): ProgramBuilderRow {
     text_snapshot: { title },
     note: null,
     library_update: null,
+    exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
   };
 }
 
@@ -98,7 +99,7 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     deleted_at: null,
     routine_origin: null,
   };
-  return {
+  const base: Partial<ProgramsClient> = {
     listPrograms: vi.fn().mockResolvedValue({
       items: [listItem],
       matched_code: "PRG-TEST",
@@ -106,6 +107,7 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn().mockResolvedValue(builderView()),
+    getProgramByCode: vi.fn().mockResolvedValue(builderView()),
     updateProgramName: vi.fn().mockImplementation(async (_id, name) => ({
       program: builderView({ name }),
     })),
@@ -119,8 +121,13 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     applyLibraryUpdate: vi.fn(),
     keepLibraryUpdate: vi.fn(),
     addPlaceholderRow: vi.fn(),
-    ...overrides,
-  } as unknown as ProgramsClient;
+  };
+  const merged = { ...base, ...overrides } as ProgramsClient;
+  if (overrides.getProgram && !overrides.getProgramByCode) {
+    merged.getProgramByCode =
+      overrides.getProgram as ProgramsClient["getProgramByCode"];
+  }
+  return merged;
 }
 
 function libraryClientWithHeel(): ExerciseLibraryClient {
@@ -574,6 +581,7 @@ describe("Programs builder dev verification", () => {
       exercise_version_id: null,
       pinned_version_number: null,
       prescription_type: "concentric",
+      exercise_version_choices: [],
     };
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>

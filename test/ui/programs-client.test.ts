@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   PROGRAMS_API_BASE,
+  programByCodePath,
   programPath,
   programRestorePath,
   programRowDuplicatePath,
@@ -33,6 +34,35 @@ describe("ProgramsClient (unit)", () => {
     const client = new ProgramsClient({ fetchFn });
     await client.listPrograms("PRG-1");
     expect(fetchFn).toHaveBeenCalledWith(programsCollectionPath("PRG-1"), {
+      method: "GET",
+    });
+  });
+
+  it("GET list passes origin filter on the collection path", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], matched_code: null }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.listPrograms(undefined, "from_routine");
+    expect(fetchFn).toHaveBeenCalledWith(
+      programsCollectionPath(undefined, "from_routine"),
+      { method: "GET" },
+    );
+  });
+
+  it("GET by-code uses the by-code path", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program_id: "p1", code: "PRG-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.getProgramByCode("PRG-1");
+    expect(fetchFn).toHaveBeenCalledWith(programByCodePath("PRG-1"), {
       method: "GET",
     });
   });
