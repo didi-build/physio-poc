@@ -63,4 +63,40 @@ describe("wrapSqlStorageWithPendingSelectCounter (unit)", () => {
     ]);
     expect(sqlWriteCallCount()).toBe(1);
   });
+
+  it("increments sqlWriteCallCount on REPLACE run statements (Q12)", async () => {
+    const inner: SqlStoragePort = {
+      run: async () => ({ rowsAffected: 1 }),
+      all: async () => [],
+      first: async () => null,
+      batch: async () => {},
+    };
+    const { sql, sqlWriteCallCount, resetPendingConsentStoreCallCount } =
+      wrapSqlStorageWithPendingSelectCounter(inner);
+    resetPendingConsentStoreCallCount();
+    await sql.run("REPLACE INTO practitioners (id, email) VALUES (?, ?)", [
+      "p1",
+      "a@example.com",
+    ]);
+    expect(sqlWriteCallCount()).toBe(1);
+  });
+
+  it("increments sqlWriteCallCount on REPLACE in batch statements (Q12)", async () => {
+    const inner: SqlStoragePort = {
+      run: async () => ({ rowsAffected: 0 }),
+      all: async () => [],
+      first: async () => null,
+      batch: async () => {},
+    };
+    const { sql, sqlWriteCallCount, resetPendingConsentStoreCallCount } =
+      wrapSqlStorageWithPendingSelectCounter(inner);
+    resetPendingConsentStoreCallCount();
+    await sql.batch([
+      {
+        sql: "REPLACE INTO practitioners (id, email) VALUES (?, ?)",
+        bindings: ["p2", "b@example.com"],
+      },
+    ]);
+    expect(sqlWriteCallCount()).toBe(1);
+  });
 });
