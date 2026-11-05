@@ -8,8 +8,6 @@ import {
   REGEN_SCOPE_ALL_LABEL,
   REGEN_SCOPE_IMAGES_HINT,
   REGEN_SCOPE_IMAGES_LABEL,
-  REGEN_SCOPE_VIDEO_HINT,
-  REGEN_SCOPE_VIDEO_LABEL,
   REGEN_UNDO_HINT,
   REGENERATE_CHOOSE_HINT,
   REGENERATE_EVERYTHING,
@@ -107,7 +105,6 @@ export function RegenerateMediaSheet({
             [
               ["all", REGEN_SCOPE_ALL_LABEL, ""],
               ["images", REGEN_SCOPE_IMAGES_LABEL, REGEN_SCOPE_IMAGES_HINT],
-              ["video", REGEN_SCOPE_VIDEO_LABEL, REGEN_SCOPE_VIDEO_HINT],
             ] as const
           ).map(([id, label, hint]) => (
             <label key={id} className="ex-regen-scope-option">
@@ -145,9 +142,10 @@ export function RegenerateMediaSheet({
   );
 }
 
+/** Maps general-sheet picks to API scopes (start/end/both). Video-only regen is not wired yet. */
 export function scopeForPick(pick: RegeneratePick): MediaRegenerationScope {
-  if (pick === "images" || pick === "video") {
-    return "both";
+  if (pick === "video") {
+    throw new Error("Video-only regeneration is not available yet");
   }
   return "both";
 }

@@ -31,7 +31,9 @@ import {
 import {
   APPROVE,
   CONFLICT_HEADING,
+  DAILY_LIMIT_REACHED,
   MERGE_MY_CHANGES,
+  REGENERATE,
   REQUESTS_HEADING,
   TOAST_APPROVE_OWN,
 } from "../../src/ui/copy/exercise-requests.js";
@@ -344,6 +346,59 @@ describe("exercise requests UI", () => {
       expect(approveRequest).toHaveBeenCalledWith("req-1");
       expect(screen.getByText(TOAST_APPROVE_OWN)).toBeInTheDocument();
     });
+  });
+
+  it("disables regenerate at the daily limit with limit-reached copy", async () => {
+    const draftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting" as const,
+      requested_by: DEV_PRACTITIONER_ID,
+      requested_by_email: "kojo@example.com",
+      exercise_id: "ex-1",
+      draft: {
+        exercise_version_id: "ver-1",
+        version_number: 1,
+        title: "Heel slide",
+        description: "Desc",
+        equipment: "",
+        starting_position: "",
+        steps: "",
+        common_mistakes: "",
+        regressions: "",
+        progressions: "",
+        precautions: "",
+        cue_stretching: null,
+        cue_isometric: null,
+        cue_concentric: null,
+        cue_eccentric: null,
+      },
+    };
+
+    renderApp(
+      fillPhysioAppRoutePattern("requestReview", { requestId: "req-1" }),
+      {
+        getRequest: vi.fn().mockResolvedValue(draftView),
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+        listInProgress: vi
+          .fn()
+          .mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      },
+      {
+        getRegenerationQuota: vi.fn().mockResolvedValue({
+          limit: 5,
+          used: 5,
+          remaining: 0,
+          limitReached: true,
+        }),
+      },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: REGENERATE })).toBeDisabled();
   });
 
   it("lists in-progress requests", async () => {
