@@ -154,16 +154,74 @@ function extractImportSpecifiersFromSource(repoRelativePath, source) {
   };
 }
 
-function isProcessEnvAccess(node) {
+function isProcessModuleSpecifier(specifier) {
+  return specifier === "process" || specifier === "node:process";
+}
+
+function processModuleSpecifierTextFromNode(node) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
+  }
+  return null;
+}
+
+function recordHitIfProcessModuleSpecifier(node, recordHit) {
+  const text = processModuleSpecifierTextFromNode(node);
+  if (text && isProcessModuleSpecifier(text)) {
+    recordHit();
+  }
+}
+
+function isProcessBindingIdentifier(node) {
+  if (!ts.isIdentifier(node) || node.text !== "process") {
+    return false;
+  }
+  const parent = node.parent;
+  if (!parent) {
+    return false;
+  }
+  if (ts.isImportSpecifier(parent) || ts.isImportClause(parent)) {
+    return false;
+  }
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) {
+    return false;
+  }
+  if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+    return true;
+  }
+  if (ts.isElementAccessExpression(parent) && parent.expression === node) {
+    return true;
+  }
+  if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
+    return true;
+  }
+  if (ts.isCallExpression(parent) && parent.expression === node) {
+    return true;
+  }
+  if (
+    ts.isBinaryExpression(parent) &&
+    (parent.left === node || parent.right === node)
+  ) {
+    return true;
+  }
+  if (ts.isAwaitExpression(parent) && parent.expression === node) {
+    return true;
+  }
+  return false;
+}
+
+function isGlobalProcessPropertyAccess(node) {
+  if (!ts.isPropertyAccessExpression(node) || node.name.text !== "process") {
+    return false;
+  }
+  const expr = node.expression;
   return (
-    ts.isPropertyAccessExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === "process" &&
-    node.name.text === "env"
+    ts.isIdentifier(expr) &&
+    (expr.text === "globalThis" || expr.text === "self" || expr.text === "global")
   );
 }
 
-function scanProcessEnvInSource(source, repoRelativePath) {
+function scanProcessUsageInSource(source, repoRelativePath) {
   const hits = [];
   const sourceFile = ts.createSourceFile(
     repoRelativePath,
@@ -172,12 +230,50 @@ function scanProcessEnvInSource(source, repoRelativePath) {
     true,
     scriptKindForPath(repoRelativePath),
   );
+
+  function recordHit() {
+    hits.push(repoRelativePath);
+  }
+
   function visit(node) {
-    if (isProcessEnvAccess(node)) {
-      hits.push(repoRelativePath);
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier) {
+      recordHitIfProcessModuleSpecifier(node.moduleSpecifier, recordHit);
+    }
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      recordHitIfProcessModuleSpecifier(node.moduleSpecifier, recordHit);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0]
+    ) {
+      recordHitIfProcessModuleSpecifier(node.arguments[0], recordHit);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "require" &&
+      node.arguments[0]
+    ) {
+      recordHitIfProcessModuleSpecifier(node.arguments[0], recordHit);
+    }
+    if (ts.isImportEqualsDeclaration(node) && node.moduleReference) {
+      if (ts.isExternalModuleReference(node.moduleReference)) {
+        const expr = node.moduleReference.expression;
+        if (expr && ts.isStringLiteral(expr) && isProcessModuleSpecifier(expr.text)) {
+          recordHit();
+        }
+      }
+    }
+    if (isGlobalProcessPropertyAccess(node)) {
+      recordHit();
+    }
+    if (isProcessBindingIdentifier(node)) {
+      recordHit();
     }
     ts.forEachChild(node, visit);
   }
+
   visit(sourceFile);
   return hits;
 }
@@ -206,7 +302,7 @@ export function scanWorkerProductionProcessEnvUsage(options) {
       continue;
     }
     const source = readModuleSource(repoRoot, current);
-    violations.push(...scanProcessEnvInSource(source, current));
+    violations.push(...scanProcessUsageInSource(source, current));
 
     const { specifiers } = extractImportSpecifiersFromSource(current, source);
     for (const spec of specifiers) {
