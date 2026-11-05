@@ -373,14 +373,14 @@ export class ExerciseRequestsService {
   }): Promise<ExerciseRequestDraftView> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
-    const row = await this.requests.findById(requestId);
-    if (!row || !["open", "drafting"].includes(row.status)) {
+    const row = await this.requestsRead.findInProgressRequestById(requestId);
+    if (!row) {
       throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
     }
 
     let draft: ExerciseRequestDraftView["draft"] = null;
     if (row.exercise_id) {
-      const versionRow = await this.versions.findDraftVersionDetailForExercise(
+      const versionRow = await this.requestsRead.findDraftVersionDetailForExercise(
         row.exercise_id,
       );
       if (versionRow) {
@@ -501,9 +501,6 @@ export class ExerciseRequestsService {
 
     const approvedAt = this.now();
     const programBuilder = new ProgramBuilderService(this.sql, () => approvedAt);
-    const { statements: linkStatements } =
-      await programBuilder.buildLinkApprovedPlaceholderStatements(requestId, draft.id);
-
     const batchStatements = [
       this.versions.buildApproveDraftBatchStatement({
         versionId: draft.id,
@@ -521,8 +518,12 @@ export class ExerciseRequestsService {
         exerciseId: row.exercise_id,
         savedAt: approvedAt,
       }),
-      ...linkStatements,
     ];
+    const skippedCount = await programBuilder.linkApprovedPlaceholders(
+      requestId,
+      draft.id,
+      { appendStatementsTo: batchStatements },
+    );
 
     try {
       await this.sql.batch(batchStatements);
@@ -540,6 +541,7 @@ export class ExerciseRequestsService {
       version_number: 1,
       approved_by: input.practitionerId,
       approved_at: approvedAt,
+      skipped_count: skippedCount,
     };
   }
 

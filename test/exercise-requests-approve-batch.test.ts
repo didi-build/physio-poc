@@ -71,6 +71,7 @@ describe("Exercise request approve batch (integration)", () => {
         [rowId],
       );
       expect(linked?.exercise_version_id).toBe(approved.exercise_version_id);
+      expect(approved.skipped_count).toBe(0);
 
       const requestRow = await storage.first<{ status: string }>(
         "SELECT status FROM exercise_requests WHERE id = ?",

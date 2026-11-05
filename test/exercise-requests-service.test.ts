@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { NOTE_FOR_AI } from "../src/ui/copy/exercise-library.js";
+import {
+  FreeTextValidationError,
+  validateRequestNote,
+} from "../src/domain/exercise-free-text.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
@@ -480,9 +485,28 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
           exerciseNote: "contact patient@example.com",
           formOpenedAt: FORM_OPENED,
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: expect.stringMatching(
+          new RegExp(`^${NOTE_FOR_AI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`),
+        ),
+      });
     } finally {
       storage.close();
+    }
+  });
+
+  it("uses NOTE_FOR_AI in validateRequestNote max-length errors", () => {
+    expect(() => validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1))).toThrow(
+      FreeTextValidationError,
+    );
+    try {
+      validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1));
+    } catch (error) {
+      expect(error).toBeInstanceOf(FreeTextValidationError);
+      expect((error as FreeTextValidationError).message).toBe(
+        `${NOTE_FOR_AI} must be at most ${String(MAX_LENGTH_ROW_NOTES)} characters`,
+      );
     }
   });
 
