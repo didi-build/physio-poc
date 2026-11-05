@@ -82,13 +82,20 @@ body {
 }
 
 .consent-name-line {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   margin: 0 0 1rem;
   line-height: 1.5;
 }
 
 .consent-name-lead {
   white-space: nowrap;
+  color: #475569;
+}
+
+@media (min-width: 640px) {
+  .consent-name-line {
+    font-size: 0.9375rem;
+  }
 }
 
 .consent-name-inline {
@@ -255,10 +262,16 @@ body {
 }
 
 .consent-body {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   color: #475569;
   margin: 0 0 1rem;
   line-height: 1.5;
+}
+
+@media (min-width: 640px) {
+  .consent-body {
+    font-size: 0.9375rem;
+  }
 }
 
 .consent-next-step {

@@ -107,6 +107,7 @@ export type ApproveExerciseRequestResult = {
   version_number: 1;
   approved_by: string;
   approved_at: string;
+  skipped_count: number;
 };
 
 export type DraftFieldPatch = Partial<{
