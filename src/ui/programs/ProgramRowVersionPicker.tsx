@@ -11,7 +11,6 @@ export type ProgramRowVersionPickerProps = {
   onSelectVersion: (versionNumber: number) => void;
 };
 
-/** Built for DIDI-1141; not mounted until row version PATCH exists (DIDI-1140). */
 export function ProgramRowVersionPicker({
   rowName,
   selectedVersionNumber,

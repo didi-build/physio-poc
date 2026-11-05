@@ -18,6 +18,11 @@ export type ProgramLibraryUpdatePrompt = {
   latest_version_number: number;
 };
 
+export type ProgramExerciseVersionChoice = {
+  exercise_version_id: string;
+  version_number: number;
+};
+
 export type ProgramBuilderRow = {
   id: string;
   position: number;
@@ -32,6 +37,7 @@ export type ProgramBuilderRow = {
   text_snapshot: ProgramRowTextSnapshot;
   note: string | null;
   library_update: ProgramLibraryUpdatePrompt | null;
+  exercise_version_choices: readonly ProgramExerciseVersionChoice[];
 };
 
 export type ProgramRoutineOriginView = {

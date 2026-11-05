@@ -89,7 +89,8 @@ function makeListItem(
 }
 
 function serverListPrograms(allItems: ProgramListItem[]) {
-  return vi.fn((q?: string) => {
+  return vi.fn((q?: string, origin?: string) => {
+    void origin;
     const trimmed = q?.trim() ?? "";
     if (trimmed.length === 0) {
       return Promise.resolve({ items: allItems, matched_code: null });
@@ -165,6 +166,7 @@ function exerciseRow(id: string, title: string): ProgramBuilderRow {
     text_snapshot: { title },
     note: null,
     library_update: null,
+    exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
   };
 }
 
@@ -174,7 +176,7 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     code: "PRG-TEST",
     name: "Knee program A",
   });
-  return {
+  const base: Partial<ProgramsClient> = {
     listPrograms: vi.fn().mockResolvedValue({
       items: [listItem],
       matched_code: "PRG-TEST",
@@ -182,6 +184,7 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn().mockResolvedValue(builderView()),
+    getProgramByCode: vi.fn().mockResolvedValue(builderView()),
     updateProgramName: vi.fn().mockImplementation(async (_id, name) => ({
       program: builderView({ name }),
     })),
@@ -195,8 +198,13 @@ function builderStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
     applyLibraryUpdate: vi.fn(),
     keepLibraryUpdate: vi.fn(),
     addPlaceholderRow: vi.fn(),
-    ...overrides,
-  } as unknown as ProgramsClient;
+  };
+  const merged = { ...base, ...overrides } as ProgramsClient;
+  if (overrides.getProgram && !overrides.getProgramByCode) {
+    merged.getProgramByCode =
+      overrides.getProgram as ProgramsClient["getProgramByCode"];
+  }
+  return merged;
 }
 
 describe("Programs list search (QA round 1)", () => {
@@ -407,18 +415,21 @@ describe("Programs builder save UX (QA round 1)", () => {
       .fn()
       .mockImplementation(() => new Promise<{ program: ProgramBuilderView }>(() => {}));
     const row = exerciseRow("row-1", "Heel raise");
+    const program = builderView({ rows: [row] });
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
           programsClient={builderStubs({
-            getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+            getProgram: vi.fn().mockResolvedValue(program),
+            getProgramByCode: vi.fn().mockResolvedValue(program),
             updateRow,
           })}
         />
       </MemoryRouter>,
     );
-    const typeSelect = await screen.findByRole("combobox");
+    await screen.findByRole("textbox", { name: "Program name" });
+    const typeSelect = screen.getAllByRole("combobox")[0]!;
     await userEvent.selectOptions(typeSelect, "stretching");
     await waitFor(() => {
       expect(screen.getAllByText(AUTO_SAVE_SAVING).length).toBeGreaterThan(0);

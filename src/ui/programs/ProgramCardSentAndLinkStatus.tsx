@@ -1,9 +1,8 @@
 export type ProgramCardSentAndLinkStatusProps = {
   countAndSentLine: string;
-  linkStatusLine: string;
+  linkStatusLine: string | null;
 };
 
-/** Built for DIDI-1141; not mounted until list API supplies sent/link fields (DIDI-1140). */
 export function ProgramCardSentAndLinkStatus({
   countAndSentLine,
   linkStatusLine,
@@ -11,7 +10,7 @@ export function ProgramCardSentAndLinkStatus({
   return (
     <>
       <p className="pg-card-count-sent">{countAndSentLine}</p>
-      <p className="pg-card-link-status">{linkStatusLine}</p>
+      {linkStatusLine ? <p className="pg-card-link-status">{linkStatusLine}</p> : null}
     </>
   );
 }
