@@ -36,6 +36,48 @@ describe("Worker production process guard (DIDI-1164)", () => {
       needle: "process-node-import",
     },
     {
+      label: "process import",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-bare-import/entry.ts",
+      needle: "process-bare-import",
+    },
+    {
+      label: "require(process)",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-require/entry.ts",
+      needle: "process-require",
+    },
+    {
+      label: "require(node:process)",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-require-node/entry.ts",
+      needle: "process-require-node",
+    },
+    {
+      label: "export from process",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-export-from/entry.ts",
+      needle: "process-export-from",
+    },
+    {
+      label: "export from node:process",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-export-from-node/entry.ts",
+      needle: "process-export-from-node",
+    },
+    {
+      label: "dynamic import(process)",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-dynamic-import/entry.ts",
+      needle: "process-dynamic-import",
+    },
+    {
+      label: "dynamic import(node:process)",
+      entry:
+        "test/fixtures/worker-auth-import-guard/mutations/process-dynamic-import-node/entry.ts",
+      needle: "process-dynamic-import-node",
+    },
+    {
       label: "destructure env from process",
       entry:
         "test/fixtures/worker-auth-import-guard/mutations/process-destructure/entry.ts",

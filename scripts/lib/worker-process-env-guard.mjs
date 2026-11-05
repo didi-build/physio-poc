@@ -158,6 +158,20 @@ function isProcessModuleSpecifier(specifier) {
   return specifier === "process" || specifier === "node:process";
 }
 
+function processModuleSpecifierTextFromNode(node) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
+  }
+  return null;
+}
+
+function recordHitIfProcessModuleSpecifier(node, recordHit) {
+  const text = processModuleSpecifierTextFromNode(node);
+  if (text && isProcessModuleSpecifier(text)) {
+    recordHit();
+  }
+}
+
 function isProcessBindingIdentifier(node) {
   if (!ts.isIdentifier(node) || node.text !== "process") {
     return false;
@@ -223,12 +237,25 @@ function scanProcessUsageInSource(source, repoRelativePath) {
 
   function visit(node) {
     if (ts.isImportDeclaration(node) && node.moduleSpecifier) {
-      if (
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        isProcessModuleSpecifier(node.moduleSpecifier.text)
-      ) {
-        recordHit();
-      }
+      recordHitIfProcessModuleSpecifier(node.moduleSpecifier, recordHit);
+    }
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+      recordHitIfProcessModuleSpecifier(node.moduleSpecifier, recordHit);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments[0]
+    ) {
+      recordHitIfProcessModuleSpecifier(node.arguments[0], recordHit);
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "require" &&
+      node.arguments[0]
+    ) {
+      recordHitIfProcessModuleSpecifier(node.arguments[0], recordHit);
     }
     if (ts.isImportEqualsDeclaration(node) && node.moduleReference) {
       if (ts.isExternalModuleReference(node.moduleReference)) {
