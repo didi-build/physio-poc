@@ -3,6 +3,7 @@ import type { PrescriptionType } from "../../domain/exercise-types.js";
 import type {
   ProgramBuilderView,
   ProgramMutationResult,
+  ProgramOriginFilter,
   ProgramSearchResult,
 } from "../../services/programs/types.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
@@ -16,6 +17,7 @@ import {
   programRowPath,
   programRowsPath,
   programRowsReorderPath,
+  programByCodePath,
   programsCollectionPath,
   programsDeletedListPath,
 } from "../../programs-api-paths.js";
@@ -54,10 +56,19 @@ export class ProgramsClient {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
-  listPrograms(searchQuery?: string): Promise<ProgramSearchResult> {
-    const path = programsCollectionPath(searchQuery);
+  listPrograms(
+    searchQuery?: string,
+    originFilter: ProgramOriginFilter = "all",
+  ): Promise<ProgramSearchResult> {
+    const path = programsCollectionPath(searchQuery, originFilter);
     return this.fetchFn(path, { method: "GET" }).then((response) =>
       readJson<ProgramSearchResult>(response),
+    );
+  }
+
+  getProgramByCode(programCode: string): Promise<ProgramBuilderView> {
+    return this.fetchFn(programByCodePath(programCode), { method: "GET" }).then(
+      (response) => readJson<ProgramBuilderView>(response),
     );
   }
 
@@ -168,6 +179,7 @@ export class ProgramsClient {
       prescription_type?: PrescriptionType;
       params?: ExerciseParams;
       note?: string | null;
+      exercise_version_id?: string;
     },
   ): Promise<ProgramMutationResult> {
     return this.fetchFn(

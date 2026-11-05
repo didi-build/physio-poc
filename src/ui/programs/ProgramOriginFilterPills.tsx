@@ -12,7 +12,6 @@ export type ProgramOriginFilterPillsProps = {
   onSelect: (filter: ProgramOriginFilter) => void;
 };
 
-/** Built for DIDI-1141; not mounted until list API supports origin filter (DIDI-1140). */
 export function ProgramOriginFilterPills({
   active,
   onSelect,
