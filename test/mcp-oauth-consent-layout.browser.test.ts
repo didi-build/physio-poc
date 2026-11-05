@@ -19,6 +19,9 @@ import {
 const LONG_NO_SPACE_NAME =
   "ChatGPTConnectorForClinicsAndPractitionersExtendedEdition2026BetaBuild";
 
+/** shell-slate-600 from src/ui/styles/shell.css (DIDI-1125 mockup lead). */
+const CONSENT_NAME_LEAD_COLOR = "rgb(71, 85, 105)";
+
 const FONT_DIR = join(
   dirname(fileURLToPath(import.meta.url)),
   "../node_modules/@fontsource/inter/files",
@@ -195,6 +198,39 @@ describe("MCP OAuth consent layout (real browser, DIDI-1150)", () => {
       await browser.close();
     }
   }, 120_000);
+
+  it.each([
+    { width: 390, bodyFontSize: "14px" },
+    { width: 1280, bodyFontSize: "15px" },
+  ] as const)(
+    "pins consent name lead colour and phone body font at %i px",
+    async ({ width, bodyFontSize }) => {
+      const html = await consentPageHtml({});
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await page.setViewportSize({ width, height: 900 });
+        await loadConsentHtmlInPage(page, html);
+        const styles = await page.evaluate(() => {
+          const lead = document.querySelector(".consent-name-lead");
+          const bodyParagraph = document.querySelector(".consent-name-line");
+          if (!lead || !bodyParagraph) {
+            return null;
+          }
+          return {
+            leadColor: getComputedStyle(lead).color,
+            bodyFontSize: getComputedStyle(bodyParagraph).fontSize,
+          };
+        });
+        expect(styles).not.toBeNull();
+        expect(styles!.leadColor).toBe(CONSENT_NAME_LEAD_COLOR);
+        expect(styles!.bodyFontSize).toBe(bodyFontSize);
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
 
   it.each([390, 1280])(
     "keeps a long no-space client name inside the card at %i px",
