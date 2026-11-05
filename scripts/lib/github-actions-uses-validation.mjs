@@ -29,6 +29,93 @@ export function isFullLineComment(line) {
   return line.trimStart().startsWith("#");
 }
 
+/** Decode a YAML 1.1 double-quoted scalar (key fragment only). */
+export function decodeYamlDoubleQuotedScalar(raw) {
+  let out = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i] ?? "";
+    if (ch !== "\\") {
+      out += ch;
+      continue;
+    }
+    const next = raw[i + 1];
+    if (next === undefined) {
+      throw new Error("invalid escape");
+    }
+    if (next === "x") {
+      const hex = raw.slice(i + 2, i + 4);
+      if (!/^[0-9a-fA-F]{2}$/.test(hex)) {
+        throw new Error("invalid \\x escape");
+      }
+      out += String.fromCharCode(Number.parseInt(hex, 16));
+      i += 3;
+      continue;
+    }
+    if (next === "u") {
+      const hex = raw.slice(i + 2, i + 6);
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+        throw new Error("invalid \\u escape");
+      }
+      out += String.fromCodePoint(Number.parseInt(hex, 16));
+      i += 5;
+      continue;
+    }
+    if (next === "U") {
+      const hex = raw.slice(i + 2, i + 10);
+      if (!/^[0-9a-fA-F]{8}$/.test(hex)) {
+        throw new Error("invalid \\U escape");
+      }
+      out += String.fromCodePoint(Number.parseInt(hex, 16));
+      i += 9;
+      continue;
+    }
+    const simple = {
+      "\\": "\\",
+      '"': '"',
+      "/": "/",
+      b: "\b",
+      f: "\f",
+      n: "\n",
+      r: "\r",
+      t: "\t",
+    }[next];
+    if (simple === undefined) {
+      throw new Error(`invalid escape \\${next}`);
+    }
+    out += simple;
+    i += 1;
+  }
+  return out;
+}
+
+/** @param {string} line */
+export function extractDoubleQuotedYamlKey(line) {
+  const match = line.match(/^\s*(?:-\s+)?"((?:[^"\\]|\\.)*)"\s*:/);
+  return match?.[1] ?? null;
+}
+
+/** @param {string} line */
+export function lineHasDoubleQuotedKeyWithBackslash(line) {
+  const key = extractDoubleQuotedYamlKey(line);
+  return key !== null && key.includes("\\");
+}
+
+/** @param {string} line */
+export function lineDecodesToUsesKey(line) {
+  const key = extractDoubleQuotedYamlKey(line);
+  if (key === null) {
+    return false;
+  }
+  if (!key.includes("\\")) {
+    return false;
+  }
+  try {
+    return decodeYamlDoubleQuotedScalar(key) === "uses";
+  } catch {
+    return true;
+  }
+}
+
 /** @param {string} line */
 export function lineContainsUsesToken(line) {
   return (
@@ -36,7 +123,8 @@ export function lineContainsUsesToken(line) {
     line.includes('"uses"') ||
     line.includes("'uses'") ||
     /uses\s*:/i.test(line) ||
-    /\\u0075ses|\\x75ses/i.test(line)
+    /\\u0075ses|\\x75ses/i.test(line) ||
+    lineHasDoubleQuotedKeyWithBackslash(line)
   );
 }
 

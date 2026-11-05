@@ -2,7 +2,7 @@
 
 Each mutant was applied alone on production or guard sources (then reverted), then the full `npm test` suite ran with `GIT_CONFIG_*` unset. Results are actual outcomes only. The **Killing test(s)** column names the test that actually fails under that mutant (not a related or historical label). Source-only assertions (for example reading regex `.source`) are not used as killers.
 
-DIDI-1163 `verify-action-pins` rows were run at this branch head (`/tmp/didi-1163-tmp/verify-action-pins-mutants.log`). DIDI-1146 deploy and prepare rows match the prior regeneration on main (PR #63, commit 462a957), with doc corrections from [CTO ruling 50e123a1](https://linear.app/didi-build/issue/DIDI-1146#comment-50e123a1). The main merge `createWorkerAppDependencies` await reflow is three lines, not two.
+DIDI-1163 `verify-action-pins` rows were run at this branch head (`/tmp/didi-1163-tmp/verify-action-pins-mutants-round2.log`, full `npm test` per mutant). DIDI-1146 deploy and prepare rows match the prior regeneration on main (PR #63, commit 462a957), with doc corrections from [CTO ruling 50e123a1](https://linear.app/didi-build/issue/DIDI-1146#comment-50e123a1). The main merge `createWorkerAppDependencies` await reflow is three lines, not two.
 
 | ID                                 | Mutant                                                                | Killing test(s)                                        | Result                |
 | ---------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------ | --------------------- |
@@ -52,6 +52,7 @@ DIDI-1163 `verify-action-pins` rows were run at this branch head (`/tmp/didi-116
 | PIN-missing-dir-exit0              | Exit 0 when workflows directory is missing                            | verify-action-pins missing directory test              | Killed                |
 | PIN-unreadable-ignore              | Ignore unreadable workflow files                                      | verify-action-pins unreadable file test                | Killed                |
 | PIN-nonstrict-uses-token           | Ignore lines with non-strict `uses` tokens                            | verify-action-pins double-quoted uses key test         | Killed                |
+| PIN-escaped-mid-key                | Drop double-quoted key backslash detection in `lineContainsUsesToken` | verify-action-pins escaped YAML uses key tests         | Killed                |
 | X-drop-actions-scan                | Remove actions-dir scan block                                         | verify-action-pins actions dir recursive scan test     | Killed                |
 | X-no-inside-repo-check             | Make `isPathInsideRepo` always return true                            | verify-action-pins dot-segment escape test             | Killed                |
 | X-drop-action-yaml                 | Drop `action.yaml` from manifest names                                | verify-action-pins action.yaml manifest test           | Killed                |
@@ -70,7 +71,7 @@ DIDI-1163 `verify-action-pins` rows were run at this branch head (`/tmp/didi-116
 | L7                                 | Disable fake timers in programs-page autosave test                    | autosave fake timers active assertion                  | Killed                |
 | Q15                                | Extra secret on deploy job                                            | (scope)                                                | Deferred to DIDI-1154 |
 
-Totals: 63 mutants run, 61 killed, 1 equivalent, 0 survived, 1 deferred (Q15).
+Totals: 64 mutants run, 62 killed, 1 equivalent, 0 survived, 1 deferred (Q15).
 
 Per [CTO ruling de77fd55](https://linear.app/didi-build/issue/DIDI-1146#comment-de77fd55), [CTO ruling 10b4492f](https://linear.app/didi-build/issue/DIDI-1146#comment-10b4492f), and [CTO ruling a9b6a82e](https://linear.app/didi-build/issue/DIDI-1146#comment-a9b6a82e) (verify-action-pins hardening on DIDI-1163). Items 1, 3 and 5 remain in DIDI-1154.
 

@@ -9,6 +9,9 @@ import {
   extractUsesEntries,
   isFullLineComment,
   lineContainsUsesToken,
+  decodeYamlDoubleQuotedScalar,
+  lineHasDoubleQuotedKeyWithBackslash,
+  lineDecodesToUsesKey,
   parseStrictUsesLine,
   validateUsesSpec,
 } from "../scripts/lib/github-actions-uses-validation.mjs";
@@ -97,6 +100,18 @@ describe("github-actions-uses-validation.mjs", () => {
       "\n",
     );
     expect(extractUsesEntries(yaml)).toEqual([]);
+  });
+
+  it("decodes mid-key YAML escapes that spell uses", () => {
+    expect(decodeYamlDoubleQuotedScalar(String.raw`u\x73es`)).toBe("uses");
+    expect(decodeYamlDoubleQuotedScalar(String.raw`\U00000075ses`)).toBe("uses");
+    expect(decodeYamlDoubleQuotedScalar(String.raw`us\u0065s`)).toBe("uses");
+    expect(lineHasDoubleQuotedKeyWithBackslash(String.raw`      "u\x73es": foo`)).toBe(
+      true,
+    );
+    expect(
+      lineDecodesToUsesKey(String.raw`      "u\x73es": actions/checkout@main`),
+    ).toBe(true);
   });
 
   it("allows local and docker digest refs", () => {
@@ -217,6 +232,25 @@ describe("verify-action-pins.mjs (DIDI-1163)", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-tokenless-"));
     try {
       writePinnedWorkflow(tempDir, "bad.yml", [line]);
+      const result = runVerifyActionPins({ workflowsDir: tempDir, repoRoot: tempDir });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/not exactly uses:/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["u hex escape mid-key", String.raw`      "u\x73es": actions/checkout@main`],
+    ["U long unicode escape", String.raw`      "\U00000075ses": actions/checkout@main`],
+    ["u mid-word escape", String.raw`      "us\u0065s": actions/checkout@main`],
+  ])("fails closed on escaped YAML uses key (%s)", (_label, escapedKeyLine) => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-action-pins-escaped-key-"));
+    try {
+      writePinnedWorkflow(tempDir, "bad.yml", [
+        `      - uses: actions/checkout@${PINNED_SHA}`,
+        escapedKeyLine,
+      ]);
       const result = runVerifyActionPins({ workflowsDir: tempDir, repoRoot: tempDir });
       expect(result.status).toBe(1);
       expect(result.stderr).toMatch(/not exactly uses:/);
