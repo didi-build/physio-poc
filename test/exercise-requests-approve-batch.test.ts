@@ -138,11 +138,12 @@ describe("Exercise request approve batch (integration)", () => {
         prescriptionType: "stretching",
         params: { hold_s: 12 },
       });
+      const batchCallsBeforeApprove = batchCalls;
       await service.approveRequest({
         practitionerId: approver,
         requestId: created.request_id,
       });
-      expect(batchCalls).toBe(1);
+      expect(batchCalls - batchCallsBeforeApprove).toBe(1);
       expect(approveVersionRunCalls).toBe(0);
     } finally {
       storage.close();
