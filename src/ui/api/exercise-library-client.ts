@@ -8,7 +8,7 @@ import type {
 } from "../../services/exercise-library/types.js";
 
 /** Until sign-in (DIDI-1001); DIDI-1059 will replace with session-only identity. */
-const DEV_PRACTITIONER_ID = "00000000-0000-4000-8000-000000000001";
+export const DEV_PRACTITIONER_ID = "00000000-0000-4000-8000-000000000001";
 
 export type FetchFn = (
   input: RequestInfo | URL,

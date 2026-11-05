@@ -49,20 +49,21 @@ This file is the single source of truth for how agents work in this repository. 
 
 ## Commands
 
-| Script                       | Purpose                                                                                                                                                                |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run check`              | Conflict markers, format, lint, typecheck, test, secret scan, placeholders, attribution, nodrift (when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists) |
-| `npm run dev`                | Local Node HTTP entry (`tsx src/entry/node.ts`)                                                                                                                        |
-| `npm run build:ui`           | Build React UI static assets with Vite (`dist/ui`)                                                                                                                     |
-| `npm run nodrift`            | `@didi-build/nodrift check` when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists; skipped otherwise                                                     |
-| `npm run lint`               | ESLint                                                                                                                                                                 |
-| `npm run format`             | Prettier write                                                                                                                                                         |
-| `npm run format:check`       | Prettier check                                                                                                                                                         |
-| `npm run typecheck`          | `tsc --noEmit`                                                                                                                                                         |
-| `npm run test`               | Vitest (CI uses JUnit output)                                                                                                                                          |
-| `npm run test:worker`        | Worker auth, wrangler smoke, and production bundle tests                                                                                                               |
-| `npm run secrets`            | Secretlint                                                                                                                                                             |
-| `npm run secret-usage`       | Fail if `BOOTSTRAP_TOKEN` appears outside `bootstrap.yml` workflows                                                                                                    |
-| `npm run init-project`       | Replace `{{…}}` placeholders; optionally run `nodrift init` when the project collects personal data                                                                    |
-| `npm run repo-settings`      | Dry-run, `--apply`, or `--verify` recommended GitHub repo settings                                                                                                     |
-| `npm run verify-action-pins` | Verify each pinned action SHA matches its version comment (`# vX.Y.Z`)                                                                                                 |
+| Script                         | Purpose                                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run check`                | Conflict markers, format, lint, typecheck, test, secret scan, placeholders, attribution, nodrift (when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists) |
+| `npm run dev`                  | Local Node HTTP entry (`tsx src/entry/node.ts`)                                                                                                                        |
+| `npm run build:ui`             | Build React UI static assets with Vite (`dist/ui`)                                                                                                                     |
+| `npm run build:layout-harness` | Build Playwright layout harness for exercise requests (`dist/exercise-requests-layout-harness`)                                                                        |
+| `npm run nodrift`              | `@didi-build/nodrift check` when `.nodrift/manifest.json` or `docs/privacy/data-map.yml` exists; skipped otherwise                                                     |
+| `npm run lint`                 | ESLint                                                                                                                                                                 |
+| `npm run format`               | Prettier write                                                                                                                                                         |
+| `npm run format:check`         | Prettier check                                                                                                                                                         |
+| `npm run typecheck`            | `tsc --noEmit`                                                                                                                                                         |
+| `npm run test`                 | Vitest (CI uses JUnit output)                                                                                                                                          |
+| `npm run test:worker`          | Worker auth, wrangler smoke, and production bundle tests                                                                                                               |
+| `npm run secrets`              | Secretlint                                                                                                                                                             |
+| `npm run secret-usage`         | Fail if `BOOTSTRAP_TOKEN` appears outside `bootstrap.yml` workflows                                                                                                    |
+| `npm run init-project`         | Replace `{{…}}` placeholders; optionally run `nodrift init` when the project collects personal data                                                                    |
+| `npm run repo-settings`        | Dry-run, `--apply`, or `--verify` recommended GitHub repo settings                                                                                                     |
+| `npm run verify-action-pins`   | Verify each pinned action SHA matches its version comment (`# vX.Y.Z`)                                                                                                 |

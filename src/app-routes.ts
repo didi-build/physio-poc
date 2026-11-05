@@ -14,6 +14,8 @@ export const PHYSIO_APP_ROUTE_PATTERNS = {
   routines: "/routines",
   programs: "/programs",
   requests: "/requests",
+  requestConflict: "/requests/conflict",
+  requestReview: "/requests/:requestId",
   defaults: "/defaults",
   programNew: "/programs/new",
   programBuilder: "/programs/:programCode",
@@ -49,6 +51,7 @@ export const FROM_ROUTINE_ID_QUERY_PARAM = "from_routine_id";
 export type FillPhysioAppRouteParams = {
   readonly programCode?: string;
   readonly exerciseId?: string;
+  readonly requestId?: string;
 };
 
 export function fillPhysioAppRoutePattern(
@@ -69,6 +72,13 @@ export function fillPhysioAppRoutePattern(
       throw new Error(`Route ${routeName} requires exerciseId`);
     }
     path = path.replace(":exerciseId", encodeURIComponent(exerciseId));
+  }
+  if (path.includes(":requestId")) {
+    const requestId = params.requestId?.trim();
+    if (!requestId) {
+      throw new Error(`Route ${routeName} requires requestId`);
+    }
+    path = path.replace(":requestId", encodeURIComponent(requestId));
   }
   return path;
 }
@@ -99,6 +109,8 @@ export const PHYSIO_APP_SPA_ROUTE_NAMES = [
   "programPublish",
   "programShare",
   "requests",
+  "requestConflict",
+  "requestReview",
   "defaults",
 ] as const;
 

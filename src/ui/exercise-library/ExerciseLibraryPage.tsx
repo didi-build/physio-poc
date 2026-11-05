@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   fillPhysioAppRoutePattern,
   physioAppExerciseSearchPath,
@@ -8,7 +8,9 @@ import type {
   ApprovedExerciseSummary,
   MyExerciseListItem,
 } from "../../services/exercise-library/types.js";
-import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
+import type { DraftInProgressSummary } from "../../services/exercise-requests/types.js";
+import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
 import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
@@ -38,6 +40,12 @@ import {
   NO_SAVED_WITH_FILTERS,
   nothingInMyMatches,
 } from "../copy/exercise-library.js";
+import {
+  AI_DRAFTING,
+  REQUESTED_BY,
+  TAG_DRAFT,
+  VIEW_DRAFT,
+} from "../copy/exercise-requests.js";
 import { TOAST_UNDO } from "../copy/nav.js";
 import { ExerciseListCard, type ExerciseCardModel } from "./ExerciseListCard.js";
 import {
@@ -52,7 +60,12 @@ import {
   type LibraryFilters,
   type LibraryTab,
 } from "./library-filters.js";
-import { RequestFormPlaceholder } from "./RequestFormPlaceholder.js";
+import {
+  RequestForm,
+  RequestSubmittedPanel,
+} from "../exercise-requests/RequestForm.js";
+import { requestedByLabel } from "../exercise-requests/requested-by-label.js";
+import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
 
 function flattenMySections(sections: {
   new_from_requests: MyExerciseListItem[];
@@ -99,10 +112,16 @@ function approvedToCard(
 
 export type ExerciseLibraryPageProps = {
   initialTab: LibraryTab;
+  onRequestsChanged?: () => void;
 };
 
-export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
+export function ExerciseLibraryPage({
+  initialTab,
+  onRequestsChanged,
+}: ExerciseLibraryPageProps) {
   const client = useExerciseLibraryApi();
+  const requestsClient = useExerciseRequestsApi();
+  const { refreshInProgressCount } = useExerciseRequestsRefresh();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -123,6 +142,12 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
   const [myIds, setMyIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [similarDrafts, setSimilarDrafts] = useState<DraftInProgressSummary[]>([]);
+  const [reqNote, setReqNote] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
+  const formOpenedAtRef = useRef<string>(new Date().toISOString());
+  const location = useLocation();
 
   const apiFilterParams = useMemo(() => filtersToApiParams(filters), [filters]);
 
@@ -178,7 +203,18 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
   useEffect(() => {
     const q = searchParams.get("q") ?? "";
     setQuery(q);
+    if (q.trim()) {
+      formOpenedAtRef.current = new Date().toISOString();
+      setSubmittedRequestName(null);
+    }
   }, [searchParams]);
+
+  useEffect(() => {
+    const resume = (location.state as { resumeNote?: string } | null)?.resumeNote;
+    if (typeof resume === "string") {
+      setReqNote(resume);
+    }
+  }, [location.state]);
 
   const myCount = useMemo(
     () =>
@@ -194,6 +230,29 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
     allExercises.map((item) => item.exercise_name),
   );
   const showNoExactMatch = tab === "all" && trimmedQuery.length > 0 && !exactMatch;
+
+  useEffect(() => {
+    if (!showNoExactMatch || loadFailed) {
+      setSimilarDrafts([]);
+      return;
+    }
+    let cancelled = false;
+    void requestsClient.listSimilar(trimmedQuery).then(
+      (result) => {
+        if (!cancelled) {
+          setSimilarDrafts(result.drafts_in_progress);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setSimilarDrafts([]);
+        }
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [loadFailed, requestsClient, showNoExactMatch, trimmedQuery]);
 
   const handleSave = async (exerciseId: string) => {
     const { undo } = await client.saveToMyExercises(exerciseId);
@@ -218,6 +277,8 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
   const onQueryChange = (value: string) => {
     setQuery(value);
     if (tab === "all") {
+      formOpenedAtRef.current = new Date().toISOString();
+      setSubmittedRequestName(null);
       if (value.trim()) {
         setSearchParams({ q: value.trim() });
       } else {
@@ -225,6 +286,40 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
       }
     }
   };
+
+  const submitRequest = async () => {
+    if (!trimmedQuery || submittingRequest) {
+      return;
+    }
+    setSubmittingRequest(true);
+    try {
+      const result = await requestsClient.submitRequest({
+        requested_name: trimmedQuery,
+        exercise_note: reqNote.trim() || null,
+        form_opened_at: formOpenedAtRef.current,
+        resolution: "submit",
+      });
+      if (result.outcome === "conflict") {
+        navigate(fillPhysioAppRoutePattern("requestConflict"), {
+          state: {
+            pending: result.pending,
+            similar_request: result.similar_request,
+            form_opened_at: formOpenedAtRef.current,
+          },
+        });
+        return;
+      }
+      if (result.outcome === "created") {
+        setSubmittedRequestName(trimmedQuery);
+        onRequestsChanged?.();
+        void refreshInProgressCount();
+      }
+    } finally {
+      setSubmittingRequest(false);
+    }
+  };
+
+  const hasSimilar = allExercises.length > 0 || similarDrafts.length > 0;
 
   const showListContent = !loading && !loadFailed;
 
@@ -399,7 +494,7 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
             {showNoExactMatch ? (
               <div className="ex-no-exact">
                 <h2>{noExactMatchHeading(trimmedQuery)}</h2>
-                <p>{allExercises.length > 0 ? SIMILAR_INTRO : NOT_IN_LIBRARY_YET}</p>
+                <p>{hasSimilar ? SIMILAR_INTRO : NOT_IN_LIBRARY_YET}</p>
               </div>
             ) : null}
             {!showNoExactMatch && allExercises.length > 0 ? (
@@ -416,7 +511,7 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
                 ))}
               </ul>
             ) : null}
-            {showNoExactMatch && allExercises.length > 0 ? (
+            {showNoExactMatch && hasSimilar ? (
               <section aria-labelledby="ex-similar-heading">
                 <h2 id="ex-similar-heading" className="ex-section-title">
                   {SIMILAR_SECTION}
@@ -453,15 +548,56 @@ export function ExerciseLibraryPage({ initialTab }: ExerciseLibraryPageProps) {
                       </button>
                     </li>
                   ))}
+                  {similarDrafts.map((draft) => {
+                    const name = draft.draft_title ?? draft.requested_name;
+                    const by = requestedByLabel({
+                      requestedBy: draft.requested_by,
+                      requestedByEmail: draft.requested_by_email,
+                    });
+                    return (
+                      <li key={draft.request_id} className="ex-similar-row">
+                        <div className="ex-similar-body">
+                          <span className="ex-similar-name">{name}</span>
+                          <span className="ex-tag ex-tag--draft">{TAG_DRAFT}</span>
+                          <span className="ex-similar-meta">
+                            {REQUESTED_BY} {by}, {AI_DRAFTING}
+                          </span>
+                        </div>
+                        <Link
+                          to={fillPhysioAppRoutePattern("requestReview", {
+                            requestId: draft.request_id,
+                          })}
+                          className="ex-secondary-btn ex-similar-link"
+                        >
+                          {VIEW_DRAFT}
+                        </Link>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             ) : null}
             {showNoExactMatch ? (
               <div className="ex-request-shell">
-                <RequestFormPlaceholder
-                  exerciseName={trimmedQuery}
-                  showNoneHeading={allExercises.length > 0}
-                />
+                {submittedRequestName ? (
+                  <RequestSubmittedPanel
+                    exerciseName={submittedRequestName}
+                    onViewRequest={() => {
+                      navigate(fillPhysioAppRoutePattern("requests"));
+                    }}
+                  />
+                ) : (
+                  <RequestForm
+                    exerciseName={trimmedQuery}
+                    showNoneHeading={hasSimilar}
+                    note={reqNote}
+                    onNoteChange={setReqNote}
+                    onSubmit={() => {
+                      void submitRequest();
+                    }}
+                    submitting={submittingRequest}
+                  />
+                )}
               </div>
             ) : null}
           </>
