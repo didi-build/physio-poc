@@ -403,6 +403,24 @@ describe("Prepare deploy step bash validation (DIDI-1146)", () => {
     expect(maskIndex).toBeGreaterThan(grepIndex);
   });
 
+  it("rejects uppercase UUID segments under tr_TR locale before masking", () => {
+    const result = spawnSync(
+      "bash",
+      ["-eu", "-o", "pipefail", "-c", EXPECTED_PREPARE_WRANGLER_STEP_RUN],
+      {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          LC_ALL: "tr_TR.UTF-8",
+          PHYSIO_D1_DATABASE_ID: "00000000-0000-0000-0000-00000000000B",
+        },
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).not.toMatch(/::add-mask::/);
+  });
+
   it("uses an explicit lowercase hex class in the Prepare grep, not locale-sensitive a-f", () => {
     expect(EXPECTED_PREPARE_WRANGLER_STEP_RUN).toContain("[0123456789abcdef]");
     expect(EXPECTED_PREPARE_WRANGLER_STEP_RUN).not.toMatch(/grep -Eq '\^\[0-9a-f\]/);
