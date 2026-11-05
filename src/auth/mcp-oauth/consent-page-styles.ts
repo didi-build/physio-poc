@@ -89,6 +89,13 @@ body {
 
 .consent-name-lead {
   white-space: nowrap;
+  color: #475569;
+}
+
+@media (max-width: 639.98px) {
+  .consent-name-line {
+    font-size: 0.875rem;
+  }
 }
 
 .consent-name-inline {
