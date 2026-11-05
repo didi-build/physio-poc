@@ -379,30 +379,39 @@ describe("MCP OAuth consent layout (real browser, DIDI-1161)", () => {
       await expectInter700Ready(page);
       const layout = await page.evaluate(() => {
         const card = document.querySelector(".consent-card");
+        const lead = document.querySelector(".consent-name-lead");
         const name = document.querySelector(".consent-name-inline");
         const tag = document.querySelector(".consent-tag");
-        if (!card || !name || !tag) {
+        const nameLine = document.querySelector(".consent-name-line");
+        if (!card || !lead || !name || !tag || !nameLine) {
           return null;
         }
-        const nameBox = name.getBoundingClientRect();
+        const leadBox = lead.getBoundingClientRect();
         const tagBox = tag.getBoundingClientRect();
         const padLeft = Number.parseFloat(getComputedStyle(card).paddingLeft);
         const contentLeft =
           card.getBoundingClientRect().left + card.clientLeft + padLeft;
+        const tagRowSpacer = getComputedStyle(nameLine, "::before");
         return {
-          nameBottom: nameBox.bottom,
+          leadBottom: leadBox.bottom,
           tagTop: tagBox.top,
           tagLeft: tagBox.left,
           contentLeft,
           tagWidth: tagBox.width,
+          tagOrder: getComputedStyle(tag).order,
+          spacerFlexBasis: tagRowSpacer.flexBasis,
+          spacerOrder: tagRowSpacer.order,
           cardClientWidth: card.clientWidth,
           cardScrollWidth: card.scrollWidth,
         };
       });
       expect(layout).not.toBeNull();
       expect(layout!.cardScrollWidth).toBeLessThanOrEqual(layout!.cardClientWidth);
-      expect(layout!.tagTop).toBeGreaterThan(layout!.nameBottom - 0.5);
+      expect(layout!.tagTop).toBeGreaterThan(layout!.leadBottom + 0.5);
       expect(Math.abs(layout!.tagLeft - layout!.contentLeft)).toBeLessThan(1);
+      expect(layout!.spacerFlexBasis).toBe("100%");
+      expect(layout!.spacerOrder).toBe("1");
+      expect(layout!.tagOrder).toBe("2");
       expectTagPillWidth(layout!.tagWidth);
     } finally {
       await browser.close();
