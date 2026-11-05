@@ -94,18 +94,15 @@ function undoPost(
 ) {
   const { sessionCookie, ...deps } = apiDeps(storage, practId);
   return handleRequest(
-    new Request(
-      `https://example.test/api/practitioners/${practId}/my-exercises/${exerciseId}`,
-      {
-        method: "POST",
-        headers: {
-          cookie: sessionCookie,
-          origin: "https://example.test",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ action: "undo", undo: undoBody }),
+    new Request(`https://example.test/api/me/my-exercises/${exerciseId}`, {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie,
+        origin: "https://example.test",
+        "content-type": "application/json",
       },
-    ),
+      body: JSON.stringify({ action: "undo", undo: undoBody }),
+    }),
     deps,
   );
 }

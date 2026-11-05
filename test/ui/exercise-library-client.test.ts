@@ -17,14 +17,11 @@ describe("exercise-library-client", () => {
         headers: { "content-type": "application/json" },
       }),
     );
-    const client = new ExerciseLibraryClient({ practitionerId: "pract-1", fetchFn });
+    const client = new ExerciseLibraryClient({ fetchFn });
     await client.removeFromMyExercises("ex-1");
-    expect(fetchFn).toHaveBeenCalledWith(
-      "/api/practitioners/pract-1/my-exercises/ex-1",
-      {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-      },
-    );
+    expect(fetchFn).toHaveBeenCalledWith("/api/me/my-exercises/ex-1", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+    });
   });
 });

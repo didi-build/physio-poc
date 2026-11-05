@@ -19,6 +19,12 @@ import {
   validateTextOverrides,
 } from "../src/domain/exercise-text-overrides.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import {
+  EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
+  EXERCISE_LIBRARY_MY_EXERCISES_PATH,
+  exerciseLibraryExerciseDetailsPath,
+  exerciseLibraryMyExerciseItemPath,
+} from "../src/exercise-library-api-paths.js";
 
 const BASE = "https://physio.test.example";
 const PRACT_A = testOpaqueEntityId("pract-a");
@@ -28,53 +34,61 @@ const EX_B = testOpaqueEntityId("ex-b");
 type RouteCase = {
   label: string;
   method: string;
-  path: (practitionerId: string) => string;
+  path: string;
   body?: (ctx: { practA: string; exerciseId: string }) => unknown;
+  expectStatus: (label: string) => number;
 };
 
-const FORBIDDEN_ROUTE_CASES: RouteCase[] = [
+const SESSION_ROUTE_CASES: RouteCase[] = [
   {
     label: "search",
     method: "GET",
-    path: (id) => `${BASE}/api/practitioners/${id}/exercises/approved/search`,
+    path: `${BASE}${EXERCISE_LIBRARY_APPROVED_SEARCH_PATH}`,
+    expectStatus: () => 200,
   },
   {
     label: "details",
     method: "GET",
-    path: (id) => `${BASE}/api/practitioners/${id}/exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryExerciseDetailsPath(EX_B)}`,
+    expectStatus: () => 200,
   },
   {
     label: "list",
     method: "GET",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises`,
+    path: `${BASE}${EXERCISE_LIBRARY_MY_EXERCISES_PATH}`,
+    expectStatus: () => 200,
   },
   {
     label: "save",
     method: "POST",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`,
     body: () => ({ action: "save" }),
+    expectStatus: () => 200,
   },
   {
     label: "pin",
     method: "POST",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`,
     body: () => ({ action: "pin", pinned: true }),
+    expectStatus: () => 404,
   },
   {
     label: "patch my copy",
     method: "PATCH",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`,
     body: () => ({ text_overrides: { title: "mine" } }),
+    expectStatus: () => 404,
   },
   {
     label: "delete",
     method: "DELETE",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`,
+    expectStatus: () => 404,
   },
   {
     label: "undo",
     method: "POST",
-    path: (id) => `${BASE}/api/practitioners/${id}/my-exercises/${EX_B}`,
+    path: `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`,
     body: ({ practA }) => ({
       action: "undo",
       undo: {
@@ -90,6 +104,7 @@ const FORBIDDEN_ROUTE_CASES: RouteCase[] = [
         },
       },
     }),
+    expectStatus: () => 400,
   },
 ];
 
@@ -136,10 +151,10 @@ describe("Exercise library practitioner session binding (integration)", () => {
       "SELECT count(*) as c FROM practitioner_exercises",
     );
 
-    for (const testCase of FORBIDDEN_ROUTE_CASES) {
+    for (const testCase of SESSION_ROUTE_CASES) {
       const body = testCase.body?.({ practA, exerciseId: EX_B });
       const response = await handleRequest(
-        new Request(testCase.path(PRACT_A), {
+        new Request(testCase.path, {
           method: testCase.method,
           headers: body ? { "content-type": "application/json" } : undefined,
           body: body ? JSON.stringify(body) : undefined,
@@ -155,7 +170,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
     expect(after?.c).toBe(before?.c);
   });
 
-  it("returns 403 when session practitioner A targets practitioner B on each route", async () => {
+  it("does not expose practitioner B my-exercise data to session A on /api/me routes", async () => {
     const storage = await openMigratedDatabase();
     const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
     const practB = await seedPractitioner(storage, PRACT_B, "b@example.com");
@@ -200,22 +215,43 @@ describe("Exercise library practitioner session binding (integration)", () => {
     );
     expect(before).not.toBeNull();
 
-    for (const testCase of FORBIDDEN_ROUTE_CASES) {
-      const body = testCase.body?.({ practA, exerciseId: EX_B });
-      const url = testCase.path(PRACT_B);
+    const listUrl = `${BASE}${EXERCISE_LIBRARY_MY_EXERCISES_PATH}`;
+    const listResponse = await handleRequest(
+      new Request(listUrl, mutatingAppApiRequestInit(listUrl, { headers: { cookie } })),
+      deps,
+    );
+    expect(listResponse.status).toBe(200);
+    const listBody = (await listResponse.json()) as {
+      sections: {
+        pinned: { exercise_id: string }[];
+        recently_used_and_saved: { exercise_id: string }[];
+        new_from_requests: { exercise_id: string }[];
+      };
+    };
+    const listedIds = [
+      ...listBody.sections.pinned,
+      ...listBody.sections.recently_used_and_saved,
+      ...listBody.sections.new_from_requests,
+    ].map((item) => item.exercise_id);
+    expect(listedIds.includes(EX_B)).toBe(false);
+
+    for (const label of ["patch my copy", "delete"] as const) {
+      const testCase = SESSION_ROUTE_CASES.find((entry) => entry.label === label);
+      expect(testCase).toBeDefined();
+      const body = testCase!.body?.({ practA, exerciseId: EX_B });
+      const url = testCase!.path;
       const response = await handleRequest(
         new Request(
           url,
           mutatingAppApiRequestInit(url, {
-            method: testCase.method,
+            method: testCase!.method,
             headers: body ? { cookie, "content-type": "application/json" } : { cookie },
             body: body ? JSON.stringify(body) : undefined,
           }),
         ),
         deps,
       );
-      expect(response.status, testCase.label).toBe(403);
-      await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+      expect(response.status, label).toBe(404);
     }
 
     const after = await storage.first<{
@@ -255,12 +291,12 @@ describe("Exercise library practitioner session binding (integration)", () => {
       auth,
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     };
-    const apiA = `${BASE}/api/practitioners/${PRACT_A}`;
+    const apiMe = `${BASE}/api/me`;
 
     expect(
       (
         await handleRequest(
-          new Request(`${apiA}/exercises/approved/search`, { headers: { cookie } }),
+          new Request(`${apiMe}/exercises/approved/search`, { headers: { cookie } }),
           deps,
         )
       ).status,
@@ -269,13 +305,13 @@ describe("Exercise library practitioner session binding (integration)", () => {
     expect(
       (
         await handleRequest(
-          new Request(`${apiA}/exercises/${EX_B}`, { headers: { cookie } }),
+          new Request(`${apiMe}/exercises/${EX_B}`, { headers: { cookie } }),
           deps,
         )
       ).status,
     ).toBe(200);
 
-    const saveUrl = `${apiA}/my-exercises/${EX_B}`;
+    const saveUrl = `${apiMe}/my-exercises/${EX_B}`;
     const save = await handleRequest(
       new Request(
         saveUrl,
@@ -292,7 +328,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
     expect(
       (
         await handleRequest(
-          new Request(`${apiA}/my-exercises`, { headers: { cookie } }),
+          new Request(`${apiMe}/my-exercises`, { headers: { cookie } }),
           deps,
         )
       ).status,
@@ -344,7 +380,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
     );
     expect(before).not.toBeNull();
 
-    const undoUrl = `${BASE}/api/practitioners/${PRACT_A}/my-exercises/${EX_B}`;
+    const undoUrl = `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`;
     const response = await handleRequest(
       new Request(
         undoUrl,
@@ -393,7 +429,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
     expect(after).toEqual(before);
   });
 
-  it("leaves B text_overrides_json unchanged when A PATCH targets B", async () => {
+  it("leaves B text_overrides_json unchanged when A PATCH targets B row via /api/me", async () => {
     const storage = await openMigratedDatabase();
     const practA = await seedPractitioner(storage, PRACT_A, "a@example.com");
     const practB = await seedPractitioner(storage, PRACT_B, "b@example.com");
@@ -425,7 +461,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
     };
 
-    const patchUrl = `${BASE}/api/practitioners/${PRACT_B}/my-exercises/${EX_B}`;
+    const patchUrl = `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`;
     const response = await handleRequest(
       new Request(
         patchUrl,
@@ -437,7 +473,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       ),
       deps,
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
 
     const row = await storage.first<{ text_overrides_json: string }>(
       "SELECT text_overrides_json FROM practitioner_exercises WHERE practitioner_id = ? AND exercise_id = ? LIMIT 1",

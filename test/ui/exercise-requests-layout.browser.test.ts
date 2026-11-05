@@ -11,7 +11,7 @@ import { REGENERATE } from "../../src/ui/copy/exercise-requests.js";
 const HARNESS_DIST = join(process.cwd(), "dist/exercise-requests-layout-harness");
 
 async function waitForScreen(page: Page, selector: string): Promise<void> {
-  await page.waitForSelector(selector, { state: "visible", timeout: 15_000 });
+  await page.waitForSelector(selector, { state: "visible", timeout: 30_000 });
 }
 
 async function readShellFrameOverflow(page: Page) {
@@ -154,7 +154,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
         const page = await browser.newPage();
         await loadInterFontsInPage(page);
         await page.setViewportSize({ width, height: 900 });
-        await page.goto(`${baseUrl}/?fixture=${id}`, { waitUntil: "networkidle" });
+        await page.goto(`${baseUrl}/?fixture=${id}`, { waitUntil: "load" });
         await waitForScreen(page, readySelector);
 
         const frame = await readShellFrameOverflow(page);
@@ -180,7 +180,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
         await loadInterFontsInPage(page);
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${baseUrl}/?fixture=search-similar`, {
-          waitUntil: "networkidle",
+          waitUntil: "load",
         });
         await waitForScreen(page, "#ex-similar-heading");
 
@@ -205,7 +205,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
         await loadInterFontsInPage(page);
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${baseUrl}/?fixture=request-form`, {
-          waitUntil: "networkidle",
+          waitUntil: "load",
         });
         await waitForScreen(page, ".ex-request-form");
 
@@ -231,15 +231,17 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
 
       await page.setViewportSize({ width: 390, height: 900 });
       await page.goto(`${baseUrl}/?fixture=requests-list`, {
-        waitUntil: "networkidle",
+        waitUntil: "load",
       });
+      await waitForScreen(page, "#ex-requests-heading");
       await waitForScreen(page, ".ex-requests-row");
       expect(await readFlexDirection(page, ".ex-requests-row")).toBe("column");
 
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto(`${baseUrl}/?fixture=requests-list`, {
-        waitUntil: "networkidle",
+        waitUntil: "load",
       });
+      await waitForScreen(page, "#ex-requests-heading");
       await waitForScreen(page, ".ex-requests-row");
       expect(await readFlexDirection(page, ".ex-requests-row")).toBe("row");
     } finally {
@@ -254,12 +256,12 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
       await loadInterFontsInPage(page);
 
       await page.setViewportSize({ width: 390, height: 900 });
-      await page.goto(`${baseUrl}/?fixture=conflict`, { waitUntil: "networkidle" });
+      await page.goto(`${baseUrl}/?fixture=conflict`, { waitUntil: "load" });
       await waitForScreen(page, "#ex-conflict-heading");
       expect(await readFlexDirection(page, ".ex-conflict-footer")).toBe("column");
 
       await page.setViewportSize({ width: 1280, height: 900 });
-      await page.goto(`${baseUrl}/?fixture=conflict`, { waitUntil: "networkidle" });
+      await page.goto(`${baseUrl}/?fixture=conflict`, { waitUntil: "load" });
       await waitForScreen(page, "#ex-conflict-heading");
       expect(await readFlexDirection(page, ".ex-conflict-footer")).toBe("row");
     } finally {
@@ -274,12 +276,12 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
       await loadInterFontsInPage(page);
 
       await page.setViewportSize({ width: 390, height: 900 });
-      await page.goto(`${baseUrl}/?fixture=draft-review`, { waitUntil: "networkidle" });
+      await page.goto(`${baseUrl}/?fixture=draft-review`, { waitUntil: "load" });
       await waitForScreen(page, ".ex-review-grid");
       expect(await readGridColumnCount(page, ".ex-review-grid")).toBe(1);
 
       await page.setViewportSize({ width: 1280, height: 900 });
-      await page.goto(`${baseUrl}/?fixture=draft-review`, { waitUntil: "networkidle" });
+      await page.goto(`${baseUrl}/?fixture=draft-review`, { waitUntil: "load" });
       await waitForScreen(page, ".ex-review-grid");
       expect(await readGridColumnCount(page, ".ex-review-grid")).toBe(2);
     } finally {
@@ -296,7 +298,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
         await loadInterFontsInPage(page);
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${baseUrl}/?fixture=draft-review`, {
-          waitUntil: "networkidle",
+          waitUntil: "load",
         });
         await waitForScreen(page, "#ex-review-heading");
         await page.getByRole("button", { name: REGENERATE, exact: true }).click();

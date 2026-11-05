@@ -158,19 +158,15 @@ describe("Physio Better Auth session expiry (integration)", () => {
   });
 
   it("treats an expired session as signed out", async () => {
-    const { deps, practId } = await createDeps();
+    const { deps } = await createDeps();
     const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
     const expiredAt = new Date(Date.now() - 60_000).toISOString();
     await deps.sql.run('UPDATE "session" SET "expiresAt" = ?', [expiredAt]);
 
     const cookieHeader = jar.header();
-    const api = await requestWithJar(
-      BASE,
-      `${BASE}/api/practitioners/${practId}/my-exercises`,
-      deps,
-      jar,
-      { headers: { cookie: cookieHeader } },
-    );
+    const api = await requestWithJar(BASE, `${BASE}/api/me/my-exercises`, deps, jar, {
+      headers: { cookie: cookieHeader },
+    });
     expect(api.status).toBe(401);
 
     const programs = await handleRequest(

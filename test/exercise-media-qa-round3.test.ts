@@ -168,7 +168,7 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
       const fal = new FalFluxKleinImageGeneration({ apiKey: FAL_API_KEY, fetchImpl });
       const response = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,
           mediaHttpDeps(storage, practitionerId, objectStorage),
           {
             method: "POST",
@@ -238,7 +238,7 @@ describe("Exercise media QA round 3 (integration, mocked fal)", () => {
 
       const httpResponse = await handleRequest(
         mediaRequest(
-          `http://127.0.0.1/api/practitioners/${practitionerId}/exercise-versions/${versionId}/media/regenerate`,
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,
           mediaHttpDeps(storage, practitionerId, objectStorage),
           {
             method: "POST",

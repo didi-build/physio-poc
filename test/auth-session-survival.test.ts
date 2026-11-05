@@ -31,16 +31,11 @@ async function createDeps(allowedEmails = FAKE_GOOGLE_ALLOWED_EMAIL) {
 async function expectSessionInvalidated(
   deps: Awaited<ReturnType<typeof createDeps>>["deps"],
   jar: CookieJar,
-  practId: string,
 ): Promise<void> {
   const cookieHeader = jar.header();
-  const api = await requestWithJar(
-    BASE,
-    `${BASE}/api/practitioners/${practId}/my-exercises`,
-    deps,
-    jar,
-    { headers: { cookie: cookieHeader } },
-  );
+  const api = await requestWithJar(BASE, `${BASE}/api/me/my-exercises`, deps, jar, {
+    headers: { cookie: cookieHeader },
+  });
   expect(api.status).toBe(401);
 
   const mcp = await handleRequest(
@@ -68,14 +63,14 @@ async function expectSessionInvalidated(
 
 describe("Auth session survival (integration)", () => {
   it("invalidates the session when the allowlist entry is removed mid-session", async () => {
-    const { deps, practId } = await createDeps();
+    const { deps } = await createDeps();
     const { jar } = await completeGoogleSignIn(BASE, deps, "allowed");
     expect(await countAuthSessions(deps)).toBe(1);
 
     const allowlist = deps.config.auth.allowedGoogleEmails as Set<string>;
     allowlist.delete(FAKE_GOOGLE_ALLOWED_EMAIL.toLowerCase());
 
-    await expectSessionInvalidated(deps, jar, practId);
+    await expectSessionInvalidated(deps, jar);
   });
 
   it("invalidates the session when the practitioner row is deleted", async () => {
@@ -85,7 +80,7 @@ describe("Auth session survival (integration)", () => {
 
     await deps.sql.run("DELETE FROM practitioners WHERE id = ?", [practId]);
 
-    await expectSessionInvalidated(deps, jar, practId);
+    await expectSessionInvalidated(deps, jar);
   });
 
   it("invalidates the session when the practitioner is recreated with the same email", async () => {
@@ -100,7 +95,7 @@ describe("Auth session survival (integration)", () => {
       [replacementId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
     );
 
-    await expectSessionInvalidated(deps, jar, practId);
+    await expectSessionInvalidated(deps, jar);
   });
 
   it("allows a new sign-in after practitioner recreate and binds the new practitioner id", async () => {
@@ -112,7 +107,7 @@ describe("Auth session survival (integration)", () => {
       "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
       [replacementId, FAKE_GOOGLE_ALLOWED_EMAIL, "2026-01-01T00:00:00.000Z"],
     );
-    await expectSessionInvalidated(deps, jar, practId);
+    await expectSessionInvalidated(deps, jar);
 
     const { jar: freshJar } = await completeGoogleSignIn(BASE, deps, "allowed");
     expect(freshJar.header()).toContain("better-auth.session_token=");

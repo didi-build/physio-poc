@@ -43,8 +43,7 @@ const HANDLE_REQUEST_ROUTE_SAMPLES: readonly HandleRequestRouteSample[] = [
   { branchId: "guarded-api", samplePath: "/api/unknown", method: "GET" },
   {
     branchId: "guarded-api",
-    samplePath:
-      "/api/practitioners/11111111-1111-4111-8111-111111111111/exercises/approved/search",
+    samplePath: "/api/me/exercises/approved/search",
     method: "GET",
   },
   { branchId: "guarded-api", samplePath: "/api/me/programs", method: "GET" },

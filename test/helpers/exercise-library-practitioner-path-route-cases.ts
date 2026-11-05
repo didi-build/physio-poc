@@ -1,19 +1,25 @@
+import {
+  EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
+  EXERCISE_LIBRARY_MY_EXERCISES_PATH,
+  exerciseLibraryExerciseDetailsPath,
+  exerciseLibraryMyExerciseItemPath,
+} from "../../src/exercise-library-api-paths.js";
+
 export type ExerciseLibraryPractitionerPathHttpRouteCase = {
   readonly method: string;
   readonly path: string;
 };
 
-/** Sample paths for exercise library routes with a `:practitionerId` path segment. */
+/** Sample paths for session-scoped exercise library routes under `/api/me/`. */
 export function exerciseLibraryPractitionerPathHttpRouteCases(
-  practitionerId: string,
+  _practitionerId: string,
   exerciseId: string,
 ): readonly ExerciseLibraryPractitionerPathHttpRouteCase[] {
-  const base = `/api/practitioners/${practitionerId}`;
-  const itemPath = `${base}/my-exercises/${exerciseId}`;
+  const itemPath = exerciseLibraryMyExerciseItemPath(exerciseId);
   return [
-    { method: "GET", path: `${base}/exercises/approved/search` },
-    { method: "GET", path: `${base}/exercises/${exerciseId}` },
-    { method: "GET", path: `${base}/my-exercises` },
+    { method: "GET", path: EXERCISE_LIBRARY_APPROVED_SEARCH_PATH },
+    { method: "GET", path: exerciseLibraryExerciseDetailsPath(exerciseId) },
+    { method: "GET", path: EXERCISE_LIBRARY_MY_EXERCISES_PATH },
     { method: "POST", path: itemPath },
     { method: "PATCH", path: itemPath },
     { method: "DELETE", path: itemPath },

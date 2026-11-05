@@ -150,12 +150,7 @@ describe("Better Auth practitionerId binding guards", () => {
     const deleteSpy = vi.spyOn(resolveBound, "deleteAuthSessionByToken");
     await deps.sql.run("DELETE FROM practitioners WHERE id = ?", [practId]);
 
-    await requestWithJar(
-      BASE,
-      `${BASE}/api/practitioners/${practId}/my-exercises`,
-      deps,
-      jar,
-    );
+    await requestWithJar(BASE, `${BASE}/api/me/my-exercises`, deps, jar);
     expect(deleteSpy).toHaveBeenCalled();
     deleteSpy.mockRestore();
   });
@@ -182,12 +177,7 @@ describe("Better Auth practitionerId binding guards", () => {
     expect(await readUserPractitionerId(deps)).toBe(allowedId);
     expect(await readUserPractitionerId(deps)).not.toBe(otherId);
     expect(await countAuthSessions(deps)).toBe(1);
-    const api = await requestWithJar(
-      BASE,
-      `${BASE}/api/practitioners/${allowedId}/my-exercises`,
-      deps,
-      jar,
-    );
+    const api = await requestWithJar(BASE, `${BASE}/api/me/my-exercises`, deps, jar);
     expect(api.status).toBe(200);
   });
 
@@ -218,12 +208,7 @@ describe("Better Auth practitionerId binding guards", () => {
     expect(await readUserPractitionerId(deps)).toBe(allowedId);
     expect(await readUserPractitionerId(deps)).not.toBe(otherId);
     expect(await countAuthSessions(deps)).toBe(1);
-    const api = await requestWithJar(
-      BASE,
-      `${BASE}/api/practitioners/${allowedId}/my-exercises`,
-      deps,
-      jar,
-    );
+    const api = await requestWithJar(BASE, `${BASE}/api/me/my-exercises`, deps, jar);
     expect(api.status).toBe(200);
   });
 

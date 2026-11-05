@@ -25,7 +25,7 @@ const WORKER_PRACTITIONER_ID = testOpaqueEntityId("worker-exercise-library");
 function exerciseRouteCases(
   practitionerId: string,
 ): { method: string; path: string; body?: string }[] {
-  const apiBase = `https://example.workers.dev/api/practitioners/${practitionerId}`;
+  const apiBase = `https://example.workers.dev/api/me`;
   return [
     { method: "GET", path: `${apiBase}/exercises/approved/search` },
     { method: "GET", path: `${apiBase}/exercises/${exerciseId}` },
@@ -94,7 +94,7 @@ describe("Worker exercise library routes (integration)", () => {
   it("serves exercise library routes with a valid session like dev or test", async () => {
     const storage = await openMigratedDatabase();
     const practId = await seedPractitioner(storage, WORKER_PRACTITIONER_ID);
-    const apiBase = `https://example.workers.dev/api/practitioners/${practId}`;
+    const apiBase = `https://example.workers.dev/api/me`;
     await seedExercise(storage, practId, exerciseId);
     await storage.run(VERSION_INSERT_SQL, [
       ...versionInsertBindings({

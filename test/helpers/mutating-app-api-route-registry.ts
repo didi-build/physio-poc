@@ -37,8 +37,8 @@ export const MUTATING_APP_API_HANDLER_ROUTE_TABLES: readonly MutatingAppApiHandl
     },
     {
       ruleId: "exercise-media",
-      routes: (practitionerId, _exerciseId, versionId) =>
-        exerciseMediaHttpRouteCases(practitionerId, versionId).filter(
+      routes: (_practitionerId, _exerciseId, versionId) =>
+        exerciseMediaHttpRouteCases(versionId).filter(
           (routeCase) => routeCase.method !== "GET",
         ),
     },

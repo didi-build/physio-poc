@@ -6,8 +6,14 @@ import type {
   MyExercisesListResult,
   SearchApprovedExercisesResult,
 } from "../../services/exercise-library/types.js";
+import {
+  EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
+  EXERCISE_LIBRARY_MY_EXERCISES_PATH,
+  exerciseLibraryExerciseDetailsPath,
+  exerciseLibraryMyExerciseItemPath,
+} from "../../exercise-library-api-paths.js";
 
-/** Until sign-in (DIDI-1001); DIDI-1059 will replace with session-only identity. */
+/** Dev fixture id for exercise-request UI ownership labels until full session UI (DIDI-1009). */
 export const DEV_PRACTITIONER_ID = "00000000-0000-4000-8000-000000000001";
 
 export type FetchFn = (
@@ -17,8 +23,6 @@ export type FetchFn = (
 
 export type ExerciseLibraryClientOptions = {
   fetchFn?: FetchFn;
-  /** Override for tests; production uses session in DIDI-1059. */
-  practitionerId?: string;
 };
 
 export type ApprovedSearchParams = {
@@ -35,29 +39,6 @@ export type MyExercisesListParams = {
   category?: "Stretching" | "Strengthening";
   body_region?: string;
 };
-
-function practitionerBase(practitionerId: string): string {
-  return `/api/practitioners/${encodeURIComponent(practitionerId)}`;
-}
-
-function approvedSearchPath(practitionerId: string): string {
-  return `${practitionerBase(practitionerId)}/exercises/approved/search`;
-}
-
-function practitionerExerciseDetailsPath(
-  practitionerId: string,
-  exerciseId: string,
-): string {
-  return `${practitionerBase(practitionerId)}/exercises/${encodeURIComponent(exerciseId)}`;
-}
-
-function myExercisesListPath(practitionerId: string): string {
-  return `${practitionerBase(practitionerId)}/my-exercises`;
-}
-
-function myExerciseItemPath(practitionerId: string, exerciseId: string): string {
-  return `${practitionerBase(practitionerId)}/my-exercises/${encodeURIComponent(exerciseId)}`;
-}
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -82,19 +63,17 @@ function buildSearchUrl(
 
 /**
  * Single entry point for exercise library HTTP from the web UI.
- * All request paths and JSON bodies are built here (DIDI-1059 touches only this module).
+ * All request paths and JSON bodies are built here (DIDI-1059).
  */
 export class ExerciseLibraryClient {
-  private readonly practitionerId: string;
   private readonly fetchFn: FetchFn;
 
   constructor(options: ExerciseLibraryClientOptions = {}) {
-    this.practitionerId = options.practitionerId ?? DEV_PRACTITIONER_ID;
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
   searchApproved(params: ApprovedSearchParams): Promise<SearchApprovedExercisesResult> {
-    const path = buildSearchUrl(approvedSearchPath(this.practitionerId), {
+    const path = buildSearchUrl(EXERCISE_LIBRARY_APPROVED_SEARCH_PATH, {
       q: params.q,
       category: params.category,
       body_region: params.body_region,
@@ -108,7 +87,7 @@ export class ExerciseLibraryClient {
   }
 
   listMyExercises(params: MyExercisesListParams = {}): Promise<MyExercisesListResult> {
-    const path = buildSearchUrl(myExercisesListPath(this.practitionerId), {
+    const path = buildSearchUrl(EXERCISE_LIBRARY_MY_EXERCISES_PATH, {
       q: params.q,
       category: params.category,
       body_region: params.body_region,
@@ -119,16 +98,13 @@ export class ExerciseLibraryClient {
   }
 
   getExerciseDetails(exerciseId: string): Promise<ExerciseDetailsResult> {
-    return this.fetchFn(
-      practitionerExerciseDetailsPath(this.practitionerId, exerciseId),
-      {
-        method: "GET",
-      },
-    ).then((response) => readJson<ExerciseDetailsResult>(response));
+    return this.fetchFn(exerciseLibraryExerciseDetailsPath(exerciseId), {
+      method: "GET",
+    }).then((response) => readJson<ExerciseDetailsResult>(response));
   }
 
   saveToMyExercises(exerciseId: string): Promise<{ undo: ExerciseMutationUndo }> {
-    return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
+    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "save" }),
@@ -139,7 +115,7 @@ export class ExerciseLibraryClient {
     exerciseId: string,
     pinned: boolean,
   ): Promise<{ undo: ExerciseMutationUndo }> {
-    return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
+    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "pin", pinned }),
@@ -147,14 +123,14 @@ export class ExerciseLibraryClient {
   }
 
   removeFromMyExercises(exerciseId: string): Promise<{ undo: ExerciseMutationUndo }> {
-    return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
+    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "DELETE",
       headers: { "content-type": "application/json" },
     }).then((response) => readJson<{ undo: ExerciseMutationUndo }>(response));
   }
 
   applyUndo(exerciseId: string, undo: ExerciseMutationUndo): Promise<{ ok: true }> {
-    return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
+    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ action: "undo", undo }),
@@ -169,7 +145,7 @@ export class ExerciseLibraryClient {
       keep_mine?: TextOverrideKey[];
     },
   ): Promise<ExerciseDetailsResult> {
-    return this.fetchFn(myExerciseItemPath(this.practitionerId, exerciseId), {
+    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),

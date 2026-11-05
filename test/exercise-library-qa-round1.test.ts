@@ -670,7 +670,7 @@ describe("Exercise library QA round 1 (integration)", () => {
       const practId = await seedPractitioner(storage);
       const { exerciseId } = await seedApproved(storage, practId);
       const { sessionCookie, ...deps } = apiDeps(storage, practId);
-      const base = `https://example.test/api/practitioners/${practId}`;
+      const base = `https://example.test/api/me`;
       const authHeaders = { cookie: sessionCookie };
 
       const badSort = await handleRequest(

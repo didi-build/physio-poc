@@ -1,6 +1,9 @@
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
-import { DEV_PRACTITIONER_ID } from "./exercise-library-client.js";
+import {
+  EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
+  exerciseMediaRegeneratePath,
+} from "../../exercise-media-api-paths.js";
 
 export type FetchFn = (
   input: RequestInfo | URL,
@@ -9,14 +12,9 @@ export type FetchFn = (
 
 export type ExerciseMediaClientOptions = {
   fetchFn?: FetchFn;
-  practitionerId?: string;
 };
 
 const JSON_HEADERS = { "content-type": "application/json" };
-
-function practitionerBase(practitionerId: string): string {
-  return `/api/practitioners/${encodeURIComponent(practitionerId)}`;
-}
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -38,18 +36,15 @@ function mutatingInit(url: string, init: RequestInit): RequestInit {
 }
 
 export class ExerciseMediaClient {
-  private readonly practitionerId: string;
   private readonly fetchFn: FetchFn;
 
   constructor(options: ExerciseMediaClientOptions = {}) {
-    this.practitionerId = options.practitionerId ?? DEV_PRACTITIONER_ID;
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
   getRegenerationQuota(): Promise<RegenerationQuota> {
-    const path = `${practitionerBase(this.practitionerId)}/media-regeneration-quota`;
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
-      readJson<RegenerationQuota>(response),
+    return this.fetchFn(EXERCISE_MEDIA_REGENERATION_QUOTA_PATH, { method: "GET" }).then(
+      (response) => readJson<RegenerationQuota>(response),
     );
   }
 
@@ -58,7 +53,7 @@ export class ExerciseMediaClient {
     scope: MediaRegenerationScope;
     note?: string | null;
   }): Promise<unknown> {
-    const path = `${practitionerBase(this.practitionerId)}/exercise-versions/${encodeURIComponent(input.exerciseVersionId)}/media/regenerate`;
+    const path = exerciseMediaRegeneratePath(input.exerciseVersionId);
     return this.fetchFn(
       path,
       mutatingInit(path, {
