@@ -22,11 +22,16 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import {
+  ExerciseRequestsClient,
+  setExerciseRequestsClientForTests,
+} from "../../src/ui/api/exercise-requests-client.js";
 import { SEARCH_PROGRAMS_LABEL } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
+  setExerciseRequestsClientForTests(null);
   vi.restoreAllMocks();
 });
 
@@ -60,6 +65,7 @@ function stubProgramsClient(): ProgramsClient {
     listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
     createProgram: vi.fn(),
     getProgram: vi.fn(),
+    getProgramByCode: vi.fn(),
     updateProgramName: vi.fn(),
     deleteProgram: vi.fn(),
     restoreProgram: vi.fn(),
@@ -74,12 +80,21 @@ function stubProgramsClient(): ProgramsClient {
   } as unknown as ProgramsClient;
 }
 
+function stubRequestsClient(inProgressCount = 0): ExerciseRequestsClient {
+  return {
+    getInProgressCount: vi
+      .fn()
+      .mockResolvedValue({ in_progress_count: inProgressCount }),
+  } as unknown as ExerciseRequestsClient;
+}
+
 function renderApp(initialEntry: string, requestsReviewCount = 0) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         requestsReviewCount={requestsReviewCount}
         exerciseLibraryClient={stubLibraryClient()}
+        exerciseRequestsClient={stubRequestsClient(requestsReviewCount)}
         programsClient={stubProgramsClient()}
       />
       <LocationProbe />

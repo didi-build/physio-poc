@@ -8,6 +8,7 @@ export type InProgressRequestRow = {
   requested_name: string;
   note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: string;
   exercise_id: string | null;
   draft_title: string | null;
@@ -20,14 +21,73 @@ export type SimilarInProgressRow = {
   requested_name: string;
   note: string | null;
   requested_by: string;
+  requested_by_email: string;
   status: string;
   exercise_id: string | null;
   created_at: string;
   draft_title: string | null;
 };
 
+export type InProgressRequestDetailRow = {
+  id: string;
+  requested_name: string;
+  note: string | null;
+  requested_by: string;
+  status: string;
+  exercise_id: string | null;
+};
+
+export type DraftVersionDetailRow = {
+  id: string;
+  version_number: number;
+  title: string;
+  description: string;
+  equipment: string;
+  starting_position: string;
+  steps: string;
+  common_mistakes: string;
+  regressions: string;
+  progressions: string;
+  precautions: string;
+  cue_stretching: string | null;
+  cue_isometric: string | null;
+  cue_concentric: string | null;
+  cue_eccentric: string | null;
+};
+
 export class ExerciseRequestsReadRepository {
   constructor(private readonly sql: SqlStoragePort) {}
+
+  async findInProgressRequestById(
+    requestId: string,
+  ): Promise<InProgressRequestDetailRow | null> {
+    return this.sql.first<InProgressRequestDetailRow>(
+      `
+      SELECT id, requested_name, note, requested_by, status, exercise_id
+      FROM exercise_requests
+      WHERE id = ? AND status IN ('open', 'drafting')
+      LIMIT 1
+      `,
+      [requestId],
+    );
+  }
+
+  async findDraftVersionDetailForExercise(
+    exerciseId: string,
+  ): Promise<DraftVersionDetailRow | null> {
+    return this.sql.first<DraftVersionDetailRow>(
+      `
+      SELECT id, version_number, title, description, equipment, starting_position, steps,
+             common_mistakes, regressions, progressions, precautions,
+             cue_stretching, cue_isometric, cue_concentric, cue_eccentric
+      FROM exercise_versions
+      WHERE exercise_id = ? AND status = 'draft'
+      ORDER BY version_number DESC
+      LIMIT 1
+      `,
+      [exerciseId],
+    );
+  }
 
   async listInProgress(): Promise<InProgressRequestRow[]> {
     return this.sql.all<InProgressRequestRow>(
@@ -37,6 +97,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         (
@@ -49,6 +110,7 @@ export class ExerciseRequestsReadRepository {
         er.created_at,
         er.updated_at
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')
       ORDER BY er.updated_at DESC, er.id ASC
       `,
@@ -70,6 +132,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         er.created_at,
@@ -81,6 +144,7 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')
         AND (
           er.requested_name LIKE ?${LIKE_ESCAPE_SQL} COLLATE NOCASE
@@ -110,6 +174,7 @@ export class ExerciseRequestsReadRepository {
         er.requested_name,
         er.note,
         er.requested_by,
+        p.email AS requested_by_email,
         er.status,
         er.exercise_id,
         er.created_at,
@@ -121,6 +186,7 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title
       FROM exercise_requests er
+      INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.requested_by <> ?
         AND er.status IN ('open', 'drafting')
         AND er.created_at > ?

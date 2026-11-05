@@ -300,12 +300,17 @@ export class ProgramBuilderService {
   async linkApprovedPlaceholders(
     exerciseRequestId: string,
     approvedVersionId: string,
+    options?: { appendStatementsTo?: SqlBatchStatement[] },
   ): Promise<number> {
     const { statements, skippedCount } =
       await this.buildLinkApprovedPlaceholderStatements(
         exerciseRequestId,
         approvedVersionId,
       );
+    if (options?.appendStatementsTo) {
+      options.appendStatementsTo.push(...statements);
+      return skippedCount;
+    }
     if (statements.length > 0) {
       await this.sql.batch(statements);
     }
@@ -1003,10 +1008,14 @@ export class ProgramBuilderService {
         text_snapshot: textSnapshot,
         note: row.note,
         library_update: null,
+        exercise_version_choices: [],
       };
     }
     const pinned = await this.libraryRead.getApprovedVersionById(
       row.exercise_version_id!,
+    );
+    const versionChoices = await this.libraryRead.listApprovedVersionChoices(
+      row.exercise_id!,
     );
     const latest =
       row.exercise_id !== null
@@ -1038,6 +1047,10 @@ export class ProgramBuilderService {
       text_snapshot: textSnapshot,
       note: row.note,
       library_update: libraryUpdate,
+      exercise_version_choices: versionChoices.map((choice) => ({
+        exercise_version_id: choice.id,
+        version_number: choice.version_number,
+      })),
     };
   }
 
@@ -1701,9 +1714,11 @@ export async function linkApprovedPlaceholders(
   exerciseRequestId: string,
   approvedVersionId: string,
   now: () => string = () => new Date().toISOString(),
+  options?: { appendStatementsTo?: SqlBatchStatement[] },
 ): Promise<number> {
   return new ProgramBuilderService(sql, now).linkApprovedPlaceholders(
     exerciseRequestId,
     approvedVersionId,
+    options,
   );
 }

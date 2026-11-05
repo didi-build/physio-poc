@@ -10,6 +10,11 @@ import {
   ROW_NOTES_LABEL,
 } from "../copy/programs.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
+import { ProgramRowVersionPicker } from "./ProgramRowVersionPicker.js";
+import {
+  exerciseVersionIdForNumber,
+  versionNumbersForRow,
+} from "./program-row-version.js";
 
 export type ProgramBuilderRowCardProps = {
   row: ProgramBuilderRow;
@@ -22,6 +27,7 @@ export type ProgramBuilderRowCardProps = {
   onRemove: () => void;
   onNoteChange: (note: string) => void;
   onTypeChange: (type: PrescriptionType) => void;
+  onSelectVersion: (versionNumber: number) => void;
   actionsDisabled?: boolean;
 };
 
@@ -114,10 +120,13 @@ export function ProgramBuilderRowCard({
   onRemove,
   onNoteChange,
   onTypeChange,
+  onSelectVersion,
   actionsDisabled = false,
 }: ProgramBuilderRowCardProps) {
   const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
+  const versionOptions = versionNumbersForRow(row);
+  const selectedVersionNumber = row.pinned_version_number ?? versionOptions[0] ?? 1;
 
   return (
     <article
@@ -171,6 +180,25 @@ export function ProgramBuilderRowCard({
           <p className="pg-row-readout" aria-labelledby={titleId}>
             {formatExerciseParams(row.params)}
           </p>
+          {versionOptions.length > 0 ? (
+            <ProgramRowVersionPicker
+              rowName={title}
+              selectedVersionNumber={selectedVersionNumber}
+              versionOptions={versionOptions}
+              onSelectVersion={(versionNumber) => {
+                if (actionsDisabled) {
+                  return;
+                }
+                if (
+                  exerciseVersionIdForNumber(row, versionNumber) ===
+                  row.exercise_version_id
+                ) {
+                  return;
+                }
+                onSelectVersion(versionNumber);
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       <label className="pg-row-notes">

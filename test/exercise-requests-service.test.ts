@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { NOTE_FOR_AI } from "../src/ui/copy/exercise-library.js";
+import {
+  FreeTextValidationError,
+  validateRequestNote,
+} from "../src/domain/exercise-free-text.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
@@ -480,9 +485,28 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
           exerciseNote: "contact patient@example.com",
           formOpenedAt: FORM_OPENED,
         }),
-      ).rejects.toMatchObject({ code: "invalid_input" });
+      ).rejects.toMatchObject({
+        code: "invalid_input",
+        message: expect.stringMatching(
+          new RegExp(`^${NOTE_FOR_AI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`),
+        ),
+      });
     } finally {
       storage.close();
+    }
+  });
+
+  it("uses NOTE_FOR_AI in validateRequestNote max-length errors", () => {
+    expect(() => validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1))).toThrow(
+      FreeTextValidationError,
+    );
+    try {
+      validateRequestNote("x".repeat(MAX_LENGTH_ROW_NOTES + 1));
+    } catch (error) {
+      expect(error).toBeInstanceOf(FreeTextValidationError);
+      expect((error as FreeTextValidationError).message).toBe(
+        `${NOTE_FOR_AI} must be at most ${String(MAX_LENGTH_ROW_NOTES)} characters`,
+      );
     }
   });
 
@@ -835,7 +859,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
     }
   });
 
-  it("lists in-progress requests without practitioner email fields", async () => {
+  it("lists in-progress requests with requested_by_email for practitioner display", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practId = await seedPractitioner(
@@ -852,10 +876,8 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         formOpenedAt: FORM_OPENED,
       });
       const list = await service.listInProgress({ practitionerId: practId });
-      const serialized = JSON.stringify(list);
-      expect(serialized).not.toContain("hidden@example.com");
-      expect(serialized).not.toContain("requester_email");
       expect(list.requests[0]?.requested_by).toBe(practId);
+      expect(list.requests[0]?.requested_by_email).toBe("hidden@example.com");
     } finally {
       storage.close();
     }

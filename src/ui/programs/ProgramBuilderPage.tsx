@@ -36,7 +36,6 @@ import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
 } from "./ProgramsStates.js";
-import { resolveProgramIdForBuilderCode } from "./programs-list-utils.js";
 import { useProgramAutoSave } from "./use-program-auto-save.js";
 import { useProgramLeaveGuard } from "./program-leave-guard.js";
 
@@ -108,29 +107,6 @@ export function ProgramBuilderPage() {
     };
   }, [autoSave.hasUnsavedEdits, setGuard]);
 
-  const loadProgram = useCallback(
-    (programId: string) => {
-      setLoading(true);
-      setLoadFailed(false);
-      void client
-        .getProgram(programId)
-        .then((view) => {
-          setProgram(view);
-          setNameDraft(view.name ?? "");
-          setNoteDrafts(noteDraftsFromProgram(view));
-          autoSaveRef.current.markSaved();
-        })
-        .catch(() => {
-          setLoadFailed(true);
-          setProgram(null);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    },
-    [client],
-  );
-
   useEffect(() => {
     const code = programCode.trim();
     if (code.length === 0) {
@@ -138,22 +114,23 @@ export function ProgramBuilderPage() {
       return;
     }
     setLoading(true);
+    setLoadFailed(false);
     void client
-      .listPrograms(code)
-      .then((result) => {
-        const programId = resolveProgramIdForBuilderCode(result, code);
-        if (!programId) {
-          setRedirectToList(true);
-          setLoading(false);
-          return;
-        }
-        loadProgram(programId);
+      .getProgramByCode(code)
+      .then((view) => {
+        setProgram(view);
+        setNameDraft(view.name ?? "");
+        setNoteDrafts(noteDraftsFromProgram(view));
+        autoSaveRef.current.markSaved();
       })
       .catch(() => {
         setRedirectToList(true);
+        setProgram(null);
+      })
+      .finally(() => {
         setLoading(false);
       });
-  }, [client, loadProgram, programCode]);
+  }, [client, programCode]);
 
   const requestLeave = (to: string) => {
     if (autoSave.hasUnsavedEdits) {
@@ -437,6 +414,36 @@ export function ProgramBuilderPage() {
                           },
                         );
                         applyProgram(result.program);
+                      })
+                      .finally(() => {
+                        setRowMutationBusy(false);
+                      });
+                  }}
+                  onSelectVersion={(versionNumber) => {
+                    if (
+                      row.kind !== "exercise" ||
+                      row.pinned_version_number === versionNumber
+                    ) {
+                      return;
+                    }
+                    const versionId = row.exercise_version_choices.find(
+                      (choice) => choice.version_number === versionNumber,
+                    )?.exercise_version_id;
+                    if (!versionId) {
+                      return;
+                    }
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(`row-version:${row.id}`, async () => {
+                        const result = await client.updateRow(
+                          program.program_id,
+                          row.id,
+                          {
+                            exercise_version_id: versionId,
+                          },
+                        );
+                        applyProgram(result.program);
+                        setNoteDrafts(noteDraftsFromProgram(result.program));
                       })
                       .finally(() => {
                         setRowMutationBusy(false);
