@@ -20,6 +20,8 @@ import {
   DOSE_CHANGED_FOR_THIS_ROW_ONLY,
   DOSE_EDITED_BADGE,
   DUPLICATE_CONTROL_TITLE,
+  LEAVE_CONFIRM,
+  LEAVE_TITLE,
   PENDING_REVIEW_BADGE,
   PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS,
   PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS,
@@ -35,7 +37,8 @@ import {
   libraryVersionAvailableRowBadge,
   versionOfRowLabel,
 } from "../../src/ui/copy/programs.js";
-import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
+import { ADD_PARAMETER, TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
+import { NAV_TAB_PROGRAMS } from "../../src/ui/copy/nav.js";
 import type {
   ProgramBuilderRow,
   ProgramBuilderView,
@@ -604,6 +607,291 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       setTimeout(r, 150);
     });
     expect(updateRow).not.toHaveBeenCalled();
+  });
+
+  it("persists latest reps when bottom Done closes after an in-flight PATCH", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    let resolveFirst!: (value: unknown) => void;
+    const firstDone = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    let callCount = 0;
+    const updateRow = vi.fn().mockImplementation(async () => {
+      callCount += 1;
+      const nextReps = callCount === 1 ? 11 : 12;
+      const saved: ProgramBuilderRow = {
+        ...baseRow,
+        params: { reps: nextReps, hold_s: 2, sets: 3, days_per_week: 3 },
+        params_source: null,
+        resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+        resolved_params_source: "global_defaults",
+      };
+      if (callCount === 1) {
+        await firstDone;
+      }
+      return {
+        program: builderView({
+          rows: [saved],
+          exercise_count: 1,
+        }),
+      };
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await userEvent.click(within(card).getByRole("button", { name: DONE_ADJUSTING }));
+    resolveFirst!(undefined);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(2);
+    });
+    expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
+      params: expect.objectContaining({ reps: 12 }),
+    });
+    vi.useRealTimers();
+  });
+
+  it("shows days per week as counted days and Every day for 7 in the stepper", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    expect(
+      within(card).getByText("3 days", {
+        selector: ".pg-row-dose-stepper-value",
+      }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(card).getByRole("button", { name: /More days per week/i }),
+    );
+    await userEvent.click(
+      within(card).getByRole("button", { name: /More days per week/i }),
+    );
+    await userEvent.click(
+      within(card).getByRole("button", { name: /More days per week/i }),
+    );
+    await userEvent.click(
+      within(card).getByRole("button", { name: /More days per week/i }),
+    );
+    expect(
+      within(card).getByText("Every day", {
+        selector: ".pg-row-dose-stepper-value",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("steps stretching times per day through a range option", async () => {
+    const stretchRow: ProgramBuilderRow = {
+      id: "row-st",
+      position: 0,
+      kind: "exercise",
+      exercise_id: "ex-1",
+      exercise_version_id: "v1",
+      exercise_request_id: null,
+      pinned_version_number: 1,
+      prescription_type: "stretching",
+      params: { hold_s: 30, per_day: 3, days_per_week: 3 },
+      params_source: "global_defaults",
+      resolved_params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      resolved_params_source: "global_defaults",
+      text_snapshot: { title: "Stretch move" },
+      note: null,
+      library_update: null,
+      exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
+    };
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [stretchRow], exercise_count: 1 })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Stretch move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Stretch move` }),
+    );
+    expect(
+      within(card).getByText("3", {
+        selector: ".pg-row-dose-stepper-value",
+      }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      within(card).getByRole("button", { name: /More times per day/i }),
+    );
+    expect(
+      within(card).getByText("1 to 2", {
+        selector: ".pg-row-dose-stepper-value",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("adds Up (ascent) and Rest, then removes Rest via stepper controls", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    const afterAddUp: ProgramBuilderRow = {
+      ...baseRow,
+      params: {
+        reps: 10,
+        hold_s: 2,
+        sets: 3,
+        days_per_week: 3,
+        ascent_s: 2,
+      },
+    };
+    const afterAddRest: ProgramBuilderRow = {
+      ...afterAddUp,
+      params: { ...afterAddUp.params, rest_s: 60 },
+    };
+    const afterRemoveRest: ProgramBuilderRow = {
+      ...afterAddRest,
+      params: {
+        reps: 10,
+        hold_s: 2,
+        sets: 3,
+        days_per_week: 3,
+        ascent_s: 2,
+      },
+    };
+    const updateRow = vi
+      .fn()
+      .mockResolvedValueOnce({
+        program: builderView({ rows: [afterAddUp], exercise_count: 1 }),
+      })
+      .mockResolvedValueOnce({
+        program: builderView({ rows: [afterAddRest], exercise_count: 1 }),
+      })
+      .mockResolvedValue({
+        program: builderView({ rows: [afterRemoveRest], exercise_count: 1 }),
+      });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: ADD_PARAMETER }));
+    await userEvent.click(within(card).getByRole("button", { name: /^Up \(s\)$/ }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ ascent_s: 2 }),
+      });
+    });
+    await userEvent.click(within(card).getByRole("button", { name: ADD_PARAMETER }));
+    await userEvent.click(
+      within(card).getByRole("button", { name: /^Rest between sets \(s\)$/ }),
+    );
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ rest_s: 60 }),
+      });
+    });
+    await userEvent.click(
+      within(card).getByRole("button", { name: /Remove rest between sets/i }),
+    );
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      const lastCall = updateRow.mock.calls[updateRow.mock.calls.length - 1];
+      expect(lastCall?.[2].params).not.toHaveProperty("rest_s");
+    });
+    vi.useRealTimers();
+  });
+
+  it("does not open leave sheet on navigation when Adjust is open with no edits on a legacy strength row", async () => {
+    const legacy: ProgramBuilderRow = {
+      ...exerciseRow("row-leg", "Legacy move", 0),
+      params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3, per_day: 2 },
+    };
+    const updateRow = vi.fn();
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [legacy], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Legacy move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Legacy move` }),
+    );
+    const programsTabs = screen.getAllByRole("link", { name: NAV_TAB_PROGRAMS });
+    await userEvent.click(programsTabs[0]!);
+    expect(screen.queryByRole("dialog", { name: LEAVE_TITLE })).not.toBeInTheDocument();
+    expect(updateRow).not.toHaveBeenCalled();
+  });
+
+  it("opens leave sheet when a dose edit is pending and navigation is requested", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    const savedRow: ProgramBuilderRow = {
+      ...baseRow,
+      params: { reps: 11, hold_s: 2, sets: 3, days_per_week: 3 },
+      params_source: null,
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+      resolved_params_source: "global_defaults",
+    };
+    const updateRow = vi.fn().mockResolvedValue({
+      program: builderView({ rows: [savedRow], exercise_count: 1 }),
+    });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    const programsTabs = screen.getAllByRole("link", { name: NAV_TAB_PROGRAMS });
+    await userEvent.click(programsTabs[0]!);
+    expect(
+      await screen.findByRole("dialog", { name: LEAVE_TITLE }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: LEAVE_CONFIRM }));
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ reps: 11 }),
+      });
+    });
+    expect(screen.queryByRole("dialog", { name: LEAVE_TITLE })).not.toBeInTheDocument();
   });
 
   it("Reset to default PATCHes resolved params and clears edited chrome", async () => {

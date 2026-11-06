@@ -107,8 +107,11 @@ function centerDisplayValue(key: ParamKey, value: NumericOrRange): string {
     return `${n}s`;
   }
   const n = value as number;
-  if (key === "days_per_week" && n === 7) {
-    return "Every day";
+  if (key === "days_per_week") {
+    if (n === 7) {
+      return "Every day";
+    }
+    return `${n} days`;
   }
   return String(n);
 }

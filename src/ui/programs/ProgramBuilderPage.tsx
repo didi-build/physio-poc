@@ -117,11 +117,15 @@ export function ProgramBuilderPage() {
     if (!row) {
       return false;
     }
-    const filtered = filterExerciseParamsForPrescriptionType(
+    const draftFiltered = filterExerciseParamsForPrescriptionType(
       doseAdjustDraft.params,
       row.prescription_type,
     );
-    return !exerciseParamsEqual(filtered, row.params);
+    const storedFiltered = filterExerciseParamsForPrescriptionType(
+      { ...row.params },
+      row.prescription_type,
+    );
+    return !exerciseParamsEqual(draftFiltered, storedFiltered);
   }, [program, doseAdjustDraft]);
   const isDesktopLayout = useMinWidth1024();
   const { setGuard } = useProgramLeaveGuard();
@@ -206,8 +210,8 @@ export function ProgramBuilderPage() {
     autoSave.scheduleDebouncedSave("name", saveName);
   };
 
-  const saveRowParamsIfChanged = useCallback(
-    async (rowId: string) => {
+  const saveRowParamsSnapshot = useCallback(
+    async (rowId: string, attemptParams: ExerciseParams) => {
       const currentProgram = programRef.current;
       if (!currentProgram) {
         return;
@@ -216,18 +220,15 @@ export function ProgramBuilderPage() {
       if (!targetRow) {
         return;
       }
-      const openDraft =
-        doseAdjustDraftRef.current?.rowId === rowId
-          ? doseAdjustDraftRef.current.params
-          : null;
-      if (openDraft === null) {
-        return;
-      }
       const nextParams = filterExerciseParamsForPrescriptionType(
-        openDraft,
+        attemptParams,
         targetRow.prescription_type,
       );
-      if (exerciseParamsEqual(nextParams, targetRow.params)) {
+      const storedFiltered = filterExerciseParamsForPrescriptionType(
+        { ...targetRow.params },
+        targetRow.prescription_type,
+      );
+      if (exerciseParamsEqual(nextParams, storedFiltered)) {
         return;
       }
       setRowMutationBusy(true);
@@ -237,16 +238,31 @@ export function ProgramBuilderPage() {
         });
         applyProgram(result.program);
         setDoseAdjustDraft((prev) => {
+          if (doseEditorRowIdRef.current !== rowId) {
+            return prev;
+          }
+          if (prev?.rowId !== rowId) {
+            return prev;
+          }
           const updated = result.program.rows.find((r) => r.id === rowId);
-          if (!updated || prev?.rowId !== rowId) {
+          if (!updated) {
+            return prev;
+          }
+          const serverFiltered = filterExerciseParamsForPrescriptionType(
+            { ...updated.params },
+            updated.prescription_type,
+          );
+          const prevDraftFiltered = filterExerciseParamsForPrescriptionType(
+            prev.params,
+            updated.prescription_type,
+          );
+          if (!exerciseParamsEqual(prevDraftFiltered, serverFiltered)) {
+            doseAdjustDraftRef.current = prev;
             return prev;
           }
           const synced = {
             rowId,
-            params: filterExerciseParamsForPrescriptionType(
-              { ...updated.params },
-              updated.prescription_type,
-            ),
+            params: serverFiltered,
           };
           doseAdjustDraftRef.current = synced;
           return synced;
@@ -256,6 +272,17 @@ export function ProgramBuilderPage() {
       }
     },
     [client],
+  );
+
+  const saveRowParamsIfChanged = useCallback(
+    async (rowId: string) => {
+      const snap = doseAdjustDraftRef.current;
+      if (snap?.rowId !== rowId) {
+        return;
+      }
+      await saveRowParamsSnapshot(rowId, snap.params);
+    },
+    [saveRowParamsSnapshot],
   );
 
   const scheduleDoseParamSave = useCallback(
@@ -599,7 +626,10 @@ export function ProgramBuilderPage() {
                           clearTimeout(prevTimer);
                           doseParamDebounceTimersRef.current.delete(prevId);
                         }
-                        await saveRowParamsIfChanged(prevId);
+                        const closingDraft = doseAdjustDraftRef.current;
+                        if (closingDraft?.rowId === prevId) {
+                          await saveRowParamsSnapshot(prevId, closingDraft.params);
+                        }
                         setDoseAdjustDraft(null);
                         doseAdjustDraftRef.current = null;
                       }
@@ -637,21 +667,43 @@ export function ProgramBuilderPage() {
                     const currentProgram = programRef.current;
                     const targetRow = currentProgram?.rows.find((r) => r.id === row.id);
                     const draftSnap = doseAdjustDraftRef.current;
+                    let paramsSnapshot: ExerciseParams | null = null;
                     if (targetRow && draftSnap?.rowId === row.id) {
                       const next = filterExerciseParamsForPrescriptionType(
                         draftSnap.params,
                         targetRow.prescription_type,
                       );
-                      if (!exerciseParamsEqual(next, targetRow.params)) {
-                        setRowMutationBusy(true);
-                        void autoSaveRef.current
-                          .runSave(`row-params:${row.id}`, () =>
-                            saveRowParamsIfChanged(row.id),
-                          )
-                          .finally(() => {
-                            setRowMutationBusy(false);
-                          });
+                      const storedFiltered = filterExerciseParamsForPrescriptionType(
+                        { ...targetRow.params },
+                        targetRow.prescription_type,
+                      );
+                      if (!exerciseParamsEqual(next, storedFiltered)) {
+                        paramsSnapshot = { ...draftSnap.params };
                       }
+                    }
+                    setDoseEditorRowId((current) =>
+                      current === row.id ? null : current,
+                    );
+                    if (doseEditorRowIdRef.current === row.id) {
+                      doseEditorRowIdRef.current = null;
+                    }
+                    if (paramsSnapshot !== null) {
+                      const snapshot = paramsSnapshot;
+                      setRowMutationBusy(true);
+                      void autoSaveRef.current
+                        .runSave(`row-params:${row.id}`, () =>
+                          saveRowParamsSnapshot(row.id, snapshot),
+                        )
+                        .finally(() => {
+                          setRowMutationBusy(false);
+                          setDoseAdjustDraft((prev) =>
+                            prev?.rowId === row.id ? null : prev,
+                          );
+                          if (doseAdjustDraftRef.current?.rowId === row.id) {
+                            doseAdjustDraftRef.current = null;
+                          }
+                        });
+                      return;
                     }
                     setDoseAdjustDraft((prev) =>
                       prev?.rowId === row.id ? null : prev,
@@ -659,13 +711,6 @@ export function ProgramBuilderPage() {
                     if (doseAdjustDraftRef.current?.rowId === row.id) {
                       doseAdjustDraftRef.current = null;
                     }
-                    setDoseEditorRowId((current) =>
-                      current === row.id ? null : current,
-                    );
-                    doseEditorRowIdRef.current =
-                      doseEditorRowIdRef.current === row.id
-                        ? null
-                        : doseEditorRowIdRef.current;
                   }}
                   onDoseDraftDiscard={() => {
                     const timer = doseParamDebounceTimersRef.current.get(row.id);
@@ -814,9 +859,9 @@ export function ProgramBuilderPage() {
             clearTimeout(t);
           }
           doseParamDebounceTimersRef.current.clear();
-          const openRowId = doseAdjustDraftRef.current?.rowId;
-          if (openRowId !== undefined) {
-            await saveRowParamsIfChanged(openRowId);
+          const leaveDraft = doseAdjustDraftRef.current;
+          if (leaveDraft !== null) {
+            await saveRowParamsSnapshot(leaveDraft.rowId, leaveDraft.params);
           }
           autoSave.markSaved();
           if (pendingLeaveTo) {
