@@ -1,6 +1,6 @@
 # Routines tab blank fix mutants (DIDI-1174)
 
-Branch head at generation: `6ca39733ee41e76e7c3201b4c55c38bb3adebac7`. Each mutant was applied alone, then the full `npm test` suite ran with cloud-agent `GIT_CONFIG_*` env vars unset. Tracked files were restored with `git checkout HEAD --` before the next row.
+Branch head at generation: `0982a2881e61830cde7340b20937c30bec204ff0`. Each mutant was applied alone, then the full `npm test` suite ran with cloud-agent `GIT_CONFIG_*` env vars unset. Tracked files were restored with `git checkout HEAD --` before the next row.
 
 Log: `/tmp/didi-1174-mutants.log`
 
