@@ -6,7 +6,10 @@ import { createElement, isValidElement } from "react";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PHYSIO_APP_SPA_ROUTE_NAMES, fillPhysioAppRoutePattern } from "../../src/app-routes.js";
+import {
+  PHYSIO_APP_SPA_ROUTE_NAMES,
+  fillPhysioAppRoutePattern,
+} from "../../src/app-routes.js";
 import { createPhysioAppRouteElements, PhysioApp } from "../../src/ui/App.js";
 import {
   ExerciseLibraryClient,
