@@ -25,6 +25,7 @@ import {
   fakeUiSessionView,
   stubPractitionerSessionClient,
 } from "./fake-practitioner-session-fixture.js";
+import { PractitionerSessionClient } from "../../src/ui/api/practitioner-session-client.js";
 
 afterEach(() => {
   cleanup();
@@ -134,5 +135,28 @@ describe("account chip and menu session identity (DIDI-1172)", () => {
     expect(shellNav).not.toMatch(/Kojo/);
     expect(navCopy).not.toMatch(/Kojo/);
     expect(a11yCopy).not.toMatch(/Kojo/);
+  });
+
+  it("shows no account name and never Kojo while session is loading", () => {
+    const pendingClient = {
+      getSession: vi.fn(() => new Promise(() => {})),
+    } as unknown as PractitionerSessionClient;
+    renderWithSession(pendingClient);
+    expect(screen.queryByText("Kojo")).not.toBeInTheDocument();
+    expect(screen.queryByText(FAKE_UI_DISPLAY_NAME)).not.toBeInTheDocument();
+    expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("");
+    expect(screen.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
+  });
+
+  it("shows no account name and never Kojo when getSession rejects", async () => {
+    const failingClient = {
+      getSession: vi.fn().mockRejectedValue(new Error("session unavailable")),
+    } as unknown as PractitionerSessionClient;
+    renderWithSession(failingClient);
+    await waitFor(() => {
+      expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("");
+    });
+    expect(screen.queryByText("Kojo")).not.toBeInTheDocument();
+    expect(screen.queryByText(FAKE_UI_DISPLAY_NAME)).not.toBeInTheDocument();
   });
 });

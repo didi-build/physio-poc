@@ -4,6 +4,7 @@ import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { InProgressRequestListItem } from "../../services/exercise-requests/types.js";
 import { DEV_PRACTITIONER_ID } from "../api/exercise-library-client.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { EXERCISE_REQUESTS_LIST_ERROR_MESSAGE } from "../copy/exercise-requests-states.js";
 import {
   AI_DRAFTING,
@@ -35,6 +36,7 @@ export function RequestsAndDraftsPage({
   onRequestsChanged,
 }: RequestsAndDraftsPageProps) {
   const client = useExerciseRequestsApi();
+  const currentPractitioner = useCurrentPractitionerIdentity();
   const [requests, setRequests] = useState<InProgressRequestListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -86,6 +88,8 @@ export function RequestsAndDraftsPage({
             const by = requestedByLabel({
               requestedBy: item.requested_by,
               requestedByEmail: item.requested_by_email,
+              currentPractitionerId: currentPractitioner.practitionerId,
+              currentDisplayName: currentPractitioner.displayName,
             });
             return (
               <li key={item.request_id} className="ex-requests-row">

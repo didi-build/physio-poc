@@ -1,5 +1,6 @@
 import { exerciseLibraryPractitionerPathHttpRouteCases } from "./exercise-library-practitioner-path-route-cases.js";
 import { exerciseMediaHttpRouteCases } from "../../src/http/routes/exercise-media.js";
+import { PRACTITIONER_SESSION_API_PATH } from "../../src/practitioner-session-api-paths.js";
 
 export type PractitionerPathRouteSample = {
   readonly ruleId: string;
@@ -34,6 +35,10 @@ export const PRACTITIONER_PATH_ROUTE_HANDLER_TABLES: readonly PractitionerPathRo
         exerciseMediaHttpRouteCases(versionId).filter((routeCase) =>
           routeCase.path.startsWith("/api/me/"),
         ),
+    },
+    {
+      ruleId: "practitioner-session",
+      routes: () => [{ method: "GET", path: PRACTITIONER_SESSION_API_PATH }],
     },
   ];
 
@@ -97,5 +102,6 @@ export function canonicalPractitionerPathRouteCaseKeys(
     }
     keys.push(routeCaseKey(routeCase));
   }
+  keys.push(routeCaseKey({ method: "GET", path: PRACTITIONER_SESSION_API_PATH }));
   return keys.sort();
 }

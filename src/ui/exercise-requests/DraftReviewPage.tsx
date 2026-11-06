@@ -8,6 +8,7 @@ import type {
 import { DEV_PRACTITIONER_ID } from "../api/exercise-library-client.js";
 import { useExerciseMediaApi } from "../api/exercise-media-context.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { useToast } from "../components/Toast.js";
 import {
   DESCRIPTION_FIELD,
@@ -58,6 +59,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const navigate = useNavigate();
   const requestsClient = useExerciseRequestsApi();
   const mediaClient = useExerciseMediaApi();
+  const currentPractitioner = useCurrentPractitionerIdentity();
   const { showToast } = useToast();
   const [view, setView] = useState<ExerciseRequestDraftView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,6 +147,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const by = requestedByLabel({
     requestedBy: view.requested_by,
     requestedByEmail: view.requested_by_email,
+    currentPractitionerId: currentPractitioner.practitionerId,
+    currentDisplayName: currentPractitioner.displayName,
   });
   const title = draft?.title ?? view.requested_name;
 

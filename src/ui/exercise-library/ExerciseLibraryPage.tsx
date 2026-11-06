@@ -11,6 +11,7 @@ import type {
 import type { DraftInProgressSummary } from "../../services/exercise-requests/types.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
+import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
@@ -121,6 +122,7 @@ export function ExerciseLibraryPage({
 }: ExerciseLibraryPageProps) {
   const client = useExerciseLibraryApi();
   const requestsClient = useExerciseRequestsApi();
+  const currentPractitioner = useCurrentPractitionerIdentity();
   const { refreshInProgressCount } = useExerciseRequestsRefresh();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -553,6 +555,8 @@ export function ExerciseLibraryPage({
                     const by = requestedByLabel({
                       requestedBy: draft.requested_by,
                       requestedByEmail: draft.requested_by_email,
+                      currentPractitionerId: currentPractitioner.practitionerId,
+                      currentDisplayName: currentPractitioner.displayName,
                     });
                     return (
                       <li key={draft.request_id} className="ex-similar-row">

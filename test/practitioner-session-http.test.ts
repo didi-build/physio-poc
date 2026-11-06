@@ -14,6 +14,19 @@ import { openMigratedDatabase } from "./helpers/exercise-sqlite-fixture.js";
 
 const BASE = "https://physio.test.example";
 
+function sessionDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  auth: FakeAuthPort,
+) {
+  return {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config: MCP_TEST_CONFIG,
+    mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+    auth,
+  };
+}
+
 describe("GET /api/me/session", () => {
   it("returns display_name and practitioner_id for the signed-in session", async () => {
     const storage = await openMigratedDatabase();
@@ -25,13 +38,7 @@ describe("GET /api/me/session", () => {
         displayName: "Coach Alpha",
       },
     });
-    const deps = {
-      sql: storage,
-      objects: new InMemoryObjectStorage(),
-      config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-      auth,
-    };
+    const deps = sessionDeps(storage, auth);
     const cookie = auth.createSessionCookieHeader();
     const response = await handleRequest(
       new Request(`${BASE}${PRACTITIONER_SESSION_API_PATH}`, {
@@ -40,16 +47,59 @@ describe("GET /api/me/session", () => {
       deps,
     );
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      display_name: string;
-      practitioner_id: string;
-    };
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["display_name", "practitioner_id"]);
     expect(body.display_name).toBe("Coach Alpha");
     expect(body.practitioner_id).toBe(practitionerId);
     expect(JSON.stringify(body)).not.toContain("@");
   });
 
-  it("returns 401 without a session cookie", async () => {
+  it("returns each practitioner only their own identity for distinct session cookies", async () => {
+    const storage = await openMigratedDatabase();
+    const idA = testOpaqueEntityId("session-http-pract-a");
+    const idB = testOpaqueEntityId("session-http-pract-b");
+    const authA = new FakeAuthPort({
+      practitioner: {
+        practitionerId: idA,
+        email: "alpha@example.com",
+        displayName: "Alpha Coach",
+      },
+      sessionCookieName: "physio.fake_session_a",
+    });
+    const authB = new FakeAuthPort({
+      practitioner: {
+        practitionerId: idB,
+        email: "beta@example.com",
+        displayName: "Beta Coach",
+      },
+      sessionCookieName: "physio.fake_session_b",
+    });
+    const responseA = await handleRequest(
+      new Request(`${BASE}${PRACTITIONER_SESSION_API_PATH}`, {
+        headers: { cookie: authA.createSessionCookieHeader() },
+      }),
+      sessionDeps(storage, authA),
+    );
+    const responseB = await handleRequest(
+      new Request(`${BASE}${PRACTITIONER_SESSION_API_PATH}`, {
+        headers: { cookie: authB.createSessionCookieHeader() },
+      }),
+      sessionDeps(storage, authB),
+    );
+    const bodyA = (await responseA.json()) as {
+      display_name: string;
+      practitioner_id: string;
+    };
+    const bodyB = (await responseB.json()) as {
+      display_name: string;
+      practitioner_id: string;
+    };
+    expect(bodyA).toEqual({ display_name: "Alpha Coach", practitioner_id: idA });
+    expect(bodyB).toEqual({ display_name: "Beta Coach", practitioner_id: idB });
+  });
+
+  it("returns 401 without a session cookie and sets Cache-Control no-store", async () => {
     const storage = await openMigratedDatabase();
     const auth = new FakeAuthPort({
       practitioner: {
@@ -58,19 +108,43 @@ describe("GET /api/me/session", () => {
         displayName: "Coach Beta",
       },
     });
-    const deps = {
-      sql: storage,
-      objects: new InMemoryObjectStorage(),
-      config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-      auth,
-    };
     const response = await handleRequest(
       new Request(`${BASE}${PRACTITIONER_SESSION_API_PATH}`),
-      deps,
+      sessionDeps(storage, auth),
     );
     expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("display_name");
+    expect(body).not.toHaveProperty("practitioner_id");
   });
+
+  it.each(["POST", "PUT", "DELETE"] as const)(
+    "returns 405 for %s with Cache-Control no-store and no identity in the body",
+    async (method) => {
+      const storage = await openMigratedDatabase();
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: testOpaqueEntityId(`session-http-${method}`),
+          email: "coach-m@example.com",
+          displayName: "Coach Method",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${PRACTITIONER_SESSION_API_PATH}`, {
+          method,
+          headers: { cookie: auth.createSessionCookieHeader() },
+        }),
+        sessionDeps(storage, auth),
+      );
+      expect(response.status).toBe(405);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(body).toEqual({ error: "method_not_allowed" });
+      expect(body).not.toHaveProperty("display_name");
+      expect(body).not.toHaveProperty("practitioner_id");
+    },
+  );
 
   it("rejects practitionerId query params with the same invalid_input guard as other /api/me routes", async () => {
     const storage = await openMigratedDatabase();
@@ -82,18 +156,11 @@ describe("GET /api/me/session", () => {
         displayName: "Coach Query",
       },
     });
-    const deps = {
-      sql: storage,
-      objects: new InMemoryObjectStorage(),
-      config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
-      auth,
-    };
     const cookie = auth.createSessionCookieHeader();
     const url = `${BASE}${PRACTITIONER_SESSION_API_PATH}${practitionerIdQuerySuffix(testOpaqueEntityId("other-practitioner"))}`;
     const response = await handleRequest(
       new Request(url, { headers: { cookie } }),
-      deps,
+      sessionDeps(storage, auth),
     );
     await expectInvalidInputQueryGuardResponse(response);
   });

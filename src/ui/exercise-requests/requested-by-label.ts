@@ -12,6 +12,7 @@ export function requestedByLabel(input: {
     if (name && name.length > 0) {
       return name;
     }
+    return "";
   }
   const email = input.requestedByEmail.trim();
   if (email.includes("@")) {

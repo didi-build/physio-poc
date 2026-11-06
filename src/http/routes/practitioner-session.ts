@@ -4,7 +4,10 @@ import { PRACTITIONER_SESSION_API_PATH } from "../../practitioner-session-api-pa
 import type { AppDependencies } from "../app.js";
 import { requirePractitioner } from "../require-practitioner.js";
 
-const JSON_HEADERS = { "content-type": "application/json" };
+export const PRACTITIONER_SESSION_JSON_HEADERS = {
+  "content-type": "application/json",
+  "cache-control": "no-store",
+} as const;
 
 type HandlePractitionerSessionOptions = {
   sessionPractitioner?: PractitionerSession | null;
@@ -17,6 +20,13 @@ function sessionView(session: PractitionerSession): PractitionerSessionView {
   };
 }
 
+function sessionJsonResponse(body: unknown, status: number): Response {
+  return Response.json(body, {
+    status,
+    headers: PRACTITIONER_SESSION_JSON_HEADERS,
+  });
+}
+
 export async function handlePractitionerSessionRequest(
   request: Request,
   _deps: AppDependencies,
@@ -27,21 +37,15 @@ export async function handlePractitionerSessionRequest(
     return null;
   }
   if (request.method !== "GET") {
-    return Response.json(
-      { error: "method_not_allowed" },
-      { status: 405, headers: JSON_HEADERS },
-    );
-  }
-  const practitionerId = requirePractitioner(options.sessionPractitioner);
-  if (practitionerId instanceof Response) {
-    return practitionerId;
+    return sessionJsonResponse({ error: "method_not_allowed" }, 405);
   }
   const session = options.sessionPractitioner;
   if (!session) {
-    return Response.json(
-      { error: "unauthorized" },
-      { status: 401, headers: JSON_HEADERS },
-    );
+    return sessionJsonResponse({ error: "unauthorized" }, 401);
   }
-  return Response.json(sessionView(session), { status: 200, headers: JSON_HEADERS });
+  const practitionerId = requirePractitioner(session);
+  if (practitionerId instanceof Response) {
+    return sessionJsonResponse({ error: "unauthorized" }, 401);
+  }
+  return sessionJsonResponse(sessionView(session), 200);
 }

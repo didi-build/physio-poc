@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { PractitionerSessionView } from "../../services/practitioner-session/types.js";
+import { DEV_PRACTITIONER_ID } from "./exercise-library-client.js";
 import {
   getPractitionerSessionClient,
   type PractitionerSessionClient,
@@ -57,4 +58,18 @@ export function usePractitionerSession(): PractitionerSessionContextValue {
     throw new Error("PractitionerSessionProvider is missing");
   }
   return ctx;
+}
+
+export function useCurrentPractitionerIdentity(): {
+  practitionerId: string;
+  displayName: string | undefined;
+} {
+  const state = usePractitionerSession();
+  if (state.status === "ready") {
+    return {
+      practitionerId: state.session.practitioner_id,
+      displayName: state.session.display_name,
+    };
+  }
+  return { practitionerId: DEV_PRACTITIONER_ID, displayName: undefined };
 }
