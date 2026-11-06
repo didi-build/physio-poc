@@ -10,7 +10,7 @@ Match approved MagicPath v12 dose box behavior in `design/reference/web-app/gene
 
 - **Stored doses:** `program_rows.params_json` holds the row snapshot (existing).
 - **Source for the note and reset target:** Builder view rows include `resolved_params` and `resolved_params_source` from `resolveExerciseParams` precedence (my exercise override, then my type defaults, then global), aligned to `src/domain/resolve-exercise-params.ts`.
-- **Edited detection:** `params` JSON differs from `resolved_params` after filtering to keys allowed for the row prescription type.
+- **Edited detection:** `params` JSON differs from `resolved_params` after filtering to keys allowed for the row prescription type. Resolution for `resolved_params` runs on each builder load so it always matches current exercise, type defaults, and globals.
 - **params_source on the wire:** When the row matches resolved defaults, `params_source` is the resolved precedence label. When edited, it is `null` so the client does not show two sources; the default line uses `resolved_params_source`.
 
 ## API

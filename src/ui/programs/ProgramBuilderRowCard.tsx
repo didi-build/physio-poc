@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { ProgramBuilderRow } from "../../services/programs/types.js";
 import {
   exerciseParamsEqual,
@@ -52,7 +51,12 @@ export type ProgramBuilderRowCardProps = {
   onNoteChange: (note: string) => void;
   onTypeChange: (type: PrescriptionType) => void;
   onSelectVersion: (versionNumber: number) => void;
-  onParamsChange: (params: ExerciseParams) => void;
+  doseDraft: ExerciseParams | undefined;
+  doseEditorOpen: boolean;
+  onDoseAdjustOpen: () => void;
+  onDoseDraftChange: (params: ExerciseParams) => void;
+  onDoseAdjustClose: () => void;
+  onDoseDraftDiscard: () => void;
   onParamsReset: () => void;
   actionsDisabled?: boolean;
 };
@@ -204,11 +208,15 @@ export function ProgramBuilderRowCard({
   onNoteChange,
   onTypeChange,
   onSelectVersion,
-  onParamsChange,
+  doseDraft,
+  doseEditorOpen,
+  onDoseAdjustOpen,
+  onDoseDraftChange,
+  onDoseAdjustClose,
+  onDoseDraftDiscard,
   onParamsReset,
   actionsDisabled = false,
 }: ProgramBuilderRowCardProps) {
-  const [adjustOpen, setAdjustOpen] = useState(false);
   const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
   const versionOptions = versionNumbersForRow(row);
@@ -217,11 +225,10 @@ export function ProgramBuilderRowCard({
   const doseEdited = !exerciseParamsEqual(row.params, row.resolved_params);
   const sourceForNote: ResolvedParamsSource =
     row.params_source !== null ? row.params_source : row.resolved_params_source;
-  const adjustLabel = `${adjustOpen ? DONE_ADJUSTING : ADJUST} ${title}`;
-  const doseBoxClass =
-    doseEdited || adjustOpen
-      ? "pg-row-dose-box pg-row-dose-box--edited"
-      : "pg-row-dose-box";
+  const adjustLabel = `${doseEditorOpen ? DONE_ADJUSTING : ADJUST} ${title}`;
+  const doseBoxClass = doseEdited
+    ? "pg-row-dose-box pg-row-dose-box--edited"
+    : "pg-row-dose-box";
 
   return (
     <article
@@ -341,14 +348,18 @@ export function ProgramBuilderRowCard({
             <button
               type="button"
               className="pg-row-dose-adjust"
-              aria-expanded={adjustOpen}
+              aria-expanded={doseEditorOpen}
               aria-label={adjustLabel}
               disabled={actionsDisabled}
               onClick={() => {
-                setAdjustOpen((open) => !open);
+                if (!doseEditorOpen) {
+                  onDoseAdjustOpen();
+                } else {
+                  onDoseAdjustClose();
+                }
               }}
             >
-              {!adjustOpen ? (
+              {!doseEditorOpen ? (
                 <>
                   <RowSlidersIcon />
                   {ADJUST}
@@ -370,7 +381,7 @@ export function ProgramBuilderRowCard({
                   className="pg-row-dose-reset"
                   disabled={actionsDisabled}
                   onClick={() => {
-                    setAdjustOpen(false);
+                    onDoseDraftDiscard();
                     onParamsReset();
                   }}
                 >
@@ -398,15 +409,17 @@ export function ProgramBuilderRowCard({
             </p>
           ) : null}
         </div>
-        {adjustOpen ? (
+        {doseEditorOpen ? (
           <div className="pg-row-dose-editor-wrap">
             <ProgramRowParamEditor
               rowId={row.id}
               type={row.prescription_type}
-              params={row.params}
-              onDone={(next) => {
-                setAdjustOpen(false);
-                onParamsChange(next);
+              params={doseDraft ?? row.params}
+              onChange={(next) => {
+                onDoseDraftChange(next);
+              }}
+              onClose={() => {
+                onDoseAdjustClose();
               }}
             />
           </div>

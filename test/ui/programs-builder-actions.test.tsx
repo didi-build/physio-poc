@@ -64,7 +64,7 @@ const LIST_ITEM: ProgramListItem = {
 };
 
 function exerciseRow(id: string, title: string, position: number): ProgramBuilderRow {
-  const params = { reps: 10, per_day: 2 };
+  const params = { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 };
   return {
     id,
     position,
@@ -301,7 +301,7 @@ describe("Program builder row card layout (integration, jsdom)", () => {
       exercise_version_id: null,
       pinned_version_number: null,
       exercise_version_choices: [],
-      resolved_params: { reps: 10, per_day: 2 },
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
       resolved_params_source: "global_defaults",
     };
     const stretchMove: ProgramBuilderRow = {
@@ -414,9 +414,9 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     const baseRow = exerciseRow("row-stg", "Strength move", 0);
     const afterSave: ProgramBuilderRow = {
       ...baseRow,
-      params: { reps: 12, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      params: { reps: 12, hold_s: 2, sets: 3, days_per_week: 3 },
       params_source: null,
-      resolved_params: { reps: 10, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
       resolved_params_source: "global_defaults",
     };
     const updateRow = vi.fn().mockImplementation(async () => ({
@@ -437,10 +437,8 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     await userEvent.click(
       within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
     );
-    const inputs = within(card).getAllByRole("textbox");
-    const repsField = inputs[0]!;
-    await userEvent.clear(repsField);
-    await userEvent.type(repsField, "12");
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
     await userEvent.click(within(card).getByRole("button", { name: DONE_ADJUSTING }));
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
@@ -457,12 +455,163 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     expect(doseBox).toHaveClass("pg-row-dose-box--edited");
   });
 
+  it("persists reps change when closing with top Done before debounce", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    const afterSave: ProgramBuilderRow = {
+      ...baseRow,
+      params: { reps: 11, hold_s: 2, sets: 3, days_per_week: 3 },
+      params_source: null,
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+      resolved_params_source: "global_defaults",
+    };
+    const updateRow = vi.fn().mockImplementation(async () => ({
+      program: builderView({
+        rows: [afterSave],
+        exercise_count: 1,
+      }),
+    }));
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: `${DONE_ADJUSTING} Strength move`,
+      }),
+    );
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ reps: 11 }),
+      });
+    });
+  });
+
+  it("debounced auto-save PATCHes row params while editor stays open", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    const afterSave: ProgramBuilderRow = {
+      ...baseRow,
+      params: { reps: 11, hold_s: 2, sets: 3, days_per_week: 3 },
+      params_source: null,
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+      resolved_params_source: "global_defaults",
+    };
+    const updateRow = vi.fn().mockImplementation(async () => ({
+      program: builderView({
+        rows: [afterSave],
+        exercise_count: 1,
+      }),
+    }));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ reps: 11 }),
+      });
+    });
+    vi.useRealTimers();
+  });
+
+  it("keeps dose box grey while Adjust is open with no edits", async () => {
+    const row = exerciseRow("row-stg", "Strength move", 0);
+    const updateRow = vi.fn();
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [row], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    const doseText = within(card)
+      .getByText(/10 reps/)
+      .closest(".pg-row-dose-box");
+    expect(doseText).not.toHaveClass("pg-row-dose-box--edited");
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    expect(doseText).not.toHaveClass("pg-row-dose-box--edited");
+    await new Promise((r) => {
+      setTimeout(r, 150);
+    });
+    expect(updateRow).not.toHaveBeenCalled();
+  });
+
+  it("partial stored params do not grow with defaults on no-op Adjust open and close", async () => {
+    const partialStretch: ProgramBuilderRow = {
+      id: "row-st",
+      position: 0,
+      kind: "exercise",
+      exercise_id: "ex-1",
+      exercise_version_id: "v1",
+      exercise_request_id: null,
+      pinned_version_number: 1,
+      prescription_type: "stretching",
+      params: { hold_s: 30, per_day: 2 },
+      params_source: "global_defaults",
+      resolved_params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      resolved_params_source: "global_defaults",
+      text_snapshot: { title: "Stretch move" },
+      note: null,
+      library_update: null,
+      exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
+    };
+    const updateRow = vi.fn();
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(
+            builderView({ rows: [partialStretch], exercise_count: 1 }),
+          ),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Stretch move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Stretch move` }),
+    );
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${DONE_ADJUSTING} Stretch move` }),
+    );
+    await new Promise((r) => {
+      setTimeout(r, 150);
+    });
+    expect(updateRow).not.toHaveBeenCalled();
+  });
+
   it("Reset to default PATCHes resolved params and clears edited chrome", async () => {
     const edited: ProgramBuilderRow = {
       ...exerciseRow("row-stg", "Strength move", 0),
-      params: { reps: 12, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      params: { reps: 12, hold_s: 2, sets: 3, days_per_week: 3 },
       params_source: null,
-      resolved_params: { reps: 10, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
       resolved_params_source: "global_defaults",
     };
     const resetPayload = { ...edited.resolved_params };
@@ -617,7 +766,7 @@ describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
       pinned_version_number: null,
       prescription_type: "concentric",
       exercise_version_choices: [{ exercise_version_id: "v-ph", version_number: 1 }],
-      resolved_params: { reps: 10, per_day: 2 },
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
       resolved_params_source: "global_defaults",
     };
     renderBuilder(
