@@ -1,6 +1,6 @@
 # DIDI-1167 mutation table (program builder dose box)
 
-Verified at branch head `106ad99b4b5c7364c7295d6dc14078744cbc8829` (full `npm test` per mutant, then restore sources from `.bak` copies).
+Verified at branch head `5512332d76a52c64301c5433b3d3b55cf397fee9` (full `npm test` per mutant, then restore the original source files).
 
 | Id  | Mutant                                                                                               | Killing test(s)                                                                                                                                                                     | Result |
 | --- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
