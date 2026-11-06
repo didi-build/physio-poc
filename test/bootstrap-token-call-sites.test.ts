@@ -229,6 +229,22 @@ function seedBootstrapInitFixture(dir: string, realGit: string) {
   return gitEnv;
 }
 
+function withoutInheritedGitConfigEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const cleaned: Record<string, string | undefined> = { ...env };
+  for (const key of Object.keys(cleaned)) {
+    if (
+      key === "GIT_CONFIG_COUNT" ||
+      key.startsWith("GIT_CONFIG_KEY_") ||
+      key.startsWith("GIT_CONFIG_VALUE_")
+    ) {
+      delete cleaned[key];
+    }
+  }
+  return cleaned;
+}
+
 function runBootstrapInitWithStubs(
   dir: string,
   realGit: string,
@@ -244,7 +260,7 @@ function runBootstrapInitWithStubs(
     cwd: dir,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...withoutInheritedGitConfigEnv(process.env),
       ...hermeticEnv,
       PATH: pathPrefix,
       BOOTSTRAP_STUB_LOG: logPath,

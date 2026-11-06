@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import {
+  clearUiPractitionerSessionStub,
+  installDefaultUiPractitionerSessionStub,
+} from "./fake-practitioner-session-fixture.js";
 
 function ensureMatchMediaStub() {
   if (typeof window.matchMedia !== "function") {
@@ -57,3 +61,11 @@ export function mockMinWidth1024(initialMatches: boolean) {
 }
 
 ensureMatchMediaStub();
+
+beforeEach(() => {
+  installDefaultUiPractitionerSessionStub();
+});
+
+afterEach(() => {
+  clearUiPractitionerSessionStub();
+});

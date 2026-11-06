@@ -100,7 +100,7 @@ function expectLibraryErrorChrome(pageHeading: string) {
     screen.getAllByRole("link", { name: NAV_TAB_EXERCISES }).length,
   ).toBeGreaterThan(0);
   expect(screen.getByTestId("shell-brand-mark")).toHaveTextContent("D");
-  expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("K");
+  expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("T");
 }
 
 function assertListLoadErrorCopyMine(): void {
