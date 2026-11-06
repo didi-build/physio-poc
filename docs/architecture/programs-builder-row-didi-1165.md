@@ -14,9 +14,9 @@ Row data comes from `ProgramBuilderView.rows` (`ProgramBuilderRow`). Optional he
 - Category line with icon: derived from `prescription_type` and `TYPE_LABELS` (same labels as v12 `TYPE_LABEL` for those types).
 - Badges: `library_update` drives a teal library-available line when present; `kind === "placeholder"` shows the spec string "Pending review" as in v12.
 
-## Test-only reorder controls
+## Row reorder (keyboard)
 
-Row reorder remains implemented in `ProgramBuilderPage` via `reorder` and `client.reorderRows`, but visible up and down buttons are removed per DIDI-1165 and DIDI-1152. Vitest loads the UI with `import.meta.env.MODE === "test"`; in that mode the row card renders hidden `data-testid` buttons wired to the same `onMoveUp` / `onMoveDown` callbacks so existing integration tests for autosave and `reorderRows` stay valid without exposing fake controls in production.
+Row reorder stays implemented in `ProgramBuilderPage` via `reorder` and `client.reorderRows`. Each row is an `article` with `tabIndex={0}` and ArrowUp and ArrowDown keyboard handling that calls `onMoveUp` and `onMoveDown`, same pattern as pre v12 main. Visible up and down buttons stay removed per DIDI-1165 and DIDI-1152.
 
 ## Related
 

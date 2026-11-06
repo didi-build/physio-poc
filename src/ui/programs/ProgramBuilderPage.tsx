@@ -346,11 +346,9 @@ export function ProgramBuilderPage() {
           ))}
           <div className="pg-exercises-heading-row">
             <h2 className="pg-exercises-heading">{EXERCISES_SECTION}</h2>
-            {program.rows.length > 0 ? (
-              <p className="pg-exercises-total">
-                {exercisesSectionTotalCount(program.rows.length)}
-              </p>
-            ) : null}
+            <p className="pg-exercises-total">
+              {exercisesSectionTotalCount(program.rows.length)}
+            </p>
           </div>
           <p className="pg-rows-hint">
             <svg

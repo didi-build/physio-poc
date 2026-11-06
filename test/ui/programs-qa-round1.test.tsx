@@ -515,7 +515,8 @@ describe("Programs builder save UX (QA round 1)", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalled();
     });

@@ -189,7 +189,8 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledTimes(1);
     });
@@ -550,10 +551,6 @@ describe("Programs builder dev verification", () => {
       within(rowCard).getByRole("combobox", { name: "Version" }),
     ).toBeInTheDocument();
     expect(rowCard.querySelector(".pg-row-grip svg")).toBeTruthy();
-    const up = within(rowCard).getByTestId("pg-row-test-move-up");
-    const down = within(rowCard).getByTestId("pg-row-test-move-down");
-    expect(up).toBeTruthy();
-    expect(down).toBeTruthy();
     expect(
       within(rowCard)
         .getByRole("button", { name: "Duplicate Alpha move" })
@@ -774,7 +771,8 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => expect(reorderRows).toHaveBeenCalled());
     const nameField = screen.getByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");

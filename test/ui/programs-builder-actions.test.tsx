@@ -14,10 +14,19 @@ import {
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
   ADD_EXERCISE,
+  BUILDER_ROWS_HINT,
+  DUPLICATE_CONTROL_TITLE,
+  PENDING_REVIEW_BADGE,
+  ROW_NOTES_PLACEHOLDER,
   duplicatedRowToast,
   duplicateRowAriaLabel,
+  exercisesSectionTotalCount,
   removeRowAriaLabel,
+  rowNotesSrOnlyLabel,
+  libraryVersionAvailableRowBadge,
+  versionOfRowLabel,
 } from "../../src/ui/copy/programs.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 import type {
   ProgramBuilderRow,
   ProgramBuilderView,
@@ -174,7 +183,8 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -204,7 +214,8 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const betaCard = await screen.findByRole("article", { name: /Beta move/i });
-    await userEvent.click(within(betaCard).getByTestId("pg-row-test-move-up"));
+    betaCard.focus();
+    await userEvent.keyboard("{ArrowUp}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -351,6 +362,106 @@ describe("Program builder row card layout (integration, jsdom)", () => {
       .closest(".pg-row-dose-box");
     expect(doseBox).toBeTruthy();
     expect(screen.queryByText(/Adjust/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
+  it("shows exercises heading total including 0 total", async () => {
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView()),
+      }),
+    );
+    expect(await screen.findByText(exercisesSectionTotalCount(0))).toBeInTheDocument();
+  });
+
+  it("shows reorder hint with grip icon", async () => {
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView()),
+      }),
+    );
+    expect(await screen.findByText(BUILDER_ROWS_HINT)).toBeInTheDocument();
+    const hint = screen.getByText(BUILDER_ROWS_HINT).closest(".pg-rows-hint");
+    expect(hint?.querySelector(".pg-rows-hint-grip")).toBeTruthy();
+  });
+
+  it("shows Pending review, Library badge from data, TYPE_LABELS category, notes input, Duplicate title", async () => {
+    const withLibrary: ProgramBuilderRow = {
+      ...exerciseRow("row-lib", "Library row", 0),
+      library_update: {
+        row_id: "row-lib",
+        exercise_id: "ex-1",
+        exercise_title: "Library row",
+        pinned_version_number: 1,
+        latest_version_number: 2,
+      },
+    };
+    const noLibrary = exerciseRow("row-plain", "Plain move", 1);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(
+            builderView({ rows: [withLibrary, noLibrary], exercise_count: 2 }),
+          ),
+      }),
+    );
+    expect(await screen.findByText(exercisesSectionTotalCount(2))).toBeInTheDocument();
+    const libCard = screen.getByRole("article", { name: /Library row/i });
+    expect(within(libCard).queryByText(PENDING_REVIEW_BADGE)).not.toBeInTheDocument();
+    expect(
+      within(libCard).getByText(libraryVersionAvailableRowBadge(2)),
+    ).toBeInTheDocument();
+    expect(
+      within(libCard).getByText(TYPE_LABELS.concentric, {
+        selector: ".pg-row-cat-label",
+      }),
+    ).toBeInTheDocument();
+    const libDup = within(libCard).getByRole("button", {
+      name: duplicateRowAriaLabel("Library row"),
+    });
+    expect(libDup).toHaveAttribute("title", DUPLICATE_CONTROL_TITLE);
+    const libNotes = within(libCard).getByRole("textbox", {
+      name: rowNotesSrOnlyLabel("Library row"),
+    });
+    expect(libNotes.tagName).toBe("INPUT");
+    expect(libNotes).toHaveAttribute("placeholder", ROW_NOTES_PLACEHOLDER);
+    expect(libCard.querySelector("textarea")).toBeNull();
+
+    const plainCard = screen.getByRole("article", { name: /Plain move/i });
+    expect(
+      within(plainCard).queryByText(/Library v\d+ available/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Pending review and dose box on placeholder rows", async () => {
+    const row: ProgramBuilderRow = {
+      ...exerciseRow("ph-1", "Bridge marching", 0),
+      kind: "placeholder",
+      exercise_id: null,
+      exercise_version_id: null,
+      pinned_version_number: null,
+      prescription_type: "concentric",
+      exercise_version_choices: [],
+    };
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Bridge marching/i });
+    expect(within(card).getByText(PENDING_REVIEW_BADGE)).toBeInTheDocument();
+    expect(
+      within(card)
+        .getByText(/10 reps/)
+        .closest(".pg-row-dose-box"),
+    ).toBeTruthy();
+    expect(
+      within(card).getByRole("radiogroup", {
+        name: versionOfRowLabel("Bridge marching"),
+      }),
+    ).toBeInTheDocument();
   });
 });
 

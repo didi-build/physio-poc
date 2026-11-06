@@ -24,13 +24,6 @@ import {
 
 const STRENGTH_TYPES = prescriptionTypesForCategory("strengthening");
 
-function programBuilderTestReorderEnabled(): boolean {
-  return (
-    (globalThis as { __physioProgramBuilderTestReorder?: boolean })
-      .__physioProgramBuilderTestReorder === true
-  );
-}
-
 export type ProgramBuilderRowCardProps = {
   row: ProgramBuilderRow;
   index: number;
@@ -136,9 +129,6 @@ function rowStripeClass(row: ProgramBuilderRow): string {
 }
 
 function rowCategoryKind(row: ProgramBuilderRow): "stretch" | "strength" {
-  if (row.kind === "placeholder") {
-    return "strength";
-  }
   return row.prescription_type === "stretching" ? "stretch" : "strength";
 }
 
@@ -161,10 +151,26 @@ export function ProgramBuilderRowCard({
   const versionOptions = versionNumbersForRow(row);
   const selectedVersionNumber = row.pinned_version_number ?? versionOptions[0] ?? 1;
   const kind = rowCategoryKind(row);
-  const testReorder = programBuilderTestReorderEnabled();
 
   return (
-    <article className={`pg-row ${rowStripeClass(row)}`} aria-labelledby={titleId}>
+    <article
+      className={`pg-row ${rowStripeClass(row)}`}
+      aria-labelledby={titleId}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (actionsDisabled) {
+          return;
+        }
+        if (event.key === "ArrowUp" && index > 0) {
+          event.preventDefault();
+          onMoveUp();
+        }
+        if (event.key === "ArrowDown" && index < total - 1) {
+          event.preventDefault();
+          onMoveDown();
+        }
+      }}
+    >
       <div className="pg-row-header">
         <span className="pg-row-grip" aria-hidden>
           <RowGripIcon />
@@ -179,21 +185,20 @@ export function ProgramBuilderRowCard({
                 {PENDING_REVIEW_BADGE}
               </span>
             </p>
-          ) : (
-            <p
-              className={`pg-row-meta-line pg-row-cat-line ${
-                kind === "stretch"
-                  ? "pg-row-cat-line--stretch"
-                  : "pg-row-cat-line--strength"
-              }`}
-            >
-              {kind === "stretch" ? <StretchCategoryIcon /> : <StrengthCategoryIcon />}
-              <span className="pg-row-cat-label">
-                {TYPE_LABELS[row.prescription_type]}
-              </span>
-            </p>
-          )}
-          {row.library_update !== null && row.kind === "exercise" ? (
+          ) : null}
+          <p
+            className={`pg-row-meta-line pg-row-cat-line ${
+              kind === "stretch"
+                ? "pg-row-cat-line--stretch"
+                : "pg-row-cat-line--strength"
+            }`}
+          >
+            {kind === "stretch" ? <StretchCategoryIcon /> : <StrengthCategoryIcon />}
+            <span className="pg-row-cat-label">
+              {TYPE_LABELS[row.prescription_type]}
+            </span>
+          </p>
+          {row.library_update !== null ? (
             <p className="pg-row-meta-line">
               <span className="pg-row-badge pg-row-badge--teal">
                 {libraryVersionAvailableRowBadge(
@@ -201,9 +206,6 @@ export function ProgramBuilderRowCard({
                 )}
               </span>
             </p>
-          ) : null}
-          {row.kind === "placeholder" ? (
-            <p className="pg-row-placeholder-note">{PLACEHOLDER_ROW_NOTE}</p>
           ) : null}
         </div>
         <div className="pg-row-header-actions">
@@ -228,79 +230,62 @@ export function ProgramBuilderRowCard({
           </button>
         </div>
       </div>
-      {testReorder ? (
-        <div className="pg-row-test-reorder">
-          <button
-            type="button"
-            data-testid="pg-row-test-move-up"
-            aria-hidden
-            tabIndex={-1}
-            disabled={actionsDisabled || index === 0}
-            onClick={onMoveUp}
-          />
-          <button
-            type="button"
-            data-testid="pg-row-test-move-down"
-            aria-hidden
-            tabIndex={-1}
-            disabled={actionsDisabled || index >= total - 1}
-            onClick={onMoveDown}
-          />
-        </div>
+      {row.kind === "placeholder" ? (
+        <p className="pg-row-placeholder-note pg-row-placeholder-note--below-header">
+          {PLACEHOLDER_ROW_NOTE}
+        </p>
       ) : null}
-      {row.kind === "exercise" ? (
-        <>
-          {row.prescription_type !== "stretching" ? (
-            <div
-              className="pg-row-type-segmented"
-              role="radiogroup"
-              aria-label={versionOfRowLabel(title)}
-            >
-              {STRENGTH_TYPES.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  role="radio"
-                  aria-checked={row.prescription_type === type}
-                  className={
-                    row.prescription_type === type
-                      ? "pg-row-type-segment pg-row-type-segment--active"
-                      : "pg-row-type-segment"
-                  }
-                  disabled={actionsDisabled}
-                  onClick={() => {
-                    onTypeChange(type);
-                  }}
-                >
-                  {TYPE_LABELS[type]}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <div className="pg-row-dose-box" aria-labelledby={titleId}>
-            <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
+      <>
+        {row.prescription_type !== "stretching" ? (
+          <div
+            className="pg-row-type-segmented"
+            role="radiogroup"
+            aria-label={versionOfRowLabel(title)}
+          >
+            {STRENGTH_TYPES.map((type) => (
+              <button
+                key={type}
+                type="button"
+                role="radio"
+                aria-checked={row.prescription_type === type}
+                className={
+                  row.prescription_type === type
+                    ? "pg-row-type-segment pg-row-type-segment--active"
+                    : "pg-row-type-segment"
+                }
+                disabled={actionsDisabled}
+                onClick={() => {
+                  onTypeChange(type);
+                }}
+              >
+                {TYPE_LABELS[type]}
+              </button>
+            ))}
           </div>
-          {versionOptions.length > 0 ? (
-            <ProgramRowVersionPicker
-              rowName={title}
-              selectedVersionNumber={selectedVersionNumber}
-              versionOptions={versionOptions}
-              onSelectVersion={(versionNumber) => {
-                if (actionsDisabled) {
-                  return;
-                }
-                if (
-                  exerciseVersionIdForNumber(row, versionNumber) ===
-                  row.exercise_version_id
-                ) {
-                  return;
-                }
-                onSelectVersion(versionNumber);
-              }}
-            />
-          ) : null}
-        </>
-      ) : null}
+        ) : null}
+        <div className="pg-row-dose-box">
+          <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
+        </div>
+        {row.kind === "exercise" && versionOptions.length > 0 ? (
+          <ProgramRowVersionPicker
+            rowName={title}
+            selectedVersionNumber={selectedVersionNumber}
+            versionOptions={versionOptions}
+            onSelectVersion={(versionNumber) => {
+              if (actionsDisabled) {
+                return;
+              }
+              if (
+                exerciseVersionIdForNumber(row, versionNumber) ===
+                row.exercise_version_id
+              ) {
+                return;
+              }
+              onSelectVersion(versionNumber);
+            }}
+          />
+        ) : null}
+      </>
       <label className="pg-row-notes">
         <span className="sr-only">{rowNotesSrOnlyLabel(title)}</span>
         <input
