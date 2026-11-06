@@ -16,6 +16,7 @@ import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import { handlePractitionerSessionRequest } from "./routes/practitioner-session.js";
 import { handleRoutinesRequest } from "./routes/routines.js";
 import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
@@ -168,6 +169,14 @@ export async function handleRequest(
         }
       }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const practitionerSessionResponse = await handlePractitionerSessionRequest(
+        request,
+        deps,
+        { sessionPractitioner },
+      );
+      if (practitionerSessionResponse) {
+        return practitionerSessionResponse;
+      }
       const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
         sessionPractitioner,
       });

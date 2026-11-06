@@ -26,6 +26,11 @@ import {
   ExerciseRequestsClient,
   setExerciseRequestsClientForTests,
 } from "../../src/ui/api/exercise-requests-client.js";
+import {
+  FAKE_UI_ACCOUNT_SIGNED_IN_LINE,
+  FAKE_UI_DISPLAY_NAME,
+  stubPractitionerSessionClient,
+} from "./fake-practitioner-session-fixture.js";
 import { SEARCH_PROGRAMS_LABEL } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
@@ -88,7 +93,11 @@ function stubRequestsClient(inProgressCount = 0): ExerciseRequestsClient {
   } as unknown as ExerciseRequestsClient;
 }
 
-function renderApp(initialEntry: string, requestsReviewCount = 0) {
+function renderApp(
+  initialEntry: string,
+  requestsReviewCount = 0,
+  sessionClient = stubPractitionerSessionClient(),
+) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
@@ -96,6 +105,7 @@ function renderApp(initialEntry: string, requestsReviewCount = 0) {
         exerciseLibraryClient={stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient(requestsReviewCount)}
         programsClient={stubProgramsClient()}
+        practitionerSessionClient={sessionClient}
       />
       <LocationProbe />
     </MemoryRouter>,
@@ -457,9 +467,13 @@ describe("app shell nav (integration)", () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
 
+    await waitFor(() => {
+      expect(screen.getByText(FAKE_UI_DISPLAY_NAME)).toBeInTheDocument();
+    });
+
     await user.click(screen.getByRole("button", { name: "Account menu" }));
 
-    expect(screen.getByText("Signed in as Kojo, physiotherapist")).toBeInTheDocument();
+    expect(screen.getByText(FAKE_UI_ACCOUNT_SIGNED_IN_LINE)).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /My defaults/ })).toHaveTextContent(
       "Types, links",
     );

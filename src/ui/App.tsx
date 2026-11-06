@@ -27,6 +27,8 @@ import {
 } from "./programs/program-leave-guard.js";
 import { AppShell } from "./layout/AppShell.js";
 import { createPhysioAppRouteObjects } from "./physio-app-match-routes.js";
+import type { PractitionerSessionClient } from "./api/practitioner-session-client.js";
+import { PractitionerSessionProvider } from "./api/practitioner-session-context.js";
 import { useExerciseRequestsRefresh } from "./api/exercise-requests-refresh-context.js";
 
 export type PhysioAppProps = {
@@ -36,6 +38,7 @@ export type PhysioAppProps = {
   exerciseMediaClient?: ExerciseMediaClient;
   myDefaultsClient?: MyDefaultsClient;
   programsClient?: ProgramsClient;
+  practitionerSessionClient?: PractitionerSessionClient;
 };
 
 function ExerciseSearchRoute() {
@@ -105,6 +108,7 @@ export function PhysioApp({
   exerciseMediaClient,
   myDefaultsClient,
   programsClient,
+  practitionerSessionClient,
 }: PhysioAppProps) {
   const [requestsReviewCount, setRequestsReviewCount] = useState(
     requestsReviewCountProp ?? 0,
@@ -116,13 +120,15 @@ export function PhysioApp({
         <ExerciseMediaApiProvider client={exerciseMediaClient}>
           <MyDefaultsApiProvider client={myDefaultsClient}>
             <ProgramsApiProvider client={programsClient}>
-              <ExerciseRequestsRefreshProvider
-                onCount={(count) => {
-                  setRequestsReviewCount(count);
-                }}
-              >
-                <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
-              </ExerciseRequestsRefreshProvider>
+              <PractitionerSessionProvider client={practitionerSessionClient}>
+                <ExerciseRequestsRefreshProvider
+                  onCount={(count) => {
+                    setRequestsReviewCount(count);
+                  }}
+                >
+                  <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
+                </ExerciseRequestsRefreshProvider>
+              </PractitionerSessionProvider>
             </ProgramsApiProvider>
           </MyDefaultsApiProvider>
         </ExerciseMediaApiProvider>

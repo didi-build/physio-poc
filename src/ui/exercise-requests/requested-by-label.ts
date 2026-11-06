@@ -1,14 +1,17 @@
-import { ACCOUNT_DISPLAY_NAME } from "../copy/a11y.js";
 import { DEV_PRACTITIONER_ID } from "../api/exercise-library-client.js";
 
 export function requestedByLabel(input: {
   requestedBy: string;
   requestedByEmail: string;
   currentPractitionerId?: string;
+  currentDisplayName?: string;
 }): string {
   const current = input.currentPractitionerId ?? DEV_PRACTITIONER_ID;
   if (input.requestedBy === current) {
-    return ACCOUNT_DISPLAY_NAME;
+    const name = input.currentDisplayName?.trim();
+    if (name && name.length > 0) {
+      return name;
+    }
   }
   const email = input.requestedByEmail.trim();
   if (email.includes("@")) {

@@ -6,7 +6,11 @@ export const NAV_TAB_PROGRAMS = "Programs";
 export const NAV_TAB_REQUESTS_DESKTOP = "Requests and drafts";
 export const NAV_TAB_REQUESTS_PHONE = "Requests";
 
-export const ACCOUNT_SIGNED_IN_LINE = "Signed in as Kojo, physiotherapist";
+export const ACCOUNT_ROLE_LABEL = "physiotherapist";
+
+export function accountSignedInLine(displayName: string): string {
+  return `Signed in as ${displayName}, ${ACCOUNT_ROLE_LABEL}`;
+}
 export const ACCOUNT_MY_DEFAULTS = "My defaults";
 export const ACCOUNT_MY_DEFAULTS_DETAIL = "Types, links";
 export const ACCOUNT_SIGN_OUT = "Sign out";

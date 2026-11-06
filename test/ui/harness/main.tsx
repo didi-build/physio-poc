@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { PhysioApp } from "../../../src/ui/App.js";
 import { AppShell } from "../../../src/ui/layout/AppShell.js";
+import { PractitionerSessionProvider } from "../../../src/ui/api/practitioner-session-context.js";
+import { stubPractitionerSessionClient } from "../fake-practitioner-session-fixture.js";
 import { RequestSubmittedPanel } from "../../../src/ui/exercise-requests/RequestForm.js";
 import "../../../src/ui/styles/exercise-library.css";
 import "../../../src/ui/styles/my-defaults.css";
@@ -31,14 +33,17 @@ function RequestSubmittedScreen() {
 }
 
 function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
+  const sessionClient = stubPractitionerSessionClient();
   if (fixtureId === "request-submitted") {
     return (
       <MemoryRouter initialEntries={["/exercises/search?q=Heel%20slide"]}>
-        <Routes>
-          <Route element={<AppShell requestsReviewCount={1} />}>
-            <Route path="/exercises/search" element={<RequestSubmittedScreen />} />
-          </Route>
-        </Routes>
+        <PractitionerSessionProvider client={sessionClient}>
+          <Routes>
+            <Route element={<AppShell requestsReviewCount={1} />}>
+              <Route path="/exercises/search" element={<RequestSubmittedScreen />} />
+            </Route>
+          </Routes>
+        </PractitionerSessionProvider>
       </MemoryRouter>
     );
   }
@@ -51,6 +56,7 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
         exerciseRequestsClient={fixture.requests}
         exerciseMediaClient={fixture.media}
         programsClient={programsClientForHarness()}
+        practitionerSessionClient={sessionClient}
       />
     </MemoryRouter>
   );

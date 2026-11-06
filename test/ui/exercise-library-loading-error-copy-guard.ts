@@ -1,4 +1,3 @@
-import { ACCOUNT_DISPLAY_NAME } from "../../src/ui/copy/a11y.js";
 import {
   BACK_LIBRARY,
   EXERCISE_DETAILS,
@@ -18,7 +17,6 @@ import {
   ACCOUNT_MY_DEFAULTS,
   ACCOUNT_MY_DEFAULTS_DETAIL,
   ACCOUNT_SIGN_OUT,
-  ACCOUNT_SIGNED_IN_LINE,
   NAV_TAB_EXERCISES,
   NAV_TAB_PROGRAMS,
   NAV_TAB_REQUESTS_DESKTOP,
@@ -26,6 +24,11 @@ import {
   NAV_TAB_ROUTINES,
   TOAST_UNDO,
 } from "../../src/ui/copy/nav.js";
+import {
+  FAKE_UI_ACCOUNT_SIGNED_IN_LINE,
+  FAKE_UI_AVATAR_INITIAL,
+  FAKE_UI_DISPLAY_NAME,
+} from "./fake-practitioner-session-fixture.js";
 import {
   DEFAULT_FILTERS,
   filterSummary,
@@ -54,8 +57,8 @@ function physioShellAllowlist(): readonly string[] {
     NAV_TAB_PROGRAMS,
     NAV_TAB_REQUESTS_DESKTOP,
     NAV_TAB_REQUESTS_PHONE,
-    ACCOUNT_DISPLAY_NAME,
-    ACCOUNT_SIGNED_IN_LINE,
+    FAKE_UI_DISPLAY_NAME,
+    FAKE_UI_ACCOUNT_SIGNED_IN_LINE,
     ACCOUNT_MY_DEFAULTS,
     ACCOUNT_MY_DEFAULTS_DETAIL,
     ACCOUNT_SIGN_OUT,
@@ -69,8 +72,8 @@ function shellSegmentLimits(): Readonly<Record<string, number>> {
     [NAV_TAB_PROGRAMS]: 2,
     [NAV_TAB_REQUESTS_DESKTOP]: 1,
     [NAV_TAB_REQUESTS_PHONE]: 1,
-    [ACCOUNT_DISPLAY_NAME]: 1,
-    [ACCOUNT_SIGNED_IN_LINE]: 1,
+    [FAKE_UI_DISPLAY_NAME]: 1,
+    [FAKE_UI_ACCOUNT_SIGNED_IN_LINE]: 1,
     [ACCOUNT_MY_DEFAULTS]: 1,
     [ACCOUNT_MY_DEFAULTS_DETAIL]: 1,
     [ACCOUNT_SIGN_OUT]: 1,
@@ -280,8 +283,8 @@ export function assertShellBrandAndAvatarCopy(root: ParentNode): void {
   if (!brand || brand.textContent?.trim() !== "D") {
     throw new Error("Expected shell brand mark text D");
   }
-  if (!avatar || avatar.textContent?.trim() !== "K") {
-    throw new Error("Expected shell account avatar text K");
+  if (!avatar || avatar.textContent?.trim() !== FAKE_UI_AVATAR_INITIAL) {
+    throw new Error(`Expected shell account avatar text ${FAKE_UI_AVATAR_INITIAL}`);
   }
 }
 
