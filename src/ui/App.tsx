@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { useState } from "react";
 import { useRoutes } from "react-router-dom";
 import type { ExerciseLibraryClient } from "./api/exercise-library-client.js";
@@ -19,6 +20,8 @@ import { RequestConflictPage } from "./exercise-requests/RequestConflictPage.js"
 import { RequestsAndDraftsPage } from "./exercise-requests/RequestsAndDraftsPage.js";
 import { MyDefaultsPage } from "./my-defaults/MyDefaultsPage.js";
 import { ProgramBuilderPage } from "./programs/ProgramBuilderPage.js";
+import { ProgramPublishPage } from "./programs/ProgramPublishPage.js";
+import { ProgramSharePage } from "./programs/ProgramSharePage.js";
 import { ProgramsListPage } from "./programs/ProgramsListPage.js";
 import { ProgramsNewPage } from "./programs/ProgramsNewPage.js";
 import {
@@ -27,6 +30,7 @@ import {
 } from "./programs/program-leave-guard.js";
 import { AppShell } from "./layout/AppShell.js";
 import { createPhysioAppRouteObjects } from "./physio-app-match-routes.js";
+import type { PhysioAppRouteElements } from "./physio-app-match-routes.js";
 import { useExerciseRequestsRefresh } from "./api/exercise-requests-refresh-context.js";
 
 export type PhysioAppProps = {
@@ -72,23 +76,32 @@ function DraftReviewRoute() {
   );
 }
 
+export function createPhysioAppRouteElements(
+  requestsListRoute: ReactElement,
+  draftReviewRoute: ReactElement,
+): PhysioAppRouteElements {
+  return {
+    exercises: <ExerciseLibraryPage initialTab="mine" />,
+    exerciseSearch: <ExerciseSearchRoute />,
+    exerciseDetail: <ExerciseDetailsPage />,
+    exerciseMyCopy: <MyCopyEditorPage />,
+    defaults: <MyDefaultsPage />,
+    programs: <ProgramsListPage />,
+    programNew: <ProgramsNewPage />,
+    programBuilder: <ProgramBuilderPage />,
+    programPublish: <ProgramPublishPage />,
+    programShare: <ProgramSharePage />,
+    requests: requestsListRoute,
+    requestConflict: <RequestConflictPage />,
+    requestReview: draftReviewRoute,
+  };
+}
+
 function PhysioAppRoutes({ requestsReviewCount }: { requestsReviewCount: number }) {
   const [leaveGuard, setLeaveGuard] = useState<ProgramLeaveGuard | null>(null);
   const routeTree = createPhysioAppRouteObjects(
     <AppShell requestsReviewCount={requestsReviewCount} />,
-    {
-      exercises: <ExerciseLibraryPage initialTab="mine" />,
-      exerciseSearch: <ExerciseSearchRoute />,
-      exerciseDetail: <ExerciseDetailsPage />,
-      exerciseMyCopy: <MyCopyEditorPage />,
-      defaults: <MyDefaultsPage />,
-      programs: <ProgramsListPage />,
-      programNew: <ProgramsNewPage />,
-      programBuilder: <ProgramBuilderPage />,
-      requests: <RequestsListRoute />,
-      requestConflict: <RequestConflictPage />,
-      requestReview: <DraftReviewRoute />,
-    },
+    createPhysioAppRouteElements(<RequestsListRoute />, <DraftReviewRoute />),
   );
 
   return (
