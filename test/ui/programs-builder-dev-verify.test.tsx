@@ -452,7 +452,7 @@ describe("Programs builder dev verification", () => {
     expect(
       within(dialog).getByText("Knee program A", { selector: "h3" }),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText("Code PRG-TEST")).toBeInTheDocument();
+    expect(within(dialog).getByText("PRG-TEST")).toBeInTheDocument();
     expect(within(dialog).getByText("2 exercises")).toBeInTheDocument();
     expect(
       within(dialog).getByText((_, element) => {
@@ -626,7 +626,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Code PRG-DEL")).toBeInTheDocument();
+    expect(await screen.findByText("PRG-DEL")).toBeInTheDocument();
     expect(screen.getByText("3 exercises")).toBeInTheDocument();
   });
 
