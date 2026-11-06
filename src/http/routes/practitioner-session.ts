@@ -2,7 +2,6 @@ import type { PractitionerSession } from "../../auth/auth-port.js";
 import type { PractitionerSessionView } from "../../services/practitioner-session/types.js";
 import { PRACTITIONER_SESSION_API_PATH } from "../../practitioner-session-api-paths.js";
 import type { AppDependencies } from "../app.js";
-import { requirePractitioner } from "../require-practitioner.js";
 
 export const PRACTITIONER_SESSION_JSON_HEADERS = {
   "content-type": "application/json",
@@ -41,10 +40,6 @@ export async function handlePractitionerSessionRequest(
   }
   const session = options.sessionPractitioner;
   if (!session) {
-    return sessionJsonResponse({ error: "unauthorized" }, 401);
-  }
-  const practitionerId = requirePractitioner(session);
-  if (practitionerId instanceof Response) {
     return sessionJsonResponse({ error: "unauthorized" }, 401);
   }
   return sessionJsonResponse(sessionView(session), 200);
