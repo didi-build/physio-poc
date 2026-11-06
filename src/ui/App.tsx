@@ -29,6 +29,7 @@ import { AppShell } from "./layout/AppShell.js";
 import { createPhysioAppRouteObjects } from "./physio-app-match-routes.js";
 import type { PractitionerSessionClient } from "./api/practitioner-session-client.js";
 import { PractitionerSessionProvider } from "./api/practitioner-session-context.js";
+import { RoutinesPage } from "./routines/RoutinesPage.js";
 import { useExerciseRequestsRefresh } from "./api/exercise-requests-refresh-context.js";
 
 export type PhysioAppProps = {
@@ -84,6 +85,7 @@ function PhysioAppRoutes({ requestsReviewCount }: { requestsReviewCount: number 
       exerciseSearch: <ExerciseSearchRoute />,
       exerciseDetail: <ExerciseDetailsPage />,
       exerciseMyCopy: <MyCopyEditorPage />,
+      routines: <RoutinesPage />,
       defaults: <MyDefaultsPage />,
       programs: <ProgramsListPage />,
       programNew: <ProgramsNewPage />,
