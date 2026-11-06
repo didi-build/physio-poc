@@ -13,6 +13,7 @@ import {
   AUTO_SAVE_NOTE,
   BUILDER_EMPTY_ROWS,
   BUILDER_ROWS_HINT,
+  exercisesSectionTotalCount,
   DELETE_PROGRAM,
   DELETE_PROGRAM_SHEET_TITLE,
   EXERCISES_SECTION,
@@ -343,8 +344,32 @@ export function ProgramBuilderPage() {
               }}
             />
           ))}
-          <h2 className="pg-exercises-heading">{EXERCISES_SECTION}</h2>
-          <p className="pg-rows-hint">{BUILDER_ROWS_HINT}</p>
+          <div className="pg-exercises-heading-row">
+            <h2 className="pg-exercises-heading">{EXERCISES_SECTION}</h2>
+            {program.rows.length > 0 ? (
+              <p className="pg-exercises-total">
+                {exercisesSectionTotalCount(program.rows.length)}
+              </p>
+            ) : null}
+          </div>
+          <p className="pg-rows-hint">
+            <svg
+              className="pg-rows-hint-grip"
+              aria-hidden
+              viewBox="0 0 24 24"
+              width={16}
+              height={16}
+              fill="currentColor"
+            >
+              <circle cx="9" cy="7" r="1.5" />
+              <circle cx="15" cy="7" r="1.5" />
+              <circle cx="9" cy="12" r="1.5" />
+              <circle cx="15" cy="12" r="1.5" />
+              <circle cx="9" cy="17" r="1.5" />
+              <circle cx="15" cy="17" r="1.5" />
+            </svg>
+            {BUILDER_ROWS_HINT}
+          </p>
           {program.rows.length === 0 ? (
             <p className="pg-rows-empty">{BUILDER_EMPTY_ROWS}</p>
           ) : (

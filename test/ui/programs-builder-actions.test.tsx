@@ -174,11 +174,7 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(
-      within(alphaCard).getByRole("button", {
-        name: /Reorder Alpha move, position 2/,
-      }),
-    );
+    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -208,11 +204,7 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const betaCard = await screen.findByRole("article", { name: /Beta move/i });
-    await userEvent.click(
-      within(betaCard).getByRole("button", {
-        name: /Reorder Beta move, position 2/,
-      }),
-    );
+    await userEvent.click(within(betaCard).getByTestId("pg-row-test-move-up"));
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });

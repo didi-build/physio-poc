@@ -51,6 +51,16 @@ function gitConfigEnvKeys(env: Record<string, string | undefined>) {
   );
 }
 
+function withoutInheritedGitConfigEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = { ...env };
+  for (const key of gitConfigEnvKeys(out)) {
+    delete out[key];
+  }
+  return out;
+}
+
 function envValueContainsTokenLeak(value: string | undefined) {
   if (value === undefined || value === null) {
     return false;
@@ -240,11 +250,12 @@ function runBootstrapInitWithStubs(
   writeFileSync(summaryPath, "");
 
   const pathPrefix = `${bin}${delimiter}${process.env.PATH ?? ""}`;
+  const baseEnv = withoutInheritedGitConfigEnv(process.env);
   const result = spawnSync(process.execPath, [bootstrapScript, "run"], {
     cwd: dir,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...baseEnv,
       ...hermeticEnv,
       PATH: pathPrefix,
       BOOTSTRAP_STUB_LOG: logPath,

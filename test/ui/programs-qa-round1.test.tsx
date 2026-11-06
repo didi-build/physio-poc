@@ -21,7 +21,7 @@ import {
   DELETE_SHEET_ALREADY_CLOSED,
   DELETE_SHEET_MOVES_TO,
   DELETE_SHEET_SHARE_HINT,
-  ROW_NOTES_LABEL,
+  rowNotesSrOnlyLabel,
   ADD_EXERCISE,
   duplicateRowAriaLabel,
   removeRowAriaLabel,
@@ -30,7 +30,9 @@ import {
   LEAVE_TITLE,
   listCountLabel,
   programsSearchNoMatch,
+  versionOfRowLabel,
 } from "../../src/ui/copy/programs.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 import { NAV_TAB_EXERCISES } from "../../src/ui/copy/nav.js";
 import type {
   ProgramBuilderRow,
@@ -307,7 +309,7 @@ describe("Programs builder save UX (QA round 1)", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText(ROW_NOTES_LABEL);
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "slow");
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalled();
@@ -358,7 +360,7 @@ describe("Programs builder save UX (QA round 1)", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText(ROW_NOTES_LABEL);
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "x");
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalled();
@@ -429,8 +431,13 @@ describe("Programs builder save UX (QA round 1)", () => {
       </MemoryRouter>,
     );
     await screen.findByRole("textbox", { name: "Program name" });
-    const typeSelect = screen.getAllByRole("combobox")[0]!;
-    await userEvent.selectOptions(typeSelect, "stretching");
+    const heelRow = await screen.findByRole("article", { name: /Heel raise/i });
+    const typeGroup = within(heelRow).getByRole("radiogroup", {
+      name: versionOfRowLabel("Heel raise"),
+    });
+    await userEvent.click(
+      within(typeGroup).getByRole("radio", { name: TYPE_LABELS.isometric }),
+    );
     await waitFor(() => {
       expect(screen.getAllByText(AUTO_SAVE_SAVING).length).toBeGreaterThan(0);
     });
@@ -508,11 +515,7 @@ describe("Programs builder save UX (QA round 1)", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(
-      within(alphaCard).getByRole("button", {
-        name: /Reorder Alpha move, position 2/,
-      }),
-    );
+    await userEvent.click(within(alphaCard).getByTestId("pg-row-test-move-down"));
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalled();
     });

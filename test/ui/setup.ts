@@ -17,6 +17,7 @@ function ensureMatchMediaStub() {
       })),
     );
   }
+  vi.stubGlobal("__physioProgramBuilderTestReorder", true);
 }
 
 export { ensureMatchMediaStub };
