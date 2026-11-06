@@ -168,6 +168,33 @@ export function exercisesSectionTotalCount(total: number): string {
 export const ROW_DEFAULTS_FOOTNOTE =
   "Each row keeps the values it was added with. Changes to My exercises or My defaults apply to new rows only.";
 
+/** design/app/programs/spec.md Copy inventory builder dose box. */
+export const ADJUST = "Adjust";
+
+/** WebAppClickableConcept.tsx dose box toggle when editor is open (v12). */
+export const DOSE_ADJUST_TOGGLE_DONE = "Done";
+
+/** design/app/programs/spec.md Copy inventory builder dose editor close action. */
+export const DONE_ADJUSTING = "Done adjusting";
+
+/** design/app/programs/spec.md Copy inventory dose edited badge. */
+export const DOSE_EDITED_BADGE = "Edited";
+
+/** design/app/programs/spec.md Copy inventory dose row scope. */
+export const DOSE_CHANGED_FOR_THIS_ROW_ONLY = "Changed for this row only";
+
+/** design/app/programs/spec.md Copy inventory dose reset. */
+export const RESET_TO_DEFAULT = "Reset to default";
+
+/** design/reference/web-app/generated/WebAppClickableConcept.tsx SOURCE_TEXT exercise (v12). */
+export const PROGRAM_ROW_SOURCE_FROM_MY_EXERCISE = "From my exercise";
+
+/** design/reference/web-app/generated/WebAppClickableConcept.tsx SOURCE_TEXT mine (v12). */
+export const PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS = "From my defaults";
+
+/** design/reference/web-app/generated/WebAppClickableConcept.tsx SOURCE_TEXT global (v12). */
+export const PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS = "From global defaults";
+
 export const PUBLISH = "Publish";
 
 export const LIBRARY_UPDATE_KEEP = "Keep my original";

@@ -1,13 +1,28 @@
+import { useState } from "react";
 import type { ProgramBuilderRow } from "../../services/programs/types.js";
+import {
+  exerciseParamsEqual,
+  type ExerciseParams,
+} from "../../domain/exercise-params.js";
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
+import type { ResolvedParamsSource } from "../../domain/resolve-exercise-params.js";
 import {
   prescriptionTypesForCategory,
   type PrescriptionType,
 } from "../../domain/exercise-types.js";
 import {
+  ADJUST,
+  DOSE_ADJUST_TOGGLE_DONE,
+  DOSE_CHANGED_FOR_THIS_ROW_ONLY,
+  DOSE_EDITED_BADGE,
   DUPLICATE_CONTROL_TITLE,
+  DONE_ADJUSTING,
   PENDING_REVIEW_BADGE,
   PLACEHOLDER_ROW_NOTE,
+  PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS,
+  PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS,
+  PROGRAM_ROW_SOURCE_FROM_MY_EXERCISE,
+  RESET_TO_DEFAULT,
   ROW_NOTES_PLACEHOLDER,
   duplicateRowAriaLabel,
   libraryVersionAvailableRowBadge,
@@ -16,6 +31,7 @@ import {
   versionOfRowLabel,
 } from "../copy/programs.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
+import { ProgramRowParamEditor } from "./ProgramRowParamEditor.js";
 import { ProgramRowVersionPicker } from "./ProgramRowVersionPicker.js";
 import {
   exerciseVersionIdForNumber,
@@ -36,6 +52,8 @@ export type ProgramBuilderRowCardProps = {
   onNoteChange: (note: string) => void;
   onTypeChange: (type: PrescriptionType) => void;
   onSelectVersion: (versionNumber: number) => void;
+  onParamsChange: (params: ExerciseParams) => void;
+  onParamsReset: () => void;
   actionsDisabled?: boolean;
 };
 
@@ -65,6 +83,38 @@ function RowCopyIcon() {
     >
       <rect x="9" y="9" width="11" height="11" rx="1" />
       <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </svg>
+  );
+}
+
+function RowSlidersIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M9 21h-1M15 15h1M18 21h1" />
+    </svg>
+  );
+}
+
+function RowUndoIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={16}
+      height={16}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path d="M3 7v6h6M21 17a9 9 0 0 0-15-6l-3 3" />
     </svg>
   );
 }
@@ -132,6 +182,16 @@ function rowCategoryKind(row: ProgramBuilderRow): "stretch" | "strength" {
   return row.prescription_type === "stretching" ? "stretch" : "strength";
 }
 
+function programRowSourceNoteLabel(source: ResolvedParamsSource): string {
+  if (source === "exercise_override") {
+    return PROGRAM_ROW_SOURCE_FROM_MY_EXERCISE;
+  }
+  if (source === "practitioner_defaults") {
+    return PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS;
+  }
+  return PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS;
+}
+
 export function ProgramBuilderRowCard({
   row,
   index,
@@ -144,13 +204,24 @@ export function ProgramBuilderRowCard({
   onNoteChange,
   onTypeChange,
   onSelectVersion,
+  onParamsChange,
+  onParamsReset,
   actionsDisabled = false,
 }: ProgramBuilderRowCardProps) {
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
   const versionOptions = versionNumbersForRow(row);
   const selectedVersionNumber = row.pinned_version_number ?? versionOptions[0] ?? 1;
   const kind = rowCategoryKind(row);
+  const doseEdited = !exerciseParamsEqual(row.params, row.resolved_params);
+  const sourceForNote: ResolvedParamsSource =
+    row.params_source !== null ? row.params_source : row.resolved_params_source;
+  const adjustLabel = `${adjustOpen ? DONE_ADJUSTING : ADJUST} ${title}`;
+  const doseBoxClass =
+    doseEdited || adjustOpen
+      ? "pg-row-dose-box pg-row-dose-box--edited"
+      : "pg-row-dose-box";
 
   return (
     <article
@@ -264,9 +335,82 @@ export function ProgramBuilderRowCard({
             ))}
           </div>
         ) : null}
-        <div className="pg-row-dose-box">
-          <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
+        <div className={doseBoxClass}>
+          <div className="pg-row-dose-head">
+            <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
+            <button
+              type="button"
+              className="pg-row-dose-adjust"
+              aria-expanded={adjustOpen}
+              aria-label={adjustLabel}
+              disabled={actionsDisabled}
+              onClick={() => {
+                setAdjustOpen((open) => !open);
+              }}
+            >
+              {!adjustOpen ? (
+                <>
+                  <RowSlidersIcon />
+                  {ADJUST}
+                </>
+              ) : (
+                DOSE_ADJUST_TOGGLE_DONE
+              )}
+            </button>
+          </div>
+          <div className="pg-row-dose-meta">
+            {doseEdited ? (
+              <>
+                <span className="pg-row-dose-badge">{DOSE_EDITED_BADGE}</span>
+                <span className="pg-row-dose-scope">
+                  {DOSE_CHANGED_FOR_THIS_ROW_ONLY}
+                </span>
+                <button
+                  type="button"
+                  className="pg-row-dose-reset"
+                  disabled={actionsDisabled}
+                  onClick={() => {
+                    setAdjustOpen(false);
+                    onParamsReset();
+                  }}
+                >
+                  <RowUndoIcon />
+                  {RESET_TO_DEFAULT}
+                </button>
+              </>
+            ) : (
+              <span
+                className={
+                  sourceForNote === "global_defaults"
+                    ? "pg-row-dose-source pg-row-dose-source--global"
+                    : "pg-row-dose-source"
+                }
+              >
+                <span className="pg-row-dose-source-dot" aria-hidden />
+                {programRowSourceNoteLabel(sourceForNote)}
+              </span>
+            )}
+          </div>
+          {doseEdited ? (
+            <p className="pg-row-dose-default-line">
+              {programRowSourceNoteLabel(row.resolved_params_source)}:{" "}
+              {formatExerciseParams(row.resolved_params)}
+            </p>
+          ) : null}
         </div>
+        {adjustOpen ? (
+          <div className="pg-row-dose-editor-wrap">
+            <ProgramRowParamEditor
+              rowId={row.id}
+              type={row.prescription_type}
+              params={row.params}
+              onDone={(next) => {
+                setAdjustOpen(false);
+                onParamsChange(next);
+              }}
+            />
+          </div>
+        ) : null}
         {row.kind === "exercise" && versionOptions.length > 0 ? (
           <ProgramRowVersionPicker
             rowName={title}

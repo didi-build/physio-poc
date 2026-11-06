@@ -139,6 +139,8 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
             prescription_type: "concentric",
             params: { reps: 10, per_day: 2 },
             params_source: "global_defaults",
+            resolved_params: { reps: 10, per_day: 2 },
+            resolved_params_source: "global_defaults",
             text_snapshot: { title: "Heel raise" },
             note: null,
             library_update: null,

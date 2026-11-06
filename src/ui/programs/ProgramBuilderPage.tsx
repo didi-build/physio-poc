@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
+import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { useProgramsApi } from "../api/programs-context.js";
@@ -466,6 +467,36 @@ export function ProgramBuilderPage() {
                         );
                         applyProgram(result.program);
                         setNoteDrafts(noteDraftsFromProgram(result.program));
+                      })
+                      .finally(() => {
+                        setRowMutationBusy(false);
+                      });
+                  }}
+                  onParamsChange={(params: ExerciseParams) => {
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(`row-params:${row.id}`, async () => {
+                        const result = await client.updateRow(
+                          program.program_id,
+                          row.id,
+                          { params },
+                        );
+                        applyProgram(result.program);
+                      })
+                      .finally(() => {
+                        setRowMutationBusy(false);
+                      });
+                  }}
+                  onParamsReset={() => {
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(`row-params-reset:${row.id}`, async () => {
+                        const result = await client.updateRow(
+                          program.program_id,
+                          row.id,
+                          { params: row.resolved_params },
+                        );
+                        applyProgram(result.program);
                       })
                       .finally(() => {
                         setRowMutationBusy(false);

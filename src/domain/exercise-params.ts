@@ -285,3 +285,31 @@ export function assertExerciseParamKeysAllowedForPrescriptionType(
 export function exerciseParamsToJson(params: ExerciseParams): string {
   return JSON.stringify(params);
 }
+
+function numericOrRangeEqual(a: NumericOrRange, b: NumericOrRange): boolean {
+  if (typeof a === "number" && typeof b === "number") {
+    return a === b;
+  }
+  if (typeof a === "object" && typeof b === "object") {
+    return a.min === b.min && a.max === b.max;
+  }
+  return false;
+}
+
+/** Deep equality for persisted program row params (key order does not matter). */
+export function exerciseParamsEqual(a: ExerciseParams, b: ExerciseParams): boolean {
+  for (const key of PARAM_KEYS) {
+    const av = a[key];
+    const bv = b[key];
+    if (av === undefined && bv === undefined) {
+      continue;
+    }
+    if (av === undefined || bv === undefined) {
+      return false;
+    }
+    if (!numericOrRangeEqual(av, bv)) {
+      return false;
+    }
+  }
+  return true;
+}

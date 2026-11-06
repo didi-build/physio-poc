@@ -167,6 +167,8 @@ describe("Programs DIDI-1141 wiring (integration, jsdom)", () => {
                     prescription_type: "concentric",
                     params: { reps: 10 },
                     params_source: "global_defaults",
+                    resolved_params: { reps: 10 },
+                    resolved_params_source: "global_defaults",
                     text_snapshot: { title: "Heel raise" },
                     note: null,
                     library_update: null,

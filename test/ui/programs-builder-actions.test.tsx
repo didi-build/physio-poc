@@ -14,9 +14,17 @@ import {
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
   ADD_EXERCISE,
+  ADJUST,
   BUILDER_ROWS_HINT,
+  DONE_ADJUSTING,
+  DOSE_CHANGED_FOR_THIS_ROW_ONLY,
+  DOSE_EDITED_BADGE,
   DUPLICATE_CONTROL_TITLE,
   PENDING_REVIEW_BADGE,
+  PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS,
+  PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS,
+  PROGRAM_ROW_SOURCE_FROM_MY_EXERCISE,
+  RESET_TO_DEFAULT,
   ROW_NOTES_PLACEHOLDER,
   ROW_VERSION_LABEL,
   duplicatedRowToast,
@@ -56,6 +64,7 @@ const LIST_ITEM: ProgramListItem = {
 };
 
 function exerciseRow(id: string, title: string, position: number): ProgramBuilderRow {
+  const params = { reps: 10, per_day: 2 };
   return {
     id,
     position,
@@ -65,8 +74,10 @@ function exerciseRow(id: string, title: string, position: number): ProgramBuilde
     exercise_request_id: null,
     pinned_version_number: 1,
     prescription_type: "concentric",
-    params: { reps: 10, per_day: 2 },
+    params,
     params_source: "global_defaults",
+    resolved_params: params,
+    resolved_params_source: "global_defaults",
     text_snapshot: { title },
     note: null,
     library_update: null,
@@ -290,10 +301,24 @@ describe("Program builder row card layout (integration, jsdom)", () => {
       exercise_version_id: null,
       pinned_version_number: null,
       exercise_version_choices: [],
+      resolved_params: { reps: 10, per_day: 2 },
+      resolved_params_source: "global_defaults",
     };
     const stretchMove: ProgramBuilderRow = {
       ...exerciseRow("row-st", "Stretch move", 1),
       prescription_type: "stretching",
+      params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      params_source: "global_defaults",
+      resolved_params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      resolved_params_source: "global_defaults",
     };
     const strengthMove = exerciseRow("row-stg", "Strength move", 2);
     renderBuilder(
@@ -320,6 +345,18 @@ describe("Program builder row card layout (integration, jsdom)", () => {
     const stretchMove: ProgramBuilderRow = {
       ...exerciseRow("row-st", "Stretch move", 0),
       prescription_type: "stretching",
+      params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      params_source: "global_defaults",
+      resolved_params: {
+        hold_s: 30,
+        per_day: { min: 1, max: 3 },
+        days_per_week: 7,
+      },
+      resolved_params_source: "global_defaults",
     };
     const strengthMove = exerciseRow("row-stg", "Strength move", 1);
     renderBuilder(
@@ -348,7 +385,7 @@ describe("Program builder row card layout (integration, jsdom)", () => {
     ).toBeInTheDocument();
   });
 
-  it("M8: shows the grey dose readout box and no dose Adjust control", async () => {
+  it("M8: shows the grey dose readout box with Adjust and source note when in sync with defaults", async () => {
     const strengthMove = exerciseRow("row-stg", "Strength move", 0);
     renderBuilder(
       stubProgramsClient({
@@ -362,7 +399,142 @@ describe("Program builder row card layout (integration, jsdom)", () => {
       .getByText(/10 reps/)
       .closest(".pg-row-dose-box");
     expect(doseBox).toBeTruthy();
-    expect(screen.queryByText(/Adjust/i)).not.toBeInTheDocument();
+    expect(doseBox).not.toHaveClass("pg-row-dose-box--edited");
+    expect(
+      within(strengthCard).getByRole("button", { name: `${ADJUST} Strength move` }),
+    ).toBeInTheDocument();
+    expect(
+      within(strengthCard).getByText(PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
+  it("saves edited params via auto-save and shows amber edited state when stored params differ from defaults", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    const afterSave: ProgramBuilderRow = {
+      ...baseRow,
+      params: { reps: 12, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      params_source: null,
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      resolved_params_source: "global_defaults",
+    };
+    const updateRow = vi.fn().mockImplementation(async () => ({
+      program: builderView({
+        rows: [afterSave],
+        exercise_count: 1,
+      }),
+    }));
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    const inputs = within(card).getAllByRole("textbox");
+    const repsField = inputs[0]!;
+    await userEvent.clear(repsField);
+    await userEvent.type(repsField, "12");
+    await userEvent.click(within(card).getByRole("button", { name: DONE_ADJUSTING }));
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: expect.objectContaining({ reps: 12 }),
+      });
+    });
+    expect(
+      within(card).getByText(DOSE_EDITED_BADGE, { selector: ".pg-row-dose-badge" }),
+    ).toBeInTheDocument();
+    expect(within(card).getByText(DOSE_CHANGED_FOR_THIS_ROW_ONLY)).toBeInTheDocument();
+    const doseBox = within(card)
+      .getByText(/12 reps/)
+      .closest(".pg-row-dose-box");
+    expect(doseBox).toHaveClass("pg-row-dose-box--edited");
+  });
+
+  it("Reset to default PATCHes resolved params and clears edited chrome", async () => {
+    const edited: ProgramBuilderRow = {
+      ...exerciseRow("row-stg", "Strength move", 0),
+      params: { reps: 12, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      params_source: null,
+      resolved_params: { reps: 10, hold_s: 2, sets: 3, per_day: 2, days_per_week: 3 },
+      resolved_params_source: "global_defaults",
+    };
+    const resetPayload = { ...edited.resolved_params };
+    const updateRow = vi.fn().mockImplementation(async () => ({
+      program: builderView({
+        rows: [
+          {
+            ...edited,
+            params: resetPayload,
+            params_source: "global_defaults",
+          },
+        ],
+        exercise_count: 1,
+      }),
+    }));
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [edited], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(within(card).getByRole("button", { name: RESET_TO_DEFAULT }));
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-stg", {
+        params: resetPayload,
+      });
+    });
+    expect(within(card).queryByText(DOSE_EDITED_BADGE)).not.toBeInTheDocument();
+    expect(
+      within(card).getByText(PROGRAM_ROW_SOURCE_FROM_GLOBAL_DEFAULTS),
+    ).toBeInTheDocument();
+  });
+
+  it("shows From my exercise when params_source is exercise_override", async () => {
+    const row: ProgramBuilderRow = {
+      ...exerciseRow("row-ex", "My exercise row", 0),
+      params_source: "exercise_override",
+      resolved_params_source: "exercise_override",
+    };
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [row], exercise_count: 1 })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /My exercise row/i });
+    expect(
+      within(card).getByText(PROGRAM_ROW_SOURCE_FROM_MY_EXERCISE),
+    ).toBeInTheDocument();
+  });
+
+  it("shows From my defaults when params_source is practitioner_defaults", async () => {
+    const row: ProgramBuilderRow = {
+      ...exerciseRow("row-md", "Defaults row", 0),
+      params_source: "practitioner_defaults",
+      resolved_params_source: "practitioner_defaults",
+    };
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [row], exercise_count: 1 })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Defaults row/i });
+    expect(
+      within(card).getByText(PROGRAM_ROW_SOURCE_FROM_MY_DEFAULTS),
+    ).toBeInTheDocument();
   });
 });
 
@@ -445,6 +617,8 @@ describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
       pinned_version_number: null,
       prescription_type: "concentric",
       exercise_version_choices: [{ exercise_version_id: "v-ph", version_number: 1 }],
+      resolved_params: { reps: 10, per_day: 2 },
+      resolved_params_source: "global_defaults",
     };
     renderBuilder(
       stubProgramsClient({
