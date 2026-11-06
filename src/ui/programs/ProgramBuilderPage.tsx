@@ -81,6 +81,14 @@ export function ProgramBuilderPage() {
   const doseParamDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
     new Map(),
   );
+  /** Bumped on each dose draft edit per row so late PATCH responses cannot overwrite a newer draft. */
+  const doseParamsEditGenRef = useRef<Map<string, number>>(new Map());
+  /** Row params PATCH in flight: used to force a corrective PATCH when the draft reverts while an older value is still saving. */
+  const doseParamsInflightRef = useRef<
+    Map<string, { sentFiltered: ExerciseParams; editGenWhenSent: number }>
+  >(new Map());
+  /** Last params confirmed by the server for a row (before any client merge of stale responses). */
+  const doseServerConfirmedFilteredRef = useRef<Map<string, ExerciseParams>>(new Map());
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -157,6 +165,16 @@ export function ProgramBuilderPage() {
         setProgram(view);
         setNameDraft(view.name ?? "");
         setNoteDrafts(noteDraftsFromProgram(view));
+        doseServerConfirmedFilteredRef.current.clear();
+        for (const r of view.rows) {
+          doseServerConfirmedFilteredRef.current.set(
+            r.id,
+            filterExerciseParamsForPrescriptionType(
+              { ...r.params },
+              r.prescription_type,
+            ),
+          );
+        }
         autoSaveRef.current.markSaved();
       })
       .catch(() => {
@@ -177,6 +195,9 @@ export function ProgramBuilderPage() {
       clearTimeout(t);
     }
     doseParamDebounceTimersRef.current.clear();
+    doseParamsEditGenRef.current.clear();
+    doseParamsInflightRef.current.clear();
+    doseServerConfirmedFilteredRef.current.clear();
   }, [program?.program_id]);
 
   const requestLeave = (to: string) => {
@@ -220,23 +241,73 @@ export function ProgramBuilderPage() {
       if (!targetRow) {
         return;
       }
+      const editGenWhenQueued = doseParamsEditGenRef.current.get(rowId) ?? 0;
       const nextParams = filterExerciseParamsForPrescriptionType(
         attemptParams,
         targetRow.prescription_type,
       );
-      const storedFiltered = filterExerciseParamsForPrescriptionType(
-        { ...targetRow.params },
-        targetRow.prescription_type,
-      );
-      if (exerciseParamsEqual(nextParams, storedFiltered)) {
+      const storedFiltered =
+        doseServerConfirmedFilteredRef.current.get(rowId) ??
+        filterExerciseParamsForPrescriptionType(
+          { ...targetRow.params },
+          targetRow.prescription_type,
+        );
+      const inflight = doseParamsInflightRef.current.get(rowId);
+      const inflightStale =
+        inflight !== undefined &&
+        !exerciseParamsEqual(inflight.sentFiltered, nextParams);
+      if (exerciseParamsEqual(nextParams, storedFiltered) && !inflightStale) {
         return;
       }
       setRowMutationBusy(true);
+      doseParamsInflightRef.current.set(rowId, {
+        sentFiltered: nextParams,
+        editGenWhenSent: editGenWhenQueued,
+      });
       try {
         const result = await client.updateRow(currentProgram.program_id, rowId, {
           params: nextParams,
         });
-        applyProgram(result.program);
+        const rawUpdated = result.program.rows.find((r) => r.id === rowId);
+        if (rawUpdated !== undefined) {
+          doseServerConfirmedFilteredRef.current.set(
+            rowId,
+            filterExerciseParamsForPrescriptionType(
+              { ...rawUpdated.params },
+              rawUpdated.prescription_type,
+            ),
+          );
+        }
+        const genAfterResponse = doseParamsEditGenRef.current.get(rowId) ?? 0;
+        let programToApply = result.program;
+        if (genAfterResponse > editGenWhenQueued) {
+          const draft = doseAdjustDraftRef.current;
+          const prevRow = programRef.current?.rows.find((r) => r.id === rowId);
+          const updated = result.program.rows.find((r) => r.id === rowId);
+          if (updated !== undefined) {
+            const replacementParams =
+              draft?.rowId === rowId
+                ? filterExerciseParamsForPrescriptionType(
+                    draft.params,
+                    updated.prescription_type,
+                  )
+                : prevRow !== undefined
+                  ? filterExerciseParamsForPrescriptionType(
+                      { ...prevRow.params },
+                      updated.prescription_type,
+                    )
+                  : undefined;
+            if (replacementParams !== undefined) {
+              programToApply = {
+                ...result.program,
+                rows: result.program.rows.map((r) =>
+                  r.id === rowId ? { ...updated, params: replacementParams } : r,
+                ),
+              };
+            }
+          }
+        }
+        applyProgram(programToApply);
         setDoseAdjustDraft((prev) => {
           if (doseEditorRowIdRef.current !== rowId) {
             return prev;
@@ -244,7 +315,7 @@ export function ProgramBuilderPage() {
           if (prev?.rowId !== rowId) {
             return prev;
           }
-          const updated = result.program.rows.find((r) => r.id === rowId);
+          const updated = programToApply.rows.find((r) => r.id === rowId);
           if (!updated) {
             return prev;
           }
@@ -268,6 +339,10 @@ export function ProgramBuilderPage() {
           return synced;
         });
       } finally {
+        const mark = doseParamsInflightRef.current.get(rowId);
+        if (mark !== undefined && mark.editGenWhenSent === editGenWhenQueued) {
+          doseParamsInflightRef.current.delete(rowId);
+        }
         setRowMutationBusy(false);
       }
     },
@@ -293,7 +368,7 @@ export function ProgramBuilderPage() {
       }
       const timer = setTimeout(() => {
         doseParamDebounceTimersRef.current.delete(rowId);
-        void autoSaveRef.current.runSave(`row-params:${rowId}`, () =>
+        void autoSaveRef.current.runSave(`row-params:auto:${rowId}`, () =>
           saveRowParamsIfChanged(rowId),
         );
       }, 100);
@@ -650,12 +725,20 @@ export function ProgramBuilderPage() {
                       };
                       setDoseAdjustDraft(initial);
                       doseAdjustDraftRef.current = initial;
+                      doseParamsEditGenRef.current.set(
+                        row.id,
+                        (doseParamsEditGenRef.current.get(row.id) ?? 0) + 1,
+                      );
                     })();
                   }}
                   onDoseDraftChange={(draft: ExerciseParams) => {
                     const nextDraft = { rowId: row.id, params: draft };
                     setDoseAdjustDraft(nextDraft);
                     doseAdjustDraftRef.current = nextDraft;
+                    doseParamsEditGenRef.current.set(
+                      row.id,
+                      (doseParamsEditGenRef.current.get(row.id) ?? 0) + 1,
+                    );
                     scheduleDoseParamSave(row.id);
                   }}
                   onDoseAdjustClose={() => {
@@ -673,11 +756,17 @@ export function ProgramBuilderPage() {
                         draftSnap.params,
                         targetRow.prescription_type,
                       );
-                      const storedFiltered = filterExerciseParamsForPrescriptionType(
-                        { ...targetRow.params },
-                        targetRow.prescription_type,
-                      );
-                      if (!exerciseParamsEqual(next, storedFiltered)) {
+                      const storedFiltered =
+                        doseServerConfirmedFilteredRef.current.get(row.id) ??
+                        filterExerciseParamsForPrescriptionType(
+                          { ...targetRow.params },
+                          targetRow.prescription_type,
+                        );
+                      const inflight = doseParamsInflightRef.current.get(row.id);
+                      const inflightStale =
+                        inflight !== undefined &&
+                        !exerciseParamsEqual(inflight.sentFiltered, next);
+                      if (!exerciseParamsEqual(next, storedFiltered) || inflightStale) {
                         paramsSnapshot = { ...draftSnap.params };
                       }
                     }
@@ -691,7 +780,7 @@ export function ProgramBuilderPage() {
                       const snapshot = paramsSnapshot;
                       setRowMutationBusy(true);
                       void autoSaveRef.current
-                        .runSave(`row-params:${row.id}`, () =>
+                        .runSave(`row-params:flush:${row.id}`, () =>
                           saveRowParamsSnapshot(row.id, snapshot),
                         )
                         .finally(() => {

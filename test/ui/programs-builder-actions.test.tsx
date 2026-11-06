@@ -663,6 +663,140 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
       params: expect.objectContaining({ reps: 12 }),
     });
+    await waitFor(() => {
+      const readout = card.querySelector(".pg-row-dose-text");
+      expect(readout?.textContent).toMatch(/^12 reps/);
+    });
+    vi.useRealTimers();
+  });
+
+  it("persists reps 10 when reverted while first PATCH is in flight then bottom Done", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    let resolveFirst!: (value: unknown) => void;
+    const firstDone = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    let callCount = 0;
+    const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
+      callCount += 1;
+      const reps = (body as { params: { reps: number } }).params.reps;
+      const saved: ProgramBuilderRow = {
+        ...baseRow,
+        params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
+        params_source: null,
+        resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+        resolved_params_source: "global_defaults",
+      };
+      if (callCount === 1) {
+        await firstDone;
+      }
+      return {
+        program: builderView({
+          rows: [saved],
+          exercise_count: 1,
+        }),
+      };
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.click(within(card).getByRole("button", { name: /Less reps/i }));
+    await userEvent.click(within(card).getByRole("button", { name: DONE_ADJUSTING }));
+    resolveFirst!(undefined);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(2);
+    });
+    expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
+      params: expect.objectContaining({ reps: 10 }),
+    });
+    await waitFor(() => {
+      const readout = card.querySelector(".pg-row-dose-text");
+      expect(readout?.textContent).toMatch(/^10 reps/);
+    });
+    vi.useRealTimers();
+  });
+
+  it("persists reps 10 when reverted while first PATCH is in flight then Leave", async () => {
+    const baseRow = exerciseRow("row-stg", "Strength move", 0);
+    let resolveFirst!: (value: unknown) => void;
+    const firstDone = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    let callCount = 0;
+    const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
+      callCount += 1;
+      const reps = (body as { params: { reps: number } }).params.reps;
+      const saved: ProgramBuilderRow = {
+        ...baseRow,
+        params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
+        params_source: null,
+        resolved_params: { reps: 10, hold_s: 2, sets: 3, days_per_week: 3 },
+        resolved_params_source: "global_defaults",
+      };
+      if (callCount === 1) {
+        await firstDone;
+      }
+      return {
+        program: builderView({
+          rows: [saved],
+          exercise_count: 1,
+        }),
+      };
+    });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [baseRow], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Strength move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Strength move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: /More reps/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
+    await userEvent.click(within(card).getByRole("button", { name: /Less reps/i }));
+    const programsTabs = screen.getAllByRole("link", { name: NAV_TAB_PROGRAMS });
+    await userEvent.click(programsTabs[0]!);
+    expect(
+      await screen.findByRole("dialog", { name: LEAVE_TITLE }),
+    ).toBeInTheDocument();
+    resolveFirst!(undefined);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      const readout = card.querySelector(".pg-row-dose-text");
+      expect(readout?.textContent).toMatch(/^10 reps/);
+    });
+    await userEvent.click(screen.getByRole("button", { name: LEAVE_CONFIRM }));
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(2);
+    });
+    expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
+      params: expect.objectContaining({ reps: 10 }),
+    });
     vi.useRealTimers();
   });
 
@@ -827,6 +961,103 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     await waitFor(() => {
       const lastCall = updateRow.mock.calls[updateRow.mock.calls.length - 1];
       expect(lastCall?.[2].params).not.toHaveProperty("rest_s");
+    });
+    vi.useRealTimers();
+  });
+
+  it("adds and removes Down on isometric row, adds Up then removes Up", async () => {
+    const isoBase: ProgramBuilderRow = {
+      ...exerciseRow("row-iso", "Iso move", 0),
+      prescription_type: "isometric",
+      text_snapshot: { title: "Iso move" },
+    };
+    const withDown: ProgramBuilderRow = {
+      ...isoBase,
+      params: {
+        reps: 10,
+        hold_s: 2,
+        sets: 3,
+        days_per_week: 3,
+        descent_s: 3,
+      },
+    };
+    const withUp: ProgramBuilderRow = {
+      ...withDown,
+      params: { ...withDown.params, ascent_s: 2 },
+    };
+    const afterRemoveDown: ProgramBuilderRow = {
+      ...isoBase,
+      params: {
+        reps: 10,
+        hold_s: 2,
+        sets: 3,
+        days_per_week: 3,
+        ascent_s: 2,
+      },
+    };
+    const afterRemoveUp: ProgramBuilderRow = {
+      ...isoBase,
+      params: {
+        reps: 10,
+        hold_s: 2,
+        sets: 3,
+        days_per_week: 3,
+      },
+    };
+    const updateRow = vi
+      .fn()
+      .mockResolvedValueOnce({
+        program: builderView({ rows: [withDown], exercise_count: 1 }),
+      })
+      .mockResolvedValueOnce({
+        program: builderView({ rows: [withUp], exercise_count: 1 }),
+      })
+      .mockResolvedValueOnce({
+        program: builderView({ rows: [afterRemoveDown], exercise_count: 1 }),
+      })
+      .mockResolvedValue({
+        program: builderView({ rows: [afterRemoveUp], exercise_count: 1 }),
+      });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [isoBase], exercise_count: 1 })),
+        updateRow,
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Iso move/i });
+    await userEvent.click(
+      within(card).getByRole("button", { name: `${ADJUST} Iso move` }),
+    );
+    await userEvent.click(within(card).getByRole("button", { name: ADD_PARAMETER }));
+    await userEvent.click(within(card).getByRole("button", { name: /^Down \(s\)$/ }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-iso", {
+        params: expect.objectContaining({ descent_s: 3 }),
+      });
+    });
+    await userEvent.click(within(card).getByRole("button", { name: ADD_PARAMETER }));
+    await userEvent.click(within(card).getByRole("button", { name: /^Up \(s\)$/ }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledWith("prog-1", "row-iso", {
+        params: expect.objectContaining({ ascent_s: 2 }),
+      });
+    });
+    await userEvent.click(within(card).getByRole("button", { name: /Remove down/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      const last = updateRow.mock.calls[updateRow.mock.calls.length - 1];
+      expect(last?.[2].params).not.toHaveProperty("descent_s");
+    });
+    await userEvent.click(within(card).getByRole("button", { name: /Remove up/i }));
+    await vi.advanceTimersByTimeAsync(120);
+    await waitFor(() => {
+      const last = updateRow.mock.calls[updateRow.mock.calls.length - 1];
+      expect(last?.[2].params).not.toHaveProperty("ascent_s");
     });
     vi.useRealTimers();
   });
