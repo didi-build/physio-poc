@@ -229,6 +229,16 @@ describe("app shell nav (integration)", () => {
     expect(items[2]).toHaveAccessibleName("Sign out");
   });
 
+  it("places the Requests row as the next DOM sibling after the signed-in identity block", async () => {
+    const user = userEvent.setup();
+    const { container } = renderApp("/exercises", 0);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const signedIn = container.querySelector(".shell-menu-signed-in");
+    const requestsRow = screen.getByTestId("shell-menu-requests");
+    expect(signedIn).toBeTruthy();
+    expect(signedIn?.nextElementSibling).toBe(requestsRow);
+  });
+
   it("keeps the inbox icon path on the account menu Requests row", async () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
@@ -294,15 +304,27 @@ describe("app shell nav (integration)", () => {
     expect(container.querySelector(".shell-menu-requests-count")).toBeNull();
   });
 
-  it("shows an amber drafts count in the account menu when the count is greater than 0", async () => {
+  it("shows drafts count badges as exact bare integer strings", async () => {
     const user = userEvent.setup();
+
     renderApp("/exercises", 4);
     await user.click(screen.getByRole("button", { name: "Account menu" }));
     await waitFor(() => {
       const row = screen.getByTestId("shell-menu-requests");
       const badge = row.querySelector(".shell-menu-requests-count");
       expect(badge).not.toBeNull();
-      expect(badge).toHaveTextContent("4");
+      expect(badge?.textContent).toBe("4");
+    });
+    cleanup();
+    ensureMatchMediaStub();
+
+    renderApp("/exercises", 12);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await waitFor(() => {
+      const row = screen.getByTestId("shell-menu-requests");
+      const badge = row.querySelector(".shell-menu-requests-count");
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toBe("12");
     });
   });
 
@@ -322,6 +344,38 @@ describe("app shell nav (integration)", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("does not mark any primary nav tab as current when the route is requests", () => {
+    renderApp("/requests", 0);
+    const topNav = screen.getAllByRole("navigation", { name: "Main" })[0];
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+    for (const link of within(topNav).getAllByRole("link")) {
+      expect(link.getAttribute("aria-current")).not.toBe("page");
+    }
+    for (const link of within(tabNav).getAllByRole("link")) {
+      expect(link.getAttribute("aria-current")).not.toBe("page");
+    }
+  });
+
+  it("updates the Requests menu label after the viewport crosses the desktop breakpoint", async () => {
+    const user = userEvent.setup();
+    const mq = mockMinWidth1024(false);
+    renderApp("/exercises", 0);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(
+      screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      mq.setMatches(true);
+    });
+    expect(
+      screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_DESKTOP }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }),
+    ).not.toBeInTheDocument();
   });
 
   it("navigates each tab to the correct route and reaches Requests from the account menu", async () => {
@@ -576,6 +630,31 @@ describe("app shell nav (integration)", () => {
     await user.click(screen.getByRole("menuitem", { name: /My defaults/ }));
 
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("returns focus to the trigger after choosing Requests", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }));
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByTestId("location")).toHaveTextContent("/requests");
+  });
+
+  it("activates Requests on Safari pointer path without menu item focus", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const requestsItem = screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await safariActivateMenuItem(requestsItem);
+    expect(screen.getByTestId("location")).toHaveTextContent("/requests");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("closes the menu after choosing My defaults", async () => {
