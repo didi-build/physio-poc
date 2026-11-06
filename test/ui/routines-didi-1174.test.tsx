@@ -21,7 +21,6 @@ import {
   MY_ROUTINES_EMPTY_HEADING,
   MY_ROUTINES_INTRO,
   ROUTINES_PAGE_TITLE,
-  ROUTINES_TAB_ALL,
   ROUTINES_TAB_MY,
   allRoutinesIntro,
 } from "../../src/ui/copy/routines.js";
@@ -137,13 +136,25 @@ describe("Routines route (DIDI-1174)", () => {
     );
   });
 
-  it("shows routines content inside the shell main region at 390 px width", () => {
-    const { container } = renderAppAt("/routines", 390);
+  it("navigates to Routines from the phone tab bar at 390 px and shows the approved empty state", async () => {
+    const user = userEvent.setup();
+    const { container } = renderAppAt("/exercises", 390);
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+
+    await user.click(within(tabNav).getByRole("link", { name: "Routines" }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/routines");
     const main = container.querySelector(".shell-main");
     expect(main).toBeTruthy();
-    expect(within(main as HTMLElement).getByTestId("routines-page")).toBeVisible();
     expect(
-      within(main as HTMLElement).getByRole("tab", { name: ROUTINES_TAB_ALL }),
-    ).toBeInTheDocument();
+      within(main as HTMLElement).getByRole("heading", {
+        level: 1,
+        name: ROUTINES_PAGE_TITLE,
+      }),
+    ).toBeVisible();
+    const empty = within(main as HTMLElement).getByTestId("routines-empty");
+    expect(within(empty).getByRole("heading", { level: 2 })).toHaveTextContent(
+      ALL_ROUTINES_EMPTY_HEADING,
+    );
   });
 });
