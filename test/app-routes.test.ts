@@ -14,6 +14,7 @@ import {
   encodedExerciseSearchQueryLength,
   fillPhysioAppRoutePattern,
   physioAppExerciseSearchPath,
+  physioAppSpaRoutePath,
   type ConnectorPhysioAppRouteName,
   type PhysioAppSpaRouteName,
 } from "../src/app-routes.js";
@@ -79,14 +80,39 @@ describe("shared Physio app route table", () => {
   });
 
   it("resolves every connector deep link to a named PhysioApp screen route", () => {
+    const spaNames = new Set<string>(PHYSIO_APP_SPA_ROUTE_NAMES);
     for (const routeName of CONNECTOR_PHYSIO_APP_ROUTE_NAMES) {
       const url = sampleConnectorUrl(routeName);
       const pathname = new URL(url).pathname;
       const leaf = leafMatch(pathname);
-      expect(leaf.route.id, routeName).toBe(routeName);
+      if (spaNames.has(routeName)) {
+        expect(leaf.route.id, routeName).toBe(routeName);
+      } else if (routeName === "programPublish" || routeName === "programShare") {
+        expect(leaf.route.id, routeName).toBeUndefined();
+        expect(leaf.route.path).toBe(physioAppSpaRoutePath(routeName));
+      } else {
+        expect(leaf.route.id, routeName).toBe("programBuilder");
+      }
     }
     const blankNew = leafMatch(new URL(buildProgramBuilderLink(BASE, {})).pathname);
     expect(blankNew.route.id).toBe("programNew" satisfies PhysioAppSpaRouteName);
+  });
+
+  it("keeps publish and share out of the named SPA route id list while still matching paths", () => {
+    expect(PHYSIO_APP_SPA_ROUTE_NAMES).not.toContain("programPublish");
+    expect(PHYSIO_APP_SPA_ROUTE_NAMES).not.toContain("programShare");
+    const publishPath = new URL(
+      buildPhysioAppUrl(BASE, "programPublish", {
+        routeParams: { programCode: SAMPLE_PROGRAM_CODE },
+      }),
+    ).pathname;
+    const sharePath = new URL(
+      buildPhysioAppUrl(BASE, "programShare", {
+        routeParams: { programCode: SAMPLE_PROGRAM_CODE },
+      }),
+    ).pathname;
+    expect(matchRoutes(appRouteObjects, publishPath)).not.toBeNull();
+    expect(matchRoutes(appRouteObjects, sharePath)).not.toBeNull();
   });
 
   it("builds absolute https URLs with only codes and ids in paths and query", () => {

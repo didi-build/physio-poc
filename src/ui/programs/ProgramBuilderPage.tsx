@@ -23,7 +23,6 @@ import {
   deletedProgramToast,
   duplicatedRowToast,
   formatAutoSaveStatus,
-  programCodeChipLabel,
 } from "../copy/programs.js";
 import { AddExerciseSheet } from "./AddExerciseSheet.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
@@ -282,7 +281,7 @@ export function ProgramBuilderPage() {
       >
         {PROGRAMS_PAGE_TITLE}
       </button>
-      <p className="pg-code-chip">{programCodeChipLabel(program.code)}</p>
+      <p className="pg-code-chip">{program.code}</p>
       <label className="pg-name-field">
         <span id="pg-program-name-label">{PROGRAM_NAME_LABEL}</span>
         <input

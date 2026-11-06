@@ -5,7 +5,6 @@ import {
   DRAFT_CHANGES_NOT_PUBLISHED,
   NOT_PUBLISHED_YET,
   UNTITLED_PROGRAM,
-  CODE_CHIP_PREFIX,
   libraryUpdatesToReviewFlag,
   programCardCountAndSentLine,
   programCardLinkStatusLine,
@@ -54,7 +53,7 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
       <p className="pg-card-code">
         {codeHighlight ? (
           <span className="pg-code-chip">
-            {CODE_CHIP_PREFIX} {codeHighlight.before}
+            {codeHighlight.before}
             <mark>{codeHighlight.match}</mark>
             {codeHighlight.after}
           </span>

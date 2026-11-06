@@ -77,10 +77,8 @@ export function programCardLinkStatusLine(
   return null;
 }
 
-export const CODE_CHIP_PREFIX = "Code";
-
 export function programCodeChipLabel(code: string): string {
-  return `${CODE_CHIP_PREFIX} ${code}`;
+  return code;
 }
 
 export const PROGRAM_NAME_LABEL = "Program name";
