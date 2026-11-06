@@ -13,8 +13,6 @@ import {
   accountSignedInLine,
   NAV_TAB_EXERCISES,
   NAV_TAB_PROGRAMS,
-  NAV_TAB_REQUESTS_DESKTOP,
-  NAV_TAB_REQUESTS_PHONE,
   NAV_TAB_ROUTINES,
 } from "../copy/nav.js";
 import { useProgramLeaveGuard } from "../programs/program-leave-guard.js";
@@ -27,7 +25,6 @@ import {
 } from "./shell-tab-icons.js";
 
 export type MainNavProps = {
-  requestsReviewCount: number;
   variant: "top" | "tab";
 };
 
@@ -37,32 +34,22 @@ const tabs = [
     desktopLabel: NAV_TAB_EXERCISES,
     phoneLabel: NAV_TAB_EXERCISES,
     iconPath: SHELL_TAB_ICON_PATH_EXERCISES,
-    showCount: false,
   },
   {
     to: PHYSIO_APP_ROUTE_PATTERNS.routines,
     desktopLabel: NAV_TAB_ROUTINES,
     phoneLabel: NAV_TAB_ROUTINES,
     iconPath: SHELL_TAB_ICON_PATH_ROUTINES,
-    showCount: false,
   },
   {
     to: PHYSIO_APP_ROUTE_PATTERNS.programs,
     desktopLabel: NAV_TAB_PROGRAMS,
     phoneLabel: NAV_TAB_PROGRAMS,
     iconPath: SHELL_TAB_ICON_PATH_PROGRAMS,
-    showCount: false,
-  },
-  {
-    to: PHYSIO_APP_ROUTE_PATTERNS.requests,
-    desktopLabel: NAV_TAB_REQUESTS_DESKTOP,
-    phoneLabel: NAV_TAB_REQUESTS_PHONE,
-    iconPath: SHELL_TAB_ICON_PATH_REQUESTS,
-    showCount: true,
   },
 ] as const;
 
-export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
+export function MainNav({ variant }: MainNavProps) {
   const { guard } = useProgramLeaveGuard();
   const location = useLocation();
 
@@ -89,12 +76,7 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
               guardedNavClick(event, tab.to);
             }}
           >
-            <>
-              {tab.desktopLabel}
-              {tab.showCount && requestsReviewCount > 0 ? (
-                <span className="shell-count-badge">{requestsReviewCount}</span>
-              ) : null}
-            </>
+            <>{tab.desktopLabel}</>
           </NavLink>
         ))}
       </nav>
@@ -120,9 +102,6 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
                   <ShellTabIcon pathD={tab.iconPath} active={isActive} />
                 </span>
                 {tab.phoneLabel}
-                {tab.showCount && requestsReviewCount > 0 ? (
-                  <span className="shell-tab-count">{requestsReviewCount}</span>
-                ) : null}
               </>
             )}
           </NavLink>
@@ -136,9 +115,34 @@ export type AccountMenuProps = {
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  requestsReviewCount: number;
+  requestsMenuLabel: string;
 };
 
-export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
+function ShellMenuInboxIcon() {
+  return (
+    <svg
+      className="shell-menu-inbox-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d={SHELL_TAB_ICON_PATH_REQUESTS} />
+    </svg>
+  );
+}
+
+export function AccountMenu({
+  open,
+  onToggle,
+  onClose,
+  requestsReviewCount,
+  requestsMenuLabel,
+}: AccountMenuProps) {
   const sessionState = usePractitionerSession();
   const displayName =
     sessionState.status === "ready" ? sessionState.session.display_name : "";
@@ -264,6 +268,21 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
               <div className="shell-menu-signed-in">
                 {displayName.length > 0 ? accountSignedInLine(displayName) : null}
               </div>
+              <NavLink
+                to={PHYSIO_APP_ROUTE_PATTERNS.requests}
+                role="menuitem"
+                className="shell-menu-item shell-menu-requests-row"
+                data-testid="shell-menu-requests"
+                onClick={closeMenu}
+              >
+                <ShellMenuInboxIcon />
+                <span className="shell-menu-requests-label">{requestsMenuLabel}</span>
+                {requestsReviewCount > 0 ? (
+                  <span className="shell-menu-requests-count">
+                    {requestsReviewCount}
+                  </span>
+                ) : null}
+              </NavLink>
               <NavLink
                 to={PHYSIO_APP_ROUTE_PATTERNS.defaults}
                 role="menuitem"
