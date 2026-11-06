@@ -185,19 +185,20 @@ export function ProgramBuilderRowCard({
                 {PENDING_REVIEW_BADGE}
               </span>
             </p>
-          ) : null}
-          <p
-            className={`pg-row-meta-line pg-row-cat-line ${
-              kind === "stretch"
-                ? "pg-row-cat-line--stretch"
-                : "pg-row-cat-line--strength"
-            }`}
-          >
-            {kind === "stretch" ? <StretchCategoryIcon /> : <StrengthCategoryIcon />}
-            <span className="pg-row-cat-label">
-              {TYPE_LABELS[row.prescription_type]}
-            </span>
-          </p>
+          ) : (
+            <p
+              className={`pg-row-meta-line pg-row-cat-line ${
+                kind === "stretch"
+                  ? "pg-row-cat-line--stretch"
+                  : "pg-row-cat-line--strength"
+              }`}
+            >
+              {kind === "stretch" ? <StretchCategoryIcon /> : <StrengthCategoryIcon />}
+              <span className="pg-row-cat-label">
+                {TYPE_LABELS[row.prescription_type]}
+              </span>
+            </p>
+          )}
           {row.library_update !== null ? (
             <p className="pg-row-meta-line">
               <span className="pg-row-badge pg-row-badge--teal">

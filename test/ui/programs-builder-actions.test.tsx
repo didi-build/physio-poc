@@ -18,6 +18,7 @@ import {
   DUPLICATE_CONTROL_TITLE,
   PENDING_REVIEW_BADGE,
   ROW_NOTES_PLACEHOLDER,
+  ROW_VERSION_LABEL,
   duplicatedRowToast,
   duplicateRowAriaLabel,
   exercisesSectionTotalCount,
@@ -443,7 +444,7 @@ describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
       exercise_version_id: null,
       pinned_version_number: null,
       prescription_type: "concentric",
-      exercise_version_choices: [],
+      exercise_version_choices: [{ exercise_version_id: "v-ph", version_number: 1 }],
     };
     renderBuilder(
       stubProgramsClient({
@@ -452,6 +453,11 @@ describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
     );
     const card = await screen.findByRole("article", { name: /Bridge marching/i });
     expect(within(card).getByText(PENDING_REVIEW_BADGE)).toBeInTheDocument();
+    expect(card.querySelector(".pg-row-cat-line")).toBeNull();
+    expect(
+      within(card).queryByRole("combobox", { name: ROW_VERSION_LABEL }),
+    ).toBeNull();
+    expect(card.querySelector(".pg-row-version")).toBeNull();
     expect(
       within(card)
         .getByText(/10 reps/)
