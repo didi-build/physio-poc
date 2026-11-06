@@ -51,6 +51,24 @@ function gitConfigEnvKeys(env: Record<string, string | undefined>) {
   );
 }
 
+/** Some hosts inject GIT_CONFIG_* into the test process; bootstrap children must not inherit it for this harness. */
+function envForBootstrapSubprocess(
+  env: NodeJS.ProcessEnv,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (
+      key === "GIT_CONFIG_COUNT" ||
+      key.startsWith("GIT_CONFIG_KEY_") ||
+      key.startsWith("GIT_CONFIG_VALUE_")
+    ) {
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
 function envValueContainsTokenLeak(value: string | undefined) {
   if (value === undefined || value === null) {
     return false;
@@ -244,7 +262,7 @@ function runBootstrapInitWithStubs(
     cwd: dir,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...envForBootstrapSubprocess(process.env),
       ...hermeticEnv,
       PATH: pathPrefix,
       BOOTSTRAP_STUB_LOG: logPath,

@@ -7,10 +7,7 @@ import {
   gitPushArgs,
   gitPushAuthProcessEnv,
 } from "./lib/bootstrap-install.mjs";
-import {
-  envWithoutBootstrapTokens,
-  envWithoutInheritedGitConfigKeys,
-} from "./lib/bootstrap-token-env.mjs";
+import { envWithoutBootstrapTokens } from "./lib/bootstrap-token-env.mjs";
 import { validateCollectsPersonalDataEnv } from "./lib/collects-personal-data.mjs";
 import {
   deriveBootstrapPlan,
@@ -92,15 +89,8 @@ function appendStepSummary(lines) {
   appendFileSync(path, `${lines.join("\n")}\n`);
 }
 
-function bootstrapChildEnv(extraEnv = {}) {
-  return {
-    ...envWithoutInheritedGitConfigKeys(envWithoutBootstrapTokens(process.env)),
-    ...extraEnv,
-  };
-}
-
 function runInitProject(args) {
-  const childEnv = bootstrapChildEnv();
+  const childEnv = envWithoutBootstrapTokens(process.env);
   const result = spawnSync(process.execPath, [initProjectScript, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -119,7 +109,7 @@ function runNpm(args, extraEnv = {}) {
   const result = spawnSync("npm", args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: bootstrapChildEnv(extraEnv),
+    env: { ...envWithoutBootstrapTokens(process.env), ...extraEnv },
   });
   if (result.stdout) {
     process.stdout.write(result.stdout);
@@ -177,7 +167,7 @@ function runGit(args, extraEnv = {}) {
   const result = spawnSync("git", args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    env: bootstrapChildEnv(extraEnv),
+    env: { ...envWithoutBootstrapTokens(process.env), ...extraEnv },
   });
   if (result.stdout) {
     process.stdout.write(result.stdout);
