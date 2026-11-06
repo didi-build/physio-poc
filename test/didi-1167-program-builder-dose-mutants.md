@@ -13,3 +13,9 @@ Each mutant below was killed by a full `npm test` run with the edit applied, the
 | D7  | `onDoseAdjustClose`: omit `inflightStale` from flush condition (only `!exerciseParamsEqual(next, storedFiltered)`) | `programs-builder-actions.test.tsx` > Program builder dose box (DIDI-1167) > persists reps 10 when reverted while first PATCH is in flight then bottom Done                                     | Killed |
 
 **Totals:** 7 Killed, 0 Survived, 0 Equivalent across 7 full-suite runs (`npm test`).
+
+**Per-row write chain regression (not a numbered mutant):** Temporarily remove `prevLink` / `doseRowParamsWriteChainRef` serialization at the start of `saveRowParamsSnapshot` in `ProgramBuilderPage.tsx` and drop the `.set` on the chain ref after `runPromise`. Then run:
+
+`npx vitest run test/ui/programs-builder-actions.test.tsx -t "persists reps 10 when reverted while first PATCH is in flight then bottom Done|persists reps 10 when reverted while first PATCH is in flight then Leave"`
+
+Both tests should fail while waiting for exactly one `updateRow` before the gate resolves (for example `expected "vi.fn()" to be called 1 times, but got 2 times`). Restore app sources afterward.

@@ -677,12 +677,13 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       resolveFirst = resolve;
     });
     let callCount = 0;
-    /** Mock durable server row params (last successful PATCH wins when serialized). */
+    /** Mock durable server row params: set only after this request's simulated latency. */
     let durableReps = 10;
+    const latencyFirstMs = 80;
+    const latencySecondMs = 10;
     const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
       callCount += 1;
       const reps = (body as { params: { reps: number } }).params.reps;
-      durableReps = reps;
       const saved: ProgramBuilderRow = {
         ...baseRow,
         params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
@@ -692,7 +693,11 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       };
       if (callCount === 1) {
         await firstDone;
+        await vi.advanceTimersByTimeAsync(latencyFirstMs);
+      } else {
+        await vi.advanceTimersByTimeAsync(latencySecondMs);
       }
+      durableReps = reps;
       return {
         program: builderView({
           rows: [saved],
@@ -720,10 +725,14 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     });
     await userEvent.click(within(card).getByRole("button", { name: /Less reps/i }));
     await userEvent.click(within(card).getByRole("button", { name: DONE_ADJUSTING }));
+    await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
     resolveFirst!(undefined);
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalledTimes(2);
     });
+    await vi.runAllTimersAsync();
     expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
       params: expect.objectContaining({ reps: 10 }),
     });
@@ -742,11 +751,13 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       resolveFirst = resolve;
     });
     let callCount = 0;
+    /** Mock durable server row params: set only after this request's simulated latency. */
     let durableReps = 10;
+    const latencyFirstMs = 80;
+    const latencySecondMs = 10;
     const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
       callCount += 1;
       const reps = (body as { params: { reps: number } }).params.reps;
-      durableReps = reps;
       const saved: ProgramBuilderRow = {
         ...baseRow,
         params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
@@ -756,7 +767,11 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       };
       if (callCount === 1) {
         await firstDone;
+        await vi.advanceTimersByTimeAsync(latencyFirstMs);
+      } else {
+        await vi.advanceTimersByTimeAsync(latencySecondMs);
       }
+      durableReps = reps;
       return {
         program: builderView({
           rows: [saved],
@@ -788,18 +803,19 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     expect(
       await screen.findByRole("dialog", { name: LEAVE_TITLE }),
     ).toBeInTheDocument();
-    resolveFirst!(undefined);
-    await waitFor(() => {
-      expect(updateRow).toHaveBeenCalledTimes(1);
-    });
     await waitFor(() => {
       const readout = card.querySelector(".pg-row-dose-text");
       expect(readout?.textContent).toMatch(/^10 reps/);
     });
     await userEvent.click(screen.getByRole("button", { name: LEAVE_CONFIRM }));
     await waitFor(() => {
+      expect(updateRow).toHaveBeenCalledTimes(1);
+    });
+    resolveFirst!(undefined);
+    await waitFor(() => {
       expect(updateRow).toHaveBeenCalledTimes(2);
     });
+    await vi.runAllTimersAsync();
     expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
       params: expect.objectContaining({ reps: 10 }),
     });
