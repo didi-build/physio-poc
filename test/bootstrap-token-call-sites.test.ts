@@ -51,16 +51,6 @@ function gitConfigEnvKeys(env: Record<string, string | undefined>) {
   );
 }
 
-function withoutInheritedGitConfigEnv(
-  env: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  const out: Record<string, string | undefined> = { ...env };
-  for (const key of gitConfigEnvKeys(out)) {
-    delete out[key];
-  }
-  return out;
-}
-
 function envValueContainsTokenLeak(value: string | undefined) {
   if (value === undefined || value === null) {
     return false;
@@ -239,6 +229,22 @@ function seedBootstrapInitFixture(dir: string, realGit: string) {
   return gitEnv;
 }
 
+function withoutInheritedGitConfigEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const cleaned: Record<string, string | undefined> = { ...env };
+  for (const key of Object.keys(cleaned)) {
+    if (
+      key === "GIT_CONFIG_COUNT" ||
+      key.startsWith("GIT_CONFIG_KEY_") ||
+      key.startsWith("GIT_CONFIG_VALUE_")
+    ) {
+      delete cleaned[key];
+    }
+  }
+  return cleaned;
+}
+
 function runBootstrapInitWithStubs(
   dir: string,
   realGit: string,
@@ -250,12 +256,11 @@ function runBootstrapInitWithStubs(
   writeFileSync(summaryPath, "");
 
   const pathPrefix = `${bin}${delimiter}${process.env.PATH ?? ""}`;
-  const baseEnv = withoutInheritedGitConfigEnv(process.env);
   const result = spawnSync(process.execPath, [bootstrapScript, "run"], {
     cwd: dir,
     encoding: "utf8",
     env: {
-      ...baseEnv,
+      ...withoutInheritedGitConfigEnv(process.env),
       ...hermeticEnv,
       PATH: pathPrefix,
       BOOTSTRAP_STUB_LOG: logPath,

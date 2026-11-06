@@ -16,6 +16,11 @@ import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import {
+  handlePractitionerSessionRequest,
+  PRACTITIONER_SESSION_JSON_HEADERS,
+} from "./routes/practitioner-session.js";
+import { PRACTITIONER_SESSION_API_PATH } from "../practitioner-session-api-paths.js";
 import { handleRoutinesRequest } from "./routes/routines.js";
 import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
@@ -155,12 +160,6 @@ export async function handleRequest(
 
   if (pathname.startsWith("/api/")) {
     return guardAndRun(request, deps, sessionGuardOptions, async () => {
-      if (requiresAppApiCsrfGuard(pathname, request.method)) {
-        const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
-        if (csrfRejection) {
-          return csrfRejection;
-        }
-      }
       if (pathname.startsWith("/api/me/")) {
         const queryRejected = rejectQueryPractitionerId(url);
         if (queryRejected) {
@@ -168,6 +167,20 @@ export async function handleRequest(
         }
       }
       const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const practitionerSessionResponse = await handlePractitionerSessionRequest(
+        request,
+        deps,
+        { sessionPractitioner },
+      );
+      if (practitionerSessionResponse) {
+        return practitionerSessionResponse;
+      }
+      if (requiresAppApiCsrfGuard(pathname, request.method)) {
+        const csrfRejection = rejectMutatingAppApiCsrf(request, deps.config);
+        if (csrfRejection) {
+          return csrfRejection;
+        }
+      }
       const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
         sessionPractitioner,
       });
@@ -255,6 +268,12 @@ async function guardAndRun(
   const practitioner = await deps.auth.getPractitioner(request);
   if (!practitioner) {
     if (url.pathname.startsWith("/api/")) {
+      if (url.pathname === PRACTITIONER_SESSION_API_PATH) {
+        return Response.json(
+          { error: "unauthorized" },
+          { status: 401, headers: PRACTITIONER_SESSION_JSON_HEADERS },
+        );
+      }
       return jsonUnauthorized();
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);

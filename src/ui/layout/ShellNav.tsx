@@ -3,12 +3,14 @@ import type { MouseEvent } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { PHYSIO_APP_ROUTE_PATTERNS } from "../../app-routes.js";
 import { postAuthSignOut } from "../api/auth-client.js";
-import { ACCOUNT_DISPLAY_NAME, ARIA_CLOSE_MENU } from "../copy/a11y.js";
+import { accountAvatarInitial } from "../account/account-avatar-initial.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { ARIA_CLOSE_MENU } from "../copy/a11y.js";
 import {
   ACCOUNT_MY_DEFAULTS,
   ACCOUNT_MY_DEFAULTS_DETAIL,
   ACCOUNT_SIGN_OUT,
-  ACCOUNT_SIGNED_IN_LINE,
+  accountSignedInLine,
   NAV_TAB_EXERCISES,
   NAV_TAB_PROGRAMS,
   NAV_TAB_REQUESTS_DESKTOP,
@@ -137,6 +139,9 @@ export type AccountMenuProps = {
 };
 
 export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
+  const sessionState = usePractitionerSession();
+  const displayName =
+    sessionState.status === "ready" ? sessionState.session.display_name : "";
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -242,9 +247,9 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
             aria-hidden
             data-testid="shell-account-avatar"
           >
-            K
+            {accountAvatarInitial(displayName)}
           </span>
-          <span className="shell-account-name">{ACCOUNT_DISPLAY_NAME}</span>
+          <span className="shell-account-name">{displayName}</span>
         </button>
         {open ? (
           <>
@@ -256,7 +261,9 @@ export function AccountMenu({ open, onToggle, onClose }: AccountMenuProps) {
               onClick={closeMenu}
             />
             <div ref={menuRef} role="menu" className="shell-menu-panel">
-              <div className="shell-menu-signed-in">{ACCOUNT_SIGNED_IN_LINE}</div>
+              <div className="shell-menu-signed-in">
+                {displayName.length > 0 ? accountSignedInLine(displayName) : null}
+              </div>
               <NavLink
                 to={PHYSIO_APP_ROUTE_PATTERNS.defaults}
                 role="menuitem"
