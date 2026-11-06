@@ -677,9 +677,12 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       resolveFirst = resolve;
     });
     let callCount = 0;
+    /** Mock durable server row params (last successful PATCH wins when serialized). */
+    let durableReps = 10;
     const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
       callCount += 1;
       const reps = (body as { params: { reps: number } }).params.reps;
+      durableReps = reps;
       const saved: ProgramBuilderRow = {
         ...baseRow,
         params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
@@ -728,6 +731,7 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       const readout = card.querySelector(".pg-row-dose-text");
       expect(readout?.textContent).toMatch(/^10 reps/);
     });
+    expect(durableReps).toBe(10);
     vi.useRealTimers();
   });
 
@@ -738,9 +742,11 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
       resolveFirst = resolve;
     });
     let callCount = 0;
+    let durableReps = 10;
     const updateRow = vi.fn().mockImplementation(async (_pid, _rid, body) => {
       callCount += 1;
       const reps = (body as { params: { reps: number } }).params.reps;
+      durableReps = reps;
       const saved: ProgramBuilderRow = {
         ...baseRow,
         params: { reps, hold_s: 2, sets: 3, days_per_week: 3 },
@@ -797,6 +803,7 @@ describe("Program builder dose box (DIDI-1167, integration, jsdom)", () => {
     expect(updateRow).toHaveBeenLastCalledWith("prog-1", "row-stg", {
       params: expect.objectContaining({ reps: 10 }),
     });
+    expect(durableReps).toBe(10);
     vi.useRealTimers();
   });
 

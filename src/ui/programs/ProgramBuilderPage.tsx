@@ -89,6 +89,8 @@ export function ProgramBuilderPage() {
   >(new Map());
   /** Last params confirmed by the server for a row (before any client merge of stale responses). */
   const doseServerConfirmedFilteredRef = useRef<Map<string, ExerciseParams>>(new Map());
+  /** Serializes dose PATCH per row so auto and flush cannot complete out of order on the client. */
+  const doseRowParamsWriteChainRef = useRef<Map<string, Promise<unknown>>>(new Map());
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -198,6 +200,7 @@ export function ProgramBuilderPage() {
     doseParamsEditGenRef.current.clear();
     doseParamsInflightRef.current.clear();
     doseServerConfirmedFilteredRef.current.clear();
+    doseRowParamsWriteChainRef.current.clear();
   }, [program?.program_id]);
 
   const requestLeave = (to: string) => {
@@ -233,118 +236,128 @@ export function ProgramBuilderPage() {
 
   const saveRowParamsSnapshot = useCallback(
     async (rowId: string, attemptParams: ExerciseParams) => {
-      const currentProgram = programRef.current;
-      if (!currentProgram) {
-        return;
-      }
-      const targetRow = currentProgram.rows.find((r) => r.id === rowId);
-      if (!targetRow) {
-        return;
-      }
-      const editGenWhenQueued = doseParamsEditGenRef.current.get(rowId) ?? 0;
-      const nextParams = filterExerciseParamsForPrescriptionType(
-        attemptParams,
-        targetRow.prescription_type,
-      );
-      const storedFiltered =
-        doseServerConfirmedFilteredRef.current.get(rowId) ??
-        filterExerciseParamsForPrescriptionType(
-          { ...targetRow.params },
+      const prevLink =
+        doseRowParamsWriteChainRef.current.get(rowId) ?? Promise.resolve();
+      const runPromise = (async () => {
+        await prevLink.catch(() => {});
+        const currentProgram = programRef.current;
+        if (!currentProgram) {
+          return;
+        }
+        const targetRow = currentProgram.rows.find((r) => r.id === rowId);
+        if (!targetRow) {
+          return;
+        }
+        const editGenWhenQueued = doseParamsEditGenRef.current.get(rowId) ?? 0;
+        const nextParams = filterExerciseParamsForPrescriptionType(
+          attemptParams,
           targetRow.prescription_type,
         );
-      const inflight = doseParamsInflightRef.current.get(rowId);
-      const inflightStale =
-        inflight !== undefined &&
-        !exerciseParamsEqual(inflight.sentFiltered, nextParams);
-      if (exerciseParamsEqual(nextParams, storedFiltered) && !inflightStale) {
-        return;
-      }
-      setRowMutationBusy(true);
-      doseParamsInflightRef.current.set(rowId, {
-        sentFiltered: nextParams,
-        editGenWhenSent: editGenWhenQueued,
-      });
-      try {
-        const result = await client.updateRow(currentProgram.program_id, rowId, {
-          params: nextParams,
-        });
-        const rawUpdated = result.program.rows.find((r) => r.id === rowId);
-        if (rawUpdated !== undefined) {
-          doseServerConfirmedFilteredRef.current.set(
-            rowId,
-            filterExerciseParamsForPrescriptionType(
-              { ...rawUpdated.params },
-              rawUpdated.prescription_type,
-            ),
+        const storedFiltered =
+          doseServerConfirmedFilteredRef.current.get(rowId) ??
+          filterExerciseParamsForPrescriptionType(
+            { ...targetRow.params },
+            targetRow.prescription_type,
           );
+        const inflight = doseParamsInflightRef.current.get(rowId);
+        const inflightStale =
+          inflight !== undefined &&
+          !exerciseParamsEqual(inflight.sentFiltered, nextParams);
+        if (exerciseParamsEqual(nextParams, storedFiltered) && !inflightStale) {
+          return;
         }
-        const genAfterResponse = doseParamsEditGenRef.current.get(rowId) ?? 0;
-        let programToApply = result.program;
-        if (genAfterResponse > editGenWhenQueued) {
-          const draft = doseAdjustDraftRef.current;
-          const prevRow = programRef.current?.rows.find((r) => r.id === rowId);
-          const updated = result.program.rows.find((r) => r.id === rowId);
-          if (updated !== undefined) {
-            const replacementParams =
-              draft?.rowId === rowId
-                ? filterExerciseParamsForPrescriptionType(
-                    draft.params,
-                    updated.prescription_type,
-                  )
-                : prevRow !== undefined
+        setRowMutationBusy(true);
+        doseParamsInflightRef.current.set(rowId, {
+          sentFiltered: nextParams,
+          editGenWhenSent: editGenWhenQueued,
+        });
+        try {
+          const result = await client.updateRow(currentProgram.program_id, rowId, {
+            params: nextParams,
+          });
+          const rawUpdated = result.program.rows.find((r) => r.id === rowId);
+          if (rawUpdated !== undefined) {
+            doseServerConfirmedFilteredRef.current.set(
+              rowId,
+              filterExerciseParamsForPrescriptionType(
+                { ...rawUpdated.params },
+                rawUpdated.prescription_type,
+              ),
+            );
+          }
+          const genAfterResponse = doseParamsEditGenRef.current.get(rowId) ?? 0;
+          let programToApply = result.program;
+          if (genAfterResponse > editGenWhenQueued) {
+            const draft = doseAdjustDraftRef.current;
+            const prevRow = programRef.current?.rows.find((r) => r.id === rowId);
+            const updated = result.program.rows.find((r) => r.id === rowId);
+            if (updated !== undefined) {
+              const replacementParams =
+                draft?.rowId === rowId
                   ? filterExerciseParamsForPrescriptionType(
-                      { ...prevRow.params },
+                      draft.params,
                       updated.prescription_type,
                     )
-                  : undefined;
-            if (replacementParams !== undefined) {
-              programToApply = {
-                ...result.program,
-                rows: result.program.rows.map((r) =>
-                  r.id === rowId ? { ...updated, params: replacementParams } : r,
-                ),
-              };
+                  : prevRow !== undefined
+                    ? filterExerciseParamsForPrescriptionType(
+                        { ...prevRow.params },
+                        updated.prescription_type,
+                      )
+                    : undefined;
+              if (replacementParams !== undefined) {
+                programToApply = {
+                  ...result.program,
+                  rows: result.program.rows.map((r) =>
+                    r.id === rowId ? { ...updated, params: replacementParams } : r,
+                  ),
+                };
+              }
             }
           }
+          applyProgram(programToApply);
+          setDoseAdjustDraft((prev) => {
+            if (doseEditorRowIdRef.current !== rowId) {
+              return prev;
+            }
+            if (prev?.rowId !== rowId) {
+              return prev;
+            }
+            const updated = programToApply.rows.find((r) => r.id === rowId);
+            if (!updated) {
+              return prev;
+            }
+            const serverFiltered = filterExerciseParamsForPrescriptionType(
+              { ...updated.params },
+              updated.prescription_type,
+            );
+            const prevDraftFiltered = filterExerciseParamsForPrescriptionType(
+              prev.params,
+              updated.prescription_type,
+            );
+            if (!exerciseParamsEqual(prevDraftFiltered, serverFiltered)) {
+              doseAdjustDraftRef.current = prev;
+              return prev;
+            }
+            const synced = {
+              rowId,
+              params: serverFiltered,
+            };
+            doseAdjustDraftRef.current = synced;
+            return synced;
+          });
+        } finally {
+          const mark = doseParamsInflightRef.current.get(rowId);
+          if (mark !== undefined && mark.editGenWhenSent === editGenWhenQueued) {
+            doseParamsInflightRef.current.delete(rowId);
+          }
+          setRowMutationBusy(false);
         }
-        applyProgram(programToApply);
-        setDoseAdjustDraft((prev) => {
-          if (doseEditorRowIdRef.current !== rowId) {
-            return prev;
-          }
-          if (prev?.rowId !== rowId) {
-            return prev;
-          }
-          const updated = programToApply.rows.find((r) => r.id === rowId);
-          if (!updated) {
-            return prev;
-          }
-          const serverFiltered = filterExerciseParamsForPrescriptionType(
-            { ...updated.params },
-            updated.prescription_type,
-          );
-          const prevDraftFiltered = filterExerciseParamsForPrescriptionType(
-            prev.params,
-            updated.prescription_type,
-          );
-          if (!exerciseParamsEqual(prevDraftFiltered, serverFiltered)) {
-            doseAdjustDraftRef.current = prev;
-            return prev;
-          }
-          const synced = {
-            rowId,
-            params: serverFiltered,
-          };
-          doseAdjustDraftRef.current = synced;
-          return synced;
-        });
-      } finally {
-        const mark = doseParamsInflightRef.current.get(rowId);
-        if (mark !== undefined && mark.editGenWhenSent === editGenWhenQueued) {
-          doseParamsInflightRef.current.delete(rowId);
-        }
-        setRowMutationBusy(false);
-      }
+      })();
+      doseRowParamsWriteChainRef.current.set(
+        rowId,
+        runPromise.catch(() => {}),
+      );
+      await runPromise;
     },
     [client],
   );
