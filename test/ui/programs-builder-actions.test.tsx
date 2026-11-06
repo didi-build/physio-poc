@@ -269,6 +269,91 @@ describe("Programs builder row actions (integration, jsdom)", () => {
   });
 });
 
+describe("Program builder row card layout (integration, jsdom)", () => {
+  it("M6: applies stripe classes for strength, stretching, and placeholder rows", async () => {
+    const placeholder: ProgramBuilderRow = {
+      ...exerciseRow("row-ph", "Pending exercise", 0),
+      kind: "placeholder",
+      exercise_id: null,
+      exercise_version_id: null,
+      pinned_version_number: null,
+      exercise_version_choices: [],
+    };
+    const stretchMove: ProgramBuilderRow = {
+      ...exerciseRow("row-st", "Stretch move", 1),
+      prescription_type: "stretching",
+    };
+    const strengthMove = exerciseRow("row-stg", "Strength move", 2);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(
+          builderView({
+            rows: [placeholder, stretchMove, strengthMove],
+            exercise_count: 2,
+          }),
+        ),
+      }),
+    );
+    const pendingCard = await screen.findByRole("article", {
+      name: /Pending exercise/i,
+    });
+    expect(pendingCard).toHaveClass("pg-row", "pg-row--stripe-pending");
+    const stretchCard = screen.getByRole("article", { name: /Stretch move/i });
+    expect(stretchCard).toHaveClass("pg-row", "pg-row--stripe-sky");
+    const strengthCard = screen.getByRole("article", { name: /Strength move/i });
+    expect(strengthCard).toHaveClass("pg-row", "pg-row--stripe-violet");
+  });
+
+  it("M7: shows Isometric or Concentric or Eccentric control only on strength rows", async () => {
+    const stretchMove: ProgramBuilderRow = {
+      ...exerciseRow("row-st", "Stretch move", 0),
+      prescription_type: "stretching",
+    };
+    const strengthMove = exerciseRow("row-stg", "Strength move", 1);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(
+            builderView({ rows: [stretchMove, strengthMove], exercise_count: 2 }),
+          ),
+      }),
+    );
+    await screen.findByRole("article", { name: /Stretch move/i });
+    const stretchCard = screen.getByRole("article", { name: /Stretch move/i });
+    expect(within(stretchCard).queryByRole("radiogroup")).not.toBeInTheDocument();
+    const strengthCard = screen.getByRole("article", { name: /Strength move/i });
+    const typeGroup = within(strengthCard).getByRole("radiogroup");
+    expect(typeGroup).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Isometric" }),
+    ).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Concentric" }),
+    ).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Eccentric" }),
+    ).toBeInTheDocument();
+  });
+
+  it("M8: shows the grey dose readout box and no dose Adjust control", async () => {
+    const strengthMove = exerciseRow("row-stg", "Strength move", 0);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [strengthMove], exercise_count: 1 })),
+      }),
+    );
+    const strengthCard = await screen.findByRole("article", { name: /Strength move/i });
+    const doseBox = within(strengthCard)
+      .getByText(/10 reps/)
+      .closest(".pg-row-dose-box");
+    expect(doseBox).toBeTruthy();
+    expect(screen.queryByText(/Adjust/i)).not.toBeInTheDocument();
+  });
+});
+
 function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsClient {
   const base: Partial<ProgramsClient> = {
     listPrograms: vi.fn().mockResolvedValue({
