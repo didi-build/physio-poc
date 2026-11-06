@@ -18,7 +18,19 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 ## Navigation (whole app)
 
-Main nav, in this order: **Exercises / Routines / Programs / Requests** (desktop top bar labels: Exercises, Routines, Programs, Requests and drafts; phone bottom bar: Exercises, Routines, Programs, Requests, with a count badge on Requests). There is no global search: each page has its own search bar.
+Main nav, in this order: **Exercises / Routines / Programs**. Desktop top bar and phone bottom bar have these three entries only. Requests is not a primary nav tab at either size. There is no global search: each page has its own search bar.
+
+Requests moves to the existing top-right account dropdown opened by the account chip (the approved reference fixture shows "Kojo"). Reuse "Requests" on phone and "Requests and drafts" on desktop, the existing short and full nav labels. Put the relocated entry immediately after the identity line and before My defaults; keep My defaults ("Types, links") and Sign out unchanged. Opening the menu, closing it, focus behavior and selecting an item retain the existing account-menu contract. Selecting Requests reaches the existing Requests and drafts route; the request/review screens (DIDI-1009) do not change.
+
+The amber drafts-to-review count moves with the Requests entry into the dropdown. Keep its existing numeric format and visibility rule: display the integer only when greater than 0; omit the badge at 0. No new count wording, suffix, cap or separate account-chip badge. The count data and meaning do not change. Any additional screen-reader count wording belongs to DIDI-1114 and is not introduced by this relocation.
+
+At 390 px, distribute the three bottom tabs equally, retaining the approved bar height, safe-area behavior, labels, SVGs, active/inactive states and spacing inside each tab. At 1024 px and up, remove Requests and drafts from the top nav and expose it only in the same account dropdown. Existing Requests and review routes no longer select any of the three primary tabs. Do not rename or redesign any content.
+
+The three remaining phone icons reuse the approved v12 paths `I.library`, `I.routine`, `I.programs` in `design/reference/web-app/generated/WebAppClickableConcept.tsx`: 22 px, stroke 1.8 inactive / 2.1 active, teal-50 active pill. Remove `I.inbox` from the bottom bar with the Requests tab. Visible labels name the tabs; icons remain hidden from assistive technology. The Requests account-menu row MUST retain the existing `I.inbox` icon, as approved by Diadem on Nov 6, 2026, 1:52 AM ET (America/Toronto). Use the existing 20 px inbox SVG and menu-row styling shown in the approved phone and desktop mockups. Keep the three bottom tabs on approved v12 icons for now. Any A/B/C tab-icon change is explicitly deferred to DIDI-1114: "Revisit the tab icons in DIDI-1114". The inbox menu icon and current v12 tab icons are settled for DIDI-1173, not open questions or approval gates.
+
+DIDI-1173 is the final approved navigation spec, approved by Diadem in Designer's chat on Nov 6, 2026, 1:52 AM ET (America/Toronto), ready for a design-spec PR. DIDI-1175 remains Blocked until this approved spec is merged and its merge commit and paths are linked. Physio's gallery waiver in DIDI-998 still applies; CTO must reconcile the stale gallery wording in DIDI-1173 / DIDI-1175, not add a new gallery gate.
+
+Account identity wiring belongs to DIDI-1172. "Kojo" and "Signed in as Kojo, physiotherapist" are unchanged approved reference-fixture text here, not a requirement to hard-code the production identity. The latest DIDI-594 lock requires the authenticated Google session identity.
 
 ## States
 
@@ -511,6 +523,14 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+* Nov 6, 2026, 1:52 AM ET (America/Toronto), DIDI-1173 final approval in Designer's chat. Diadem's three answers, verbatim:
+  1. "I approve moving Requests into the Kojo menu with three bottom tabs"
+  2. "Keep the inbox icon on the Requests row"
+  3. "Revisit the tab icons in DIDI-1114"
+  Locked: Requests in the account dropdown with its existing inbox icon; three bottom tabs retain approved v12 icons for now; any A/B/C tab-icon change is deferred to DIDI-1114. Only the four approved mockups listed below belong in the PR bundle. PROPOSED strings: 0. Matches Product direction: yes.
+
+* Nov 5, 2026, 3:03 PM ET (America/Toronto), DIDI-1173: Diadem's exact direction: 'requests shouldn't be its own tab, it should be found in the top right drop down (when you click "Kojo")'. Requests is removed from phone and desktop primary navigation and moves the existing entry plus numeric badge into the account dropdown. Requests screens, other labels, styles and behavior remain unchanged. Source: locked Product direction on https://linear.app/didi-build/issue/DIDI-594. Earlier four-tab approval is retained as history, not silently erased. Matches Product direction: yes.
+
 - **Oct 23, 2026**: First concept: search, request, AI draft review, builder, share. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Shared library and My exercises; open editing with "Edit for everyone", version history and restore; private "Edit my copy" with "Library updated". https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-825
 - **Oct 24, 2026**: DIDI-827 picks: keep both edit paths; similar exercises plus Report duplicate or merge; regenerated media live as a new version. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827
@@ -519,3 +539,42 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Oct 25, 2026**: v10 comments #13 and #16: Type dropdown; collapsible Filters & sort with Sort. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v11: nav renamed to Exercises / Routines / Programs / Requests. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-852
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change to this feature in v12. https://linear.app/didi-build/issue/DIDI-809
+
+
+## DIDI-1173: Approved Product direction
+
+**Matches Product direction: yes.** Checked against the live DIDI-594 description on Nov 5, 2026, including the locked Nov 5, 2026, 3:03 PM ET (America/Toronto) correction. This exact relocation supersedes the earlier four-tab location only; both historical records remain preserved on DIDI-594.
+
+Diadem, verbatim, Nov 5, 2026, 3:03 PM ET (America/Toronto):
+
+> requests shouldn't be its own tab, it should be found in the top right drop down (when you click "Kojo")
+
+### Copy inventory for this change
+
+All user-facing wording is reused: "Exercises", "Routines", "Programs", "Requests" (phone), "Requests and drafts" (desktop), "Kojo", "Signed in as Kojo, physiotherapist", "My defaults", "Types, links", "Sign out". The amber badge retains its numeric integer format from the reference source. The render fixture count 2 is illustrative, not live data. Existing accessibility names "Main", "Account menu" and "Close menu" come from the reference; the implementation's existing close/focus contract stays unchanged.
+
+PROPOSED strings: 0. All user-facing wording is reused; additional count-accessibility copy is outside DIDI-1173 and deferred to DIDI-1114.
+
+### Approved mockups
+
+Rendered directly from the approved v12 reference TSX and its existing media, not a hand-drawn approximation. Phone viewport and PNG width are 390 px, height 844 px; desktop is 1280 by 900 px. The four-tab before render represents the approved design, not the observed missing-icon bug on live POC. The only changed chrome is the Requests entry point and three-column bar. Count 2 is a render fixture in both before and after states.
+
+| File | State |
+| -- | -- |
+| [01 before](mockups/didi-1173-01-before-four-tabs-phone.png) | Four-tab before reference, Requests count 2 |
+| [02 three tabs](mockups/didi-1173-02-after-three-tabs-phone.png) | Approved three equal bottom tabs on existing v12 icons; Requests no longer in primary navigation |
+| [03 phone dropdown](mockups/didi-1173-03-after-account-dropdown-phone.png) | Approved account dropdown with Requests, count 2 and the existing inbox icon |
+| [04 desktop dropdown](mockups/didi-1173-04-after-account-dropdown-desktop.png) | Approved desktop primary nav has three entries; Requests and drafts, count 2 and the existing inbox icon in the dropdown |
+
+### DIDI-1114: Explicitly deferred tab-icon work
+
+Diadem's Nov 6, 2026, 1:52 AM ET (America/Toronto) answer is "Revisit the tab icons in DIDI-1114". DIDI-1173 therefore keeps the approved v12 `I.library`, `I.routine` and `I.programs` paths and active/inactive styling for the three bottom tabs. Any A/B/C change is separate work in DIDI-1114 and does not block this approved relocation. DIDI-1173 removes only the Requests bottom-bar icon and retains the existing inbox icon on the Requests menu row, as expressly approved.
+
+DIDI-1114's exploration (comment `8c7b24a6-d542-41f0-b1bf-42d16d285178`, MagicPath project https://www.magicpath.ai/files/466877438648012800) assumed four tabs. Its A/B/C comparison must reflect three remaining tabs when revisited. Browser-title, naming, dark-mode and new count-accessibility wording remain outside DIDI-1173; no new strings or decisions on those topics are introduced here. CTO comment `5cb30102-321f-4e94-9076-c10c0efc6c31` separately permits DIDI-1115 to restore the existing approved v12 icons.
+
+### CTO coordination, not new Product decisions
+
+* Reconcile DIDI-1173 / DIDI-1175's gallery wording with the recorded Physio gallery waiver in DIDI-998. This final approval does not remove the spec-merge and linking gate for implementation.
+* Sequence DIDI-1115 icon restoration and DIDI-1175 relocation so neither reintroduces a fourth tab; do not block the approved current-bar icon restoration or this approved relocation on the separate DIDI-1114 title/dark-mode work.
+* Coordinate the account-menu touch point with DIDI-1172 so identity follows the Google session. Do not infer impersonation or a data leak from the old Kojo fixture alone.
+* On eventual implementation, update the Shared layout and nav-copy lines in `design/README.md`, this `Navigation (whole app)` section, and the stale four-tab line in `design/app/routines/spec.md` together. Historical approved reference TSX and baseline screenshots remain provenance; do not silently overwrite the approved v12 record.

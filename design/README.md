@@ -31,12 +31,12 @@ MagicPath project: 464510439821283328. The connector did not change in v12, so i
 
 ## Shared layout
 
-- Top nav (desktop) and bottom tab bar (phone): **Exercises / Routines / Programs / Requests**, (desktop label "Requests and drafts"), with an amber count on Requests for drafts to review. The account menu ("Signed in as Kojo, physiotherapist") holds My defaults ("Types, links") and Sign out; the Publish and share sheets also link to My defaults ("Your default is 1 year. Change it in My defaults").
+- Top nav (desktop) and bottom tab bar (phone): **Exercises / Routines / Programs** only. Requests is not a primary nav tab at either size. Requests moves to the top-right account dropdown (account chip; the approved reference fixture shows "Kojo"): **Requests** on phone and **Requests and drafts** on desktop, with the existing inbox icon and an amber drafts-to-review count (integer only when greater than 0), immediately after the identity line and before My defaults ("Types, links") and Sign out. The Publish and share sheets also link to My defaults ("Your default is 1 year. Change it in My defaults").
 - No global search. Exercises, Routines and Programs each have their own search bar.
 - Mobile first: every screen works at 390 px (Kojo uses a phone). On 1024 px and up, the builder's publish card floats in a right column.
 - Toasts appear at the bottom of the screen; reversible actions (remove, discard, adopt, keep) offer Undo instead of a confirm. Destructive or live-affecting actions (publish, delete program, merge, restore version) use a confirm sheet.
 
-Nav copy (verbatim from the source): Exercises; Routines; Programs; Requests and drafts (phone tab: Requests); account menu: Signed in as Kojo, physiotherapist; My defaults, Types, links; Sign out.
+Nav copy (verbatim from the approved navigation spec, DIDI-1173): Exercises; Routines; Programs; account dropdown: Requests (phone) / Requests and drafts (desktop) with inbox icon and amber count when drafts to review; Signed in as Kojo, physiotherapist; My defaults, Types, links; Sign out.
 
 ## Mockup sourcing
 
