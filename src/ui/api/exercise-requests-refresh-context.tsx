@@ -5,7 +5,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { getExerciseRequestsClient } from "./exercise-requests-client.js";
+import { useExerciseRequestsApi } from "./exercise-requests-context.js";
 
 type RefreshContextValue = {
   refreshInProgressCount: () => Promise<void>;
@@ -20,15 +20,16 @@ export function ExerciseRequestsRefreshProvider({
   children: ReactNode;
   onCount: (count: number) => void;
 }) {
+  const requestsClient = useExerciseRequestsApi();
+
   const refreshInProgressCount = useCallback(async () => {
     try {
-      const { in_progress_count } =
-        await getExerciseRequestsClient().getInProgressCount();
+      const { in_progress_count } = await requestsClient.getInProgressCount();
       onCount(in_progress_count);
     } catch {
       onCount(0);
     }
-  }, [onCount]);
+  }, [onCount, requestsClient]);
 
   useEffect(() => {
     void refreshInProgressCount();

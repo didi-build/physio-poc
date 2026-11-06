@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
+import { ensureMatchMediaStub, mockMinWidth1024 } from "./setup.js";
 import {
   act,
   cleanup,
@@ -38,12 +39,17 @@ import {
   SHELL_TAB_ICON_PATH_ROUTINES,
 } from "../../src/ui/layout/shell-tab-icons.js";
 import { SEARCH_PROGRAMS_LABEL } from "../../src/ui/copy/programs.js";
+import {
+  NAV_TAB_REQUESTS_DESKTOP,
+  NAV_TAB_REQUESTS_PHONE,
+} from "../../src/ui/copy/nav.js";
 
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   setExerciseRequestsClientForTests(null);
   vi.restoreAllMocks();
+  ensureMatchMediaStub();
 });
 
 function LocationProbe() {
@@ -162,7 +168,7 @@ describe("app shell nav (integration)", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/exercises");
   });
 
-  it("renders verbatim desktop and phone nav labels", () => {
+  it("renders verbatim desktop and phone nav labels (three primary tabs only)", () => {
     renderApp("/exercises", 0);
 
     const navs = screen.getAllByRole("navigation", { name: "Main" });
@@ -173,11 +179,63 @@ describe("app shell nav (integration)", () => {
     expect(within(topNav).getByRole("link", { name: "Routines" })).toBeInTheDocument();
     expect(within(topNav).getByRole("link", { name: "Programs" })).toBeInTheDocument();
     expect(
-      within(topNav).getByRole("link", { name: /Requests and drafts/ }),
-    ).toBeInTheDocument();
+      within(topNav).queryByRole("link", { name: NAV_TAB_REQUESTS_DESKTOP }),
+    ).not.toBeInTheDocument();
 
     const tabNav = navs[1];
-    expect(within(tabNav).getByRole("link", { name: "Requests" })).toBeInTheDocument();
+    expect(within(tabNav).getAllByRole("link")).toHaveLength(3);
+    expect(
+      within(tabNav).queryByRole("link", { name: NAV_TAB_REQUESTS_PHONE }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("labels the account menu Requests row per breakpoint copy", async () => {
+    const user = userEvent.setup();
+    const wide = mockMinWidth1024(true);
+    try {
+      renderApp("/exercises", 0);
+      await user.click(screen.getByRole("button", { name: "Account menu" }));
+      expect(
+        screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_DESKTOP }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }),
+      ).not.toBeInTheDocument();
+    } finally {
+      wide.setMatches(false);
+    }
+
+    cleanup();
+    ensureMatchMediaStub();
+
+    renderApp("/exercises", 0);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(
+      screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }),
+    ).toBeInTheDocument();
+  });
+
+  it("puts Requests after the identity line and before My defaults", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    await waitFor(() => {
+      expect(screen.getByText(FAKE_UI_DISPLAY_NAME)).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const items = screen.getAllByRole("menuitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveAccessibleName(NAV_TAB_REQUESTS_PHONE);
+    expect(items[1]).toHaveAccessibleName(/My defaults/);
+    expect(items[2]).toHaveAccessibleName("Sign out");
+  });
+
+  it("keeps the inbox icon path on the account menu Requests row", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 0);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    const row = screen.getByTestId("shell-menu-requests");
+    const path = row.querySelector("svg.shell-menu-inbox-icon path");
+    expect(path).toHaveAttribute("d", SHELL_TAB_ICON_PATH_REQUESTS);
   });
 
   it("renders an approved mock icon in each phone tab link", () => {
@@ -187,7 +245,6 @@ describe("app shell nav (integration)", () => {
       { name: "Exercises", pathD: SHELL_TAB_ICON_PATH_EXERCISES },
       { name: "Routines", pathD: SHELL_TAB_ICON_PATH_ROUTINES },
       { name: "Programs", pathD: SHELL_TAB_ICON_PATH_PROGRAMS },
-      { name: "Requests", pathD: SHELL_TAB_ICON_PATH_REQUESTS },
     ];
 
     for (const tab of expected) {
@@ -230,16 +287,23 @@ describe("app shell nav (integration)", () => {
     expect(inactiveIcon).toHaveAttribute("stroke-width", "1.8");
   });
 
-  it("shows no requests badge when the count is 0", () => {
+  it("shows no requests drafts count in the account menu when the count is 0", async () => {
+    const user = userEvent.setup();
     const { container } = renderApp("/exercises", 0);
-    expect(container.querySelector(".shell-count-badge")).toBeNull();
-    expect(container.querySelector(".shell-tab-count")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    expect(container.querySelector(".shell-menu-requests-count")).toBeNull();
   });
 
-  it("shows an amber requests count when the count is greater than 0", () => {
-    const { container } = renderApp("/exercises", 4);
-    expect(container.querySelectorAll(".shell-count-badge")).toHaveLength(1);
-    expect(container.querySelectorAll(".shell-tab-count")).toHaveLength(1);
+  it("shows an amber drafts count in the account menu when the count is greater than 0", async () => {
+    const user = userEvent.setup();
+    renderApp("/exercises", 4);
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await waitFor(() => {
+      const row = screen.getByTestId("shell-menu-requests");
+      const badge = row.querySelector(".shell-menu-requests-count");
+      expect(badge).not.toBeNull();
+      expect(badge).toHaveTextContent("4");
+    });
   });
 
   it("sets aria-current on the active desktop top nav link", () => {
@@ -260,7 +324,7 @@ describe("app shell nav (integration)", () => {
     );
   });
 
-  it("navigates each tab to the correct route", async () => {
+  it("navigates each tab to the correct route and reaches Requests from the account menu", async () => {
     const user = userEvent.setup();
     renderApp("/exercises", 0);
     const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
@@ -268,7 +332,8 @@ describe("app shell nav (integration)", () => {
     await user.click(within(tabNav).getByRole("link", { name: "Programs" }));
     expect(screen.getByTestId("location")).toHaveTextContent("/programs");
 
-    await user.click(within(tabNav).getByRole("link", { name: "Requests" }));
+    await user.click(screen.getByRole("button", { name: "Account menu" }));
+    await user.click(screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE }));
     expect(screen.getByTestId("location")).toHaveTextContent("/requests");
   });
 
@@ -291,16 +356,21 @@ describe("app shell nav (integration)", () => {
     const trigger = screen.getByRole("button", { name: "Account menu" });
 
     await user.click(trigger);
+    const requestsItem = screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE });
     const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
     const signOutItem = screen.getByRole("menuitem", { name: "Sign out" });
+    expect(document.activeElement).toBe(requestsItem);
+
+    await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(defaultsItem);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}");
     expect(document.activeElement).toBe(signOutItem);
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{ArrowDown}");
-    expect(document.activeElement).toBe(defaultsItem);
+    expect(document.activeElement).toBe(requestsItem);
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
     await user.keyboard("{ArrowUp}");
@@ -331,11 +401,11 @@ describe("app shell nav (integration)", () => {
     const trigger = screen.getByRole("button", { name: "Account menu" });
 
     await user.click(trigger);
-    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
-    expect(document.activeElement).toBe(defaultsItem);
+    const requestsItem = screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE });
+    expect(document.activeElement).toBe(requestsItem);
     expect(screen.getByRole("menu")).toBeInTheDocument();
 
-    fireEvent.focusOut(defaultsItem, { relatedTarget: trigger });
+    fireEvent.focusOut(requestsItem, { relatedTarget: trigger });
     expect(screen.getByRole("menu")).toBeInTheDocument();
     expect(trigger).toHaveAttribute("aria-expanded", "true");
 
@@ -411,8 +481,8 @@ describe("app shell nav (integration)", () => {
 
     outsideLink.focus();
     await user.click(trigger);
-    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
-    expect(document.activeElement).toBe(defaultsItem);
+    const requestsItem = screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE });
+    expect(document.activeElement).toBe(requestsItem);
     await user.tab({ shift: true });
     expect(screen.getByRole("menu")).toBeInTheDocument();
     expect(document.activeElement).toBe(trigger);
@@ -477,8 +547,8 @@ describe("app shell nav (integration)", () => {
     const tabLink = within(tabNav).getByRole("link", { name: "Routines" });
 
     await user.click(trigger);
-    const defaultsItem = screen.getByRole("menuitem", { name: /My defaults/ });
-    expect(document.activeElement).toBe(defaultsItem);
+    const requestsItem = screen.getByRole("menuitem", { name: NAV_TAB_REQUESTS_PHONE });
+    expect(document.activeElement).toBe(requestsItem);
 
     fireEvent.pointerDown(tabLink);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
