@@ -77,10 +77,8 @@ export function programCardLinkStatusLine(
   return null;
 }
 
-export const CODE_CHIP_PREFIX = "Code";
-
 export function programCodeChipLabel(code: string): string {
-  return `${CODE_CHIP_PREFIX} ${code}`;
+  return code;
 }
 
 export const PROGRAM_NAME_LABEL = "Program name";
@@ -153,82 +151,6 @@ export const ROW_DEFAULTS_FOOTNOTE =
   "Each row keeps the values it was added with. Changes to My exercises or My defaults apply to new rows only.";
 
 export const PUBLISH = "Publish";
-
-/** design/app/programs/spec.md Copy inventory line 542. */
-export const PUBLISH_SHEET_TITLE = "Publish to the live link?";
-/** design/app/programs/spec.md Copy inventory line 543. */
-export const PUBLISH_NOT_YET = "Not yet";
-/** design/app/programs/spec.md Copy inventory line 544. */
-export const PUBLISH_NOW = "Publish now";
-/** design/app/programs/spec.md Copy inventory line 547. */
-export const PROGRAM_NAME_REQUIRED_SUFFIX = "(required)";
-/** design/app/programs/spec.md Copy inventory line 548. */
-export const ADD_PROGRAM_NAME_TO_PUBLISH =
-  "Add a program name to publish. Use something you will recognise, not the patient's name.";
-/** design/app/programs/spec.md Copy inventory line 549. */
-export const PUBLISH_NAME_FROM_ROUTINE_HINT =
-  "Filled in from the routine. Change it if you like.";
-/** design/app/programs/spec.md Copy inventory line 550. */
-export const PUBLISH_FIRST_HEADING = "First publish";
-/** design/app/programs/spec.md Copy inventory line 552. */
-export const SHARE_LINK_HEADING = "Share link";
-/** design/app/programs/spec.md Copy inventory line 553. */
-export const PUBLISH_NO_LINK_YET =
-  "No link yet. Publishing creates it, ready to copy and send.";
-/** design/app/programs/spec.md Copy inventory line 554. */
-export const PUBLISH_NO_OPEN_LINK =
-  "There is no open link. Publishing creates a new one you can copy and send.";
-/** design/app/programs/spec.md Copy inventory line 555. */
-export const COPY_LINK = "Copy";
-/** design/app/programs/spec.md Copy inventory line 558. */
-export const PUBLISH_SAME_LINK_HELPER =
-  "Same link as before. Your patient sees this version as soon as you publish.";
-/** design/app/programs/spec.md Copy inventory line 559. */
-export const SHARE_LINK_ACTIVE_HELPER =
-  "Your patient sees the published version on this link.";
-/** design/app/programs/spec.md Copy inventory line 560. */
-export const LINK_EXPIRES_HEADING = "Link expires";
-/** design/app/programs/spec.md Copy inventory line 561. */
-export const LINK_EXPIRES_THIS_PROGRAM = "This program only";
-/** design/app/programs/spec.md States table line 30. */
-export const PICK_A_DATE = "Pick a date";
-/** design/app/programs/spec.md Copy inventory line 557. */
-export const ANYONE_NEW_LINK_HELPER = "Anyone with the new link sees this version.";
-/** design/app/programs/spec.md Copy inventory line 564. */
-export const PUBLISH_EXPIRY_APPLIES_NEW = "Applies to the new link.";
-/** design/app/programs/spec.md Copy inventory line 565. */
-export const PUBLISH_EXPIRY_APPLIES_NOW =
-  "Expiry changes apply to the link right away.";
-
-/** design/app/programs/spec.md Copy inventory line 622. */
-export const BACK_TO_PROGRAM = "Back to program";
-/** design/app/programs/spec.md Copy inventory line 623. */
-export const SHARE_PROGRAM_TITLE = "Share program";
-/** design/app/programs/spec.md Copy inventory line 619. */
-export const DOWNLOAD_PDF = "Download PDF";
-/** design/app/programs/spec.md Copy inventory line 632. */
-export const LINK_PAGE = "Link page";
-/** design/app/programs/spec.md Copy inventory line 633. */
-export const SHARE_ACTION = "Share";
-/** design/app/programs/spec.md Copy inventory line 634. */
-export const CLOSE_SHARE_LINK_SHEET_TITLE = "Close this share link?";
-/** design/app/programs/spec.md Copy inventory line 635. */
-export const CLOSE_LINK = "Close link";
-/** design/app/programs/spec.md Copy inventory line 605. */
-export const CREATE_NEW_LINK = "Create a new link";
-/** design/app/programs/spec.md Copy inventory line 624. */
-export const PDF_PREVIEW_LABEL = "PDF preview";
-/** design/app/programs/spec.md Copy inventory line 631. */
-export const PDF_PREVIEW_CAPTION = "PDF preview, page 1 of 1. Made from the link page.";
-/** design/app/programs/spec.md Copy inventory line 636. */
-export const CLOSE_LINK_PROGRAM_KEPT =
-  "The program stays in Programs. You can reuse it with another patient and create a new link any time.";
-/** design/app/programs/spec.md Copy inventory line 540. */
-export const LINK_CLOSED = "Link closed";
-
-export function publishChangesSinceHeading(publishedAt: string): string {
-  return `Changes since ${formatProgramPublishedAt(publishedAt)}`;
-}
 
 export const LIBRARY_UPDATE_KEEP = "Keep my original";
 export const LIBRARY_UPDATE_BODY =

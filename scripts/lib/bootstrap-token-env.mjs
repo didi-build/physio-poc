@@ -14,6 +14,27 @@ export function envWithoutBootstrapTokens(env) {
 }
 
 /**
+ * Remove GIT_CONFIG_* entries injected by the parent so bootstrap child processes
+ * (npm ci, init, commit) do not inherit credential wiring from the outer environment.
+ * Push still adds its own GIT_CONFIG in bootstrap-install.mjs.
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function envWithoutInheritedGitConfigKeys(env) {
+  const out = { ...env };
+  for (const key of Object.keys(out)) {
+    if (
+      key === "GIT_CONFIG_COUNT" ||
+      key.startsWith("GIT_CONFIG_KEY_") ||
+      key.startsWith("GIT_CONFIG_VALUE_")
+    ) {
+      delete out[key];
+    }
+  }
+  return out;
+}
+
+/**
  * @param {NodeJS.ProcessEnv} env
  * @returns {boolean}
  */

@@ -42,6 +42,14 @@ export function createPhysioAppRouteObjects(
           path: physioAppSpaRoutePath(routeName),
           element: routeElements[routeName] ?? null,
         })),
+        {
+          path: physioAppSpaRoutePath("programPublish"),
+          element: <Navigate to={PHYSIO_APP_ROUTE_PATTERNS.programs} replace />,
+        },
+        {
+          path: physioAppSpaRoutePath("programShare"),
+          element: <Navigate to={PHYSIO_APP_ROUTE_PATTERNS.programs} replace />,
+        },
       ],
     },
   ];

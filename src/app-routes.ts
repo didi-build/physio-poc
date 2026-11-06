@@ -106,8 +106,6 @@ export const PHYSIO_APP_SPA_ROUTE_NAMES = [
   "programs",
   "programNew",
   "programBuilder",
-  "programPublish",
-  "programShare",
   "requests",
   "requestConflict",
   "requestReview",

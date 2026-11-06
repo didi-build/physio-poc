@@ -20,8 +20,6 @@ import { RequestConflictPage } from "./exercise-requests/RequestConflictPage.js"
 import { RequestsAndDraftsPage } from "./exercise-requests/RequestsAndDraftsPage.js";
 import { MyDefaultsPage } from "./my-defaults/MyDefaultsPage.js";
 import { ProgramBuilderPage } from "./programs/ProgramBuilderPage.js";
-import { ProgramPublishPage } from "./programs/ProgramPublishPage.js";
-import { ProgramSharePage } from "./programs/ProgramSharePage.js";
 import { ProgramsListPage } from "./programs/ProgramsListPage.js";
 import { ProgramsNewPage } from "./programs/ProgramsNewPage.js";
 import {
@@ -91,8 +89,6 @@ export function createPhysioAppRouteElements(
     programs: <ProgramsListPage />,
     programNew: <ProgramsNewPage />,
     programBuilder: <ProgramBuilderPage />,
-    programPublish: <ProgramPublishPage />,
-    programShare: <ProgramSharePage />,
     requests: requestsListRoute,
     requestConflict: <RequestConflictPage />,
     requestReview: draftReviewRoute,
