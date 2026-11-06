@@ -327,6 +327,11 @@ body {
   background: var(--shell-teal-50);
 }
 
+.shell-tab-icon {
+  width: 22px;
+  height: 22px;
+}
+
 .shell-tab-count {
   position: absolute;
   left: 50%;
