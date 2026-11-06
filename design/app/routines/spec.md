@@ -55,7 +55,7 @@ The full verbatim copy is in the inventory at the end.
 
 ## Decisions
 
-1. Routines are in the first version. Nav: Exercises / Routines / Programs / Requests.
+1. Routines are in the first version. Nav: Exercises / Routines / Programs (Requests in the account dropdown).
 2. Community routines follow the exercise-library rules: any practitioner can add or edit, with version history, and each practitioner keeps a personal copy.
 3. A saved routine is a frozen copy (rows and version). When the community version is newer it is flagged, with an easy adopt ("Use version N") or "Keep mine". This mirrors My exercises.
 4. No review step for routines (they don't generate AI content). Save draft, publish and versions behave like exercises: a new routine is an auto-saved draft only its author sees, published with a confirm as version 1; Edit for everyone saves version N+1; history can restore an older version as a new version.

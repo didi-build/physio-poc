@@ -26,6 +26,12 @@ import {
   ExerciseRequestsClient,
   setExerciseRequestsClientForTests,
 } from "../../src/ui/api/exercise-requests-client.js";
+import {
+  SHELL_TAB_ICON_PATH_EXERCISES,
+  SHELL_TAB_ICON_PATH_PROGRAMS,
+  SHELL_TAB_ICON_PATH_REQUESTS,
+  SHELL_TAB_ICON_PATH_ROUTINES,
+} from "../../src/ui/layout/shell-tab-icons.js";
 import { SEARCH_PROGRAMS_LABEL } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
@@ -162,6 +168,56 @@ describe("app shell nav (integration)", () => {
 
     const tabNav = navs[1];
     expect(within(tabNav).getByRole("link", { name: "Requests" })).toBeInTheDocument();
+  });
+
+  it("renders an approved mock icon in each phone tab link", () => {
+    renderApp("/exercises", 0);
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+    const expected: { name: string; pathD: string }[] = [
+      { name: "Exercises", pathD: SHELL_TAB_ICON_PATH_EXERCISES },
+      { name: "Routines", pathD: SHELL_TAB_ICON_PATH_ROUTINES },
+      { name: "Programs", pathD: SHELL_TAB_ICON_PATH_PROGRAMS },
+      { name: "Requests", pathD: SHELL_TAB_ICON_PATH_REQUESTS },
+    ];
+
+    for (const tab of expected) {
+      const link = within(tabNav).getByRole("link", { name: tab.name });
+      const wrap = link.querySelector(".shell-tab-icon-wrap");
+      expect(wrap).toBeTruthy();
+      expect(wrap).toHaveAttribute("aria-hidden", "true");
+      const path = wrap?.querySelector("svg.shell-tab-icon path");
+      expect(path).toBeTruthy();
+      expect(path).toHaveAttribute("d", tab.pathD);
+    }
+  });
+
+  it("maps each phone tab to its own icon path", () => {
+    renderApp("/exercises", 0);
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+    const exercisesPath = within(tabNav)
+      .getByRole("link", { name: "Exercises" })
+      .querySelector("svg.shell-tab-icon path")
+      ?.getAttribute("d");
+    const routinesPath = within(tabNav)
+      .getByRole("link", { name: "Routines" })
+      .querySelector("svg.shell-tab-icon path")
+      ?.getAttribute("d");
+    expect(exercisesPath).toBe(SHELL_TAB_ICON_PATH_EXERCISES);
+    expect(routinesPath).toBe(SHELL_TAB_ICON_PATH_ROUTINES);
+    expect(exercisesPath).not.toBe(routinesPath);
+  });
+
+  it("uses heavier stroke on the active phone tab icon", () => {
+    renderApp("/programs", 0);
+    const tabNav = screen.getAllByRole("navigation", { name: "Main" })[1];
+    const activeIcon = within(tabNav)
+      .getByRole("link", { name: "Programs" })
+      .querySelector("svg.shell-tab-icon");
+    const inactiveIcon = within(tabNav)
+      .getByRole("link", { name: "Exercises" })
+      .querySelector("svg.shell-tab-icon");
+    expect(activeIcon).toHaveAttribute("stroke-width", "2.1");
+    expect(inactiveIcon).toHaveAttribute("stroke-width", "1.8");
   });
 
   it("shows no requests badge when the count is 0", () => {
