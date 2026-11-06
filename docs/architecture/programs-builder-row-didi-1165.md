@@ -21,5 +21,5 @@ Row reorder stays implemented in `ProgramBuilderPage` via `reorder` and `client.
 ## Related
 
 - CTO scope: Linear comment 050cbb88 on DIDI-1165
-- Dose editor: out of scope (DIDI-1167)
+- Dose box, Adjust editor, edited or reset: DIDI-1167 (`docs/architecture/programs-builder-row-didi-1167.md`)
 - Drag and reorder wiring: out of scope (DIDI-1166)

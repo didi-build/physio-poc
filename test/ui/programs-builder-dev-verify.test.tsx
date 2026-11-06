@@ -71,6 +71,7 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
 }
 
 function exerciseRow(id: string, title: string): ProgramBuilderRow {
+  const params = { reps: 10 };
   return {
     id,
     position: 1,
@@ -80,8 +81,10 @@ function exerciseRow(id: string, title: string): ProgramBuilderRow {
     exercise_request_id: null,
     pinned_version_number: 1,
     prescription_type: "concentric",
-    params: { reps: 10 },
+    params,
     params_source: "global_defaults",
+    resolved_params: params,
+    resolved_params_source: "global_defaults",
     text_snapshot: { title },
     note: null,
     library_update: null,
@@ -580,6 +583,8 @@ describe("Programs builder dev verification", () => {
       pinned_version_number: null,
       prescription_type: "concentric",
       exercise_version_choices: [],
+      resolved_params: { reps: 10 },
+      resolved_params_source: "global_defaults",
     };
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>

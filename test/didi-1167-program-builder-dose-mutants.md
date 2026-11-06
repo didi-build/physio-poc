@@ -1,0 +1,21 @@
+# DIDI-1167 mutation table (program builder dose box)
+
+Each mutant below was killed by a full `npm test` run with the edit applied, then the original sources were restored. Pair this file with the PR head SHA in the PR description.
+
+| Id  | Mutant                                                                                                             | Killing test(s)                                                                                                                                                                                 | Result |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| D1  | `toBuilderRow`: `paramsMatchResolved` forced `false` instead of `exerciseParamsEqual(...)`                         | `program-builder-service.test.ts` > adds rows with param precedence: exercise override, type defaults, global                                                                                   | Killed |
+| D2  | `toBuilderRow`: `params_source` always `null` instead of `paramsMatchResolved ? paramsSource : null`               | `program-builder-service.test.ts` > adds rows with param precedence: exercise override, type defaults, global                                                                                   | Killed |
+| D3  | `ProgramBuilderRowCard`: `doseEdited` forced `false`                                                               | `programs-builder-actions.test.tsx` > Program builder dose box (DIDI-1167) > saves edited params via auto-save and shows amber edited state when stored params differ from defaults             | Killed |
+| D4  | `exerciseParamsEqual`: return `true` immediately                                                                   | `program-builder-service-from-routine.test.ts` > copies three pinned routine rows with full field fidelity for community and My copy sources                                                    | Killed |
+| D5  | `saveRowParamsIfChanged`: immediate `return` at start of callback                                                  | `programs-builder-actions.test.tsx` > Program builder dose box (DIDI-1167) > saves edited params via auto-save and shows amber edited state when stored params differ from defaults (and peers) | Killed |
+| D6  | `saveRowParamsSnapshot`: `if (true) { return; }` before row snapshot logic (skip PATCH chain)                      | `programs-builder-actions.test.tsx` > Program builder dose box (DIDI-1167) > persists latest reps when bottom Done closes after an in-flight PATCH (and peers)                                  | Killed |
+| D7  | `onDoseAdjustClose`: omit `inflightStale` from flush condition (only `!exerciseParamsEqual(next, storedFiltered)`) | `programs-builder-actions.test.tsx` > Program builder dose box (DIDI-1167) > persists reps 10 when reverted while first PATCH is in flight then bottom Done                                     | Killed |
+
+**Totals:** 7 Killed, 0 Survived, 0 Equivalent across 7 full-suite runs (`npm test`).
+
+**Per-row write chain regression (not a numbered mutant):** Temporarily remove `prevLink` / `doseRowParamsWriteChainRef` serialization at the start of `saveRowParamsSnapshot` in `ProgramBuilderPage.tsx` and drop the `.set` on the chain ref after `runPromise`. Then run:
+
+`npx vitest run test/ui/programs-builder-actions.test.tsx -t "persists reps 10 when reverted while first PATCH is in flight then bottom Done|persists reps 10 when reverted while first PATCH is in flight then Leave"`
+
+Both tests should fail while waiting for exactly one `updateRow` before the gate resolves (for example `expected "vi.fn()" to be called 1 times, but got 2 times`). Restore app sources afterward.

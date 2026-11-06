@@ -26,8 +26,13 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { hideProgramFindByIdSqlPort } from "./helpers/hide-program-find-by-id-sql-port.js";
+import { GLOBAL_TYPE_DEFAULTS_SEED } from "../src/domain/global-type-defaults-seed.js";
 
 const BODY_REGION_KNEE = "br-knee";
+
+const routineResolvedStretching = GLOBAL_TYPE_DEFAULTS_SEED.stretching;
+const routineResolvedConcentric = GLOBAL_TYPE_DEFAULTS_SEED.concentric;
+const routineResolvedIsometric = GLOBAL_TYPE_DEFAULTS_SEED.isometric;
 
 type PublishSeeds = {
   routine: string;
@@ -2052,7 +2057,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 1,
           prescription_type: "stretching",
           params: paramsA,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedStretching,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotA1,
           note: null,
           library_update: {
@@ -2074,7 +2081,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 1,
           prescription_type: "isometric",
           params: paramsB,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedIsometric,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotB1,
           note: null,
           library_update: {
@@ -2096,7 +2105,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 1,
           prescription_type: "stretching",
           params: paramsC,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedStretching,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotC1,
           note: null,
           library_update: {
@@ -2144,7 +2155,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 2,
           prescription_type: "stretching",
           params: communityParamsA,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedStretching,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotA2,
           note: null,
           library_update: null,
@@ -2160,7 +2173,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 2,
           prescription_type: "concentric",
           params: communityParamsB,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedConcentric,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotB2,
           note: null,
           library_update: null,
@@ -2176,7 +2191,9 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           pinned_version_number: 2,
           prescription_type: "stretching",
           params: communityParamsC,
-          params_source: "global_defaults",
+          params_source: null,
+          resolved_params: routineResolvedStretching,
+          resolved_params_source: "global_defaults",
           text_snapshot: textSnapshotC2,
           note: null,
           library_update: null,

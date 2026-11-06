@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
+import {
+  exerciseParamsEqual,
+  filterExerciseParamsForPrescriptionType,
+  type ExerciseParams,
+} from "../../domain/exercise-params.js";
 import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { useProgramsApi } from "../api/programs-context.js";
@@ -64,6 +69,28 @@ export function ProgramBuilderPage() {
   const noteDraftsRef = useRef(noteDrafts);
   noteDraftsRef.current = noteDrafts;
   const [rowMutationBusy, setRowMutationBusy] = useState(false);
+  const [doseAdjustDraft, setDoseAdjustDraft] = useState<{
+    rowId: string;
+    params: ExerciseParams;
+  } | null>(null);
+  const doseAdjustDraftRef = useRef(doseAdjustDraft);
+  doseAdjustDraftRef.current = doseAdjustDraft;
+  const [doseEditorRowId, setDoseEditorRowId] = useState<string | null>(null);
+  const doseEditorRowIdRef = useRef(doseEditorRowId);
+  doseEditorRowIdRef.current = doseEditorRowId;
+  const doseParamDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  /** Bumped on each dose draft edit per row so late PATCH responses cannot overwrite a newer draft. */
+  const doseParamsEditGenRef = useRef<Map<string, number>>(new Map());
+  /** Row params PATCH in flight: used to force a corrective PATCH when the draft reverts while an older value is still saving. */
+  const doseParamsInflightRef = useRef<
+    Map<string, { sentFiltered: ExerciseParams; editGenWhenSent: number }>
+  >(new Map());
+  /** Last params confirmed by the server for a row (before any client merge of stale responses). */
+  const doseServerConfirmedFilteredRef = useRef<Map<string, ExerciseParams>>(new Map());
+  /** Serializes dose PATCH per row so auto and flush cannot complete out of order on the client. */
+  const doseRowParamsWriteChainRef = useRef<Map<string, Promise<unknown>>>(new Map());
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -91,12 +118,31 @@ export function ProgramBuilderPage() {
   const autoSave = useProgramAutoSave({});
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
+
+  const doseDraftDiffersFromServer = useMemo(() => {
+    if (!program || doseAdjustDraft === null) {
+      return false;
+    }
+    const row = program.rows.find((r) => r.id === doseAdjustDraft.rowId);
+    if (!row) {
+      return false;
+    }
+    const draftFiltered = filterExerciseParamsForPrescriptionType(
+      doseAdjustDraft.params,
+      row.prescription_type,
+    );
+    const storedFiltered = filterExerciseParamsForPrescriptionType(
+      { ...row.params },
+      row.prescription_type,
+    );
+    return !exerciseParamsEqual(draftFiltered, storedFiltered);
+  }, [program, doseAdjustDraft]);
   const isDesktopLayout = useMinWidth1024();
   const { setGuard } = useProgramLeaveGuard();
 
   useEffect(() => {
     setGuard({
-      hasUnsavedEdits: autoSave.hasUnsavedEdits,
+      hasUnsavedEdits: autoSave.hasUnsavedEdits || doseDraftDiffersFromServer,
       requestLeave: (to: string) => {
         setPendingLeaveTo(to);
         setLeaveOpen(true);
@@ -105,7 +151,7 @@ export function ProgramBuilderPage() {
     return () => {
       setGuard(null);
     };
-  }, [autoSave.hasUnsavedEdits, setGuard]);
+  }, [autoSave.hasUnsavedEdits, doseDraftDiffersFromServer, setGuard]);
 
   useEffect(() => {
     const code = programCode.trim();
@@ -121,6 +167,16 @@ export function ProgramBuilderPage() {
         setProgram(view);
         setNameDraft(view.name ?? "");
         setNoteDrafts(noteDraftsFromProgram(view));
+        doseServerConfirmedFilteredRef.current.clear();
+        for (const r of view.rows) {
+          doseServerConfirmedFilteredRef.current.set(
+            r.id,
+            filterExerciseParamsForPrescriptionType(
+              { ...r.params },
+              r.prescription_type,
+            ),
+          );
+        }
         autoSaveRef.current.markSaved();
       })
       .catch(() => {
@@ -132,8 +188,23 @@ export function ProgramBuilderPage() {
       });
   }, [client, programCode]);
 
+  useEffect(() => {
+    setDoseAdjustDraft(null);
+    doseAdjustDraftRef.current = null;
+    setDoseEditorRowId(null);
+    doseEditorRowIdRef.current = null;
+    for (const t of doseParamDebounceTimersRef.current.values()) {
+      clearTimeout(t);
+    }
+    doseParamDebounceTimersRef.current.clear();
+    doseParamsEditGenRef.current.clear();
+    doseParamsInflightRef.current.clear();
+    doseServerConfirmedFilteredRef.current.clear();
+    doseRowParamsWriteChainRef.current.clear();
+  }, [program?.program_id]);
+
   const requestLeave = (to: string) => {
-    if (autoSave.hasUnsavedEdits) {
+    if (autoSave.hasUnsavedEdits || doseDraftDiffersFromServer) {
       setPendingLeaveTo(to);
       setLeaveOpen(true);
       return;
@@ -162,6 +233,162 @@ export function ProgramBuilderPage() {
     setNameDraft(value);
     autoSave.scheduleDebouncedSave("name", saveName);
   };
+
+  const saveRowParamsSnapshot = useCallback(
+    async (rowId: string, attemptParams: ExerciseParams) => {
+      const prevLink =
+        doseRowParamsWriteChainRef.current.get(rowId) ?? Promise.resolve();
+      const runPromise = (async () => {
+        await prevLink.catch(() => {});
+        const currentProgram = programRef.current;
+        if (!currentProgram) {
+          return;
+        }
+        const targetRow = currentProgram.rows.find((r) => r.id === rowId);
+        if (!targetRow) {
+          return;
+        }
+        const editGenWhenQueued = doseParamsEditGenRef.current.get(rowId) ?? 0;
+        const nextParams = filterExerciseParamsForPrescriptionType(
+          attemptParams,
+          targetRow.prescription_type,
+        );
+        const storedFiltered =
+          doseServerConfirmedFilteredRef.current.get(rowId) ??
+          filterExerciseParamsForPrescriptionType(
+            { ...targetRow.params },
+            targetRow.prescription_type,
+          );
+        const inflight = doseParamsInflightRef.current.get(rowId);
+        const inflightStale =
+          inflight !== undefined &&
+          !exerciseParamsEqual(inflight.sentFiltered, nextParams);
+        if (exerciseParamsEqual(nextParams, storedFiltered) && !inflightStale) {
+          return;
+        }
+        setRowMutationBusy(true);
+        doseParamsInflightRef.current.set(rowId, {
+          sentFiltered: nextParams,
+          editGenWhenSent: editGenWhenQueued,
+        });
+        try {
+          const result = await client.updateRow(currentProgram.program_id, rowId, {
+            params: nextParams,
+          });
+          const rawUpdated = result.program.rows.find((r) => r.id === rowId);
+          if (rawUpdated !== undefined) {
+            doseServerConfirmedFilteredRef.current.set(
+              rowId,
+              filterExerciseParamsForPrescriptionType(
+                { ...rawUpdated.params },
+                rawUpdated.prescription_type,
+              ),
+            );
+          }
+          const genAfterResponse = doseParamsEditGenRef.current.get(rowId) ?? 0;
+          let programToApply = result.program;
+          if (genAfterResponse > editGenWhenQueued) {
+            const draft = doseAdjustDraftRef.current;
+            const prevRow = programRef.current?.rows.find((r) => r.id === rowId);
+            const updated = result.program.rows.find((r) => r.id === rowId);
+            if (updated !== undefined) {
+              const replacementParams =
+                draft?.rowId === rowId
+                  ? filterExerciseParamsForPrescriptionType(
+                      draft.params,
+                      updated.prescription_type,
+                    )
+                  : prevRow !== undefined
+                    ? filterExerciseParamsForPrescriptionType(
+                        { ...prevRow.params },
+                        updated.prescription_type,
+                      )
+                    : undefined;
+              if (replacementParams !== undefined) {
+                programToApply = {
+                  ...result.program,
+                  rows: result.program.rows.map((r) =>
+                    r.id === rowId ? { ...updated, params: replacementParams } : r,
+                  ),
+                };
+              }
+            }
+          }
+          applyProgram(programToApply);
+          setDoseAdjustDraft((prev) => {
+            if (doseEditorRowIdRef.current !== rowId) {
+              return prev;
+            }
+            if (prev?.rowId !== rowId) {
+              return prev;
+            }
+            const updated = programToApply.rows.find((r) => r.id === rowId);
+            if (!updated) {
+              return prev;
+            }
+            const serverFiltered = filterExerciseParamsForPrescriptionType(
+              { ...updated.params },
+              updated.prescription_type,
+            );
+            const prevDraftFiltered = filterExerciseParamsForPrescriptionType(
+              prev.params,
+              updated.prescription_type,
+            );
+            if (!exerciseParamsEqual(prevDraftFiltered, serverFiltered)) {
+              doseAdjustDraftRef.current = prev;
+              return prev;
+            }
+            const synced = {
+              rowId,
+              params: serverFiltered,
+            };
+            doseAdjustDraftRef.current = synced;
+            return synced;
+          });
+        } finally {
+          const mark = doseParamsInflightRef.current.get(rowId);
+          if (mark !== undefined && mark.editGenWhenSent === editGenWhenQueued) {
+            doseParamsInflightRef.current.delete(rowId);
+          }
+          setRowMutationBusy(false);
+        }
+      })();
+      doseRowParamsWriteChainRef.current.set(
+        rowId,
+        runPromise.catch(() => {}),
+      );
+      await runPromise;
+    },
+    [client],
+  );
+
+  const saveRowParamsIfChanged = useCallback(
+    async (rowId: string) => {
+      const snap = doseAdjustDraftRef.current;
+      if (snap?.rowId !== rowId) {
+        return;
+      }
+      await saveRowParamsSnapshot(rowId, snap.params);
+    },
+    [saveRowParamsSnapshot],
+  );
+
+  const scheduleDoseParamSave = useCallback(
+    (rowId: string) => {
+      const existing = doseParamDebounceTimersRef.current.get(rowId);
+      if (existing) {
+        clearTimeout(existing);
+      }
+      const timer = setTimeout(() => {
+        doseParamDebounceTimersRef.current.delete(rowId);
+        void autoSaveRef.current.runSave(`row-params:auto:${rowId}`, () =>
+          saveRowParamsIfChanged(rowId),
+        );
+      }, 100);
+      doseParamDebounceTimersRef.current.set(rowId, timer);
+    },
+    [saveRowParamsIfChanged],
+  );
 
   const onNoteChange = (rowId: string, note: string) => {
     setNoteDrafts((prev) => ({ ...prev, [rowId]: note }));
@@ -471,6 +698,181 @@ export function ProgramBuilderPage() {
                         setRowMutationBusy(false);
                       });
                   }}
+                  doseDraft={
+                    doseAdjustDraft?.rowId === row.id
+                      ? doseAdjustDraft.params
+                      : undefined
+                  }
+                  doseEditorOpen={doseEditorRowId === row.id}
+                  onDoseAdjustOpen={() => {
+                    void (async () => {
+                      const prevId = doseEditorRowIdRef.current;
+                      if (prevId && prevId !== row.id) {
+                        const prevTimer =
+                          doseParamDebounceTimersRef.current.get(prevId);
+                        if (prevTimer) {
+                          clearTimeout(prevTimer);
+                          doseParamDebounceTimersRef.current.delete(prevId);
+                        }
+                        const closingDraft = doseAdjustDraftRef.current;
+                        if (closingDraft?.rowId === prevId) {
+                          await saveRowParamsSnapshot(prevId, closingDraft.params);
+                        }
+                        setDoseAdjustDraft(null);
+                        doseAdjustDraftRef.current = null;
+                      }
+                      setDoseEditorRowId(row.id);
+                      doseEditorRowIdRef.current = row.id;
+                      const rowSnap = programRef.current?.rows.find(
+                        (r) => r.id === row.id,
+                      );
+                      if (!rowSnap) {
+                        return;
+                      }
+                      const initial = {
+                        rowId: row.id,
+                        params: filterExerciseParamsForPrescriptionType(
+                          { ...rowSnap.params },
+                          rowSnap.prescription_type,
+                        ),
+                      };
+                      setDoseAdjustDraft(initial);
+                      doseAdjustDraftRef.current = initial;
+                      doseParamsEditGenRef.current.set(
+                        row.id,
+                        (doseParamsEditGenRef.current.get(row.id) ?? 0) + 1,
+                      );
+                    })();
+                  }}
+                  onDoseDraftChange={(draft: ExerciseParams) => {
+                    const nextDraft = { rowId: row.id, params: draft };
+                    setDoseAdjustDraft(nextDraft);
+                    doseAdjustDraftRef.current = nextDraft;
+                    doseParamsEditGenRef.current.set(
+                      row.id,
+                      (doseParamsEditGenRef.current.get(row.id) ?? 0) + 1,
+                    );
+                    scheduleDoseParamSave(row.id);
+                  }}
+                  onDoseAdjustClose={() => {
+                    const timer = doseParamDebounceTimersRef.current.get(row.id);
+                    if (timer) {
+                      clearTimeout(timer);
+                      doseParamDebounceTimersRef.current.delete(row.id);
+                    }
+                    const currentProgram = programRef.current;
+                    const targetRow = currentProgram?.rows.find((r) => r.id === row.id);
+                    const draftSnap = doseAdjustDraftRef.current;
+                    let paramsSnapshot: ExerciseParams | null = null;
+                    if (targetRow && draftSnap?.rowId === row.id) {
+                      const next = filterExerciseParamsForPrescriptionType(
+                        draftSnap.params,
+                        targetRow.prescription_type,
+                      );
+                      const storedFiltered =
+                        doseServerConfirmedFilteredRef.current.get(row.id) ??
+                        filterExerciseParamsForPrescriptionType(
+                          { ...targetRow.params },
+                          targetRow.prescription_type,
+                        );
+                      const inflight = doseParamsInflightRef.current.get(row.id);
+                      const inflightStale =
+                        inflight !== undefined &&
+                        !exerciseParamsEqual(inflight.sentFiltered, next);
+                      if (!exerciseParamsEqual(next, storedFiltered) || inflightStale) {
+                        paramsSnapshot = { ...draftSnap.params };
+                      }
+                    }
+                    setDoseEditorRowId((current) =>
+                      current === row.id ? null : current,
+                    );
+                    if (doseEditorRowIdRef.current === row.id) {
+                      doseEditorRowIdRef.current = null;
+                    }
+                    if (paramsSnapshot !== null) {
+                      const snapshot = paramsSnapshot;
+                      setRowMutationBusy(true);
+                      void autoSaveRef.current
+                        .runSave(`row-params:flush:${row.id}`, () =>
+                          saveRowParamsSnapshot(row.id, snapshot),
+                        )
+                        .finally(() => {
+                          setRowMutationBusy(false);
+                          setDoseAdjustDraft((prev) =>
+                            prev?.rowId === row.id ? null : prev,
+                          );
+                          if (doseAdjustDraftRef.current?.rowId === row.id) {
+                            doseAdjustDraftRef.current = null;
+                          }
+                        });
+                      return;
+                    }
+                    setDoseAdjustDraft((prev) =>
+                      prev?.rowId === row.id ? null : prev,
+                    );
+                    if (doseAdjustDraftRef.current?.rowId === row.id) {
+                      doseAdjustDraftRef.current = null;
+                    }
+                  }}
+                  onDoseDraftDiscard={() => {
+                    const timer = doseParamDebounceTimersRef.current.get(row.id);
+                    if (timer) {
+                      clearTimeout(timer);
+                      doseParamDebounceTimersRef.current.delete(row.id);
+                    }
+                    setDoseAdjustDraft((prev) =>
+                      prev?.rowId === row.id ? null : prev,
+                    );
+                    if (doseAdjustDraftRef.current?.rowId === row.id) {
+                      doseAdjustDraftRef.current = null;
+                    }
+                  }}
+                  onParamsReset={() => {
+                    const timer = doseParamDebounceTimersRef.current.get(row.id);
+                    if (timer) {
+                      clearTimeout(timer);
+                      doseParamDebounceTimersRef.current.delete(row.id);
+                    }
+                    setDoseAdjustDraft((prev) =>
+                      prev?.rowId === row.id ? null : prev,
+                    );
+                    if (doseAdjustDraftRef.current?.rowId === row.id) {
+                      doseAdjustDraftRef.current = null;
+                    }
+                    setDoseEditorRowId((current) =>
+                      current === row.id ? null : current,
+                    );
+                    if (doseEditorRowIdRef.current === row.id) {
+                      doseEditorRowIdRef.current = null;
+                    }
+                    setRowMutationBusy(true);
+                    void autoSave
+                      .runSave(`row-params-reset:${row.id}`, async () => {
+                        const result = await client.updateRow(
+                          program.program_id,
+                          row.id,
+                          { params: row.resolved_params },
+                        );
+                        applyProgram(result.program);
+                        const updated = result.program.rows.find(
+                          (r) => r.id === row.id,
+                        );
+                        if (updated && doseAdjustDraftRef.current?.rowId === row.id) {
+                          const synced = {
+                            rowId: row.id,
+                            params: filterExerciseParamsForPrescriptionType(
+                              { ...updated.params },
+                              updated.prescription_type,
+                            ),
+                          };
+                          doseAdjustDraftRef.current = synced;
+                          setDoseAdjustDraft(synced);
+                        }
+                      })
+                      .finally(() => {
+                        setRowMutationBusy(false);
+                      });
+                  }}
                 />
               ))}
             </div>
@@ -553,8 +955,16 @@ export function ProgramBuilderPage() {
           setLeaveOpen(false);
           setPendingLeaveTo(null);
         }}
-        onLeave={() => {
+        onLeave={async () => {
           setLeaveOpen(false);
+          for (const t of doseParamDebounceTimersRef.current.values()) {
+            clearTimeout(t);
+          }
+          doseParamDebounceTimersRef.current.clear();
+          const leaveDraft = doseAdjustDraftRef.current;
+          if (leaveDraft !== null) {
+            await saveRowParamsSnapshot(leaveDraft.rowId, leaveDraft.params);
+          }
           autoSave.markSaved();
           if (pendingLeaveTo) {
             navigate(pendingLeaveTo);

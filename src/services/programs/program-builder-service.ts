@@ -14,6 +14,7 @@ import {
 } from "../../domain/exercise-types.js";
 import {
   ParamValidationError,
+  exerciseParamsEqual,
   filterExerciseParamsForPrescriptionType,
   validateExerciseParamsForPrescriptionType,
   type ExerciseParams,
@@ -994,6 +995,14 @@ export class ProgramBuilderService {
     const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     const params = parseExerciseParamsJson(row.params_json);
     if (row.exercise_request_id) {
+      const resolved = await this.resolvePlaceholderParamsWithSource(
+        practitionerId,
+        row.prescription_type,
+      );
+      const resolvedParams = filterExerciseParamsForPrescriptionType(
+        resolved.params,
+        row.prescription_type,
+      );
       return {
         id: row.id,
         position: row.position,
@@ -1005,6 +1014,8 @@ export class ProgramBuilderService {
         prescription_type: row.prescription_type,
         params,
         params_source: null,
+        resolved_params: resolvedParams,
+        resolved_params_source: resolved.source,
         text_snapshot: textSnapshot,
         note: row.note,
         library_update: null,
@@ -1025,6 +1036,9 @@ export class ProgramBuilderService {
     let paramsSource:
       import("../../domain/resolve-exercise-params.js").ResolvedParamsSource | null =
       null;
+    let resolvedParamsFiltered: ExerciseParams = {};
+    let resolvedSource: import("../../domain/resolve-exercise-params.js").ResolvedParamsSource =
+      "global_defaults";
     if (pinned) {
       const resolved = await this.resolveRowDefaults(
         practitionerId,
@@ -1032,7 +1046,13 @@ export class ProgramBuilderService {
         row.prescription_type,
       );
       paramsSource = resolved.source;
+      resolvedSource = resolved.source;
+      resolvedParamsFiltered = filterExerciseParamsForPrescriptionType(
+        resolved.params,
+        row.prescription_type,
+      );
     }
+    const paramsMatchResolved = exerciseParamsEqual(params, resolvedParamsFiltered);
     return {
       id: row.id,
       position: row.position,
@@ -1043,7 +1063,9 @@ export class ProgramBuilderService {
       pinned_version_number: pinned?.version_number ?? null,
       prescription_type: row.prescription_type,
       params,
-      params_source: paramsSource,
+      params_source: paramsMatchResolved ? paramsSource : null,
+      resolved_params: resolvedParamsFiltered,
+      resolved_params_source: resolvedSource,
       text_snapshot: textSnapshot,
       note: row.note,
       library_update: libraryUpdate,
@@ -1099,6 +1121,26 @@ export class ProgramBuilderService {
       practitionerTypeDefaults: practitionerDefaults,
       globalTypeDefaults: globalDefaults[prescriptionType],
     }).params;
+  }
+
+  private async resolvePlaceholderParamsWithSource(
+    practitionerId: string,
+    prescriptionType: PrescriptionType,
+  ): Promise<{
+    params: ExerciseParams;
+    source: import("../../domain/resolve-exercise-params.js").ResolvedParamsSource;
+  }> {
+    const globalDefaults = await this.typeDefaults.listGlobalDefaults();
+    const practitionerDefaults = await this.typeDefaults.getPractitionerDefaults(
+      practitionerId,
+      prescriptionType,
+    );
+    return resolveExerciseParams({
+      prescriptionType,
+      paramOverrides: {},
+      practitionerTypeDefaults: practitionerDefaults,
+      globalTypeDefaults: globalDefaults[prescriptionType],
+    });
   }
 
   private parsePlaceholderPrescriptionType(

@@ -10,8 +10,15 @@ export const TYPE_DEFAULT_CORE_PARAMS: Record<PrescriptionType, readonly ParamKe
   eccentric: ["reps", "descent_s", "sets", "days_per_week"],
 };
 
-/** Optional params a practitioner may add on My defaults ("Add parameter"). */
+/** Optional params for "Add parameter" (aligned to ADDABLE in programModel.ts). */
 export const TYPE_DEFAULT_ADDABLE_PARAMS: readonly ParamKey[] = ["descent_s", "rest_s"];
+
+/** Builder program row editor: optional params including Up (ascent_s), matching v12 ADDABLE. */
+export const PROGRAM_ROW_DOSE_ADDABLE_PARAMS: readonly ParamKey[] = [
+  "ascent_s",
+  "descent_s",
+  "rest_s",
+];
 
 export function addableTypeDefaultParams(
   type: PrescriptionType,
@@ -19,6 +26,16 @@ export function addableTypeDefaultParams(
 ): ParamKey[] {
   const core = new Set(TYPE_DEFAULT_CORE_PARAMS[type]);
   return TYPE_DEFAULT_ADDABLE_PARAMS.filter(
+    (key) => !core.has(key) && params[key] === undefined,
+  );
+}
+
+export function addableProgramRowDoseParams(
+  type: PrescriptionType,
+  params: Partial<Record<ParamKey, unknown>>,
+): ParamKey[] {
+  const core = new Set(TYPE_DEFAULT_CORE_PARAMS[type]);
+  return PROGRAM_ROW_DOSE_ADDABLE_PARAMS.filter(
     (key) => !core.has(key) && params[key] === undefined,
   );
 }

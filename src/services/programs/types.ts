@@ -33,7 +33,11 @@ export type ProgramBuilderRow = {
   pinned_version_number: number | null;
   prescription_type: PrescriptionType;
   params: ExerciseParams;
+  /** Source label semantics for the row's current stored doses (legacy field name). */
   params_source: ResolvedParamsSource | null;
+  /** Defaults used when the row was added, for reset and source line while edited. */
+  resolved_params: ExerciseParams;
+  resolved_params_source: ResolvedParamsSource;
   text_snapshot: ProgramRowTextSnapshot;
   note: string | null;
   library_update: ProgramLibraryUpdatePrompt | null;
