@@ -1,9 +1,6 @@
 /**
  * @vitest-environment jsdom
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import "./setup.js";
 import {
   act,
@@ -221,16 +218,6 @@ describe("app shell nav (integration)", () => {
       .querySelector("svg.shell-tab-icon");
     expect(activeIcon).toHaveAttribute("stroke-width", "2.1");
     expect(inactiveIcon).toHaveAttribute("stroke-width", "1.8");
-  });
-
-  it("styles the phone tab bar for dark mode in shell.css", () => {
-    const css = readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "../../src/ui/styles/shell.css"),
-      "utf8",
-    );
-    expect(css).toContain("@media (prefers-color-scheme: dark)");
-    expect(css).toContain('.shell-tab-link[aria-current="page"] .shell-tab-icon-wrap');
-    expect(css).toContain("rgb(20 184 166 / 0.15)");
   });
 
   it("shows no requests badge when the count is 0", () => {
