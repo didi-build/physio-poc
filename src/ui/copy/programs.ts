@@ -146,7 +146,25 @@ export const BUILDER_EMPTY_ROWS =
 export const PLACEHOLDER_ROW_NOTE =
   "Placeholder. It links to the real exercise once you approve the draft.";
 
-export const ROW_NOTES_LABEL = "Notes for this exercise (optional)";
+/** Placeholder for the notes field; verbatim design/app/programs/spec.md Copy inventory. */
+export const ROW_NOTES_PLACEHOLDER = "Notes for this exercise (optional)";
+
+/** Screen reader only; verbatim v12 builder row label pattern "Notes for {r.name}". */
+export function rowNotesSrOnlyLabel(exerciseName: string): string {
+  return `Notes for ${exerciseName}`;
+}
+
+/** design/app/programs/spec.md Copy inventory. */
+export const PENDING_REVIEW_BADGE = "Pending review";
+
+/** v12 builder row badge (template Library v{n} available); not in spec copy inventory. */
+export function libraryVersionAvailableRowBadge(versionNumber: number): string {
+  return `Library v${versionNumber} available`;
+}
+
+export function exercisesSectionTotalCount(total: number): string {
+  return `${total} total`;
+}
 export const ROW_DEFAULTS_FOOTNOTE =
   "Each row keeps the values it was added with. Changes to My exercises or My defaults apply to new rows only.";
 
@@ -275,12 +293,15 @@ export function duplicatedRowToast(rowName: string): string {
 }
 
 export function reorderRowAriaLabel(rowName: string, position: number): string {
-  return `Reorder ${rowName}, position ${position}. Press and hold, then drag. Or use the arrow keys.`;
+  return `Reorder ${rowName}, position ${position}. Press and hold, then drag. Or hold Shift and use the arrow keys.`;
 }
 
 export function duplicateRowAriaLabel(rowName: string): string {
   return `Duplicate ${rowName}`;
 }
+
+/** design/app/programs/spec.md Copy inventory line 521 (visible control title in v12). */
+export const DUPLICATE_CONTROL_TITLE = "Duplicate";
 
 export function removeRowAriaLabel(rowName: string): string {
   return `Remove ${rowName}`;

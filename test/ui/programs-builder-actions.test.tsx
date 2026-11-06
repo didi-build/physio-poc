@@ -14,10 +14,20 @@ import {
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
   ADD_EXERCISE,
+  BUILDER_ROWS_HINT,
+  DUPLICATE_CONTROL_TITLE,
+  PENDING_REVIEW_BADGE,
+  ROW_NOTES_PLACEHOLDER,
+  ROW_VERSION_LABEL,
   duplicatedRowToast,
   duplicateRowAriaLabel,
+  exercisesSectionTotalCount,
   removeRowAriaLabel,
+  rowNotesSrOnlyLabel,
+  libraryVersionAvailableRowBadge,
+  versionOfRowLabel,
 } from "../../src/ui/copy/programs.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 import type {
   ProgramBuilderRow,
   ProgramBuilderView,
@@ -174,11 +184,8 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(
-      within(alphaCard).getByRole("button", {
-        name: /Reorder Alpha move, position 2/,
-      }),
-    );
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -208,11 +215,8 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const betaCard = await screen.findByRole("article", { name: /Beta move/i });
-    await userEvent.click(
-      within(betaCard).getByRole("button", {
-        name: /Reorder Beta move, position 2/,
-      }),
-    );
+    betaCard.focus();
+    await userEvent.keyboard("{ArrowUp}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -274,6 +278,196 @@ describe("Programs builder row actions (integration, jsdom)", () => {
     expect(
       screen.queryByRole("heading", { name: "Alpha move", level: 3 }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Program builder row card layout (integration, jsdom)", () => {
+  it("M6: applies stripe classes for strength, stretching, and placeholder rows", async () => {
+    const placeholder: ProgramBuilderRow = {
+      ...exerciseRow("row-ph", "Pending exercise", 0),
+      kind: "placeholder",
+      exercise_id: null,
+      exercise_version_id: null,
+      pinned_version_number: null,
+      exercise_version_choices: [],
+    };
+    const stretchMove: ProgramBuilderRow = {
+      ...exerciseRow("row-st", "Stretch move", 1),
+      prescription_type: "stretching",
+    };
+    const strengthMove = exerciseRow("row-stg", "Strength move", 2);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(
+          builderView({
+            rows: [placeholder, stretchMove, strengthMove],
+            exercise_count: 2,
+          }),
+        ),
+      }),
+    );
+    const pendingCard = await screen.findByRole("article", {
+      name: /Pending exercise/i,
+    });
+    expect(pendingCard).toHaveClass("pg-row", "pg-row--stripe-pending");
+    const stretchCard = screen.getByRole("article", { name: /Stretch move/i });
+    expect(stretchCard).toHaveClass("pg-row", "pg-row--stripe-sky");
+    const strengthCard = screen.getByRole("article", { name: /Strength move/i });
+    expect(strengthCard).toHaveClass("pg-row", "pg-row--stripe-violet");
+  });
+
+  it("M7: shows Isometric or Concentric or Eccentric control only on strength rows", async () => {
+    const stretchMove: ProgramBuilderRow = {
+      ...exerciseRow("row-st", "Stretch move", 0),
+      prescription_type: "stretching",
+    };
+    const strengthMove = exerciseRow("row-stg", "Strength move", 1);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(
+            builderView({ rows: [stretchMove, strengthMove], exercise_count: 2 }),
+          ),
+      }),
+    );
+    await screen.findByRole("article", { name: /Stretch move/i });
+    const stretchCard = screen.getByRole("article", { name: /Stretch move/i });
+    expect(within(stretchCard).queryByRole("radiogroup")).not.toBeInTheDocument();
+    const strengthCard = screen.getByRole("article", { name: /Strength move/i });
+    const typeGroup = within(strengthCard).getByRole("radiogroup");
+    expect(typeGroup).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Isometric" }),
+    ).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Concentric" }),
+    ).toBeInTheDocument();
+    expect(
+      within(typeGroup).getByRole("radio", { name: "Eccentric" }),
+    ).toBeInTheDocument();
+  });
+
+  it("M8: shows the grey dose readout box and no dose Adjust control", async () => {
+    const strengthMove = exerciseRow("row-stg", "Strength move", 0);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(builderView({ rows: [strengthMove], exercise_count: 1 })),
+      }),
+    );
+    const strengthCard = await screen.findByRole("article", { name: /Strength move/i });
+    const doseBox = within(strengthCard)
+      .getByText(/10 reps/)
+      .closest(".pg-row-dose-box");
+    expect(doseBox).toBeTruthy();
+    expect(screen.queryByText(/Adjust/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Programs builder v12 rendered copy (integration, jsdom)", () => {
+  it("shows exercises heading total including 0 total", async () => {
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView()),
+      }),
+    );
+    expect(await screen.findByText(exercisesSectionTotalCount(0))).toBeInTheDocument();
+  });
+
+  it("shows reorder hint with grip icon", async () => {
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView()),
+      }),
+    );
+    expect(await screen.findByText(BUILDER_ROWS_HINT)).toBeInTheDocument();
+    const hint = screen.getByText(BUILDER_ROWS_HINT).closest(".pg-rows-hint");
+    expect(hint?.querySelector(".pg-rows-hint-grip")).toBeTruthy();
+  });
+
+  it("shows Pending review, Library badge from data, TYPE_LABELS category, notes input, Duplicate title", async () => {
+    const withLibrary: ProgramBuilderRow = {
+      ...exerciseRow("row-lib", "Library row", 0),
+      library_update: {
+        row_id: "row-lib",
+        exercise_id: "ex-1",
+        exercise_title: "Library row",
+        pinned_version_number: 1,
+        latest_version_number: 2,
+      },
+    };
+    const noLibrary = exerciseRow("row-plain", "Plain move", 1);
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi
+          .fn()
+          .mockResolvedValue(
+            builderView({ rows: [withLibrary, noLibrary], exercise_count: 2 }),
+          ),
+      }),
+    );
+    expect(await screen.findByText(exercisesSectionTotalCount(2))).toBeInTheDocument();
+    const libCard = screen.getByRole("article", { name: /Library row/i });
+    expect(within(libCard).queryByText(PENDING_REVIEW_BADGE)).not.toBeInTheDocument();
+    expect(
+      within(libCard).getByText(libraryVersionAvailableRowBadge(2)),
+    ).toBeInTheDocument();
+    expect(
+      within(libCard).getByText(TYPE_LABELS.concentric, {
+        selector: ".pg-row-cat-label",
+      }),
+    ).toBeInTheDocument();
+    const libDup = within(libCard).getByRole("button", {
+      name: duplicateRowAriaLabel("Library row"),
+    });
+    expect(libDup).toHaveAttribute("title", DUPLICATE_CONTROL_TITLE);
+    const libNotes = within(libCard).getByRole("textbox", {
+      name: rowNotesSrOnlyLabel("Library row"),
+    });
+    expect(libNotes.tagName).toBe("INPUT");
+    expect(libNotes).toHaveAttribute("placeholder", ROW_NOTES_PLACEHOLDER);
+    expect(libCard.querySelector("textarea")).toBeNull();
+
+    const plainCard = screen.getByRole("article", { name: /Plain move/i });
+    expect(
+      within(plainCard).queryByText(/Library v\d+ available/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Pending review and dose box on placeholder rows", async () => {
+    const row: ProgramBuilderRow = {
+      ...exerciseRow("ph-1", "Bridge marching", 0),
+      kind: "placeholder",
+      exercise_id: null,
+      exercise_version_id: null,
+      pinned_version_number: null,
+      prescription_type: "concentric",
+      exercise_version_choices: [{ exercise_version_id: "v-ph", version_number: 1 }],
+    };
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows: [row] })),
+      }),
+    );
+    const card = await screen.findByRole("article", { name: /Bridge marching/i });
+    expect(within(card).getByText(PENDING_REVIEW_BADGE)).toBeInTheDocument();
+    expect(card.querySelector(".pg-row-cat-line")).toBeNull();
+    expect(
+      within(card).queryByRole("combobox", { name: ROW_VERSION_LABEL }),
+    ).toBeNull();
+    expect(card.querySelector(".pg-row-version")).toBeNull();
+    expect(
+      within(card)
+        .getByText(/10 reps/)
+        .closest(".pg-row-dose-box"),
+    ).toBeTruthy();
+    expect(
+      within(card).getByRole("radiogroup", {
+        name: versionOfRowLabel("Bridge marching"),
+      }),
+    ).toBeInTheDocument();
   });
 });
 

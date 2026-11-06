@@ -25,7 +25,11 @@ import type {
   ProgramBuilderView,
   ProgramListItem,
 } from "../../src/services/programs/types.js";
-import { AUTO_SAVE_TRY_AGAIN_ARIA } from "../../src/ui/copy/programs.js";
+import {
+  AUTO_SAVE_TRY_AGAIN_ARIA,
+  rowNotesSrOnlyLabel,
+  versionOfRowLabel,
+} from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -185,11 +189,8 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(
-      within(alphaCard).getByRole("button", {
-        name: /Reorder Alpha move, position 2/,
-      }),
-    );
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledTimes(1);
     });
@@ -231,7 +232,12 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const notes = await screen.findAllByLabelText("Notes for this exercise (optional)");
+    const alphaArticle = await screen.findByRole("article", { name: /Alpha move/i });
+    const betaArticle = await screen.findByRole("article", { name: /Beta move/i });
+    const notes = [
+      within(alphaArticle).getByLabelText(rowNotesSrOnlyLabel("Alpha move")),
+      within(betaArticle).getByLabelText(rowNotesSrOnlyLabel("Beta move")),
+    ];
     await userEvent.type(notes[0]!, "one");
     await userEvent.type(notes[1]!, "two");
     await act(async () => {
@@ -266,7 +272,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "note");
     const nameField = screen.getByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");
@@ -301,7 +307,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "ab");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
@@ -337,7 +343,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     fireEvent.change(note, { target: { value: "ab" } });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
@@ -362,7 +368,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "draft");
     await userEvent.click(screen.getByRole("button", { name: "Programs" }));
     expect(await screen.findByRole("dialog")).toHaveAccessibleName(
@@ -384,10 +390,11 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const typeSelect = within(
-      await screen.findByRole("article", { name: /Heel raise/i }),
-    ).getByRole("combobox", { name: "Heel raise" });
-    await userEvent.selectOptions(typeSelect, "stretching");
+    const heelRow = await screen.findByRole("article", { name: /Heel raise/i });
+    const typeGroup = within(heelRow).getByRole("radiogroup", {
+      name: versionOfRowLabel("Heel raise"),
+    });
+    await userEvent.click(within(typeGroup).getByRole("radio", { name: "Isometric" }));
     await waitFor(() => {
       expect(updateRow).toHaveBeenCalled();
     });
@@ -536,23 +543,14 @@ describe("Programs builder dev verification", () => {
     const rowCard = await screen.findByRole("article", { name: /Alpha move/i });
     expect(within(rowCard).queryByText("Exercise types")).not.toBeInTheDocument();
     expect(
-      within(rowCard).getByRole("combobox", { name: "Alpha move" }),
+      within(rowCard).getByRole("radiogroup", {
+        name: versionOfRowLabel("Alpha move"),
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(rowCard).getByRole("combobox", { name: "Version" }),
     ).toBeInTheDocument();
     expect(rowCard.querySelector(".pg-row-grip svg")).toBeTruthy();
-    const up = within(rowCard).getByRole("button", {
-      name: /Reorder Alpha move, position 1/,
-    });
-    const down = within(rowCard).getByRole("button", {
-      name: /Reorder Alpha move, position 2/,
-    });
-    const actionBar = rowCard.querySelector(".pg-row-actions");
-    expect(actionBar).toBeTruthy();
-    const actionButtons = within(actionBar as HTMLElement).getAllByRole("button");
-    expect(actionButtons[0]).toBe(up);
-    expect(actionButtons[1]).toBe(down);
-    expect(up.querySelector("svg path")?.getAttribute("d")).not.toBe(
-      down.querySelector("svg path")?.getAttribute("d"),
-    );
     expect(
       within(rowCard)
         .getByRole("button", { name: "Duplicate Alpha move" })
@@ -773,11 +771,8 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    await userEvent.click(
-      within(alphaCard).getByRole("button", {
-        name: /Reorder Alpha move, position 2/,
-      }),
-    );
+    alphaCard.focus();
+    await userEvent.keyboard("{ArrowDown}");
     await waitFor(() => expect(reorderRows).toHaveBeenCalled());
     const nameField = screen.getByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");
@@ -809,7 +804,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "x");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
@@ -866,7 +861,12 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const notes = await screen.findAllByLabelText("Notes for this exercise (optional)");
+    const alphaArticle = await screen.findByRole("article", { name: /Alpha move/i });
+    const betaArticle = await screen.findByRole("article", { name: /Beta move/i });
+    const notes = [
+      within(alphaArticle).getByLabelText(rowNotesSrOnlyLabel("Alpha move")),
+      within(betaArticle).getByLabelText(rowNotesSrOnlyLabel("Beta move")),
+    ];
     await userEvent.type(notes[0]!, "alpha");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
@@ -936,7 +936,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "slow");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
@@ -1001,7 +1001,7 @@ describe("Programs builder dev verification", () => {
         />
       </MemoryRouter>,
     );
-    const note = await screen.findByLabelText("Notes for this exercise (optional)");
+    const note = await screen.findByLabelText(rowNotesSrOnlyLabel("Heel raise"));
     await userEvent.type(note, "slow");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(150);
