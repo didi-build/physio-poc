@@ -1,6 +1,6 @@
 # DIDI-1167 mutation table (program builder dose box)
 
-Verified at branch head `94970fbf5901aadff0f22c6da041028c3d6ee788` (full `npm test` per mutant, then restore the original source files).
+Each mutant below was killed by a full `npm test` run with the edit applied, then the original sources were restored. Pair this file with the PR head SHA in the PR description.
 
 | Id  | Mutant                                                                                               | Killing test(s)                                                                                                                                                                     | Result |
 | --- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
