@@ -6,11 +6,7 @@ import { createElement, isValidElement } from "react";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  PHYSIO_APP_SPA_ROUTE_NAMES,
-  fillPhysioAppRoutePattern,
-  type PhysioAppSpaRouteName,
-} from "../../src/app-routes.js";
+import { PHYSIO_APP_SPA_ROUTE_NAMES, fillPhysioAppRoutePattern } from "../../src/app-routes.js";
 import { createPhysioAppRouteElements, PhysioApp } from "../../src/ui/App.js";
 import {
   ExerciseLibraryClient,
@@ -27,11 +23,6 @@ import {
   SHARE_PROGRAM_TITLE,
 } from "../../src/ui/copy/programs.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
-
-/** Temporary until DIDI-1174 lands in PR #80. */
-const SPA_ROUTE_ELEMENT_EXCEPTIONS: Partial<Record<PhysioAppSpaRouteName, string>> = {
-  routines: "DIDI-1174 (PR #80)",
-};
 
 afterEach(() => {
   cleanup();
@@ -101,12 +92,7 @@ describe("Programs publish and share routes (DIDI-1176)", () => {
       createElement("div"),
     );
     for (const routeName of PHYSIO_APP_SPA_ROUTE_NAMES) {
-      const exception = SPA_ROUTE_ELEMENT_EXCEPTIONS[routeName];
       const element = elements[routeName] ?? null;
-      if (exception) {
-        expect(element, routeName).toBeNull();
-        continue;
-      }
       expect(element, routeName).not.toBeNull();
       expect(isValidElement(element), routeName).toBe(true);
     }
