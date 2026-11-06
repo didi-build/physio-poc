@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { InProgressRequestListItem } from "../../services/exercise-requests/types.js";
-import { DEV_PRACTITIONER_ID } from "../api/exercise-library-client.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { EXERCISE_REQUESTS_LIST_ERROR_MESSAGE } from "../copy/exercise-requests-states.js";
@@ -20,8 +19,15 @@ import {
 } from "../copy/exercise-requests.js";
 import { requestedByLabel } from "./requested-by-label.js";
 
-function reviewButtonLabel(item: InProgressRequestListItem): string {
-  return item.requested_by === DEV_PRACTITIONER_ID ? REVIEW_DRAFT : REVIEW_AND_APPROVE;
+function reviewButtonLabel(
+  item: InProgressRequestListItem,
+  practitionerId: string,
+  sessionIdentityReady: boolean,
+): string {
+  if (!sessionIdentityReady || practitionerId.length === 0) {
+    return REVIEW_AND_APPROVE;
+  }
+  return item.requested_by === practitionerId ? REVIEW_DRAFT : REVIEW_AND_APPROVE;
 }
 
 function canReview(item: InProgressRequestListItem): boolean {
@@ -59,11 +65,17 @@ export function RequestsAndDraftsPage({
     void reload();
   }, [reload]);
 
+  const sessionBusy =
+    loading ||
+    (requests.length > 0 &&
+      currentPractitioner.sessionIdentityPending &&
+      !currentPractitioner.sessionIdentityReady);
+
   return (
     <section
       className="ex-page"
       aria-labelledby="ex-requests-heading"
-      aria-busy={loading ? true : undefined}
+      aria-busy={sessionBusy ? true : undefined}
     >
       <h1 id="ex-requests-heading" className="ex-page-title">
         {REQUESTS_HEADING}
@@ -90,6 +102,7 @@ export function RequestsAndDraftsPage({
               requestedByEmail: item.requested_by_email,
               currentPractitionerId: currentPractitioner.practitionerId,
               currentDisplayName: currentPractitioner.displayName,
+              sessionIdentityReady: currentPractitioner.sessionIdentityReady,
             });
             return (
               <li key={item.request_id} className="ex-requests-row">
@@ -102,9 +115,11 @@ export function RequestsAndDraftsPage({
                       <span className="ex-tag ex-tag--draft">{DRAFT_NOT_APPROVED}</span>
                     )}
                   </div>
-                  <p className="ex-requests-row-meta">
-                    {REQUESTED_BY} <span className="ex-requests-row-by">{by}</span>
-                  </p>
+                  {by.length > 0 ? (
+                    <p className="ex-requests-row-meta">
+                      {REQUESTED_BY} <span className="ex-requests-row-by">{by}</span>
+                    </p>
+                  ) : null}
                   {item.exercise_note ? (
                     <p className="ex-requests-row-note">{item.exercise_note}</p>
                   ) : null}
@@ -116,7 +131,11 @@ export function RequestsAndDraftsPage({
                     })}
                     className="ex-primary-btn ex-requests-review-link"
                   >
-                    {reviewButtonLabel(item)}
+                    {reviewButtonLabel(
+                      item,
+                      currentPractitioner.practitionerId,
+                      currentPractitioner.sessionIdentityReady,
+                    )}
                   </Link>
                 ) : (
                   <p className="ex-requests-wait">{USUALLY_READY}</p>

@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { PractitionerSessionView } from "../../services/practitioner-session/types.js";
-import { DEV_PRACTITIONER_ID } from "./exercise-library-client.js";
 import {
   getPractitionerSessionClient,
   type PractitionerSessionClient,
@@ -63,13 +62,30 @@ export function usePractitionerSession(): PractitionerSessionContextValue {
 export function useCurrentPractitionerIdentity(): {
   practitionerId: string;
   displayName: string | undefined;
+  sessionIdentityReady: boolean;
+  sessionIdentityPending: boolean;
 } {
   const state = usePractitionerSession();
   if (state.status === "ready") {
     return {
       practitionerId: state.session.practitioner_id,
       displayName: state.session.display_name,
+      sessionIdentityReady: true,
+      sessionIdentityPending: false,
     };
   }
-  return { practitionerId: DEV_PRACTITIONER_ID, displayName: undefined };
+  if (state.status === "loading") {
+    return {
+      practitionerId: "",
+      displayName: undefined,
+      sessionIdentityReady: false,
+      sessionIdentityPending: true,
+    };
+  }
+  return {
+    practitionerId: "",
+    displayName: undefined,
+    sessionIdentityReady: false,
+    sessionIdentityPending: false,
+  };
 }

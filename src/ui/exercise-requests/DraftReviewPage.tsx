@@ -5,7 +5,6 @@ import type {
   DraftFieldPatch,
   ExerciseRequestDraftView,
 } from "../../services/exercise-requests/types.js";
-import { DEV_PRACTITIONER_ID } from "../api/exercise-library-client.js";
 import { useExerciseMediaApi } from "../api/exercise-media-context.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
@@ -97,7 +96,9 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const approve = async () => {
     await requestsClient.approveRequest(requestId);
-    const own = view?.requested_by === DEV_PRACTITIONER_ID;
+    const own =
+      currentPractitioner.sessionIdentityReady &&
+      view?.requested_by === currentPractitioner.practitionerId;
     showToast({
       message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
     });
@@ -149,6 +150,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     requestedByEmail: view.requested_by_email,
     currentPractitionerId: currentPractitioner.practitionerId,
     currentDisplayName: currentPractitioner.displayName,
+    sessionIdentityReady: currentPractitioner.sessionIdentityReady,
   });
   const title = draft?.title ?? view.requested_name;
 
@@ -159,8 +161,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       </Link>
       <div className="ex-review-banner">
         <p>
-          <span className="ex-review-banner-strong">{DRAFT_NOT_APPROVED}</span>{" "}
-          {REQUESTED_BY} {by}.
+          <span className="ex-review-banner-strong">{DRAFT_NOT_APPROVED}</span>
+          {by.length > 0 ? (
+            <>
+              {" "}
+              {REQUESTED_BY} {by}.
+            </>
+          ) : null}
         </p>
       </div>
       <h1 id="ex-review-heading" className="ex-page-title">

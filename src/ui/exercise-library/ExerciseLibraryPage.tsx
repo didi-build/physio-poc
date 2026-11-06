@@ -557,6 +557,7 @@ export function ExerciseLibraryPage({
                       requestedByEmail: draft.requested_by_email,
                       currentPractitionerId: currentPractitioner.practitionerId,
                       currentDisplayName: currentPractitioner.displayName,
+                      sessionIdentityReady: currentPractitioner.sessionIdentityReady,
                     });
                     return (
                       <li key={draft.request_id} className="ex-similar-row">
@@ -564,7 +565,8 @@ export function ExerciseLibraryPage({
                           <span className="ex-similar-name">{name}</span>
                           <span className="ex-tag ex-tag--draft">{TAG_DRAFT}</span>
                           <span className="ex-similar-meta">
-                            {REQUESTED_BY} {by}, {AI_DRAFTING}
+                            {by.length > 0 ? `${REQUESTED_BY} ${by}, ` : ""}
+                            {AI_DRAFTING}
                           </span>
                         </div>
                         <Link

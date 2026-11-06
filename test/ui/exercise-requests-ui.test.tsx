@@ -10,7 +10,6 @@ import {
   fillPhysioAppRoutePattern,
   physioAppExerciseSearchPath,
 } from "../../src/app-routes.js";
-import { DEV_PRACTITIONER_ID } from "../../src/ui/api/exercise-library-client.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -26,6 +25,7 @@ import {
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   DESCRIPTION_FIELD,
+  SIMILAR_SECTION,
   SUBMIT_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
 import {
@@ -34,10 +34,17 @@ import {
   DAILY_LIMIT_REACHED,
   MERGE_MY_CHANGES,
   REGENERATE,
+  REQUESTED_BY,
   REQUESTS_HEADING,
   TOAST_APPROVE_OWN,
 } from "../../src/ui/copy/exercise-requests.js";
+import type { PractitionerSessionClient } from "../../src/ui/api/practitioner-session-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import {
+  FAKE_UI_PRACTITIONER_ID,
+  fakeUiSessionView,
+  stubPractitionerSessionClient,
+} from "./fake-practitioner-session-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -76,17 +83,35 @@ function renderApp(
   initialEntry: string,
   requests: Partial<ExerciseRequestsClient>,
   media: Partial<ExerciseMediaClient> = {},
+  practitionerSessionClient?: PractitionerSessionClient,
+  exerciseLibrary?: Partial<ExerciseLibraryClient>,
 ) {
+  const library = {
+    ...stubLibraryClient(),
+    ...exerciseLibrary,
+  } as ExerciseLibraryClient;
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
-        exerciseLibraryClient={stubLibraryClient()}
+        exerciseLibraryClient={library}
         exerciseRequestsClient={requests as ExerciseRequestsClient}
         exerciseMediaClient={media as ExerciseMediaClient}
         programsClient={stubProgramsClient()}
+        practitionerSessionClient={practitionerSessionClient}
       />
     </MemoryRouter>,
   );
+}
+
+const OWN_REQUEST_EMAIL_LOCAL = "xrequestedbylocalunique77";
+
+function assertNoEmailLocalPartShown(emailLocal: string): void {
+  const lower = emailLocal.toLowerCase();
+  const capitalised =
+    lower.length > 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : "";
+  expect(document.body.textContent).not.toContain("@");
+  expect(document.body.textContent).not.toContain(lower);
+  expect(document.body.textContent).not.toContain(capitalised);
 }
 
 describe("exercise requests UI", () => {
@@ -268,7 +293,7 @@ describe("exercise requests UI", () => {
       requested_name: "Heel slide",
       exercise_note: null,
       status: "drafting" as const,
-      requested_by: DEV_PRACTITIONER_ID,
+      requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
       draft: {
@@ -299,7 +324,7 @@ describe("exercise requests UI", () => {
       exercise_id: "ex-1",
       exercise_version_id: "ver-1",
       version_number: 1 as const,
-      approved_by: DEV_PRACTITIONER_ID,
+      approved_by: FAKE_UI_PRACTITIONER_ID,
       approved_at: "2026-10-30T12:00:00.000Z",
     });
 
@@ -354,7 +379,7 @@ describe("exercise requests UI", () => {
       requested_name: "Heel slide",
       exercise_note: null,
       status: "drafting" as const,
-      requested_by: DEV_PRACTITIONER_ID,
+      requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
       draft: {
@@ -412,7 +437,7 @@ describe("exercise requests UI", () => {
             requested_name: "Heel slide",
             exercise_note: null,
             status: "drafting",
-            requested_by: DEV_PRACTITIONER_ID,
+            requested_by: FAKE_UI_PRACTITIONER_ID,
             requested_by_email: "kojo@example.com",
             exercise_id: "ex-1",
             draft_title: "Heel slide",
@@ -428,5 +453,253 @@ describe("exercise requests UI", () => {
       ).toBeInTheDocument();
       expect(screen.getByText("Heel slide")).toBeInTheDocument();
     });
+  });
+
+  it("shows session display name for your own in-progress row and never shows email local part", async () => {
+    const displayName = "Display Name For Own Req Z77";
+    const sessionClient = stubPractitionerSessionClient(
+      fakeUiSessionView({ display_name: displayName }),
+    );
+    renderApp(
+      fillPhysioAppRoutePattern("requests"),
+      {
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
+        listInProgress: vi.fn().mockResolvedValue({
+          in_progress_count: 1,
+          requests: [
+            {
+              request_id: "req-own-77",
+              requested_name: "Some move",
+              exercise_note: null,
+              status: "drafting",
+              requested_by: FAKE_UI_PRACTITIONER_ID,
+              requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
+              exercise_id: "ex-1",
+              draft_title: "Some move",
+              updated_at: "2026-10-30T12:00:00.000Z",
+            },
+          ],
+        }),
+      },
+      {},
+      sessionClient,
+    );
+
+    const row = await waitFor(() => {
+      const el = document.querySelector(".ex-requests-row");
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+
+    await waitFor(() => {
+      expect(row).toHaveTextContent(displayName);
+    });
+    expect(row).toHaveTextContent(REQUESTED_BY);
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
+  });
+
+  it("hides requested-by on the list while session identity is still loading", async () => {
+    let resolveSession: (v: ReturnType<typeof fakeUiSessionView>) => void = () => {};
+    const sessionPromise = new Promise<ReturnType<typeof fakeUiSessionView>>((res) => {
+      resolveSession = res;
+    });
+    const getSession = vi.fn(() => sessionPromise);
+    const sessionClient = { getSession } as unknown as PractitionerSessionClient;
+
+    renderApp(
+      fillPhysioAppRoutePattern("requests"),
+      {
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
+        listInProgress: vi.fn().mockResolvedValue({
+          in_progress_count: 1,
+          requests: [
+            {
+              request_id: "req-pending-77",
+              requested_name: "Move pending",
+              exercise_note: null,
+              status: "drafting",
+              requested_by: FAKE_UI_PRACTITIONER_ID,
+              requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
+              exercise_id: "ex-1",
+              draft_title: "Move pending",
+              updated_at: "2026-10-30T12:00:00.000Z",
+            },
+          ],
+        }),
+      },
+      {},
+      sessionClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Move pending")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(REQUESTED_BY)).not.toBeInTheDocument();
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
+
+    resolveSession(fakeUiSessionView({ display_name: "Loaded Coach 77" }));
+
+    const rowAfter = document.querySelector(".ex-requests-row");
+    expect(rowAfter).not.toBeNull();
+
+    await waitFor(() => {
+      expect(rowAfter).toHaveTextContent("Loaded Coach 77");
+    });
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
+  });
+
+  it("hides requested-by on the list when getSession rejects", async () => {
+    const sessionClient = {
+      getSession: vi.fn().mockRejectedValue(new Error("session failed")),
+    } as unknown as PractitionerSessionClient;
+
+    renderApp(
+      fillPhysioAppRoutePattern("requests"),
+      {
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
+        listInProgress: vi.fn().mockResolvedValue({
+          in_progress_count: 1,
+          requests: [
+            {
+              request_id: "req-reject-77",
+              requested_name: "Move reject",
+              exercise_note: null,
+              status: "drafting",
+              requested_by: FAKE_UI_PRACTITIONER_ID,
+              requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
+              exercise_id: "ex-1",
+              draft_title: "Move reject",
+              updated_at: "2026-10-30T12:00:00.000Z",
+            },
+          ],
+        }),
+      },
+      {},
+      sessionClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Move reject")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(REQUESTED_BY)).not.toBeInTheDocument();
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
+  });
+
+  it("shows session display name for your own draft review banner and never shows email local part", async () => {
+    const displayName = "Review Banner Own Z77";
+    const sessionClient = stubPractitionerSessionClient(
+      fakeUiSessionView({ display_name: displayName }),
+    );
+    const draftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting" as const,
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
+      exercise_id: "ex-1",
+      draft: {
+        exercise_version_id: "ver-1",
+        version_number: 1,
+        title: "Heel slide",
+        description: "Desc",
+        equipment: "",
+        starting_position: "",
+        steps: "",
+        common_mistakes: "",
+        regressions: "",
+        progressions: "",
+        precautions: "",
+        cue_stretching: null,
+        cue_isometric: null,
+        cue_concentric: null,
+        cue_eccentric: null,
+      },
+    };
+
+    renderApp(
+      fillPhysioAppRoutePattern("requestReview", { requestId: "req-1" }),
+      {
+        getRequest: vi.fn().mockResolvedValue(draftView),
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+        listInProgress: vi
+          .fn()
+          .mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      },
+      {
+        getRegenerationQuota: vi.fn().mockResolvedValue({
+          limit: 5,
+          used: 0,
+          remaining: 5,
+          limitReached: false,
+        }),
+      },
+      sessionClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Heel slide" })).toBeInTheDocument();
+    });
+    const banner = document.querySelector(".ex-review-banner");
+    expect(banner).not.toBeNull();
+    expect(banner).toHaveTextContent(displayName);
+    expect(banner).toHaveTextContent(REQUESTED_BY);
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
+  });
+
+  it("shows session display name for your own similar-draft row and never shows email local part", async () => {
+    const displayName = "Similar Own Z77";
+    const sessionClient = stubPractitionerSessionClient(
+      fakeUiSessionView({ display_name: displayName }),
+    );
+    const uniqueName = "ZzMutOwnReq77";
+    renderApp(
+      `${physioAppExerciseSearchPath(uniqueName)}`,
+      {
+        getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
+        listInProgress: vi
+          .fn()
+          .mockResolvedValue({ requests: [], in_progress_count: 0 }),
+        listSimilar: vi.fn().mockResolvedValue({
+          library_matches: [],
+          drafts_in_progress: [
+            {
+              request_id: "req-sim-77",
+              requested_name: uniqueName,
+              exercise_note: null,
+              status: "drafting" as const,
+              exercise_id: "ex-sim",
+              draft_title: uniqueName,
+              requested_by: FAKE_UI_PRACTITIONER_ID,
+              requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
+            },
+          ],
+        }),
+      },
+      {},
+      sessionClient,
+      {
+        searchApproved: vi.fn().mockResolvedValue({
+          exercises: [],
+          next_cursor: null,
+          search_link: null,
+          total_count: 0,
+        }),
+      },
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: SIMILAR_SECTION }),
+      ).toBeInTheDocument();
+    });
+    const similarRow = screen.getByText(uniqueName, {
+      selector: ".ex-similar-name",
+    }).parentElement?.parentElement;
+    expect(similarRow).not.toBeNull();
+    const meta = (similarRow as HTMLElement).querySelector(".ex-similar-meta");
+    expect(meta).not.toBeNull();
+    expect(meta).toHaveTextContent(displayName);
+    assertNoEmailLocalPartShown(OWN_REQUEST_EMAIL_LOCAL);
   });
 });
