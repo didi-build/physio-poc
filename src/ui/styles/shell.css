@@ -1,10 +1,12 @@
 :root {
   color-scheme: light;
   --shell-teal-50: #f0fdfa;
+  --shell-teal-300: #5eead4;
   --shell-teal-700: #0f766e;
   --shell-teal-800: #115e59;
   --shell-slate-50: #f8fafc;
   --shell-slate-200: #e2e8f0;
+  --shell-slate-400: #94a3b8;
   --shell-slate-500: #64748b;
   --shell-slate-600: #475569;
   --shell-slate-800: #1e293b;
@@ -325,6 +327,30 @@ body {
 
 .shell-tab-link[aria-current="page"] .shell-tab-icon-wrap {
   background: var(--shell-teal-50);
+}
+
+.shell-tab-icon {
+  width: 22px;
+  height: 22px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .shell-tab-bar {
+    border-top-color: var(--shell-slate-800);
+    background: rgb(15 23 42 / 0.95);
+  }
+
+  .shell-tab-link {
+    color: var(--shell-slate-400);
+  }
+
+  .shell-tab-link[aria-current="page"] {
+    color: var(--shell-teal-300);
+  }
+
+  .shell-tab-link[aria-current="page"] .shell-tab-icon-wrap {
+    background: rgb(20 184 166 / 0.15);
+  }
 }
 
 .shell-tab-count {

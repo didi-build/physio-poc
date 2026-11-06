@@ -16,6 +16,13 @@ import {
   NAV_TAB_ROUTINES,
 } from "../copy/nav.js";
 import { useProgramLeaveGuard } from "../programs/program-leave-guard.js";
+import { ShellTabIcon } from "./ShellTabIcon.js";
+import {
+  SHELL_TAB_ICON_PATH_EXERCISES,
+  SHELL_TAB_ICON_PATH_PROGRAMS,
+  SHELL_TAB_ICON_PATH_REQUESTS,
+  SHELL_TAB_ICON_PATH_ROUTINES,
+} from "./shell-tab-icons.js";
 
 export type MainNavProps = {
   requestsReviewCount: number;
@@ -27,24 +34,28 @@ const tabs = [
     to: PHYSIO_APP_ROUTE_PATTERNS.exercises,
     desktopLabel: NAV_TAB_EXERCISES,
     phoneLabel: NAV_TAB_EXERCISES,
+    iconPath: SHELL_TAB_ICON_PATH_EXERCISES,
     showCount: false,
   },
   {
     to: PHYSIO_APP_ROUTE_PATTERNS.routines,
     desktopLabel: NAV_TAB_ROUTINES,
     phoneLabel: NAV_TAB_ROUTINES,
+    iconPath: SHELL_TAB_ICON_PATH_ROUTINES,
     showCount: false,
   },
   {
     to: PHYSIO_APP_ROUTE_PATTERNS.programs,
     desktopLabel: NAV_TAB_PROGRAMS,
     phoneLabel: NAV_TAB_PROGRAMS,
+    iconPath: SHELL_TAB_ICON_PATH_PROGRAMS,
     showCount: false,
   },
   {
     to: PHYSIO_APP_ROUTE_PATTERNS.requests,
     desktopLabel: NAV_TAB_REQUESTS_DESKTOP,
     phoneLabel: NAV_TAB_REQUESTS_PHONE,
+    iconPath: SHELL_TAB_ICON_PATH_REQUESTS,
     showCount: true,
   },
 ] as const;
@@ -101,13 +112,17 @@ export function MainNav({ requestsReviewCount, variant }: MainNavProps) {
               guardedNavClick(event, tab.to);
             }}
           >
-            <>
-              <span className="shell-tab-icon-wrap" aria-hidden />
-              {tab.phoneLabel}
-              {tab.showCount && requestsReviewCount > 0 ? (
-                <span className="shell-tab-count">{requestsReviewCount}</span>
-              ) : null}
-            </>
+            {({ isActive }) => (
+              <>
+                <span className="shell-tab-icon-wrap" aria-hidden>
+                  <ShellTabIcon pathD={tab.iconPath} active={isActive} />
+                </span>
+                {tab.phoneLabel}
+                {tab.showCount && requestsReviewCount > 0 ? (
+                  <span className="shell-tab-count">{requestsReviewCount}</span>
+                ) : null}
+              </>
+            )}
           </NavLink>
         ))}
       </div>
