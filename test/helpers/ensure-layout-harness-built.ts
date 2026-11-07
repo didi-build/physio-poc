@@ -2,9 +2,10 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-const HARNESS_DIST = join(process.cwd(), "dist/exercise-requests-layout-harness");
+const DIST_DIR = join(process.cwd(), "dist");
+const HARNESS_DIST = join(DIST_DIR, "exercise-requests-layout-harness");
 const HARNESS_INDEX = join(HARNESS_DIST, "index.html");
-const LOCK_DIR = join(process.cwd(), "dist/.layout-harness-build-lock");
+const LOCK_DIR = join(DIST_DIR, ".layout-harness-build-lock");
 
 function sleepSync(ms: number): void {
   const end = Date.now() + ms;
@@ -21,6 +22,8 @@ export function ensureLayoutHarnessBuilt(): void {
   if (existsSync(HARNESS_INDEX)) {
     return;
   }
+
+  mkdirSync(DIST_DIR, { recursive: true });
 
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
