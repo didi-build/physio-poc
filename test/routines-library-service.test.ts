@@ -12,6 +12,8 @@ import {
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { installRealStaleDeleteCopyFixture } from "./helpers/routines-delete-batch-fixture.js";
+import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import {
   PractitionerRoutineRowsRepository,
@@ -466,6 +468,165 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
       expect(after?.source_version_number).toBe(saved.source_version_number);
       const afterRows = await rowRepo.listForCopy(saved.id);
       expect(afterRows).toEqual(beforeRows);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("deleteCopy batch rolls back child rows when parent practitioner guard fails", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-del-rollback-a"),
+        "del@example.com",
+      );
+      const wrongPractitioner = await seedPractitioner(
+        storage,
+        id("pract-del-rollback-wrong"),
+        "wrong@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Delete rollback",
+        routineId: id("routine-del-rollback"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const my = new PractitionerRoutinesRepository(storage);
+      const copy = await my.findForPractitioner(author, routineId);
+      const rowRepo = new PractitionerRoutineRowsRepository(storage);
+      const beforeRows = await rowRepo.listForCopy(copy!.id);
+
+      let caught: unknown;
+      try {
+        await storage.batch(
+          my.buildDeleteCopyBatchStatements(copy!.id, wrongPractitioner),
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(SqlBatchGuardError);
+      expect(await rowRepo.listForCopy(copy!.id)).toEqual(beforeRows);
+      expect(await my.findForPractitioner(author, routineId)).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("removeFromMyRoutines maps deleteCopy stale_write to a typed service error", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-stale-remove"),
+        "rm@example.com",
+      );
+      const wrongPractitioner = await seedPractitioner(
+        storage,
+        id("pract-stale-remove-wrong"),
+        "rm-wrong@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Stale remove",
+        routineId: id("routine-stale-remove"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const restore = installRealStaleDeleteCopyFixture(wrongPractitioner);
+      try {
+        await expect(
+          service.removeFromMyRoutines(author, routineId),
+        ).rejects.toMatchObject({ code: "stale_write" });
+      } finally {
+        restore();
+      }
+      expect(
+        await new PractitionerRoutinesRepository(storage).findForPractitioner(
+          author,
+          routineId,
+        ),
+      ).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("applyUndo with had_copy false maps deleteCopy stale_write", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-stale-undo-del"),
+        "ud@example.com",
+      );
+      const wrongPractitioner = await seedPractitioner(
+        storage,
+        id("pract-stale-undo-del-wrong"),
+        "ud-wrong@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Stale undo delete",
+        routineId: id("routine-stale-undo-del"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      const { undo } = await service.saveToMyRoutines(author, routineId);
+      const restore = installRealStaleDeleteCopyFixture(wrongPractitioner);
+      try {
+        await expect(service.applyUndo(author, routineId, undo)).rejects.toMatchObject({
+          code: "stale_write",
+        });
+      } finally {
+        restore();
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("applyUndo with had_copy false and no saved copy succeeds without delete", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-undo-no-copy"),
+        "nc@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Undo no prior copy",
+        routineId: id("routine-undo-no-copy"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await expect(
+        service.applyUndo(author, routineId, {
+          practitioner_id: author,
+          routine_id: routineId,
+          snapshot: { had_copy: false, copy: null },
+        }),
+      ).resolves.toBeUndefined();
     } finally {
       storage.close();
     }

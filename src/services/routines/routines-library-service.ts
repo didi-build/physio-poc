@@ -599,7 +599,11 @@ export class RoutinesLibraryService {
       );
     }
     const undo = await this.captureUndoSnapshot(practitionerId, validatedRoutineId);
-    await this.myCopies.deleteCopy(practitionerId, validatedRoutineId);
+    try {
+      await this.myCopies.deleteCopy(practitionerId, validatedRoutineId);
+    } catch (err) {
+      mapRoutineRepositoryError(err);
+    }
     return { undo };
   }
 
@@ -738,7 +742,11 @@ export class RoutinesLibraryService {
 
     if (!snap.had_copy) {
       if (existing) {
-        await this.myCopies.deleteCopy(urlPractitionerId, urlRoutineId);
+        try {
+          await this.myCopies.deleteCopy(urlPractitionerId, urlRoutineId);
+        } catch (err) {
+          mapRoutineRepositoryError(err);
+        }
       }
       return;
     }

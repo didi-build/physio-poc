@@ -10,6 +10,7 @@ import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
+  seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "./helpers/from-routine-http-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { RoutinesLibraryService } from "../src/services/routines/index.js";
+import { installRealStaleDeleteCopyFixture } from "./helpers/routines-delete-batch-fixture.js";
 
 const BASE = "https://physio.test.example";
 
@@ -293,6 +295,161 @@ describe("Routines library HTTP (session routes)", () => {
         copy!.id,
       );
       expect(rows[0]?.params_json).toContain('"hold_s":30');
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps stale_write to HTTP 409 on DELETE remove", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const wrongPractitioner = await seedPractitioner(
+        storage,
+        id("http-stale-delete-wrong"),
+        "del-wrong@example.com",
+      );
+      const routineId = id("http-stale-delete-routine");
+      await publishRoutine(storage, author, {
+        routine: "http-stale-delete-routine",
+        draftVersion: "http-stale-delete-draft",
+        row: "http-stale-delete-row",
+        name: "Stale delete HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      const save = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      expect(save.status).toBe(200);
+
+      const restore = installRealStaleDeleteCopyFixture(wrongPractitioner);
+      try {
+        const remove = await handleRequest(
+          new Request(
+            myCopyUrl,
+            mutatingAppApiRequestInit(myCopyUrl, {
+              method: "DELETE",
+              headers: { cookie },
+            }),
+          ),
+          deps,
+        );
+        expect(remove.status).toBe(409);
+        await expect(remove.json()).resolves.toMatchObject({
+          error: "stale_write",
+        });
+      } finally {
+        restore();
+      }
+      expect(
+        await new PractitionerRoutinesRepository(storage).findForPractitioner(
+          author,
+          routineId,
+        ),
+      ).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps stale_write to HTTP 409 on undo with had_copy false", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const wrongPractitioner = await seedPractitioner(
+        storage,
+        id("http-stale-undo-del-wrong"),
+        "undo-del-wrong@example.com",
+      );
+      const routineId = id("http-stale-undo-delete-routine");
+      await publishRoutine(storage, author, {
+        routine: "http-stale-undo-delete-routine",
+        draftVersion: "http-stale-undo-delete-draft",
+        row: "http-stale-undo-delete-row",
+        name: "Stale undo delete HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      const save = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      expect(save.status).toBe(200);
+      const { undo } = (await save.json()) as { undo: unknown };
+
+      const restore = installRealStaleDeleteCopyFixture(wrongPractitioner);
+      try {
+        const undoResponse = await handleRequest(
+          new Request(
+            myCopyUrl,
+            mutatingAppApiRequestInit(myCopyUrl, {
+              method: "POST",
+              headers: { cookie, "content-type": "application/json" },
+              body: JSON.stringify({ action: "undo", undo }),
+            }),
+          ),
+          deps,
+        );
+        expect(undoResponse.status).toBe(409);
+        await expect(undoResponse.json()).resolves.toMatchObject({
+          error: "stale_write",
+        });
+      } finally {
+        restore();
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST undo with had_copy false and no saved copy returns 200", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-undo-no-prior-routine");
+      await publishRoutine(storage, author, {
+        routine: "http-undo-no-prior-routine",
+        draftVersion: "http-undo-no-prior-draft",
+        row: "http-undo-no-prior-row",
+        name: "Undo no prior HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      const undoResponse = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "undo",
+              undo: {
+                practitioner_id: author,
+                routine_id: routineId,
+                snapshot: { had_copy: false, copy: null },
+              },
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undoResponse.status).toBe(200);
     } finally {
       storage.close();
     }
