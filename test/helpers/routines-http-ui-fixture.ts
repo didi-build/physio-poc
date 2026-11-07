@@ -275,6 +275,26 @@ export function installRealStaleReplaceMyCopyRowsFixture(
   };
 }
 
+/** Published community routine with no saved personal copy yet. */
+export async function openPublishedRoutineNoCopyHttpUiFixture(
+  seedKey: string,
+): Promise<RoutinesHttpUiFixture> {
+  const storage = await openMigratedDatabase();
+  const { practitionerA: author } = await seedTwoPractitioners(storage);
+  const routineId = id(`ui-http-${seedKey}-routine`);
+  await publishRoutine(storage, author, {
+    routine: `ui-http-${seedKey}-routine`,
+    draftVersion: `ui-http-${seedKey}-draft`,
+    row: `ui-http-${seedKey}-row`,
+    name: `UI HTTP ${seedKey}`,
+  });
+  const { deps, cookie } = appDepsForRoutinesHttpUi(storage, author, "a@example.com");
+  const client = new RoutinesClient({
+    fetchFn: createRoutinesHttpFetch(deps, cookie),
+  });
+  return { storage, practitionerId: author, routineId, deps, cookie, client };
+}
+
 export async function openFlaggedRoutineHttpUiFixture(
   seedKey: string,
 ): Promise<RoutinesHttpUiFixture> {

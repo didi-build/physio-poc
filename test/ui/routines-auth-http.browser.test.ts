@@ -167,6 +167,40 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
   );
 
   it.each([390, 1280] as const)(
+    "owner loads my-copy editor with seeded hold over HTTP at %s px",
+    async (width) => {
+      const world = await openRoutinesHttpBrowserWorld();
+      const server = await startStaticFileServer(HARNESS_DIST);
+      const browser = await chromium.launch();
+      try {
+        world.setActiveSession("owner");
+        const page = await browser.newPage();
+        await loadInterFontsInPage(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.route("**/*", async (route) => {
+          if (isRoutinesMeApiUrl(route.request().url())) {
+            await fulfillFromWorld(route, world);
+            return;
+          }
+          await route.continue();
+        });
+        await gotoRoutinesHttpPage(page, world, server.baseUrl, "my-copy");
+        await page.waitForSelector('[data-testid="save-my-copy"]', {
+          state: "visible",
+          timeout: 30_000,
+        });
+        const hold = await page.inputValue('[data-testid="rt-hold-0"]');
+        expect(hold).toBe("45");
+      } finally {
+        await browser.close();
+        world.close();
+        await server.close();
+      }
+    },
+    60_000,
+  );
+
+  it.each([390, 1280] as const)(
     "owner loads detail and session over HTTP at %s px",
     async (width) => {
       const world = await openRoutinesHttpBrowserWorld();
@@ -236,8 +270,14 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         const otherDetail = await world.dispatchBrowserRequest(
           routineDetailsPath(world.routineId),
         );
-        const payload = (await otherDetail.json()) as { my_copy: unknown };
+        const payload = (await otherDetail.json()) as {
+          my_copy: unknown;
+          personal_changes: unknown;
+          community_change_list: unknown;
+        };
         expect(payload.my_copy).toBeNull();
+        expect(payload.personal_changes).toBeNull();
+        expect(payload.community_change_list).toBeNull();
         const ownerHold = await ownerPersonalHold(
           world.storage,
           world.ownerId,
@@ -301,7 +341,8 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
           body: JSON.stringify({ action: "undo", undo }),
         },
       );
-      expect(replay.status).toBeGreaterThanOrEqual(400);
+      expect(replay.status).toBe(400);
+      await expect(replay.json()).resolves.toMatchObject({ error: "undo_mismatch" });
       world.setActiveSession("owner");
       const holdAfter = await ownerPersonalHold(
         world.storage,

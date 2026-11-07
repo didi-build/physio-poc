@@ -17,18 +17,25 @@ import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { RoutinesClient } from "../../src/ui/api/routines-client.js";
 import { TOAST_UNDO } from "../../src/ui/copy/nav.js";
 import {
+  KEEP_MINE,
   REMOVE_FROM_MY,
   SAVE_TO_MY_ROUTINES,
+  toastAdoptedVersion,
+  toastKeptCopy,
   toastRemovedFromMy,
+  toastSavedToMy,
   useVersionN,
 } from "../../src/ui/copy/routines.js";
+import { PractitionerRoutinesRepository } from "../../src/storage/repositories/routines.js";
 import { seedPractitioner } from "../helpers/exercise-sqlite-fixture.js";
 import { id } from "../helpers/opaque-test-ids.js";
+import { installRealStaleDeleteCopyFixture } from "../helpers/routines-delete-batch-fixture.js";
 import {
   appDepsForRoutinesHttpUi,
   createRoutinesHttpFetch,
   installRealStaleRestoreSavedCopyFixture,
   openFlaggedRoutineHttpUiFixture,
+  openPublishedRoutineNoCopyHttpUiFixture,
 } from "../helpers/routines-http-ui-fixture.js";
 import { stubPractitionerSessionClient } from "./fake-practitioner-session-fixture.js";
 
@@ -101,6 +108,100 @@ function createClientWithUndo401(
 }
 
 describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
+  it("save → Undo with HTTP 409 on had_copy false keeps durable saved copy, dismisses toast", async () => {
+    const fixture = await openPublishedRoutineNoCopyHttpUiFixture("undo-save-409");
+    try {
+      const wrong = await seedPractitioner(
+        fixture.storage,
+        id("ui-undo-save-wrong"),
+        "undo-save-wrong@example.com",
+      );
+      const routineName = (await fixture.client.getRoutineDetails(fixture.routineId))
+        .community.name;
+      const getRoutineDetails = vi.spyOn(fixture.client, "getRoutineDetails");
+      const user = userEvent.setup();
+      renderDetail(fixture.routineId, fixture.client);
+      await waitFor(() => {
+        expect(screen.getByText(routineName)).toBeInTheDocument();
+      });
+      const callsAfterInitialLoad = getRoutineDetails.mock.calls.length;
+      await user.click(screen.getByRole("button", { name: SAVE_TO_MY_ROUTINES }));
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
+      });
+      expect(screen.getByText(toastSavedToMy(routineName))).toBeInTheDocument();
+      const callsAfterSave = getRoutineDetails.mock.calls.length;
+      expect(callsAfterSave).toBeGreaterThan(callsAfterInitialLoad);
+      const restoreStaleDelete = installRealStaleDeleteCopyFixture(wrong);
+      try {
+        await user.click(screen.getByRole("button", { name: TOAST_UNDO }));
+        await waitFor(() => {
+          expect(
+            document.querySelector(
+              '[data-testid="routine-detail-mutation-error-slot"]',
+            ),
+          ).toBeInTheDocument();
+        });
+        expect(screen.queryByText(toastSavedToMy(routineName))).not.toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: REMOVE_FROM_MY }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: SAVE_TO_MY_ROUTINES }),
+        ).not.toBeInTheDocument();
+        expect(getRoutineDetails.mock.calls.length).toBe(callsAfterSave);
+        const repo = new PractitionerRoutinesRepository(fixture.storage);
+        expect(
+          await repo.findForPractitioner(fixture.practitionerId, fixture.routineId),
+        ).not.toBeNull();
+      } finally {
+        restoreStaleDelete();
+      }
+    } finally {
+      fixture.storage.close();
+    }
+  });
+
+  it("keep → Undo with HTTP 401 dismisses toast and leaves kept personal copy", async () => {
+    const fixture = await openFlaggedRoutineHttpUiFixture("undo-keep-401");
+    try {
+      const details = await fixture.client.getRoutineDetails(fixture.routineId);
+      const keptVersion = details.my_copy!.source_version_number;
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        fixture.storage,
+        fixture.practitionerId,
+        "a@example.com",
+      );
+      const client = createClientWithUndo401(deps, cookie);
+      const getRoutineDetails = vi.spyOn(client, "getRoutineDetails");
+      const user = userEvent.setup();
+      renderDetail(fixture.routineId, client);
+      await waitFor(() => {
+        expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole("button", { name: KEEP_MINE }));
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
+      });
+      expect(screen.getByText(toastKeptCopy(keptVersion))).toBeInTheDocument();
+      const callsAfterKeep = getRoutineDetails.mock.calls.length;
+      await user.click(screen.getByRole("button", { name: TOAST_UNDO }));
+      await waitFor(() => {
+        expect(
+          document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText(toastKeptCopy(keptVersion))).not.toBeInTheDocument();
+      expect(getRoutineDetails.mock.calls.length).toBe(callsAfterKeep);
+      const after = await client.getRoutineDetails(fixture.routineId);
+      expect(after.my_copy?.source_version_number).toBe(keptVersion);
+      expect(after.personal_changes).not.toBeNull();
+      expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
+    } finally {
+      fixture.storage.close();
+    }
+  });
+
   it("remove → Undo with HTTP 409 keeps removed state, dismisses success toast, shows error slot", async () => {
     const fixture = await openFlaggedRoutineHttpUiFixture("undo-remove-409");
     try {
@@ -148,6 +249,8 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
           routineName,
         );
+        const after = await fixture.client.getRoutineDetails(fixture.routineId);
+        expect(after.my_copy).toBeNull();
       } finally {
         restore();
       }
@@ -187,10 +290,15 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         ).toBeInTheDocument();
       });
       expect(
+        screen.queryByText(toastRemovedFromMy(routineName)),
+      ).not.toBeInTheDocument();
+      expect(
         screen.getByRole("button", { name: SAVE_TO_MY_ROUTINES }),
       ).toBeInTheDocument();
       expect(getRoutineDetails.mock.calls.length).toBe(callsAfterRemove);
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(routineName);
+      const after = await client.getRoutineDetails(fixture.routineId);
+      expect(after.my_copy).toBeNull();
     } finally {
       fixture.storage.close();
     }
@@ -201,6 +309,7 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
     try {
       const details = await fixture.client.getRoutineDetails(fixture.routineId);
       const version = details.community.version_number;
+      const adoptedName = details.community.name;
       const wrong = await seedPractitioner(
         fixture.storage,
         id("ui-undo-adopt-wrong"),
@@ -216,6 +325,7 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
       });
+      expect(screen.getByText(toastAdoptedVersion(version))).toBeInTheDocument();
       const callsAfterAdopt = getRoutineDetails.mock.calls.length;
       const restore = installRealStaleRestoreSavedCopyFixture(wrong);
       try {
@@ -227,7 +337,15 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
             ),
           ).toBeInTheDocument();
         });
+        expect(
+          screen.queryByText(toastAdoptedVersion(version)),
+        ).not.toBeInTheDocument();
         expect(getRoutineDetails.mock.calls.length).toBe(callsAfterAdopt);
+        expect(screen.queryByTestId("routine-update-banner")).not.toBeInTheDocument();
+        const after = await fixture.client.getRoutineDetails(fixture.routineId);
+        expect(after.my_copy?.source_version_number).toBe(version);
+        expect(after.community.name).toBe(adoptedName);
+        expect(after.my_copy?.edited).toBe(false);
       } finally {
         restore();
       }
