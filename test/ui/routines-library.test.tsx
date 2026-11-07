@@ -29,6 +29,7 @@ import {
   ROUTINES_TAB_MY,
   SEARCH_ROUTINES_LABEL,
   allRoutinesIntro,
+  flaggedBanner,
   toastAdoptedVersion,
   toastKeptCopy,
   toastRemovedFromMy,
@@ -178,6 +179,39 @@ describe("Routines library UI (DIDI-1022)", () => {
     await user.click(screen.getByRole("button", { name: /Filters & sort/ }));
     expect(screen.getByText(CONDITION)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Arthritis" })).toBeInTheDocument();
+  });
+
+  it("shows the flagged-count banner on My routines when flagged_count is positive", async () => {
+    const client = {
+      searchCommunity: vi.fn().mockResolvedValue(emptySearch()),
+      listMyRoutines: vi.fn().mockResolvedValue({
+        ...emptyMy(),
+        flagged_count: 1,
+        saved: [
+          {
+            routine_id: "r1",
+            name: "Knee starter",
+            saved_copy_version: 1,
+            community_version: 2,
+            edited: false,
+            saved_at: "2026-10-25T12:00:00.000Z",
+            last_used_at: null,
+            community_updated: true,
+            body_region_label: "Knee",
+            condition_label: null,
+            exercise_count: 2,
+          },
+        ],
+      }),
+    } as unknown as RoutinesClient;
+    const user = userEvent.setup();
+    renderRoutines(client);
+    await user.click(screen.getByRole("tab", { name: ROUTINES_TAB_MY }));
+    await waitFor(() => {
+      expect(screen.getByTestId("routines-flag-banner")).toHaveTextContent(
+        flaggedBanner(1),
+      );
+    });
   });
 
   it("passes search query to the community API", async () => {

@@ -94,7 +94,10 @@ export type HarnessFixtureId =
   | "requests-list"
   | "draft-review"
   | "exercises-mine"
-  | "routines-all";
+  | "routines-all"
+  | "routines-all-populated"
+  | "routines-my-flag"
+  | "routines-detail-update";
 
 function baseRoutinesClient(): RoutinesClient {
   return {
@@ -302,6 +305,171 @@ export function harnessFixture(
         } as unknown as ExerciseRequestsClient,
         media,
         routines: baseRoutinesClient(),
+      };
+    case "routines-all-populated":
+      return {
+        initialEntries: ["/routines"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-knee",
+                routine_version_id: "rv-knee-1",
+                name: "Knee starter",
+                version_number: 2,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 4,
+                usage_count: 12,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+              {
+                routine_id: "r-hip",
+                routine_version_id: "rv-hip-1",
+                name: "Hip mobility",
+                version_number: 1,
+                body_region_label: "Hip",
+                condition_label: null,
+                exercise_count: 3,
+                usage_count: 5,
+                added_by_you: true,
+                in_my_routines: true,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 2,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: false,
+            condition_options: [],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-my-flag":
+      return {
+        initialEntries: ["/routines?tab=my"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [],
+            next_cursor: null,
+            search_link: null,
+            total_count: 0,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [
+              {
+                routine_id: "r-draft",
+                name: "Draft knee plan",
+                body_region_label: "Knee",
+                condition_label: null,
+                draft_updated_at: "2026-10-25T12:00:00.000Z",
+              },
+            ],
+            saved: [
+              {
+                routine_id: "r-saved",
+                name: "Knee starter",
+                saved_copy_version: 1,
+                community_version: 3,
+                edited: true,
+                saved_at: "2026-10-20T12:00:00.000Z",
+                last_used_at: "2026-10-24T12:00:00.000Z",
+                community_updated: true,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 4,
+              },
+            ],
+            flagged_count: 2,
+            conditions_available: false,
+            condition_options: [],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-detail-update":
+      return {
+        initialEntries: ["/routines/r-saved"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => ({
+            routine_id: "r-saved",
+            body_region_label: "Knee",
+            condition_label: null,
+            who_its_for: "Early rehab",
+            community: {
+              routine_version_id: "rv-knee-3",
+              version_number: 3,
+              name: "Knee starter",
+              updated_at: "2026-10-25T12:00:00.000Z",
+              created_by: "p-other",
+              usage_count: 12,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            my_copy: {
+              practitioner_routine_id: "pr-1",
+              source_version_number: 1,
+              edited: true,
+              community_updated: true,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            sent_program_count: 1,
+            sent_program_codes: ["AB12CD"],
+            conditions_available: false,
+          }),
+        } as unknown as RoutinesClient,
       };
     default: {
       const never: never = id;
