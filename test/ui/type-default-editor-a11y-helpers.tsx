@@ -90,3 +90,23 @@ export function assertDoseFieldAccessibleName(
 ): void {
   expect(resolveAriaLabelledByName(field, root)).toBe(expected);
 }
+
+/** Asserts the input's aria-labelledby target lives inside `card` (not another editor). */
+export function assertDoseFieldLabelInCard(field: Element, card: Element): void {
+  const labelId = field.getAttribute("aria-labelledby")?.trim();
+  expect(labelId).toBeTruthy();
+  expect(card.querySelector(`#${CSS.escape(labelId!)}`)).not.toBeNull();
+}
+
+export function collectDoseAccessibleLabelIds(container: ParentNode): string[] {
+  const ids: string[] = [];
+  for (const field of container.querySelectorAll(
+    "input.md-param-input[data-md-param], select.md-param-input[data-md-param]",
+  )) {
+    const labelId = field.getAttribute("aria-labelledby")?.trim();
+    if (labelId) {
+      ids.push(labelId);
+    }
+  }
+  return ids;
+}

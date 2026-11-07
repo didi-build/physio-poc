@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
@@ -14,11 +14,16 @@ import {
   EDGE_CASE_OWN,
   TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
   assertDoseFieldAccessibleName,
+  assertDoseFieldLabelInCard,
+  collectDoseAccessibleLabelIds,
   doseParamKeyFromField,
   renderTypeDefaultEditor,
   resolveAriaLabelledByName,
   valueDerivedAccessibleName,
 } from "./type-default-editor-a11y-helpers.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
+import { TypeDefaultEditor } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
+import { typeDefaultEditorTypeTitleId } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
 
 afterEach(() => {
   cleanup();
@@ -189,6 +194,51 @@ describe("TypeDefaultEditor (jsdom)", () => {
         );
       }
       unmount();
+    }
+  });
+
+  it("scopes dose label element ids when two editors mount together", () => {
+    const stretchTitleId = typeDefaultEditorTypeTitleId("stretching");
+    const isoTitleId = typeDefaultEditorTypeTitleId("isometric");
+    const { container } = render(
+      <div>
+        <h2 id={stretchTitleId}>{TYPE_LABELS.stretching}</h2>
+        <TypeDefaultEditor
+          type="stretching"
+          typeTitleId={stretchTitleId}
+          own={EDGE_CASE_OWN.stretching}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+        <h2 id={isoTitleId}>{TYPE_LABELS.isometric}</h2>
+        <TypeDefaultEditor
+          type="isometric"
+          typeTitleId={isoTitleId}
+          own={EDGE_CASE_OWN.isometric}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+      </div>,
+    );
+    const labelIds = collectDoseAccessibleLabelIds(container);
+    expect(labelIds.length).toBeGreaterThan(1);
+    expect(new Set(labelIds).size).toBe(labelIds.length);
+    const editors = container.querySelectorAll(".md-type-edit");
+    expect(editors).toHaveLength(2);
+    for (const editor of editors) {
+      for (const field of editor.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      )) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey === null) {
+          continue;
+        }
+        assertDoseFieldLabelInCard(field, editor);
+        assertDoseFieldAccessibleName(
+          field,
+          TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+        );
+      }
     }
   });
 

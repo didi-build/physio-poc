@@ -25,15 +25,15 @@ export const TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES = {
 export type TypeDefaultDoseAccessibleParamKey =
   keyof typeof TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES;
 
-export const TYPE_DEFAULT_DOSE_ACCESSIBLE_LABEL_IDS: Record<
+const TYPE_DEFAULT_DOSE_ACCESSIBLE_ID_SUFFIX: Record<
   TypeDefaultDoseAccessibleParamKey,
   string
 > = {
-  reps: "md-dose-a11y-reps",
-  hold_s: "md-dose-a11y-hold-s",
-  sets: "md-dose-a11y-sets",
-  per_day: "md-dose-a11y-per-day",
-  days_per_week: "md-dose-a11y-days-per-week",
+  reps: "reps",
+  hold_s: "hold-s",
+  sets: "sets",
+  per_day: "per-day",
+  days_per_week: "days-per-week",
 };
 
 function isTypeDefaultDoseAccessibleParam(
@@ -42,9 +42,17 @@ function isTypeDefaultDoseAccessibleParam(
   return key in TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES;
 }
 
+/** Unique per exercise-type card (`typeTitleId`), safe when several editors are open. */
+export function typeDefaultDoseAccessibleLabelId(
+  typeTitleId: string,
+  key: TypeDefaultDoseAccessibleParamKey,
+): string {
+  return `${typeTitleId}-dose-a11y-${TYPE_DEFAULT_DOSE_ACCESSIBLE_ID_SUFFIX[key]}`;
+}
+
 export function doseParamAriaLabelledBy(typeTitleId: string, key: ParamKey): string {
   if (isTypeDefaultDoseAccessibleParam(key)) {
-    return TYPE_DEFAULT_DOSE_ACCESSIBLE_LABEL_IDS[key];
+    return typeDefaultDoseAccessibleLabelId(typeTitleId, key);
   }
   const ids = [typeTitleId];
   if (key === "descent_s") {
