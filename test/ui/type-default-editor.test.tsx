@@ -12,6 +12,9 @@ import {
 } from "../../src/domain/type-default-param-layout.js";
 import {
   EDGE_CASE_OWN,
+  TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
+  assertDoseFieldAccessibleName,
+  doseParamKeyFromField,
   renderTypeDefaultEditor,
   resolveAriaLabelledByName,
   valueDerivedAccessibleName,
@@ -162,5 +165,50 @@ describe("TypeDefaultEditor (jsdom)", () => {
       }
       unmount();
     }
+  });
+
+  it("uses the spec accessible name for each wired dose input", () => {
+    for (const type of PRESCRIPTION_TYPES) {
+      const { container, unmount } = renderTypeDefaultEditor({
+        type,
+        own: EDGE_CASE_OWN[type],
+        onSave: () => {},
+        onCancel: () => {},
+      });
+      const fields = container.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      );
+      for (const field of fields) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey === null) {
+          continue;
+        }
+        assertDoseFieldAccessibleName(
+          field,
+          TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+        );
+      }
+      unmount();
+    }
+  });
+
+  it("keeps the spec accessible name after editing a dose value", async () => {
+    renderTypeDefaultEditor({
+      type: "isometric",
+      own: { reps: 12, hold_s: 45, sets: 1, days_per_week: 4 },
+      onSave: () => {},
+      onCancel: () => {},
+    });
+
+    const holdInput = screen.getByRole("textbox", { name: "Hold in seconds" });
+    await userEvent.clear(holdInput);
+    await userEvent.type(holdInput, "99");
+    assertDoseFieldAccessibleName(holdInput, "Hold in seconds");
+    expect(holdInput).toHaveValue("99");
+
+    const repsInput = screen.getByRole("textbox", { name: "Reps" });
+    await userEvent.clear(repsInput);
+    await userEvent.type(repsInput, "8");
+    assertDoseFieldAccessibleName(repsInput, "Reps");
   });
 });
