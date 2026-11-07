@@ -673,6 +673,169 @@ describe("Routines library HTTP (session routes)", () => {
     }
   });
 
+  it("adopts community version over HTTP then undo restores rows and source version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-adopt-undo");
+      const v1 = await publishRoutine(storage, author, {
+        routine: "http-adopt-undo",
+        draftVersion: "http-adopt-undo-draft",
+        row: "http-adopt-undo-row",
+        name: "Adopt undo HTTP",
+        hold_s: 30,
+      });
+      const versions = new RoutineVersionsRepository(storage);
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+
+      await versions.savePublishedVersion({
+        id: id("http-adopt-undo-v2"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "Adopt undo HTTP v2",
+        copyFromVersionId: v1.id,
+      });
+
+      const patch = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: FIXTURE_EXERCISE_ID,
+                  exercise_version_id: FIXTURE_VERSION_ID,
+                  prescription_type: "stretching",
+                  params: { hold_s: 45, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+                },
+              ],
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(patch.status).toBe(200);
+
+      const adopt = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "adopt_community_version" }),
+          }),
+        ),
+        deps,
+      );
+      expect(adopt.status).toBe(200);
+      const { undo } = (await adopt.json()) as {
+        undo: unknown;
+        adopted_version: number;
+      };
+
+      const adopted = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      expect(adopted?.source_version_number).toBe(2);
+      expect(adopted?.edited).toBe(0);
+      const adoptedRows = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(adopted!.id);
+      expect(adoptedRows[0]?.params_json).toContain('"hold_s":30');
+
+      const undoResponse = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "undo", undo }),
+          }),
+        ),
+        deps,
+      );
+      expect(undoResponse.status).toBe(200);
+
+      const restored = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      expect(restored?.source_version_number).toBe(1);
+      expect(restored?.edited).toBe(1);
+      const restoredRows = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(restored!.id);
+      expect(restoredRows[0]?.params_json).toContain('"hold_s":45');
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 404 when mutating my copy without a saved copy", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-no-copy");
+      await publishRoutine(storage, author, {
+        routine: "http-no-copy",
+        draftVersion: "http-no-copy-draft",
+        row: "http-no-copy-row",
+        name: "No copy HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+
+      const adopt = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "adopt_community_version" }),
+          }),
+        ),
+        deps,
+      );
+      expect(adopt.status).toBe(404);
+      await expect(adopt.json()).resolves.toMatchObject({
+        error: "my_routine_not_found",
+      });
+
+      const remove = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(remove.status).toBe(404);
+      await expect(remove.json()).resolves.toMatchObject({
+        error: "my_routine_not_found",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("removes then undoes via HTTP restoring the saved copy", async () => {
     const storage = await openMigratedDatabase();
     try {

@@ -99,7 +99,9 @@ export type HarnessFixtureId =
   | "routines-my-flag"
   | "routines-detail-update"
   | "routines-conditions-filled"
-  | "routines-search-active";
+  | "routines-search-active"
+  | "routines-my-copy-direct"
+  | "routines-detail-load-failed";
 
 function baseRoutinesClient(): RoutinesClient {
   return {
@@ -520,6 +522,88 @@ export function harnessFixture(
             conditions_available: true,
             condition_options: [{ condition_id: "c1", label: "Arthritis" }],
           }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-my-copy-direct":
+      return {
+        initialEntries: ["/routines/r-saved/my-copy"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => ({
+            routine_id: "r-saved",
+            body_region_label: "Knee",
+            condition_label: null,
+            who_its_for: null,
+            community: {
+              routine_version_id: "rv-knee-3",
+              version_number: 3,
+              name: "Knee starter",
+              updated_at: "2026-10-25T12:00:00.000Z",
+              created_by: "p-other",
+              usage_count: 12,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            my_copy: {
+              practitioner_routine_id: "pr-1",
+              source_version_number: 1,
+              edited: true,
+              community_updated: true,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            sent_program_count: 0,
+            sent_program_codes: [],
+            conditions_available: false,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 0,
+              your_change_positions: [],
+            },
+            community_change_list: null,
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-detail-load-failed":
+      return {
+        initialEntries: ["/routines/r-missing"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => {
+            throw new Error("routine_not_found");
+          },
         } as unknown as RoutinesClient,
       };
     case "routines-search-active":

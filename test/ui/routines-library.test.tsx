@@ -429,4 +429,123 @@ describe("Routines library UI (DIDI-1022)", () => {
     await user.click(screen.getByRole("button", { name: KEEP_MINE }));
     expect(await screen.findByText(toastKeptCopy(1))).toBeInTheDocument();
   });
+
+  it("shows empty mutation error slot and no success toast when save fails", async () => {
+    const details = {
+      routine_id: "r1",
+      body_region_label: "Knee",
+      condition_label: null,
+      who_its_for: null,
+      community: {
+        routine_version_id: "rv1",
+        version_number: 1,
+        name: "Knee starter",
+        updated_at: "2026-10-25T12:00:00.000Z",
+        created_by: "p1",
+        usage_count: 0,
+        rows: [],
+      },
+      my_copy: null,
+      sent_program_count: 0,
+      sent_program_codes: [],
+      conditions_available: false,
+      personal_changes: null,
+      community_change_list: null,
+    };
+    const client = {
+      getRoutineDetails: vi.fn().mockResolvedValue(details),
+      saveToMyRoutines: vi.fn().mockRejectedValue(new Error("stale_write")),
+    } as unknown as RoutinesClient;
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/routines/r1"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={client}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Knee starter")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: "Save to My routines" }));
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(toastSavedToMy("Knee starter"))).not.toBeInTheDocument();
+  });
+
+  it("clears mutation error slot on retry then shows it again when adopt fails", async () => {
+    const details = {
+      routine_id: "r1",
+      body_region_label: "Knee",
+      condition_label: null,
+      who_its_for: null,
+      community: {
+        routine_version_id: "rv2",
+        version_number: 3,
+        name: "Knee starter",
+        updated_at: "2026-10-25T12:00:00.000Z",
+        created_by: "p2",
+        usage_count: 2,
+        rows: [],
+      },
+      my_copy: {
+        practitioner_routine_id: "pr1",
+        source_version_number: 1,
+        edited: false,
+        community_updated: true,
+        rows: [],
+      },
+      sent_program_count: 0,
+      sent_program_codes: [],
+      conditions_available: false,
+      personal_changes: {
+        baseline_available: true,
+        change_count: 0,
+        your_change_positions: [],
+      },
+      community_change_list: { status: "held_pending_design" },
+    };
+    const adoptCommunityVersion = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("stale_write"))
+      .mockRejectedValueOnce(new Error("stale_write"));
+    const client = {
+      getRoutineDetails: vi.fn().mockResolvedValue(details),
+      adoptCommunityVersion,
+    } as unknown as RoutinesClient;
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/routines/r1"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={client}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: useVersionN(3) }));
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(toastAdoptedVersion(3))).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: useVersionN(3) }));
+    await waitFor(() => expect(adoptCommunityVersion).toHaveBeenCalledTimes(2));
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+      ).toBeInTheDocument();
+    });
+  });
 });

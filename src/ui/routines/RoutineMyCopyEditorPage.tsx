@@ -17,6 +17,7 @@ import {
 import {
   ExerciseLibraryBusyState,
   ExerciseLibraryDetailErrorSlot,
+  ExerciseLibraryErrorSlot,
 } from "../exercise-library/ExerciseLibraryStates.js";
 
 export function RoutineMyCopyEditorPage() {
@@ -28,6 +29,7 @@ export function RoutineMyCopyEditorPage() {
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [mutationFailed, setMutationFailed] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -74,10 +76,16 @@ export function RoutineMyCopyEditorPage() {
   };
 
   const onSave = () => {
-    void client.updateMyCopy(routineId, rows).then(() => {
-      showToast({ message: TOAST_SAVED_MY_COPY });
-      navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
-    });
+    setMutationFailed(false);
+    void client
+      .updateMyCopy(routineId, rows)
+      .then(() => {
+        showToast({ message: TOAST_SAVED_MY_COPY });
+        navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
+      })
+      .catch(() => {
+        setMutationFailed(true);
+      });
   };
 
   return (
@@ -92,6 +100,13 @@ export function RoutineMyCopyEditorPage() {
         {details.community.name}
       </h1>
       <p className="ex-page-intro">{MY_COPY_EDITOR_INTRO}</p>
+
+      {mutationFailed ? (
+        <ExerciseLibraryErrorSlot
+          message={undefined}
+          testId="routine-my-copy-mutation-error-slot"
+        />
+      ) : null}
 
       <ol className="rt-exercise-list">
         {rows.map((row, index) => (

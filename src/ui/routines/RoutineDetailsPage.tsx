@@ -51,6 +51,7 @@ import { ROUTINE_DETAIL_HEADING } from "../copy/routines.js";
 import {
   ExerciseLibraryBusyState,
   ExerciseLibraryDetailErrorSlot,
+  ExerciseLibraryErrorSlot,
 } from "../exercise-library/ExerciseLibraryStates.js";
 import { formatListDate } from "../exercise-library/library-filters.js";
 
@@ -82,6 +83,7 @@ export function RoutineDetailsPage() {
   const [details, setDetails] = useState<RoutineDetailsResult | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [mutationFailed, setMutationFailed] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
 
   const load = () => {
@@ -152,52 +154,100 @@ export function RoutineDetailsPage() {
   const yourChangePositions = new Set(personalChanges?.your_change_positions ?? []);
 
   const onSave = () => {
-    void client.saveToMyRoutines(routineId).then(({ undo }) => {
-      showToast({
-        message: toastSavedToMy(community.name),
-        onUndo: () => {
-          void client.applyUndo(routineId, undo).then(load);
-        },
+    setMutationFailed(false);
+    void client
+      .saveToMyRoutines(routineId)
+      .then(({ undo }) => {
+        showToast({
+          message: toastSavedToMy(community.name),
+          onUndo: () => {
+            setMutationFailed(false);
+            void client
+              .applyUndo(routineId, undo)
+              .then(load)
+              .catch(() => {
+                setMutationFailed(true);
+              });
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setMutationFailed(true);
       });
-      load();
-    });
   };
 
   const onRemove = () => {
-    void client.removeFromMyRoutines(routineId).then(({ undo }) => {
-      showToast({
-        message: toastRemovedFromMy(community.name),
-        onUndo: () => {
-          void client.applyUndo(routineId, undo).then(load);
-        },
+    setMutationFailed(false);
+    void client
+      .removeFromMyRoutines(routineId)
+      .then(({ undo }) => {
+        showToast({
+          message: toastRemovedFromMy(community.name),
+          onUndo: () => {
+            setMutationFailed(false);
+            void client
+              .applyUndo(routineId, undo)
+              .then(load)
+              .catch(() => {
+                setMutationFailed(true);
+              });
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setMutationFailed(true);
       });
-      load();
-    });
   };
 
   const onAdopt = () => {
-    void client.adoptCommunityVersion(routineId).then(({ undo, adopted_version }) => {
-      showToast({
-        message: toastAdoptedVersion(adopted_version),
-        onUndo: () => {
-          void client.applyUndo(routineId, undo).then(load);
-        },
+    setMutationFailed(false);
+    void client
+      .adoptCommunityVersion(routineId)
+      .then(({ undo, adopted_version }) => {
+        showToast({
+          message: toastAdoptedVersion(adopted_version),
+          onUndo: () => {
+            setMutationFailed(false);
+            void client
+              .applyUndo(routineId, undo)
+              .then(load)
+              .catch(() => {
+                setMutationFailed(true);
+              });
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setMutationFailed(true);
       });
-      load();
-    });
   };
 
   const onKeep = () => {
-    void client.keepMyCopyVersion(routineId).then(({ undo }) => {
-      const version = myCopy?.source_version_number ?? community.version_number;
-      showToast({
-        message: toastKeptCopy(version),
-        onUndo: () => {
-          void client.applyUndo(routineId, undo).then(load);
-        },
+    setMutationFailed(false);
+    void client
+      .keepMyCopyVersion(routineId)
+      .then(({ undo }) => {
+        const version = myCopy?.source_version_number ?? community.version_number;
+        showToast({
+          message: toastKeptCopy(version),
+          onUndo: () => {
+            setMutationFailed(false);
+            void client
+              .applyUndo(routineId, undo)
+              .then(load)
+              .catch(() => {
+                setMutationFailed(true);
+              });
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setMutationFailed(true);
       });
-      load();
-    });
   };
 
   return (
@@ -222,6 +272,13 @@ export function RoutineDetailsPage() {
       <h1 id="rt-detail-heading" className="ex-page-title">
         {community.name}
       </h1>
+
+      {mutationFailed ? (
+        <ExerciseLibraryErrorSlot
+          message={undefined}
+          testId="routine-detail-mutation-error-slot"
+        />
+      ) : null}
 
       <p className="rt-detail-meta">
         {communityRoutineMeta(
