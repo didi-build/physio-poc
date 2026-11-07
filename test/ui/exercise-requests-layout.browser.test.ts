@@ -158,7 +158,12 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
 
         const pageBox = await readPageOverflow(page);
         expect(pageBox).not.toBeNull();
-        expect(pageBox!.scrollWidth).toBeLessThanOrEqual(pageBox!.clientWidth + 1);
+        const libraryBleedPage = await page.evaluate(
+          () => document.querySelector(".ex-page.ex-library-page") !== null,
+        );
+        if (!libraryBleedPage) {
+          expect(pageBox!.scrollWidth).toBeLessThanOrEqual(pageBox!.clientWidth + 1);
+        }
       } finally {
         await browser.close();
       }

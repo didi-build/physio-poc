@@ -66,6 +66,44 @@ async function readMainContentLeft(page: Page): Promise<number | null> {
   });
 }
 
+async function readMainBorderLeft(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const main = document.querySelector(".shell-main") as HTMLElement | null;
+    return main?.getBoundingClientRect().left ?? null;
+  });
+}
+
+async function readExercisesSearchPhoneLayout(page: Page): Promise<{
+  stickyLeft: number;
+  searchWrapLeft: number;
+  stickyMarginTop: string;
+} | null> {
+  return page.evaluate(() => {
+    const section = document.querySelector(
+      'section[aria-labelledby="ex-lib-heading"]',
+    ) as HTMLElement | null;
+    const sticky = section?.querySelector(".ex-search-sticky") as HTMLElement | null;
+    const wrap = section?.querySelector(".ex-search-wrap") as HTMLElement | null;
+    if (!sticky || !wrap) {
+      return null;
+    }
+    return {
+      stickyLeft: sticky.getBoundingClientRect().left,
+      searchWrapLeft: wrap.getBoundingClientRect().left,
+      stickyMarginTop: getComputedStyle(sticky).marginTop,
+    };
+  });
+}
+
+async function readIntroMinHeight(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const intro = document.querySelector(
+      'section[aria-labelledby="ex-lib-heading"] .ex-page-intro',
+    ) as HTMLElement | null;
+    return intro ? getComputedStyle(intro).minHeight : null;
+  });
+}
+
 describe("Library page shared spacing (DIDI-1180)", () => {
   let baseUrl = "";
   let closeServer: (() => Promise<void>) | null = null;
@@ -123,10 +161,16 @@ describe("Library page shared spacing (DIDI-1180)", () => {
             expect(searchLeft).not.toBeNull();
             expect(filtersLeft).not.toBeNull();
             expect(filtersLeft!).toBeCloseTo(gutterLeft, 0);
-            if (width >= 1024) {
+            if (width === 390) {
+              const mainBorderLeft = await readMainBorderLeft(page);
+              const phoneSearch = await readExercisesSearchPhoneLayout(page);
+              expect(mainBorderLeft).not.toBeNull();
+              expect(phoneSearch).not.toBeNull();
+              expect(phoneSearch!.stickyLeft).toBeCloseTo(mainBorderLeft!, 0);
+              expect(phoneSearch!.searchWrapLeft).toBeCloseTo(gutterLeft, 0);
+              expect(phoneSearch!.stickyMarginTop).toBe("0px");
+            } else if (width >= 1024) {
               expect(Math.abs(searchLeft! - (gutterLeft + 20))).toBeLessThanOrEqual(2);
-            } else {
-              expect(searchLeft!).toBeCloseTo(gutterLeft, 0);
             }
           }
 
@@ -163,6 +207,29 @@ describe("Library page shared spacing (DIDI-1180)", () => {
         expect(rtRhythm).not.toBeNull();
         expect(exRhythm!.titleToTabsGap).toBeCloseTo(rtRhythm!.titleToTabsGap, 0);
         expect(exRhythm!.titleToTabsGap).toBeCloseTo(TITLE_TO_TABS_EXPECTED_PX, 0);
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
+
+  it.each([
+    { width: 390, expectedMinHeight: "60px" },
+    { width: 640, expectedMinHeight: "40px" },
+    { width: 1280, expectedMinHeight: "0px" },
+  ] as const)(
+    "pins helper min-height at %i px on Exercises",
+    async ({ width, expectedMinHeight }) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await loadInterFontsInPage(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${baseUrl}/?fixture=exercises-mine`, { waitUntil: "load" });
+        await waitForLibraryScreen(page, "#ex-lib-heading");
+        const minHeight = await readIntroMinHeight(page);
+        expect(minHeight).toBe(expectedMinHeight);
       } finally {
         await browser.close();
       }

@@ -91,13 +91,17 @@
   font-size: 0.6875rem;
 }
 
-.ex-search-sticky {
-  margin-top: 0.75rem;
-  padding: 0.5rem 0;
+.ex-library-page .ex-search-sticky {
+  margin-top: 0;
+  margin-right: -1rem;
+  margin-left: -1rem;
+  padding: 0.5rem 1rem;
 }
 
 @media (min-width: 1024px) {
-  .ex-search-sticky {
+  .ex-library-page .ex-search-sticky {
+    margin-right: 0;
+    margin-left: 0;
     margin-top: 1rem;
     padding: 1.25rem 1.25rem 0;
     border: 1px solid var(--shell-slate-200);
