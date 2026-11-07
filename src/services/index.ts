@@ -19,3 +19,8 @@ export {
   ProgramBuilderServiceError,
   validateExerciseParamsForPrescriptionType,
 } from "./programs/index.js";
+export {
+  RoutinesLibraryService,
+  RoutinesLibraryServiceError,
+  parseRoutineMutationUndo,
+} from "./routines/index.js";
