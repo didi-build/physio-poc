@@ -679,7 +679,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
-- **Nov 7, 2026**: DIDI-1178. Diadem (America/Toronto, locked on DIDI-594): on the Programs list, search and origin filters stay above empty-state messaging during initial loading, zero programs and zero matches—the same pattern as the Exercises page. https://linear.app/didi-build/issue/DIDI-1178
+- **Nov 7, 2026**: DIDI-1178. Diadem (America/Toronto, locked on DIDI-594): on the Programs list, search and origin filters stay above empty-state messaging during initial loading, zero programs and zero matches, the same pattern as the Exercises page. https://linear.app/didi-build/issue/DIDI-1178
 - **Oct 31, 2026**: DIDI-1152. Diadem (1:19 PM ET): keep drag and drop, add Shift with the up and down arrow keys. Diadem (1:28 PM ET): approved the grip name and the move read-out, removed the up and down buttons, hint unchanged. Diadem (1:30 PM ET): screen reader only "Move {name} up" and "Move {name} down" actions on the grip. https://linear.app/didi-build/issue/DIDI-1152
 - **Oct 31, 2026**: Spec alignment: the library updates flag reads "1 library update to review" for one and "{n} library updates to review" for more, as in approved mockups 01, 29 and 05. https://linear.app/didi-build/issue/DIDI-1144
 - **Oct 30, 2026**: DIDI-1134. Diadem approved the copy for empty states, save failure and singular counts (1:39 PM ET) and the leave warning (1:41 PM ET). https://linear.app/didi-build/issue/DIDI-1134
