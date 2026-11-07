@@ -1,7 +1,7 @@
-import { execSync } from "node:child_process";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ensureLayoutHarnessBuilt } from "../helpers/ensure-layout-harness-built.js";
 import { loadInterFontsInPage } from "../helpers/load-inter-fonts-in-page.js";
 import { startStaticFileServer } from "../helpers/static-file-server.js";
 
@@ -71,9 +71,7 @@ describe("Library page shared spacing (DIDI-1180)", () => {
   let closeServer: (() => Promise<void>) | null = null;
 
   beforeAll(() => {
-    execSync("npx vite build --config vite.layout-harness.config.ts", {
-      stdio: "inherit",
-    });
+    ensureLayoutHarnessBuilt();
   });
 
   beforeAll(async () => {

@@ -1,8 +1,7 @@
-import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ensureLayoutHarnessBuilt } from "../helpers/ensure-layout-harness-built.js";
 import { loadInterFontsInPage } from "../helpers/load-inter-fonts-in-page.js";
 import { startStaticFileServer } from "../helpers/static-file-server.js";
 import type { HarnessFixtureId } from "./harness/fixtures.js";
@@ -112,11 +111,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
   let closeServer: (() => Promise<void>) | null = null;
 
   beforeAll(() => {
-    if (!existsSync(join(HARNESS_DIST, "index.html"))) {
-      execSync("npx vite build --config vite.layout-harness.config.ts", {
-        stdio: "inherit",
-      });
-    }
+    ensureLayoutHarnessBuilt();
   });
 
   beforeAll(async () => {
