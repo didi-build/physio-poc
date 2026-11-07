@@ -2,6 +2,11 @@
   padding: 1rem;
 }
 
+/* Library rhythm pages use shell-main gutter only; avoid nested pg-page padding. */
+.pg-page.ex-page {
+  padding: 0;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
