@@ -78,6 +78,20 @@ function baseLibraryClient(): ExerciseLibraryClient {
   } as unknown as ExerciseLibraryClient;
 }
 
+const programsListItem = {
+  program_id: "prog-layout-1",
+  code: "PRG-2M8D",
+  name: "Knee rehab, week 1",
+  exercise_count: 2,
+  draft_updated_at: "2026-10-24T12:00:00.000Z",
+  auto_save_status: { kind: "not_published_yet" as const },
+  library_updates_to_review: 0,
+  share_link_status: "none" as const,
+  last_sent_at: "2026-10-24T12:00:00.000Z",
+  deleted_at: null,
+  routine_origin: null,
+};
+
 function baseProgramsClient(): ProgramsClient {
   return {
     listPrograms: async () => ({ items: [], matched_code: null }),
@@ -93,7 +107,10 @@ export type HarnessFixtureId =
   | "requests-list"
   | "draft-review"
   | "exercises-mine"
-  | "routines-all";
+  | "routines-all"
+  | "programs-empty"
+  | "programs-no-match"
+  | "programs-populated";
 
 export type HarnessFixture = {
   initialEntries: Array<string | { pathname: string; state?: unknown }>;
@@ -274,6 +291,45 @@ export function harnessFixture(
         } as unknown as ExerciseRequestsClient,
         media,
       };
+    case "programs-empty":
+      return {
+        initialEntries: ["/programs"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+      };
+    case "programs-no-match":
+      return {
+        initialEntries: ["/programs?q=ZZZ"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+      };
+    case "programs-populated":
+      return {
+        initialEntries: ["/programs"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+      };
     default: {
       const never: never = id;
       throw new Error(`Unknown fixture ${never}`);
@@ -281,6 +337,23 @@ export function harnessFixture(
   }
 }
 
-export function programsClientForHarness(): ProgramsClient {
+export function programsClientForHarness(fixtureId?: HarnessFixtureId): ProgramsClient {
+  if (fixtureId === "programs-no-match") {
+    return {
+      listPrograms: async (q?: string) => {
+        if (q?.trim()) {
+          return { items: [], matched_code: null };
+        }
+        return { items: [programsListItem], matched_code: null };
+      },
+      listDeletedPrograms: async () => ({ items: [] }),
+    } as unknown as ProgramsClient;
+  }
+  if (fixtureId === "programs-populated") {
+    return {
+      listPrograms: async () => ({ items: [programsListItem], matched_code: null }),
+      listDeletedPrograms: async () => ({ items: [] }),
+    } as unknown as ProgramsClient;
+  }
   return baseProgramsClient();
 }

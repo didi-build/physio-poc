@@ -182,6 +182,7 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(
       await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE }),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("programs-list-controls")).toBeVisible();
     expect(screen.getByText(PROGRAMS_EMPTY_HEADING)).toBeInTheDocument();
     expect(screen.getByText(RECENTLY_DELETED_EMPTY)).toBeInTheDocument();
     expect(listCountLabel(0)).toBeNull();
