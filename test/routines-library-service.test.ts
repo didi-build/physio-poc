@@ -7,6 +7,7 @@ import {
 import {
   openMigratedDatabase,
   seedApprovedExerciseVersion,
+  seedExercise,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
@@ -15,6 +16,7 @@ import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import {
   PractitionerRoutineRowsRepository,
   PractitionerRoutinesRepository,
+  RoutineRepositoryError,
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
   RoutinesRepository,
@@ -288,6 +290,311 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
       expect(details.community.usage_count).toBeGreaterThanOrEqual(1);
       expect(details.sent_program_count).toBe(1);
       expect(details.sent_program_codes.length).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("replaceMyCopyRows drops positions not in the new list", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-orphan-a"),
+        "a@example.com",
+      );
+      const saver = await seedPractitioner(
+        storage,
+        id("pract-orphan-b"),
+        "b@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const secondExercise = await seedExercise(
+        storage,
+        author,
+        id("ex-second-orphan"),
+      );
+      await storage.run(
+        `INSERT INTO exercise_versions (
+          id, exercise_id, version_number, status, approved_by, approved_at,
+          title, description, equipment, starting_position, steps,
+          common_mistakes, regressions, progressions, precautions,
+          cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+          media_set_id, change_summary, created_at
+        ) SELECT ?, ?, 1, 'approved', ?, ?, 'Second move', description, equipment,
+          starting_position, steps, common_mistakes, regressions, progressions, precautions,
+          cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+          media_set_id, change_summary, created_at
+        FROM exercise_versions WHERE id = ? LIMIT 1`,
+        [id("ver-second-orphan"), secondExercise, author, TS, versionId],
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Two exercise slots",
+        routineId: id("routine-orphan"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(saver, routineId);
+      const my = new PractitionerRoutinesRepository(storage);
+      const copy = await my.findForPractitioner(saver, routineId);
+      const rowRepo = new PractitionerRoutineRowsRepository(storage);
+      await rowRepo.replaceRow({
+        id: id("prr-second"),
+        practitionerRoutineId: copy!.id,
+        position: 1,
+        exerciseId: secondExercise,
+        exerciseVersionId: id("ver-second-orphan"),
+        prescriptionType: "stretching",
+        params: { hold_s: 20, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+      });
+      expect((await rowRepo.listForCopy(copy!.id)).length).toBe(2);
+
+      await service.updateMyCopy({
+        practitionerId: saver,
+        routineId,
+        rows: [
+          {
+            position: 0,
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "stretching",
+            params: { hold_s: 55, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      const rows = await rowRepo.listForCopy(copy!.id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.position).toBe(0);
+      expect(rows[0]?.params_json).toContain('"hold_s":55');
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects an empty my copy row list", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Non empty source",
+        routineId: id("routine-no-empty"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      await expect(
+        service.updateMyCopy({ practitionerId: author, routineId, rows: [] }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("restoreSavedCopyFromSnapshot leaves the prior copy intact when the batch fails", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId, published } = await publishRoutine(storage, author, {
+        name: "Restore guard",
+        routineId: id("routine-restore-guard"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const my = new PractitionerRoutinesRepository(storage);
+      const saved = await my.saveFrozenCopy({
+        id: id("pr-restore-guard"),
+        practitionerId: author,
+        routineId,
+        sourceRoutineVersionId: published.id,
+        savedAt: TS,
+        rows: [
+          {
+            id: id("prr-restore-guard"),
+            position: 0,
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "stretching",
+            params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      const rowRepo = new PractitionerRoutineRowsRepository(storage);
+      const beforeRows = await rowRepo.listForCopy(saved.id);
+
+      await expect(
+        my.restoreSavedCopyFromSnapshot({
+          practitionerId: author,
+          routineId,
+          snapshot: {
+            id: saved.id,
+            source_routine_version_id: published.id,
+            source_version_number: 1,
+            saved_at: TS,
+            last_used_at: null,
+            edited: 1,
+            rows: [
+              {
+                position: 0,
+                exercise_id: exerciseId,
+                exercise_version_id: id("missing-version-id"),
+                prescription_type: "stretching",
+                params_json: JSON.stringify({
+                  hold_s: 99,
+                  per_day: { min: 1, max: 2 },
+                  days_per_week: 7,
+                }),
+              },
+            ],
+          },
+        }),
+      ).rejects.toThrow();
+
+      const after = await my.findForPractitioner(author, routineId);
+      expect(after?.source_version_number).toBe(saved.source_version_number);
+      const afterRows = await rowRepo.listForCopy(saved.id);
+      expect(afterRows).toEqual(beforeRows);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps repository stale_write to a typed service error on my copy adopt", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-stale-save"),
+        "c@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId, published: v1 } = await publishRoutine(storage, author, {
+        name: "Stale adopt target",
+        routineId: id("routine-stale-save"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      await new RoutineVersionsRepository(storage).savePublishedVersion({
+        id: id("rv-stale-v2"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "Stale adopt target v2",
+        copyFromVersionId: v1.id,
+      });
+      const my = new PractitionerRoutinesRepository(storage);
+      await expect(
+        my.saveFrozenCopy({
+          id: id("pr-stale-save"),
+          practitionerId: author,
+          routineId,
+          sourceRoutineVersionId: v1.id,
+          savedAt: TS,
+          rows: [
+            {
+              id: id("prr-stale-save"),
+              position: 0,
+              exerciseId,
+              exerciseVersionId: versionId,
+              prescriptionType: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: "stale_write" });
+
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const replace =
+        PractitionerRoutinesRepository.prototype.replaceSavedCopyFromPublished;
+      PractitionerRoutinesRepository.prototype.replaceSavedCopyFromPublished =
+        async function staleStub() {
+          throw new RoutineRepositoryError("Stale write", { code: "stale_write" });
+        };
+      try {
+        await expect(
+          service.adoptCommunityVersion(author, routineId),
+        ).rejects.toMatchObject({
+          code: "stale_write",
+        });
+      } finally {
+        PractitionerRoutinesRepository.prototype.replaceSavedCopyFromPublished =
+          replace;
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("applyUndo overwrites an intervening my copy edit (exercise-library undo contract)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("pract-undo-edit"),
+        "u@example.com",
+      );
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Undo overwrite",
+        routineId: id("routine-undo-overwrite"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const { undo } = await service.updateMyCopy({
+        practitionerId: author,
+        routineId,
+        rows: [
+          {
+            position: 0,
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "stretching",
+            params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      await service.updateMyCopy({
+        practitionerId: author,
+        routineId,
+        rows: [
+          {
+            position: 0,
+            exerciseId,
+            exerciseVersionId: versionId,
+            prescriptionType: "stretching",
+            params: { hold_s: 99, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      await service.applyUndo(author, routineId, undo);
+      const rows = await new PractitionerRoutineRowsRepository(storage).listForCopy(
+        (await new PractitionerRoutinesRepository(storage).findForPractitioner(
+          author,
+          routineId,
+        ))!.id,
+      );
+      expect(rows[0]?.params_json).toContain('"hold_s":30');
     } finally {
       storage.close();
     }

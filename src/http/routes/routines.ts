@@ -54,13 +54,17 @@ function errorResponse(error: unknown): Response {
   }
   if (error instanceof RoutinesLibraryServiceError) {
     const status =
-      error.code === "practitioner_not_found" || error.code === "routine_not_found"
-        ? 404
-        : error.code === "my_routine_not_found"
+      error.code === "stale_write"
+        ? 409
+        : error.code === "practitioner_not_found" || error.code === "routine_not_found"
           ? 404
-          : error.code === "routine_not_published"
+          : error.code === "my_routine_not_found"
             ? 404
-            : 400;
+            : error.code === "routine_not_published"
+              ? 404
+              : error.code === "undo_mismatch"
+                ? 400
+                : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },
@@ -109,6 +113,18 @@ function safeDecodePathSegment(segment: string): string | null {
   } catch {
     return null;
   }
+}
+
+function rejectSpoofedPractitionerIdInBody(
+  body: Record<string, unknown>,
+  options: { allowUndoPayload?: boolean } = {},
+): Response | null {
+  if (options.allowUndoPayload) {
+    const rest = { ...body };
+    delete rest.undo;
+    return rejectBodyPractitionerId(rest);
+  }
+  return rejectBodyPractitionerId(body);
 }
 
 export type HandleRoutinesOptions = {
@@ -199,11 +215,13 @@ export async function handleRoutinesRequest(
       if (body instanceof Response) {
         return body;
       }
-      const rejected = rejectBodyPractitionerId(body);
+      const action = body.action;
+      const rejected = rejectSpoofedPractitionerIdInBody(body, {
+        allowUndoPayload: action === "undo",
+      });
       if (rejected) {
         return rejected;
       }
-      const action = body.action;
       if (action === "save") {
         try {
           const result = await libraryService(deps).saveToMyRoutines(

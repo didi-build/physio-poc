@@ -56,7 +56,8 @@ export class RoutinesLibraryServiceError extends Error {
       | "my_routine_not_found"
       | "invalid_input"
       | "undo_mismatch"
-      | "routine_not_published",
+      | "routine_not_published"
+      | "stale_write",
   ) {
     super(message);
     this.name = "RoutinesLibraryServiceError";
@@ -91,9 +92,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function mapRoutineRepositoryError(err: unknown): never {
   if (err instanceof RoutineRepositoryError) {
+    if (err.code === "stale_write") {
+      throw new RoutinesLibraryServiceError("Stale write", "stale_write");
+    }
     const message = err.message;
     if (message === "Saved routine copy not found") {
       throw new RoutinesLibraryServiceError(message, "my_routine_not_found");
+    }
+    if (message === "Cannot save an empty routine copy") {
+      throw new RoutinesLibraryServiceError(message, "invalid_input");
     }
     if (message === "Routine is not published" || message.includes("not published")) {
       throw new RoutinesLibraryServiceError(message, "routine_not_published");
@@ -688,16 +695,21 @@ export class RoutinesLibraryService {
       input.practitionerId,
       validatedRoutineId,
     );
-    for (const row of input.rows) {
-      await this.myCopyRows.replaceRow({
-        id: crypto.randomUUID(),
-        practitionerRoutineId: copy.id,
-        position: row.position,
-        exerciseId: row.exerciseId,
-        exerciseVersionId: row.exerciseVersionId,
-        prescriptionType: row.prescriptionType,
-        params: row.params,
+    try {
+      await this.myCopies.replaceMyCopyRows({
+        practitionerId: input.practitionerId,
+        routineId: validatedRoutineId,
+        rows: input.rows.map((row) => ({
+          id: crypto.randomUUID(),
+          position: row.position,
+          exerciseId: row.exerciseId,
+          exerciseVersionId: row.exerciseVersionId,
+          prescriptionType: row.prescriptionType,
+          params: row.params,
+        })),
       });
+    } catch (err) {
+      mapRoutineRepositoryError(err);
     }
     return { undo };
   }
