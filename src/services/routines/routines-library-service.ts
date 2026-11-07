@@ -226,6 +226,16 @@ export class RoutinesLibraryService {
     return rows.length > 0;
   }
 
+  private async conditionOptionsForUi(
+    conditionsAvailable: boolean,
+  ): Promise<{ condition_id: string; label: string }[]> {
+    if (!conditionsAvailable) {
+      return [];
+    }
+    const rows = await this.conditions.listAll();
+    return rows.map((row) => ({ condition_id: row.id, label: row.label }));
+  }
+
   async searchCommunityRoutines(input: {
     practitionerId: string;
     query?: string;
@@ -302,6 +312,7 @@ export class RoutinesLibraryService {
       search_link,
       total_count: totalCount,
       conditions_available: conditionsAvailable,
+      condition_options: await this.conditionOptionsForUi(conditionsAvailable),
     };
   }
 
@@ -462,6 +473,7 @@ export class RoutinesLibraryService {
       saved,
       flagged_count: flaggedCount,
       conditions_available: conditionsAvailable,
+      condition_options: await this.conditionOptionsForUi(conditionsAvailable),
     };
   }
 

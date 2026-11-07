@@ -5,7 +5,7 @@ import "./setup.js";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   ExerciseLibraryClient,
@@ -17,24 +17,25 @@ import {
 } from "../../src/ui/api/exercise-requests-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
+  RoutinesClient,
+  setRoutinesClientForTests,
+} from "../../src/ui/api/routines-client.js";
+import {
   ALL_ROUTINES_EMPTY_HEADING,
   MY_ROUTINES_EMPTY_HEADING,
   MY_ROUTINES_INTRO,
   ROUTINES_PAGE_TITLE,
   ROUTINES_TAB_MY,
+  SEARCH_ROUTINES_LABEL,
   allRoutinesIntro,
 } from "../../src/ui/copy/routines.js";
-import {
-  RoutinesPageContent,
-  type RoutinesListItem,
-} from "../../src/ui/routines/RoutinesPage.js";
 import { mockMinWidth1024 } from "./setup.js";
-import { vi } from "vitest";
 
 afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   setExerciseRequestsClientForTests(null);
+  setRoutinesClientForTests(null);
   vi.restoreAllMocks();
 });
 
@@ -71,6 +72,26 @@ function stubRequestsClient(): ExerciseRequestsClient {
   } as unknown as ExerciseRequestsClient;
 }
 
+function stubRoutinesClient(): RoutinesClient {
+  return {
+    searchCommunity: vi.fn().mockResolvedValue({
+      routines: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+    listMyRoutines: vi.fn().mockResolvedValue({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+  } as unknown as RoutinesClient;
+}
+
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location">{location.pathname}</div>;
@@ -87,6 +108,7 @@ function renderAppAt(path: string, widthPx = 1280) {
         exerciseLibraryClient={stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient()}
         programsClient={stubProgramsClient()}
+        routinesClient={stubRoutinesClient()}
       />
       <LocationProbe />
     </MemoryRouter>,
@@ -103,11 +125,13 @@ describe("Routines route (DIDI-1174)", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: ROUTINES_PAGE_TITLE }),
     ).toBeVisible();
+    expect(screen.getByLabelText(SEARCH_ROUTINES_LABEL)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Filters & sort/ })).toBeInTheDocument();
   });
 
-  it("shows the approved empty state on the default All routines tab", () => {
+  it("shows the approved empty state on the default All routines tab", async () => {
     renderAppAt("/routines");
-    const empty = screen.getByTestId("routines-empty");
+    const empty = await screen.findByTestId("routines-empty");
     expect(within(empty).getByRole("heading", { level: 2 })).toHaveTextContent(
       ALL_ROUTINES_EMPTY_HEADING,
     );
@@ -118,22 +142,11 @@ describe("Routines route (DIDI-1174)", () => {
     const user = userEvent.setup();
     renderAppAt("/routines");
     await user.click(screen.getByRole("tab", { name: ROUTINES_TAB_MY }));
-    const empty = screen.getByTestId("routines-empty");
+    const empty = await screen.findByTestId("routines-empty");
     expect(within(empty).getByRole("heading", { level: 2 })).toHaveTextContent(
       MY_ROUTINES_EMPTY_HEADING,
     );
     expect(screen.getByText(MY_ROUTINES_INTRO)).toBeInTheDocument();
-  });
-
-  it("renders a populated list when items are provided", () => {
-    const items: RoutinesListItem[] = [
-      { routine_id: "rt-1", name: "Knee osteoarthritis, starter" },
-    ];
-    render(<RoutinesPageContent tab="all" onTabChange={() => {}} items={items} />);
-    expect(screen.queryByTestId("routines-empty")).not.toBeInTheDocument();
-    expect(screen.getByTestId("routines-list")).toHaveTextContent(
-      "Knee osteoarthritis, starter",
-    );
   });
 
   it("navigates to Routines from the phone tab bar at 390 px and shows the approved empty state", async () => {
@@ -152,7 +165,7 @@ describe("Routines route (DIDI-1174)", () => {
         name: ROUTINES_PAGE_TITLE,
       }),
     ).toBeVisible();
-    const empty = within(main as HTMLElement).getByTestId("routines-empty");
+    const empty = await within(main as HTMLElement).findByTestId("routines-empty");
     expect(within(empty).getByRole("heading", { level: 2 })).toHaveTextContent(
       ALL_ROUTINES_EMPTY_HEADING,
     );

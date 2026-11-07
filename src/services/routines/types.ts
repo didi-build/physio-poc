@@ -3,6 +3,11 @@ import type { ExerciseParams } from "../../domain/exercise-params.js";
 
 export type RoutineSearchSort = "most_used" | "newest" | "a_to_z";
 
+export type RoutineConditionOption = {
+  condition_id: string;
+  label: string;
+};
+
 export type CommunityRoutineSummary = {
   routine_id: string;
   routine_version_id: string;
@@ -22,6 +27,7 @@ export type SearchCommunityRoutinesResult = {
   search_link: string | null;
   total_count: number;
   conditions_available: boolean;
+  condition_options: RoutineConditionOption[];
 };
 
 export type MyRoutineDraftItem = {
@@ -51,6 +57,7 @@ export type MyRoutinesListResult = {
   saved: MyRoutineSavedItem[];
   flagged_count: number;
   conditions_available: boolean;
+  condition_options: RoutineConditionOption[];
 };
 
 export type RoutineExerciseRow = {

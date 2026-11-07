@@ -28,6 +28,11 @@ import {
   setExerciseRequestsClientForTests,
 } from "../../src/ui/api/exercise-requests-client.js";
 import {
+  RoutinesClient,
+  setRoutinesClientForTests,
+} from "../../src/ui/api/routines-client.js";
+import { SEARCH_ROUTINES_LABEL } from "../../src/ui/copy/routines.js";
+import {
   FAKE_UI_ACCOUNT_SIGNED_IN_LINE,
   FAKE_UI_DISPLAY_NAME,
   stubPractitionerSessionClient,
@@ -48,6 +53,7 @@ afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   setExerciseRequestsClientForTests(null);
+  setRoutinesClientForTests(null);
   vi.restoreAllMocks();
   ensureMatchMediaStub();
 });
@@ -74,6 +80,26 @@ function stubLibraryClient(): ExerciseLibraryClient {
       total_count: 0,
     }),
   } as unknown as ExerciseLibraryClient;
+}
+
+function stubRoutinesClient(): RoutinesClient {
+  return {
+    searchCommunity: vi.fn().mockResolvedValue({
+      routines: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+    listMyRoutines: vi.fn().mockResolvedValue({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+  } as unknown as RoutinesClient;
 }
 
 function stubProgramsClient(): ProgramsClient {
@@ -117,6 +143,7 @@ function renderApp(
         exerciseLibraryClient={stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient(requestsReviewCount)}
         programsClient={stubProgramsClient()}
+        routinesClient={stubRoutinesClient()}
         practitionerSessionClient={sessionClient}
       />
       <LocationProbe />
@@ -686,7 +713,7 @@ describe("app shell nav (integration)", () => {
     expect(signOut.tagName).toBe("BUTTON");
   });
 
-  it.each(["/routines", "/requests", "/defaults"] as const)(
+  it.each(["/requests", "/defaults"] as const)(
     "does not render search UI anywhere on %s",
     (route) => {
       renderApp(route, 0);
@@ -694,6 +721,16 @@ describe("app shell nav (integration)", () => {
       expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
     },
   );
+
+  it("renders page-level routine search on /routines without shell global search", () => {
+    renderApp("/routines", 0);
+    const header = document.querySelector(".shell-header");
+    expect(header).toBeTruthy();
+    expect(
+      within(header as HTMLElement).queryByRole("searchbox"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(SEARCH_ROUTINES_LABEL)).toBeInTheDocument();
+  });
 
   it("renders page-level program search on /programs without shell global search", () => {
     renderApp("/programs", 0);

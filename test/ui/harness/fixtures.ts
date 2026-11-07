@@ -3,6 +3,7 @@ import { DEV_PRACTITIONER_ID } from "../../../src/ui/api/exercise-library-client
 import type { ExerciseMediaClient } from "../../../src/ui/api/exercise-media-client.js";
 import type { ExerciseRequestsClient } from "../../../src/ui/api/exercise-requests-client.js";
 import type { ProgramsClient } from "../../../src/ui/api/programs-client.js";
+import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
 const draftView = {
@@ -95,11 +96,32 @@ export type HarnessFixtureId =
   | "exercises-mine"
   | "routines-all";
 
+function baseRoutinesClient(): RoutinesClient {
+  return {
+    searchCommunity: async () => ({
+      routines: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+    listMyRoutines: async () => ({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+  } as unknown as RoutinesClient;
+}
+
 export type HarnessFixture = {
   initialEntries: Array<string | { pathname: string; state?: unknown }>;
   library: ExerciseLibraryClient;
   requests: ExerciseRequestsClient;
   media: ExerciseMediaClient;
+  routines: RoutinesClient;
 };
 
 export function harnessFixture(
@@ -172,6 +194,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "request-form":
       return {
@@ -195,6 +218,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "conflict":
       return {
@@ -206,6 +230,7 @@ export function harnessFixture(
           submitRequest: async () => ({ outcome: "merged", request_id: "req-other" }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "requests-list":
       return {
@@ -216,6 +241,7 @@ export function harnessFixture(
           listInProgress,
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "draft-review":
       return {
@@ -239,6 +265,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "exercises-mine":
       return {
@@ -260,6 +287,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "routines-all":
       return {
@@ -273,6 +301,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     default: {
       const never: never = id;
