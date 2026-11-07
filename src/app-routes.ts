@@ -42,6 +42,7 @@ export type ConnectorPhysioAppRouteName =
   (typeof CONNECTOR_PHYSIO_APP_ROUTE_NAMES)[number];
 
 export const EXERCISE_SEARCH_QUERY_PARAM = "q";
+export const ROUTINE_SEARCH_QUERY_PARAM = "q";
 /** URL-encoded `q` must stay strictly under 200 characters (max 199 encoded). */
 export const MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH = 199;
 /** @deprecated Prefer measuring encoded length via MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH. */
@@ -175,6 +176,23 @@ export function physioAppExerciseSearchPath(rawQuery: string): string {
 
 export function buildStubPublicShareLink(webAppBaseUrl: string): string {
   return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${PHYSIO_APP_ROUTE_PATTERNS.stubPublicShareLink}`;
+}
+
+export function buildWebAppRoutineSearchUrl(
+  webAppBaseUrl: string,
+  routineQuery: string,
+): string {
+  const validation = validateFreeTextForPatientDetails(routineQuery);
+  if (!validation.ok) {
+    return buildPhysioAppUrl(webAppBaseUrl, "routines");
+  }
+  const capped = capRawExerciseSearchQueryForUrl(routineQuery);
+  if (capped.length === 0) {
+    return buildPhysioAppUrl(webAppBaseUrl, "routines");
+  }
+  return buildPhysioAppUrl(webAppBaseUrl, "routines", {
+    query: { [ROUTINE_SEARCH_QUERY_PARAM]: capped },
+  });
 }
 
 export function buildWebAppExerciseSearchUrl(

@@ -868,6 +868,360 @@ export class PractitionerRoutinesRepository {
     }
     return routine.published_version > copy.source_version_number;
   }
+
+  async listSavedForPractitioner(
+    practitionerId: string,
+  ): Promise<PractitionerRoutineRecord[]> {
+    return this.sql.all<PractitionerRoutineRecord>(
+      `SELECT id, practitioner_id, routine_id, source_routine_version_id,
+              source_version_number, saved_at, last_used_at, edited
+       FROM practitioner_routines
+       WHERE practitioner_id = ?
+       ORDER BY saved_at DESC`,
+      [practitionerId],
+    );
+  }
+
+  buildDeleteCopyBatchStatements(
+    copyId: string,
+    practitionerId: string,
+  ): SqlBatchStatement[] {
+    const copyIdValidated = validateOpaqueEntityId(copyId, "Practitioner routine id");
+    return [
+      {
+        sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+        bindings: [copyIdValidated],
+      },
+      {
+        sql: `DELETE FROM practitioner_routines WHERE id = ? AND practitioner_id = ?`,
+        bindings: [copyIdValidated, practitionerId],
+        minRowsAffected: 1,
+      },
+    ];
+  }
+
+  async deleteCopy(practitionerId: string, routineId: string): Promise<boolean> {
+    const copy = await this.findForPractitioner(practitionerId, routineId);
+    if (!copy) {
+      return false;
+    }
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildDeleteCopyBatchStatements(copy.id, practitionerId),
+    );
+    return true;
+  }
+
+  buildReplaceMyCopyRowsBatchStatements(input: {
+    practitionerRoutineId: string;
+    practitionerId: string;
+    rowStatements: SqlBatchStatement[];
+  }): SqlBatchStatement[] {
+    const copyId = validateOpaqueEntityId(
+      input.practitionerRoutineId,
+      "Practitioner routine id",
+    );
+    return [
+      {
+        sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+        bindings: [copyId],
+      },
+      {
+        sql: `UPDATE practitioner_routines SET edited = 1 WHERE id = ? AND practitioner_id = ?`,
+        bindings: [copyId, input.practitionerId],
+        minRowsAffected: 1,
+      },
+      ...input.rowStatements,
+    ];
+  }
+
+  async replaceMyCopyRows(input: {
+    practitionerId: string;
+    routineId: string;
+    rows: {
+      id: string;
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+  }): Promise<PractitionerRoutineRecord> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const copy = await this.findForPractitioner(input.practitionerId, routineId);
+    if (!copy) {
+      throw new RoutineRepositoryError("Saved routine copy not found");
+    }
+    if (input.rows.length === 0) {
+      throw new RoutineRepositoryError("Cannot save an empty routine copy");
+    }
+    const rowRepo = new PractitionerRoutineRowsRepository(this.sql);
+    const rowStatements = input.rows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
+        id: row.id,
+        practitionerRoutineId: copy.id,
+        position: row.position,
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+        prescriptionType: row.prescriptionType,
+        params: row.params,
+      }),
+    );
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildReplaceMyCopyRowsBatchStatements({
+        practitionerRoutineId: copy.id,
+        practitionerId: input.practitionerId,
+        rowStatements,
+      }),
+    );
+    const updated = await this.findForPractitioner(input.practitionerId, routineId);
+    if (!updated) {
+      throw new RoutineRepositoryError("Replace my copy rows failed");
+    }
+    return updated;
+  }
+
+  buildReplaceSavedCopyBatchStatements(input: {
+    practitionerRoutineId: string;
+    practitionerId: string;
+    routineId: string;
+    sourceRoutineVersionId: string;
+    sourceVersionNumber: number;
+    rowStatements: SqlBatchStatement[];
+  }): SqlBatchStatement[] {
+    const copyId = validateOpaqueEntityId(
+      input.practitionerRoutineId,
+      "Practitioner routine id",
+    );
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const sourceRoutineVersionId = validateOpaqueEntityId(
+      input.sourceRoutineVersionId,
+      "Source routine version id",
+    );
+    return [
+      {
+        sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+        bindings: [copyId],
+      },
+      {
+        sql: `UPDATE practitioner_routines
+              SET source_routine_version_id = ?,
+                  source_version_number = ?,
+                  edited = 0
+              WHERE id = ? AND practitioner_id = ? AND routine_id = ?`,
+        bindings: [
+          sourceRoutineVersionId,
+          input.sourceVersionNumber,
+          copyId,
+          input.practitionerId,
+          routineId,
+        ],
+        minRowsAffected: 1,
+      },
+      ...input.rowStatements,
+    ];
+  }
+
+  buildRestoreSavedCopyBatchStatements(input: {
+    practitionerId: string;
+    routineId: string;
+    practitionerRoutineId: string;
+    snapshot: {
+      source_routine_version_id: string;
+      source_version_number: number;
+      saved_at: string;
+      last_used_at: string | null;
+      edited: number;
+    };
+    rowStatements: SqlBatchStatement[];
+    hadExistingCopy: boolean;
+  }): SqlBatchStatement[] {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const copyId = validateOpaqueEntityId(
+      input.practitionerRoutineId,
+      "Practitioner routine id",
+    );
+    const sourceRoutineVersionId = validateOpaqueEntityId(
+      input.snapshot.source_routine_version_id,
+      "Source routine version id",
+    );
+    if (input.hadExistingCopy) {
+      return [
+        {
+          sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+          bindings: [copyId],
+        },
+        {
+          sql: `UPDATE practitioner_routines
+                SET source_routine_version_id = ?,
+                    source_version_number = ?,
+                    saved_at = ?,
+                    last_used_at = ?,
+                    edited = ?
+                WHERE id = ? AND practitioner_id = ? AND routine_id = ?`,
+          bindings: [
+            sourceRoutineVersionId,
+            input.snapshot.source_version_number,
+            input.snapshot.saved_at,
+            input.snapshot.last_used_at,
+            input.snapshot.edited,
+            copyId,
+            input.practitionerId,
+            routineId,
+          ],
+          minRowsAffected: 1,
+        },
+        ...input.rowStatements,
+      ];
+    }
+    return [
+      {
+        sql: `INSERT INTO practitioner_routines (
+          id, practitioner_id, routine_id, source_routine_version_id,
+          source_version_number, saved_at, last_used_at, edited
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        bindings: [
+          copyId,
+          input.practitionerId,
+          routineId,
+          sourceRoutineVersionId,
+          input.snapshot.source_version_number,
+          input.snapshot.saved_at,
+          input.snapshot.last_used_at,
+          input.snapshot.edited,
+        ],
+        minRowsAffected: 1,
+      },
+      ...input.rowStatements,
+    ];
+  }
+
+  async restoreSavedCopyFromSnapshot(input: {
+    practitionerId: string;
+    routineId: string;
+    snapshot: {
+      id: string;
+      source_routine_version_id: string;
+      source_version_number: number;
+      saved_at: string;
+      last_used_at: string | null;
+      edited: number;
+      rows: {
+        position: number;
+        exercise_id: string;
+        exercise_version_id: string;
+        prescription_type: PrescriptionType;
+        params_json: string;
+      }[];
+    };
+  }): Promise<PractitionerRoutineRecord> {
+    if (input.snapshot.rows.length === 0) {
+      throw new RoutineRepositoryError("Cannot restore an empty routine copy");
+    }
+    const existing = await this.findForPractitioner(
+      input.practitionerId,
+      input.routineId,
+    );
+    const copyId = existing?.id ?? input.snapshot.id;
+    const rowRepo = new PractitionerRoutineRowsRepository(this.sql);
+    const rowStatements = input.snapshot.rows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
+        id: crypto.randomUUID(),
+        practitionerRoutineId: copyId,
+        position: row.position,
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+        prescriptionType: row.prescription_type,
+        params: parseExerciseParamsJson(row.params_json),
+      }),
+    );
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildRestoreSavedCopyBatchStatements({
+        practitionerId: input.practitionerId,
+        routineId: input.routineId,
+        practitionerRoutineId: copyId,
+        snapshot: {
+          source_routine_version_id: input.snapshot.source_routine_version_id,
+          source_version_number: input.snapshot.source_version_number,
+          saved_at: input.snapshot.saved_at,
+          last_used_at: input.snapshot.last_used_at,
+          edited: input.snapshot.edited,
+        },
+        rowStatements,
+        hadExistingCopy: existing !== null,
+      }),
+    );
+    const restored = await this.findForPractitioner(
+      input.practitionerId,
+      input.routineId,
+    );
+    if (!restored) {
+      throw new RoutineRepositoryError("Restore saved copy failed");
+    }
+    return restored;
+  }
+
+  async replaceSavedCopyFromPublished(input: {
+    practitionerId: string;
+    routineId: string;
+    sourceRoutineVersionId: string;
+    sourceVersionNumber: number;
+    rows: {
+      id: string;
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+  }): Promise<PractitionerRoutineRecord> {
+    const copy = await this.findForPractitioner(input.practitionerId, input.routineId);
+    if (!copy) {
+      throw new RoutineRepositoryError("Saved routine copy not found");
+    }
+    if (input.rows.length === 0) {
+      throw new RoutineRepositoryError("Cannot replace with an empty routine copy");
+    }
+    await loadPublishedRoutineVersionForRoutine(
+      this.sql,
+      input.routineId,
+      input.sourceRoutineVersionId,
+      "sourceRoutineVersionId",
+    );
+    const rowRepo = new PractitionerRoutineRowsRepository(this.sql);
+    const rowStatements = input.rows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
+        id: row.id,
+        practitionerRoutineId: copy.id,
+        position: row.position,
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+        prescriptionType: row.prescriptionType,
+        params: row.params,
+      }),
+    );
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildReplaceSavedCopyBatchStatements({
+        practitionerRoutineId: copy.id,
+        practitionerId: input.practitionerId,
+        routineId: input.routineId,
+        sourceRoutineVersionId: input.sourceRoutineVersionId,
+        sourceVersionNumber: input.sourceVersionNumber,
+        rowStatements,
+      }),
+    );
+    const updated = await this.findForPractitioner(
+      input.practitionerId,
+      input.routineId,
+    );
+    if (!updated) {
+      throw new RoutineRepositoryError("Replace saved copy failed");
+    }
+    return updated;
+  }
 }
 
 export class PractitionerRoutineRowsRepository {
