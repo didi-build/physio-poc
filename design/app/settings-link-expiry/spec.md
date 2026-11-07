@@ -36,6 +36,34 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 - "Global default: 1 year."
 - "Expiry changes apply to the link right away." / "Applies to the new link."
 
+### Dose field labels (My defaults exercise type editor)
+
+Visible labels and accessible names for the five dose inputs. Accessible names describe the field and never include the current value.
+
+| Field | Visible label | Accessible name |
+| --- | --- | --- |
+| reps | Reps | Reps |
+| hold_s | Hold (s) | Hold in seconds |
+| sets | Sets | Sets |
+| per_day | Times per day | Times per day |
+| days_per_week | Days per week | Days per week |
+
+Design source: MagicPath variant B, https://designs.magicpath.ai/v1/softly-flood-3777 (project https://www.magicpath.ai/files/469508289852485632). Visible labels match the approved v12 concept (lucky-river-3731, revision 465225161508020224).
+
+### Dose readout fragments ("Reads as" and program rows)
+
+- "once a day"
+- "twice a day"
+- "{n} times a day"
+- "{min} to {max} times a day" (already in approved mockup 01 as "1 to 3 times a day")
+- "1 set"
+- "{n} sets"
+- "{n}s up"
+
+### Share link expiry toast
+
+- "New links will expire after {duration}", where {duration} is the chosen choice label: "1 week", "30 days", "90 days" or "1 year". Never keeps the existing "New links will never expire".
+
 ## Decisions
 
 1. Default share-link expiry is **1 year** for every practitioner (changed Oct 25, 2026 from 90 days).
@@ -215,3 +243,4 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Oct 24, 2026**: Custom date: any date from tomorrow, no maximum. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827, https://linear.app/didi-build/issue/DIDI-828
 - **Oct 25, 2026**: Default changed to 1 year on both surfaces. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-851
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change in v12. https://linear.app/didi-build/issue/DIDI-809
+- **Nov 6, 2026**: Dose field visible labels and accessible names for the My defaults type editor (variant B), plus the dose readout fragments and the generic expiry toast from physio-poc#35. Approved by Diadem, Nov 6, 2026, 7:44 PM ET. https://linear.app/didi-build/issue/DIDI-1130
