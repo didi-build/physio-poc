@@ -91,7 +91,9 @@ export type HarnessFixtureId =
   | "request-submitted"
   | "conflict"
   | "requests-list"
-  | "draft-review";
+  | "draft-review"
+  | "exercises-mine"
+  | "routines-all";
 
 export type HarnessFixture = {
   initialEntries: Array<string | { pathname: string; state?: unknown }>;
@@ -230,6 +232,40 @@ export function harnessFixture(
             approved_by: DEV_PRACTITIONER_ID,
             approved_at: "2026-10-30T12:00:00.000Z",
           }),
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+      };
+    case "exercises-mine":
+      return {
+        initialEntries: ["/exercises"],
+        library: {
+          ...baseLibraryClient(),
+          searchApproved: async () => ({
+            exercises: [],
+            next_cursor: null,
+            search_link: null,
+            total_count: 12,
+          }),
+        } as unknown as ExerciseLibraryClient,
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+      };
+    case "routines-all":
+      return {
+        initialEntries: ["/routines"],
+        library: baseLibraryClient(),
+        requests: {
           getInProgressCount: async () => ({ in_progress_count: 0 }),
           listInProgress: async () => ({
             requests: [],

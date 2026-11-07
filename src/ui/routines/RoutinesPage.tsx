@@ -77,13 +77,13 @@ export function RoutinesPageContent({
         </button>
       </div>
 
+      <p className="ex-page-intro">{intro}</p>
+
       <div
         id="routines-tabpanel"
         role="tabpanel"
         aria-labelledby={tab === "mine" ? "routines-tab-mine" : "routines-tab-all"}
       >
-        <p className="ex-page-intro">{intro}</p>
-
         {showEmpty ? (
           <div className="pg-empty" data-testid="routines-empty">
             <h2 className="pg-empty-title">{emptyHeading}</h2>

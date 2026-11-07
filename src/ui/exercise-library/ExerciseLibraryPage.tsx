@@ -326,7 +326,7 @@ export function ExerciseLibraryPage({
   const showListContent = !loading && !loadFailed;
 
   return (
-    <section className="ex-page" aria-labelledby="ex-lib-heading">
+    <section className="ex-page ex-library-page" aria-labelledby="ex-lib-heading">
       {loadFailed ? (
         <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
           {BACK_LIBRARY}
