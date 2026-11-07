@@ -6,11 +6,13 @@
 export {
   EXERCISE_SEARCH_QUERY_PARAM,
   FROM_ROUTINE_ID_QUERY_PARAM,
+  ROUTINE_SEARCH_QUERY_PARAM,
   WEB_APP_EXERCISE_SEARCH_PATH,
   WEB_APP_EXERCISE_SEARCH_QUERY_PARAM,
   buildPhysioAppUrl,
   buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
+  buildWebAppRoutineSearchUrl,
   normalizeWebAppBaseUrl,
   PHYSIO_APP_ROUTE_PATTERNS,
   type ConnectorPhysioAppRouteName,
