@@ -38,6 +38,35 @@ const shots: Shot[] = [
     },
   },
   {
+    file: "routines-my-flag-1280.png",
+    fixture: "routines-my-flag",
+    width: 1280,
+    afterGoto: async (page) => {
+      await page.getByRole("tab", { name: "My routines" }).click();
+      await page.waitForSelector("[data-testid='routines-flag-banner']");
+    },
+  },
+  {
+    file: "routines-conditions-filled-390.png",
+    fixture: "routines-conditions-filled",
+    width: 390,
+  },
+  {
+    file: "routines-conditions-filled-1280.png",
+    fixture: "routines-conditions-filled",
+    width: 1280,
+  },
+  {
+    file: "routines-search-active-390.png",
+    fixture: "routines-search-active",
+    width: 390,
+  },
+  {
+    file: "routines-search-active-1280.png",
+    fixture: "routines-search-active",
+    width: 1280,
+  },
+  {
     file: "routines-detail-update-390.png",
     fixture: "routines-detail-update",
     width: 390,

@@ -28,6 +28,11 @@ import {
   PractitionerNotFoundError,
   requirePractitionerRecord,
 } from "../practitioner-access.js";
+import {
+  personalChangesUnavailable,
+  projectPersonalChanges,
+  type RoutineRowComparable,
+} from "./routine-personal-change-projection.js";
 import type {
   CommunityRoutineSummary,
   McpRoutineSearchSummary,
@@ -529,6 +534,40 @@ export class RoutinesLibraryService {
       validatedRoutineId,
     );
 
+    let personal_changes: RoutineDetailsResult["personal_changes"] = null;
+    let community_change_list: RoutineDetailsResult["community_change_list"] = null;
+
+    if (myCopyRecord) {
+      const baselineVersion = await this.versions.findById(
+        myCopyRecord.source_routine_version_id,
+      );
+      if (
+        !baselineVersion ||
+        baselineVersion.routine_id !== validatedRoutineId ||
+        baselineVersion.status !== "published"
+      ) {
+        personal_changes = personalChangesUnavailable();
+      } else {
+        const baselineRaw = await this.versionRows.listForVersion(baselineVersion.id);
+        const baseline: RoutineRowComparable[] = baselineRaw.map((row) => ({
+          exercise_id: row.exercise_id,
+          exercise_version_id: row.exercise_version_id,
+          prescription_type: row.prescription_type,
+          params: parseExerciseParamsJson(row.params_json),
+        }));
+        const current: RoutineRowComparable[] = (myCopy?.rows ?? []).map((row) => ({
+          exercise_id: row.exercise_id,
+          exercise_version_id: row.exercise_version_id,
+          prescription_type: row.prescription_type,
+          params: row.params,
+        }));
+        personal_changes = projectPersonalChanges(baseline, current);
+      }
+      if (myCopy?.community_updated) {
+        community_change_list = { status: "held_pending_design" };
+      }
+    }
+
     return {
       routine_id: validatedRoutineId,
       body_region_label: head.body_region_label,
@@ -547,6 +586,8 @@ export class RoutinesLibraryService {
       sent_program_count: sent.sent_count,
       sent_program_codes: sent.codes,
       conditions_available: conditionsAvailable,
+      personal_changes,
+      community_change_list,
     };
   }
 

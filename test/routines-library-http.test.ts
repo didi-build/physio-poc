@@ -5,7 +5,12 @@ import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-m
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { routineMyCopyPath } from "../src/routine-library-api-paths.js";
+import {
+  ROUTINES_COMMUNITY_SEARCH_PATH,
+  ROUTINES_MY_ROUTINES_PATH,
+  routineDetailsPath,
+  routineMyCopyPath,
+} from "../src/routine-library-api-paths.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -15,7 +20,10 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   PractitionerRoutineRowsRepository,
+  ConditionsRepository,
   PractitionerRoutinesRepository,
+  RoutineVersionRowsRepository,
+  RoutinesRepository,
   RoutineVersionsRepository,
 } from "../src/storage/repositories/routines.js";
 import {
@@ -517,6 +525,213 @@ describe("Routines library HTTP (session routes)", () => {
         PractitionerRoutinesRepository.prototype.replaceSavedCopyFromPublished =
           replace;
       }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns condition_options on community search and my routines list when conditions are empty", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      await publishRoutine(storage, author, {
+        routine: "http-cond-empty",
+        draftVersion: "http-cond-empty-draft",
+        row: "http-cond-empty-row",
+        name: "Plain knee",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const search = await handleRequest(
+        new Request(`${BASE}${ROUTINES_COMMUNITY_SEARCH_PATH}`, {
+          method: "GET",
+          headers: { cookie },
+        }),
+        deps,
+      );
+      expect(search.status).toBe(200);
+      await expect(search.json()).resolves.toMatchObject({
+        conditions_available: false,
+        condition_options: [],
+      });
+      const mine = await handleRequest(
+        new Request(`${BASE}${ROUTINES_MY_ROUTINES_PATH}`, {
+          method: "GET",
+          headers: { cookie },
+        }),
+        deps,
+      );
+      expect(mine.status).toBe(200);
+      await expect(mine.json()).resolves.toMatchObject({
+        conditions_available: false,
+        condition_options: [],
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns condition_options on both list endpoints when conditions are configured", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const condId = id("http-cond-arthritis");
+      await new ConditionsRepository(storage).insert({
+        id: condId,
+        label: "Arthritis",
+      });
+      const routineId = id("http-cond-filled");
+      await new RoutinesRepository(storage).createDraft({
+        id: routineId,
+        draftVersionId: id("http-cond-filled-draft-ver"),
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: "br-knee",
+        conditionId: condId,
+        name: "Arthritis knee HTTP",
+      });
+      await new RoutineVersionRowsRepository(storage).replaceDraftRow({
+        id: id("http-cond-filled-row"),
+        routineId,
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+        draftUpdatedAt: TS,
+      });
+      await new RoutineVersionsRepository(storage).publishDraft({
+        routineId,
+        authorId: author,
+        publishedAt: TS,
+        name: "Arthritis knee HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const search = await handleRequest(
+        new Request(`${BASE}${ROUTINES_COMMUNITY_SEARCH_PATH}`, {
+          method: "GET",
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const searchBody = (await search.json()) as {
+        conditions_available: boolean;
+        condition_options: { condition_id: string; label: string }[];
+      };
+      expect(searchBody.conditions_available).toBe(true);
+      expect(searchBody.condition_options).toEqual([
+        { condition_id: condId, label: "Arthritis" },
+      ]);
+      const mine = await handleRequest(
+        new Request(`${BASE}${ROUTINES_MY_ROUTINES_PATH}`, {
+          method: "GET",
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const mineBody = (await mine.json()) as typeof searchBody;
+      expect(mineBody.conditions_available).toBe(true);
+      expect(mineBody.condition_options).toEqual([
+        { condition_id: condId, label: "Arthritis" },
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 401 without a session on routines library writes and detail read", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-401-routine");
+      await publishRoutine(storage, author, {
+        routine: "http-401-routine",
+        draftVersion: "http-401-draft",
+        row: "http-401-row",
+        name: "401 guard",
+      });
+      const { deps } = appDeps(storage, author, "a@example.com");
+      const detail = await handleRequest(
+        new Request(`${BASE}${routineDetailsPath(routineId)}`, { method: "GET" }),
+        deps,
+      );
+      expect(detail.status).toBe(401);
+      const save = await handleRequest(
+        new Request(
+          `${BASE}${routineMyCopyPath(routineId)}`,
+          mutatingAppApiRequestInit(`${BASE}${routineMyCopyPath(routineId)}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      expect(save.status).toBe(401);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("removes then undoes via HTTP restoring the saved copy", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-remove-undo");
+      await publishRoutine(storage, author, {
+        routine: "http-remove-undo",
+        draftVersion: "http-remove-undo-draft",
+        row: "http-remove-undo-row",
+        name: "Remove undo HTTP",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      const remove = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      const { undo } = (await remove.json()) as { undo: unknown };
+      expect(
+        await new PractitionerRoutinesRepository(storage).findForPractitioner(
+          author,
+          routineId,
+        ),
+      ).toBeNull();
+      const undoResponse = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "undo", undo }),
+          }),
+        ),
+        deps,
+      );
+      expect(undoResponse.status).toBe(200);
+      expect(
+        await new PractitionerRoutinesRepository(storage).findForPractitioner(
+          author,
+          routineId,
+        ),
+      ).not.toBeNull();
     } finally {
       storage.close();
     }

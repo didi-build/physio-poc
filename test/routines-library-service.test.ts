@@ -211,6 +211,16 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
         ],
       });
 
+      const editedDetails = await service.getRoutineDetails(saver, routineId);
+      expect(editedDetails.personal_changes).toMatchObject({
+        baseline_available: true,
+        change_count: 1,
+        your_change_positions: [0],
+      });
+      expect(editedDetails.community_change_list).toEqual({
+        status: "held_pending_design",
+      });
+
       const adopt = await service.adoptCommunityVersion(saver, routineId);
       expect(adopt.adopted_version).toBe(2);
       const afterAdopt = await new PractitionerRoutinesRepository(

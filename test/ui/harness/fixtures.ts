@@ -97,7 +97,9 @@ export type HarnessFixtureId =
   | "routines-all"
   | "routines-all-populated"
   | "routines-my-flag"
-  | "routines-detail-update";
+  | "routines-detail-update"
+  | "routines-conditions-filled"
+  | "routines-search-active";
 
 function baseRoutinesClient(): RoutinesClient {
   return {
@@ -468,6 +470,98 @@ export function harnessFixture(
             sent_program_count: 1,
             sent_program_codes: ["AB12CD"],
             conditions_available: false,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 1,
+              your_change_positions: [0],
+            },
+            community_change_list: { status: "held_pending_design" },
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-conditions-filled":
+      return {
+        initialEntries: ["/routines"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-arthritis",
+                routine_version_id: "rv-arthritis",
+                name: "Arthritis knee",
+                version_number: 1,
+                body_region_label: "Knee",
+                condition_label: "Arthritis",
+                exercise_count: 3,
+                usage_count: 4,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: true,
+            condition_options: [{ condition_id: "c1", label: "Arthritis" }],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: true,
+            condition_options: [{ condition_id: "c1", label: "Arthritis" }],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-search-active":
+      return {
+        initialEntries: ["/routines?q=knee"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-knee",
+                routine_version_id: "rv-knee",
+                name: "Knee starter",
+                version_number: 1,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 2,
+                usage_count: 1,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: false,
+            condition_options: [],
           }),
         } as unknown as RoutinesClient,
       };

@@ -759,4 +759,117 @@ describe("app shell nav (integration)", () => {
       screen.getByRole("searchbox", { name: "Search exercises" }),
     ).toBeInTheDocument();
   });
+
+  it("renders routine detail without library search on direct entry", async () => {
+    const routinesClient = {
+      ...stubRoutinesClient(),
+      getRoutineDetails: vi.fn().mockResolvedValue({
+        routine_id: "rt-1",
+        body_region_label: "Knee",
+        condition_label: null,
+        who_its_for: null,
+        community: {
+          routine_version_id: "rv-1",
+          version_number: 1,
+          name: "Knee starter",
+          updated_at: "2026-10-25T12:00:00.000Z",
+          created_by: "dev-practitioner",
+          usage_count: 0,
+          rows: [],
+        },
+        my_copy: null,
+        sent_program_count: 0,
+        sent_program_codes: [],
+        conditions_available: false,
+        personal_changes: null,
+        community_change_list: null,
+      }),
+    } as unknown as RoutinesClient;
+    setRoutinesClientForTests(routinesClient);
+    render(
+      <MemoryRouter initialEntries={["/routines/rt-1"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={routinesClient}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Knee starter")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText(SEARCH_ROUTINES_LABEL)).not.toBeInTheDocument();
+  });
+
+  it("renders routine my-copy editor on direct entry", async () => {
+    const routinesClient = {
+      ...stubRoutinesClient(),
+      getRoutineDetails: vi.fn().mockResolvedValue({
+        routine_id: "rt-1",
+        body_region_label: "Knee",
+        condition_label: null,
+        who_its_for: null,
+        community: {
+          routine_version_id: "rv-1",
+          version_number: 1,
+          name: "Knee starter",
+          updated_at: "2026-10-25T12:00:00.000Z",
+          created_by: "dev-practitioner",
+          usage_count: 0,
+          rows: [
+            {
+              position: 0,
+              exercise_id: "ex-1",
+              exercise_version_id: "ver-1",
+              exercise_name: "Heel slide",
+              prescription_type: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        },
+        my_copy: {
+          practitioner_routine_id: "pr-1",
+          source_version_number: 1,
+          edited: false,
+          community_updated: false,
+          rows: [
+            {
+              position: 0,
+              exercise_id: "ex-1",
+              exercise_version_id: "ver-1",
+              exercise_name: "Heel slide",
+              prescription_type: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        },
+        sent_program_count: 0,
+        sent_program_codes: [],
+        conditions_available: false,
+        personal_changes: {
+          baseline_available: true,
+          change_count: 0,
+          your_change_positions: [],
+        },
+        community_change_list: null,
+      }),
+    } as unknown as RoutinesClient;
+    setRoutinesClientForTests(routinesClient);
+    render(
+      <MemoryRouter initialEntries={["/routines/rt-1/my-copy"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={routinesClient}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Save my copy" }),
+    ).toBeInTheDocument();
+  });
 });

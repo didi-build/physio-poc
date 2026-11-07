@@ -30,6 +30,7 @@ import {
   SEARCH_ROUTINES_LABEL,
   allRoutinesIntro,
   flaggedBanner,
+  CREATE_PROGRAM_FROM_ROUTINE,
   toastAdoptedVersion,
   toastKeptCopy,
   toastRemovedFromMy,
@@ -318,6 +319,12 @@ describe("Routines library UI (DIDI-1022)", () => {
       sent_program_count: 0,
       sent_program_codes: [],
       conditions_available: false,
+      personal_changes: {
+        baseline_available: true,
+        change_count: 0,
+        your_change_positions: [],
+      },
+      community_change_list: null,
     };
     const client = {
       getRoutineDetails: vi.fn().mockResolvedValue(details),
@@ -346,6 +353,8 @@ describe("Routines library UI (DIDI-1022)", () => {
     expect(
       await screen.findByText(toastRemovedFromMy("Knee starter")),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: TOAST_UNDO }));
+    expect(client.applyUndo).toHaveBeenCalledWith("r1", undo);
   });
 
   it("adopt and keep community update from detail banner", async () => {
@@ -378,6 +387,12 @@ describe("Routines library UI (DIDI-1022)", () => {
       sent_program_count: 0,
       sent_program_codes: [],
       conditions_available: false,
+      personal_changes: {
+        baseline_available: true,
+        change_count: 1,
+        your_change_positions: [0],
+      },
+      community_change_list: { status: "held_pending_design" },
     };
     const client = {
       getRoutineDetails: vi.fn().mockResolvedValue(details),
@@ -402,8 +417,14 @@ describe("Routines library UI (DIDI-1022)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("routine-community-changes-held")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE }),
+    ).toBeDisabled();
     await user.click(screen.getByRole("button", { name: useVersionN(3) }));
     expect(await screen.findByText(toastAdoptedVersion(3))).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: TOAST_UNDO }));
+    expect(client.applyUndo).toHaveBeenCalledWith("r1", adoptUndo);
 
     await user.click(screen.getByRole("button", { name: KEEP_MINE }));
     expect(await screen.findByText(toastKeptCopy(1))).toBeInTheDocument();

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import {
-  fillPhysioAppRoutePattern,
-  FROM_ROUTINE_ID_QUERY_PARAM,
-} from "../../app-routes.js";
+import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
   RoutineDetailsResult,
   RoutineExerciseRow,
@@ -148,7 +145,11 @@ export function RoutineDetailsPage() {
   const community = details.community;
   const myCopy = details.my_copy;
   const byYou = community.created_by === practitioner.practitionerId;
-  const editCount = myCopy?.edited ? 1 : 0;
+  const personalChanges = details.personal_changes;
+  const editCount = personalChanges?.baseline_available
+    ? personalChanges.change_count
+    : 0;
+  const yourChangePositions = new Set(personalChanges?.your_change_positions ?? []);
 
   const onSave = () => {
     void client.saveToMyRoutines(routineId).then(({ undo }) => {
@@ -250,7 +251,14 @@ export function RoutineDetailsPage() {
           </p>
           <div className="rt-update-panel">
             <h2 className="rt-update-panel-title">{WHAT_CHANGED}</h2>
-            {myCopy.edited ? (
+            {details.community_change_list?.status === "held_pending_design" ? (
+              <div
+                data-testid="routine-community-changes-held"
+                className="rt-update-list-held"
+                aria-hidden
+              />
+            ) : null}
+            {personalChanges?.baseline_available && editCount > 0 ? (
               <p className="rt-update-warn">
                 {adoptWarnsReplace(editCount, community.version_number)}
               </p>
@@ -279,7 +287,10 @@ export function RoutineDetailsPage() {
                 setSource("mine");
               }}
             >
-              {myCopySegmentLabel(myCopy.source_version_number, myCopy.edited)}
+              {myCopySegmentLabel(
+                myCopy.source_version_number,
+                (personalChanges?.baseline_available && editCount > 0) ?? false,
+              )}
             </button>
             <button
               type="button"
@@ -295,7 +306,11 @@ export function RoutineDetailsPage() {
           </div>
           <p className="rt-segment-hint">
             {source === "mine"
-              ? myCopyFrozenLine(myCopy.source_version_number, myCopy.edited, editCount)
+              ? myCopyFrozenLine(
+                  myCopy.source_version_number,
+                  (personalChanges?.baseline_available && editCount > 0) ?? false,
+                  editCount,
+                )
               : COMMUNITY_LIVE_LINE}{" "}
             {SEGMENT_HINT}
           </p>
@@ -318,7 +333,7 @@ export function RoutineDetailsPage() {
                   {TYPE_LABELS[row.prescription_type]}
                 </span>
                 <p className="rt-exercise-dose">{formatExerciseParams(row.params)}</p>
-                {source === "mine" && myCopy?.edited ? (
+                {source === "mine" && yourChangePositions.has(row.position) ? (
                   <span className="rt-your-change">{YOUR_CHANGE}</span>
                 ) : null}
               </div>
@@ -357,16 +372,7 @@ export function RoutineDetailsPage() {
           {USE_FOR_PATIENT}
         </button>
         <p className="rt-action-hint">{USE_FOR_PATIENT_HINT}</p>
-        <button
-          type="button"
-          className="ex-secondary-btn"
-          onClick={() => {
-            navigate({
-              pathname: fillPhysioAppRoutePattern("programNew"),
-              search: `?${FROM_ROUTINE_ID_QUERY_PARAM}=${encodeURIComponent(routineId)}`,
-            });
-          }}
-        >
+        <button type="button" className="ex-secondary-btn" disabled>
           {CREATE_PROGRAM_FROM_ROUTINE}
         </button>
         <p className="rt-action-hint">{CREATE_PROGRAM_HINT}</p>
@@ -410,16 +416,7 @@ export function RoutineDetailsPage() {
       </div>
 
       <div className="rt-mobile-actions">
-        <button
-          type="button"
-          className="ex-secondary-btn"
-          onClick={() => {
-            navigate({
-              pathname: fillPhysioAppRoutePattern("programNew"),
-              search: `?${FROM_ROUTINE_ID_QUERY_PARAM}=${encodeURIComponent(routineId)}`,
-            });
-          }}
-        >
+        <button type="button" className="ex-secondary-btn" disabled>
           {CREATE_PROGRAM}
         </button>
         <button type="button" className="ex-primary-btn" disabled>

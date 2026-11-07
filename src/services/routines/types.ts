@@ -69,6 +69,17 @@ export type RoutineExerciseRow = {
   params: ExerciseParams;
 };
 
+export type RoutinePersonalChanges = {
+  baseline_available: boolean;
+  change_count: number;
+  your_change_positions: number[];
+};
+
+/** Community change bullets held until DIDI-1183; never an empty list pretending to be valid. */
+export type RoutineCommunityChangeList = {
+  status: "held_pending_design";
+};
+
 export type RoutineDetailsResult = {
   routine_id: string;
   body_region_label: string;
@@ -93,6 +104,8 @@ export type RoutineDetailsResult = {
   sent_program_count: number;
   sent_program_codes: string[];
   conditions_available: boolean;
+  personal_changes: RoutinePersonalChanges | null;
+  community_change_list: RoutineCommunityChangeList | null;
 };
 
 export type RoutineUndoRowSnapshot = {
