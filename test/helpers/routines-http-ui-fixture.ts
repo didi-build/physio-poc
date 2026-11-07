@@ -11,6 +11,7 @@ import { RoutineVersionsRepository } from "../../src/storage/repositories/routin
 import { RoutinesLibraryService } from "../../src/services/routines/index.js";
 import { RoutinesClient, type FetchFn } from "../../src/ui/api/routines-client.js";
 import { openMigratedDatabase, TS } from "./exercise-sqlite-fixture.js";
+import { parseExerciseParamsJson } from "../../src/domain/exercise-params.js";
 import { SqlBatchGuardError } from "../../src/storage/errors/sql-batch-error.js";
 import type { SqlStoragePort } from "../../src/storage/ports/sql-storage.js";
 import {
@@ -149,6 +150,73 @@ export function installRealStaleAdoptCopyFixture(
     };
   return () => {
     PractitionerRoutinesRepository.prototype.replaceSavedCopyFromPublished = original;
+  };
+}
+
+export function installRealStaleRestoreSavedCopyFixture(
+  wrongPractitionerId: string,
+): () => void {
+  const original =
+    PractitionerRoutinesRepository.prototype.restoreSavedCopyFromSnapshot;
+  PractitionerRoutinesRepository.prototype.restoreSavedCopyFromSnapshot =
+    async function (input) {
+      const existing = await this.findForPractitioner(
+        input.practitionerId,
+        input.routineId,
+      );
+      const copyId = existing?.id ?? input.snapshot.id;
+      const rowRepo = new PractitionerRoutineRowsRepository(
+        (this as unknown as { sql: SqlStoragePort }).sql,
+      );
+      const rowStatements = input.snapshot.rows.map((row) =>
+        rowRepo.buildInsertRowBatchStatement({
+          id: crypto.randomUUID(),
+          practitionerRoutineId: copyId,
+          position: row.position,
+          exerciseId: row.exercise_id,
+          exerciseVersionId: row.exercise_version_id,
+          prescriptionType: row.prescription_type,
+          params: parseExerciseParamsJson(row.params_json),
+        }),
+      );
+      try {
+        const sql = (this as unknown as { sql: SqlStoragePort }).sql;
+        await sql.batch(
+          this.buildRestoreSavedCopyBatchStatements({
+            practitionerId: wrongPractitionerId,
+            routineId: input.routineId,
+            practitionerRoutineId: copyId,
+            snapshot: {
+              source_routine_version_id: input.snapshot.source_routine_version_id,
+              source_version_number: input.snapshot.source_version_number,
+              saved_at: input.snapshot.saved_at,
+              last_used_at: input.snapshot.last_used_at,
+              edited: input.snapshot.edited,
+            },
+            rowStatements,
+            hadExistingCopy: existing !== null,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof SqlBatchGuardError) {
+          throw new RoutineRepositoryError("Stale write", {
+            code: "stale_write",
+            cause: error,
+          });
+        }
+        throw error;
+      }
+      const restored = await this.findForPractitioner(
+        input.practitionerId,
+        input.routineId,
+      );
+      if (!restored) {
+        throw new RoutineRepositoryError("Restore saved copy failed");
+      }
+      return restored;
+    };
+  return () => {
+    PractitionerRoutinesRepository.prototype.restoreSavedCopyFromSnapshot = original;
   };
 }
 
