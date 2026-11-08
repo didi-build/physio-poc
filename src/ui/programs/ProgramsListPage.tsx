@@ -182,42 +182,40 @@ export function ProgramsListPage() {
       </header>
       <p className="ex-page-intro">{PROGRAMS_INTRO}</p>
 
-      {!showEmpty ? (
-        <>
-          <label className="pg-search-label">
-            <span className="pg-search-label-text">{SEARCH_BY_NAME_OR_CODE}</span>
-            <input
-              type="search"
-              className="pg-search-input"
-              aria-label={SEARCH_PROGRAMS_LABEL}
-              value={query}
-              onChange={(event) => {
-                const value = event.target.value;
-                const next = new URLSearchParams(searchParams);
-                if (value.trim().length === 0) {
-                  next.delete("q");
-                } else {
-                  next.set("q", value);
-                }
-                setSearchParams(next);
-              }}
-            />
-          </label>
-          <p className="pg-search-helper">{SEARCH_PROGRAMS_HELPER}</p>
-          <ProgramOriginFilterPills active={originFilter} onSelect={setOriginFilter} />
-          {countLabel ? (
-            <p className="pg-list-count" aria-live="polite">
-              {countLabel}
-            </p>
-          ) : null}
-        </>
-      ) : null}
+      <div className="pg-list-controls" data-testid="programs-list-controls">
+        <label className="pg-search-label">
+          <span className="pg-search-label-text">{SEARCH_BY_NAME_OR_CODE}</span>
+          <input
+            type="search"
+            className="pg-search-input"
+            aria-label={SEARCH_PROGRAMS_LABEL}
+            value={query}
+            onChange={(event) => {
+              const value = event.target.value;
+              const next = new URLSearchParams(searchParams);
+              if (value.trim().length === 0) {
+                next.delete("q");
+              } else {
+                next.set("q", value);
+              }
+              setSearchParams(next);
+            }}
+          />
+        </label>
+        <p className="pg-search-helper">{SEARCH_PROGRAMS_HELPER}</p>
+        <ProgramOriginFilterPills active={originFilter} onSelect={setOriginFilter} />
+        {countLabel ? (
+          <p className="pg-list-count" aria-live="polite">
+            {countLabel}
+          </p>
+        ) : null}
+      </div>
 
       {loading ? <ProgramsListBusyState /> : null}
       {loadFailed ? <ProgramsListErrorSlot /> : null}
 
       {showEmpty ? (
-        <div className="pg-empty">
+        <div className="pg-empty" data-testid="programs-empty">
           <h2 className="pg-empty-title">{PROGRAMS_EMPTY_HEADING}</h2>
           <p className="pg-empty-helper">{PROGRAMS_EMPTY_HELPER}</p>
           <button
