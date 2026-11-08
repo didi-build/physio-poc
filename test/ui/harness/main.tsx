@@ -56,6 +56,7 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
         exerciseRequestsClient={fixture.requests}
         exerciseMediaClient={fixture.media}
         programsClient={programsClientForHarness()}
+        routinesClient={fixture.routines}
         practitionerSessionClient={sessionClient}
       />
     </MemoryRouter>

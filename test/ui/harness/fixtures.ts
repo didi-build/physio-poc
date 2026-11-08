@@ -3,6 +3,7 @@ import { DEV_PRACTITIONER_ID } from "../../../src/ui/api/exercise-library-client
 import type { ExerciseMediaClient } from "../../../src/ui/api/exercise-media-client.js";
 import type { ExerciseRequestsClient } from "../../../src/ui/api/exercise-requests-client.js";
 import type { ProgramsClient } from "../../../src/ui/api/programs-client.js";
+import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
 const draftView = {
@@ -93,13 +94,41 @@ export type HarnessFixtureId =
   | "requests-list"
   | "draft-review"
   | "exercises-mine"
-  | "routines-all";
+  | "routines-all"
+  | "routines-all-populated"
+  | "routines-my-flag"
+  | "routines-detail-update"
+  | "routines-conditions-filled"
+  | "routines-search-active"
+  | "routines-my-copy-direct"
+  | "routines-detail-load-failed";
+
+function baseRoutinesClient(): RoutinesClient {
+  return {
+    searchCommunity: async () => ({
+      routines: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+    listMyRoutines: async () => ({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+  } as unknown as RoutinesClient;
+}
 
 export type HarnessFixture = {
   initialEntries: Array<string | { pathname: string; state?: unknown }>;
   library: ExerciseLibraryClient;
   requests: ExerciseRequestsClient;
   media: ExerciseMediaClient;
+  routines: RoutinesClient;
 };
 
 export function harnessFixture(
@@ -172,6 +201,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "request-form":
       return {
@@ -195,6 +225,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "conflict":
       return {
@@ -206,6 +237,7 @@ export function harnessFixture(
           submitRequest: async () => ({ outcome: "merged", request_id: "req-other" }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "requests-list":
       return {
@@ -216,6 +248,7 @@ export function harnessFixture(
           listInProgress,
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "draft-review":
       return {
@@ -239,6 +272,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "exercises-mine":
       return {
@@ -260,6 +294,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
       };
     case "routines-all":
       return {
@@ -273,6 +308,351 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
+        routines: baseRoutinesClient(),
+      };
+    case "routines-all-populated":
+      return {
+        initialEntries: ["/routines"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-knee",
+                routine_version_id: "rv-knee-1",
+                name: "Knee starter",
+                version_number: 2,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 4,
+                usage_count: 12,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+              {
+                routine_id: "r-hip",
+                routine_version_id: "rv-hip-1",
+                name: "Hip mobility",
+                version_number: 1,
+                body_region_label: "Hip",
+                condition_label: null,
+                exercise_count: 3,
+                usage_count: 5,
+                added_by_you: true,
+                in_my_routines: true,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 2,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: false,
+            condition_options: [],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-my-flag":
+      return {
+        initialEntries: ["/routines?tab=my"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [],
+            next_cursor: null,
+            search_link: null,
+            total_count: 0,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [
+              {
+                routine_id: "r-draft",
+                name: "Draft knee plan",
+                body_region_label: "Knee",
+                condition_label: null,
+                draft_updated_at: "2026-10-25T12:00:00.000Z",
+              },
+            ],
+            saved: [
+              {
+                routine_id: "r-saved",
+                name: "Knee starter",
+                saved_copy_version: 1,
+                community_version: 3,
+                edited: true,
+                saved_at: "2026-10-20T12:00:00.000Z",
+                last_used_at: "2026-10-24T12:00:00.000Z",
+                community_updated: true,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 4,
+              },
+            ],
+            flagged_count: 2,
+            conditions_available: false,
+            condition_options: [],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-detail-update":
+      return {
+        initialEntries: ["/routines/r-saved"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => ({
+            routine_id: "r-saved",
+            body_region_label: "Knee",
+            condition_label: null,
+            who_its_for: "Early rehab",
+            community: {
+              routine_version_id: "rv-knee-3",
+              version_number: 3,
+              name: "Knee starter",
+              updated_at: "2026-10-25T12:00:00.000Z",
+              created_by: "p-other",
+              usage_count: 12,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            my_copy: {
+              practitioner_routine_id: "pr-1",
+              source_version_number: 1,
+              edited: true,
+              community_updated: true,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            sent_program_count: 1,
+            sent_program_codes: ["AB12CD"],
+            conditions_available: false,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 1,
+              your_change_positions: [0],
+            },
+            community_change_list: {
+              baseline_available: true,
+              entries: [
+                { version_number: 2, change_summary: "Longer hold\nSecond line" },
+              ],
+            },
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-conditions-filled":
+      return {
+        initialEntries: ["/routines"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-arthritis",
+                routine_version_id: "rv-arthritis",
+                name: "Arthritis knee",
+                version_number: 1,
+                body_region_label: "Knee",
+                condition_label: "Arthritis",
+                exercise_count: 3,
+                usage_count: 4,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: true,
+            condition_options: [{ condition_id: "c1", label: "Arthritis" }],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: true,
+            condition_options: [{ condition_id: "c1", label: "Arthritis" }],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-my-copy-direct":
+      return {
+        initialEntries: ["/routines/r-saved/my-copy"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => ({
+            routine_id: "r-saved",
+            body_region_label: "Knee",
+            condition_label: null,
+            who_its_for: null,
+            community: {
+              routine_version_id: "rv-knee-3",
+              version_number: 3,
+              name: "Knee starter",
+              updated_at: "2026-10-25T12:00:00.000Z",
+              created_by: "p-other",
+              usage_count: 12,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            my_copy: {
+              practitioner_routine_id: "pr-1",
+              source_version_number: 1,
+              edited: true,
+              community_updated: true,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            sent_program_count: 0,
+            sent_program_codes: [],
+            conditions_available: false,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 0,
+              your_change_positions: [],
+            },
+            community_change_list: null,
+          }),
+        } as unknown as RoutinesClient,
+      };
+    case "routines-detail-load-failed":
+      return {
+        initialEntries: ["/routines/r-missing"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => {
+            throw new Error("routine_not_found");
+          },
+        } as unknown as RoutinesClient,
+      };
+    case "routines-search-active":
+      return {
+        initialEntries: ["/routines?q=knee"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "r-knee",
+                routine_version_id: "rv-knee",
+                name: "Knee starter",
+                version_number: 1,
+                body_region_label: "Knee",
+                condition_label: null,
+                exercise_count: 2,
+                usage_count: 1,
+                added_by_you: false,
+                in_my_routines: false,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: false,
+            condition_options: [],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [],
+            flagged_count: 0,
+            conditions_available: false,
+            condition_options: [],
+          }),
+        } as unknown as RoutinesClient,
       };
     default: {
       const never: never = id;

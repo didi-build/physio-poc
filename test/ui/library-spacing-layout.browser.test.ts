@@ -73,15 +73,16 @@ async function readMainBorderLeft(page: Page): Promise<number | null> {
   });
 }
 
-async function readExercisesSearchPhoneLayout(page: Page): Promise<{
+async function readLibrarySearchPhoneLayout(
+  page: Page,
+  sectionSelector: string,
+): Promise<{
   stickyLeft: number;
   searchWrapLeft: number;
   stickyMarginTop: string;
 } | null> {
-  return page.evaluate(() => {
-    const section = document.querySelector(
-      'section[aria-labelledby="ex-lib-heading"]',
-    ) as HTMLElement | null;
+  return page.evaluate((selector) => {
+    const section = document.querySelector(selector) as HTMLElement | null;
     const sticky = section?.querySelector(".ex-search-sticky") as HTMLElement | null;
     const wrap = section?.querySelector(".ex-search-wrap") as HTMLElement | null;
     if (!sticky || !wrap) {
@@ -92,7 +93,7 @@ async function readExercisesSearchPhoneLayout(page: Page): Promise<{
       searchWrapLeft: wrap.getBoundingClientRect().left,
       stickyMarginTop: getComputedStyle(sticky).marginTop,
     };
-  });
+  }, sectionSelector);
 }
 
 async function readIntroMinHeight(page: Page): Promise<string | null> {
@@ -128,16 +129,24 @@ describe("Library page shared spacing (DIDI-1180)", () => {
       readySelector: "#ex-lib-heading",
       sectionSelector: 'section[aria-labelledby="ex-lib-heading"]',
       hasSearch: true,
+      phoneSearchMarginTop: "0px",
     },
     {
       fixture: "routines-all",
       readySelector: '[data-testid="routines-page"]',
       sectionSelector: '[data-testid="routines-page"]',
-      hasSearch: false,
+      hasSearch: true,
+      phoneSearchMarginTop: "8px",
     },
   ] as const)(
     "keeps $fixture title/tabs/helper on the shared gutter at 390 and 1280 px",
-    async ({ fixture, readySelector, sectionSelector, hasSearch }) => {
+    async ({
+      fixture,
+      readySelector,
+      sectionSelector,
+      hasSearch,
+      phoneSearchMarginTop,
+    }) => {
       for (const width of [390, 1280]) {
         const browser = await chromium.launch();
         try {
@@ -163,12 +172,15 @@ describe("Library page shared spacing (DIDI-1180)", () => {
             expect(filtersLeft!).toBeCloseTo(gutterLeft, 0);
             if (width === 390) {
               const mainBorderLeft = await readMainBorderLeft(page);
-              const phoneSearch = await readExercisesSearchPhoneLayout(page);
+              const phoneSearch = await readLibrarySearchPhoneLayout(
+                page,
+                sectionSelector,
+              );
               expect(mainBorderLeft).not.toBeNull();
               expect(phoneSearch).not.toBeNull();
               expect(phoneSearch!.stickyLeft).toBeCloseTo(mainBorderLeft!, 0);
               expect(phoneSearch!.searchWrapLeft).toBeCloseTo(gutterLeft, 0);
-              expect(phoneSearch!.stickyMarginTop).toBe("0px");
+              expect(phoneSearch!.stickyMarginTop).toBe(phoneSearchMarginTop);
             } else if (width >= 1024) {
               expect(Math.abs(searchLeft! - (gutterLeft + 20))).toBeLessThanOrEqual(2);
             }

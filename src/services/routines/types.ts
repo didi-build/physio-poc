@@ -3,6 +3,11 @@ import type { ExerciseParams } from "../../domain/exercise-params.js";
 
 export type RoutineSearchSort = "most_used" | "newest" | "a_to_z";
 
+export type RoutineConditionOption = {
+  condition_id: string;
+  label: string;
+};
+
 export type CommunityRoutineSummary = {
   routine_id: string;
   routine_version_id: string;
@@ -22,6 +27,7 @@ export type SearchCommunityRoutinesResult = {
   search_link: string | null;
   total_count: number;
   conditions_available: boolean;
+  condition_options: RoutineConditionOption[];
 };
 
 export type MyRoutineDraftItem = {
@@ -51,6 +57,7 @@ export type MyRoutinesListResult = {
   saved: MyRoutineSavedItem[];
   flagged_count: number;
   conditions_available: boolean;
+  condition_options: RoutineConditionOption[];
 };
 
 export type RoutineExerciseRow = {
@@ -61,6 +68,27 @@ export type RoutineExerciseRow = {
   prescription_type: PrescriptionType;
   params: ExerciseParams;
 };
+
+export type RoutinePersonalChanges = {
+  baseline_available: boolean;
+  change_count: number;
+  your_change_positions: number[];
+};
+
+/** One entry per published community version newer than the practitioner's saved baseline. */
+export type RoutineCommunityChangeEntry = {
+  version_number: number;
+  change_summary: string | null;
+};
+
+export type RoutineCommunityChangeList =
+  | {
+      baseline_available: true;
+      entries: RoutineCommunityChangeEntry[];
+    }
+  | {
+      baseline_available: false;
+    };
 
 export type RoutineDetailsResult = {
   routine_id: string;
@@ -86,6 +114,8 @@ export type RoutineDetailsResult = {
   sent_program_count: number;
   sent_program_codes: string[];
   conditions_available: boolean;
+  personal_changes: RoutinePersonalChanges | null;
+  community_change_list: RoutineCommunityChangeList | null;
 };
 
 export type RoutineUndoRowSnapshot = {

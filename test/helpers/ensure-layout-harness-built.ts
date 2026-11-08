@@ -1,11 +1,28 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const DIST_DIR = join(process.cwd(), "dist");
 const HARNESS_DIST = join(DIST_DIR, "exercise-requests-layout-harness");
 const HARNESS_INDEX = join(HARNESS_DIST, "index.html");
 const LOCK_DIR = join(DIST_DIR, ".layout-harness-build-lock");
+
+const HARNESS_INPUTS = [
+  join(process.cwd(), "vite.layout-harness.config.ts"),
+  join(process.cwd(), "src/ui/styles/exercise-library.css"),
+  join(process.cwd(), "src/ui/routines/RoutinesPage.tsx"),
+  join(process.cwd(), "test/ui/harness/fixtures.ts"),
+];
+
+function harnessArtifactStale(): boolean {
+  if (!existsSync(HARNESS_INDEX)) {
+    return true;
+  }
+  const builtAt = statSync(HARNESS_INDEX).mtimeMs;
+  return HARNESS_INPUTS.some(
+    (path) => existsSync(path) && statSync(path).mtimeMs > builtAt,
+  );
+}
 
 function sleepSync(ms: number): void {
   const end = Date.now() + ms;
@@ -19,7 +36,7 @@ function sleepSync(ms: number): void {
  * layout files in parallel workers.
  */
 export function ensureLayoutHarnessBuilt(): void {
-  if (existsSync(HARNESS_INDEX)) {
+  if (existsSync(HARNESS_INDEX) && !harnessArtifactStale()) {
     return;
   }
 
@@ -35,14 +52,14 @@ export function ensureLayoutHarnessBuilt(): void {
       if (code !== "EEXIST") {
         throw error;
       }
-      if (existsSync(HARNESS_INDEX)) {
+      if (existsSync(HARNESS_INDEX) && !harnessArtifactStale()) {
         return;
       }
       sleepSync(50);
     }
   }
 
-  if (existsSync(HARNESS_INDEX)) {
+  if (existsSync(HARNESS_INDEX) && !harnessArtifactStale()) {
     return;
   }
 
