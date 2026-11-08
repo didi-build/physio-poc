@@ -109,7 +109,48 @@ describe("Routine community_change_list (DIDI-1183 / DIDI-1022)", () => {
     }
   });
 
-  it("excludes unpublished drafts and omits list when not community_updated", async () => {
+  it("excludes a newer unpublished draft row from published-only community list query", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { author, routineId, v1 } = await seedMultiVersionRoutine(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      await versions.savePublishedVersion({
+        id: id("cc-published-v2-only"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "Published v2 only",
+        copyFromVersionId: v1.id,
+        changeSummary: "Shipped",
+      });
+      const draftId = id("cc-unpublished-v3-draft");
+      await storage.run("PRAGMA ignore_check_constraints = 1");
+      await storage.run(
+        `INSERT INTO routine_versions (
+          id, routine_id, version_number, status, name,
+          change_summary, restored_from_version_id, created_by, created_at
+        ) VALUES (?, ?, 3, 'draft', 'Unpublished v3 draft', 'Must not list', NULL, ?, ?)`,
+        [draftId, routineId, author, TS],
+      );
+      await storage.run("PRAGMA ignore_check_constraints = 0");
+
+      const queryRows = await versions.listPublishedVersionsAfterBaseline(routineId, 1);
+      expect(queryRows.map((row) => row.version_number)).toEqual([2]);
+      expect(queryRows.every((row) => row.status === "published")).toBe(true);
+
+      const details = await service.getRoutineDetails(author, routineId);
+      expect(details.community_change_list).toEqual({
+        baseline_available: true,
+        entries: [{ version_number: 2, change_summary: "Shipped" }],
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("omits community_change_list when not community_updated", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { author, routineId, v1 } = await seedMultiVersionRoutine(storage);
