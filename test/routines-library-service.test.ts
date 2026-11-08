@@ -219,6 +219,7 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
         your_change_positions: [0],
       });
       expect(editedDetails.community_change_list).toEqual({
+        baseline_available: true,
         entries: [{ version_number: 2, change_summary: null }],
       });
 

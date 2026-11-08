@@ -81,9 +81,14 @@ export type RoutineCommunityChangeEntry = {
   change_summary: string | null;
 };
 
-export type RoutineCommunityChangeList = {
-  entries: RoutineCommunityChangeEntry[];
-};
+export type RoutineCommunityChangeList =
+  | {
+      baseline_available: true;
+      entries: RoutineCommunityChangeEntry[];
+    }
+  | {
+      baseline_available: false;
+    };
 
 export type RoutineDetailsResult = {
   routine_id: string;

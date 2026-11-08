@@ -29,8 +29,10 @@ import {
   requirePractitionerRecord,
 } from "../practitioner-access.js";
 import {
+  communityChangeListUnavailable,
   personalChangesUnavailable,
   projectPersonalChanges,
+  savedBaselineVersionIsAvailable,
   type RoutineRowComparable,
 } from "./routine-personal-change-projection.js";
 import type {
@@ -541,14 +543,15 @@ export class RoutinesLibraryService {
       const baselineVersion = await this.versions.findById(
         myCopyRecord.source_routine_version_id,
       );
-      if (
-        !baselineVersion ||
-        baselineVersion.routine_id !== validatedRoutineId ||
-        baselineVersion.status !== "published"
-      ) {
+      const baselineAvailable = savedBaselineVersionIsAvailable(
+        baselineVersion,
+        validatedRoutineId,
+        myCopyRecord.source_version_number,
+      );
+      if (!baselineAvailable) {
         personal_changes = personalChangesUnavailable();
       } else {
-        const baselineRaw = await this.versionRows.listForVersion(baselineVersion.id);
+        const baselineRaw = await this.versionRows.listForVersion(baselineVersion!.id);
         const baseline: RoutineRowComparable[] = baselineRaw.map((row) => ({
           exercise_id: row.exercise_id,
           exercise_version_id: row.exercise_version_id,
@@ -564,16 +567,21 @@ export class RoutinesLibraryService {
         personal_changes = projectPersonalChanges(baseline, current);
       }
       if (myCopy?.community_updated) {
-        const newerVersions = await this.versions.listPublishedVersionsAfterBaseline(
-          validatedRoutineId,
-          myCopyRecord.source_version_number,
-        );
-        community_change_list = {
-          entries: newerVersions.map((version) => ({
-            version_number: version.version_number,
-            change_summary: version.change_summary,
-          })),
-        };
+        if (!baselineAvailable) {
+          community_change_list = communityChangeListUnavailable();
+        } else {
+          const newerVersions = await this.versions.listPublishedVersionsAfterBaseline(
+            validatedRoutineId,
+            baselineVersion!.version_number,
+          );
+          community_change_list = {
+            baseline_available: true,
+            entries: newerVersions.map((version) => ({
+              version_number: version.version_number,
+              change_summary: version.change_summary,
+            })),
+          };
+        }
       }
     }
 

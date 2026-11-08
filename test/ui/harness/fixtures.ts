@@ -478,6 +478,7 @@ export function harnessFixture(
               your_change_positions: [0],
             },
             community_change_list: {
+              baseline_available: true,
               entries: [
                 { version_number: 2, change_summary: "Longer hold\nSecond line" },
               ],

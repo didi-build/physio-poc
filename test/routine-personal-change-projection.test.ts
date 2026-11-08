@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   personalChangesUnavailable,
   projectPersonalChanges,
+  savedBaselineVersionIsAvailable,
   type RoutineRowComparable,
 } from "../src/services/routines/routine-personal-change-projection.js";
 
@@ -67,5 +68,21 @@ describe("routine personal change projection (DIDI-1022)", () => {
       change_count: 0,
       your_change_positions: [],
     });
+  });
+
+  it("savedBaselineVersionIsAvailable requires routine, published status, and version match", () => {
+    const routineId = "routine-a";
+    const row = {
+      routine_id: routineId,
+      status: "published",
+      version_number: 1,
+    };
+    expect(savedBaselineVersionIsAvailable(row, routineId, 1)).toBe(true);
+    expect(savedBaselineVersionIsAvailable(null, routineId, 1)).toBe(false);
+    expect(savedBaselineVersionIsAvailable(row, "other", 1)).toBe(false);
+    expect(
+      savedBaselineVersionIsAvailable({ ...row, status: "draft" }, routineId, 1),
+    ).toBe(false);
+    expect(savedBaselineVersionIsAvailable(row, routineId, 2)).toBe(false);
   });
 });

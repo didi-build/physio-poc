@@ -393,6 +393,7 @@ describe("Routines library UI (DIDI-1022)", () => {
         your_change_positions: [0],
       },
       community_change_list: {
+        baseline_available: true,
         entries: [
           { version_number: 2, change_summary: "Adjusted dose" },
           { version_number: 3, change_summary: null },
@@ -526,6 +527,7 @@ describe("Routines library UI (DIDI-1022)", () => {
         your_change_positions: [],
       },
       community_change_list: {
+        baseline_available: true,
         entries: [{ version_number: 2, change_summary: "Line one" }],
       },
     };

@@ -956,6 +956,7 @@ describe("Routines library HTTP (session routes)", () => {
         personal_changes: unknown;
       };
       expect(body.community_change_list).toEqual({
+        baseline_available: true,
         entries: [
           { version_number: 2, change_summary: "Row one\nRow two" },
           { version_number: 3, change_summary: null },

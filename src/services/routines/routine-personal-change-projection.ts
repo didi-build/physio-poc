@@ -3,7 +3,13 @@ import {
   exerciseParamsEqual,
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
-import type { RoutinePersonalChanges } from "./types.js";
+import type { RoutineCommunityChangeList, RoutinePersonalChanges } from "./types.js";
+
+type BaselineVersionRow = {
+  routine_id: string;
+  status: string;
+  version_number: number;
+};
 
 /** Row fields used for same-position personal baseline comparison (domain-normalized). */
 export type RoutineRowComparable = {
@@ -55,4 +61,22 @@ export function personalChangesUnavailable(): RoutinePersonalChanges {
     change_count: 0,
     your_change_positions: [],
   };
+}
+
+/** Owned published baseline row matches routine id and stored source_version_number. */
+export function savedBaselineVersionIsAvailable(
+  baselineVersion: BaselineVersionRow | null,
+  routineId: string,
+  storedSourceVersionNumber: number,
+): boolean {
+  return (
+    baselineVersion !== null &&
+    baselineVersion.routine_id === routineId &&
+    baselineVersion.status === "published" &&
+    baselineVersion.version_number === storedSourceVersionNumber
+  );
+}
+
+export function communityChangeListUnavailable(): RoutineCommunityChangeList {
+  return { baseline_available: false };
 }

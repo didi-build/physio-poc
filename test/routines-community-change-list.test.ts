@@ -13,7 +13,10 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { publishRoutine } from "./helpers/from-routine-http-fixture.js";
-import { personalChangesUnavailable } from "../src/services/routines/routine-personal-change-projection.js";
+import {
+  communityChangeListUnavailable,
+  personalChangesUnavailable,
+} from "../src/services/routines/routine-personal-change-projection.js";
 
 async function seedMultiVersionRoutine(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -28,6 +31,27 @@ async function seedMultiVersionRoutine(
     name: "Community change list base",
   });
   return { author, routineId, v1 };
+}
+
+async function flagRoutineWithV2Summary(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  author: string,
+  routineId: string,
+  v1: { id: string },
+  summary: string,
+) {
+  const versions = new RoutineVersionsRepository(storage);
+  const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+  await service.saveToMyRoutines(author, routineId);
+  await versions.savePublishedVersion({
+    id: id(`cc-v2-${summary.slice(0, 8)}`),
+    routineId,
+    createdBy: author,
+    createdAt: TS,
+    name: "v2",
+    copyFromVersionId: v1.id,
+    changeSummary: summary,
+  });
 }
 
 describe("Routine community_change_list (DIDI-1183 / DIDI-1022)", () => {
@@ -68,6 +92,7 @@ describe("Routine community_change_list (DIDI-1183 / DIDI-1022)", () => {
 
       const details = await service.getRoutineDetails(author, routineId);
       expect(details.community_change_list).toEqual({
+        baseline_available: true,
         entries: [
           { version_number: 2, change_summary: "Longer hold\nSecond line" },
           { version_number: 3, change_summary: null },
@@ -106,6 +131,7 @@ describe("Routine community_change_list (DIDI-1183 / DIDI-1022)", () => {
 
       const flagged = await service.getRoutineDetails(author, routineId);
       expect(flagged.community_change_list).toEqual({
+        baseline_available: true,
         entries: [{ version_number: 2, change_summary: "Published v2" }],
       });
 
@@ -118,44 +144,121 @@ describe("Routine community_change_list (DIDI-1183 / DIDI-1022)", () => {
     }
   });
 
-  it("keeps personal_changes unavailable when baseline row is missing", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const { author, routineId, v1 } = await seedMultiVersionRoutine(storage);
-      const otherRoutine = await publishRoutine(storage, author, {
-        routine: "community-change-other",
-        draftVersion: "community-change-other-draft",
-        row: "community-change-other-row",
-        name: "Other routine",
-      });
-      const versions = new RoutineVersionsRepository(storage);
-      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
-      await service.saveToMyRoutines(author, routineId);
-      await versions.savePublishedVersion({
-        id: id("cc-baseline-missing-v2"),
-        routineId,
-        createdBy: author,
-        createdAt: TS,
-        name: "v2",
-        copyFromVersionId: v1.id,
-        changeSummary: "Only summary",
-      });
+  it.each([
+    {
+      label: "foreign-routine baseline version id",
+      corrupt: async (
+        storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+        author: string,
+        _routineId: string,
+        copyId: string,
+      ) => {
+        const other = await publishRoutine(storage, author, {
+          routine: "cc-foreign",
+          draftVersion: "cc-foreign-draft",
+          row: "cc-foreign-row",
+          name: "Foreign",
+        });
+        await storage.run(
+          `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
+          [other.id, copyId],
+        );
+      },
+    },
+    {
+      label: "missing baseline version row",
+      corrupt: async (
+        storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+        _author: string,
+        _routineId: string,
+        _copyId: string,
+        v1: { id: string },
+      ) => {
+        await storage.run(
+          `DELETE FROM routine_version_rows WHERE routine_version_id = ?`,
+          [v1.id],
+        );
+        await storage.run("PRAGMA foreign_keys = OFF");
+        await storage.run(`DELETE FROM routine_versions WHERE id = ?`, [v1.id]);
+        await storage.run("PRAGMA foreign_keys = ON");
+      },
+    },
+    {
+      label: "unpublished draft baseline",
+      corrupt: async (
+        storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+        author: string,
+        routineId: string,
+        copyId: string,
+      ) => {
+        const draftId = id("cc-draft-baseline");
+        await storage.run(
+          `INSERT INTO routine_versions (
+          id, routine_id, version_number, status, name,
+          change_summary, restored_from_version_id, created_by, created_at
+        ) VALUES (?, ?, 0, 'draft', 'draft baseline', NULL, NULL, ?, ?)`,
+          [draftId, routineId, author, TS],
+        );
+        await storage.run(
+          `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
+          [draftId, copyId],
+        );
+      },
+    },
+    {
+      label: "source_version_number mismatch",
+      corrupt: async (
+        storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+        author: string,
+        routineId: string,
+        copyId: string,
+        v1: { id: string },
+      ) => {
+        const versions = new RoutineVersionsRepository(storage);
+        const v2 = await versions.findPublishedVersion(routineId, 2);
+        if (!v2) {
+          throw new Error("expected v2");
+        }
+        await versions.savePublishedVersion({
+          id: id("cc-mismatch-v3"),
+          routineId,
+          createdBy: author,
+          createdAt: TS,
+          name: "v3 for mismatch",
+          copyFromVersionId: v2.id,
+        });
+        void v1;
+        await storage.run(
+          `UPDATE practitioner_routines SET source_version_number = 2 WHERE id = ?`,
+          [copyId],
+        );
+      },
+    },
+  ] as const)(
+    "community_change_list unavailable when baseline is $label",
+    async ({ corrupt }) => {
+      const storage = await openMigratedDatabase();
+      try {
+        const { author, routineId, v1 } = await seedMultiVersionRoutine(storage);
+        const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+        await flagRoutineWithV2Summary(
+          storage,
+          author,
+          routineId,
+          v1,
+          "Should not list",
+        );
+        const copy = await new PractitionerRoutinesRepository(
+          storage,
+        ).findForPractitioner(author, routineId);
+        await corrupt(storage, author, routineId, copy!.id, v1);
 
-      const copy = await new PractitionerRoutinesRepository(
-        storage,
-      ).findForPractitioner(author, routineId);
-      await storage.run(
-        `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
-        [otherRoutine.id, copy!.id],
-      );
-
-      const details = await service.getRoutineDetails(author, routineId);
-      expect(details.personal_changes).toEqual(personalChangesUnavailable());
-      expect(details.community_change_list).toEqual({
-        entries: [{ version_number: 2, change_summary: "Only summary" }],
-      });
-    } finally {
-      storage.close();
-    }
-  });
+        const details = await service.getRoutineDetails(author, routineId);
+        expect(details.personal_changes).toEqual(personalChangesUnavailable());
+        expect(details.community_change_list).toEqual(communityChangeListUnavailable());
+      } finally {
+        storage.close();
+      }
+    },
+  );
 });

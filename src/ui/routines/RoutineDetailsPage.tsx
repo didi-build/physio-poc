@@ -308,7 +308,8 @@ export function RoutineDetailsPage() {
           </p>
           <div className="rt-update-panel">
             <h2 className="rt-update-panel-title">{WHAT_CHANGED}</h2>
-            {details.community_change_list?.entries.length ? (
+            {details.community_change_list?.baseline_available &&
+            details.community_change_list.entries.length ? (
               <ul className="rt-update-list" data-testid="routine-community-changes">
                 {details.community_change_list.entries.map((entry) => (
                   <li
