@@ -33,6 +33,10 @@ import {
 } from "./physio-app-match-routes.js";
 import type { PractitionerSessionClient } from "./api/practitioner-session-client.js";
 import { PractitionerSessionProvider } from "./api/practitioner-session-context.js";
+import type { RoutinesClient } from "./api/routines-client.js";
+import { RoutinesApiProvider } from "./api/routines-context.js";
+import { RoutineDetailsPage } from "./routines/RoutineDetailsPage.js";
+import { RoutineMyCopyEditorPage } from "./routines/RoutineMyCopyEditorPage.js";
 import { RoutinesPage } from "./routines/RoutinesPage.js";
 import { useExerciseRequestsRefresh } from "./api/exercise-requests-refresh-context.js";
 
@@ -43,6 +47,7 @@ export type PhysioAppProps = {
   exerciseMediaClient?: ExerciseMediaClient;
   myDefaultsClient?: MyDefaultsClient;
   programsClient?: ProgramsClient;
+  routinesClient?: RoutinesClient;
   practitionerSessionClient?: PractitionerSessionClient;
 };
 
@@ -90,6 +95,8 @@ export function createPhysioAppRouteElements(
     exerciseDetail: <ExerciseDetailsPage />,
     exerciseMyCopy: <MyCopyEditorPage />,
     routines: <RoutinesPage />,
+    routineDetail: <RoutineDetailsPage />,
+    routineMyCopy: <RoutineMyCopyEditorPage />,
     defaults: <MyDefaultsPage />,
     programs: <ProgramsListPage />,
     programNew: <ProgramsNewPage />,
@@ -121,6 +128,7 @@ export function PhysioApp({
   exerciseMediaClient,
   myDefaultsClient,
   programsClient,
+  routinesClient,
   practitionerSessionClient,
 }: PhysioAppProps) {
   const [requestsReviewCount, setRequestsReviewCount] = useState(
@@ -133,15 +141,17 @@ export function PhysioApp({
         <ExerciseMediaApiProvider client={exerciseMediaClient}>
           <MyDefaultsApiProvider client={myDefaultsClient}>
             <ProgramsApiProvider client={programsClient}>
-              <PractitionerSessionProvider client={practitionerSessionClient}>
-                <ExerciseRequestsRefreshProvider
-                  onCount={(count) => {
-                    setRequestsReviewCount(count);
-                  }}
-                >
-                  <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
-                </ExerciseRequestsRefreshProvider>
-              </PractitionerSessionProvider>
+              <RoutinesApiProvider client={routinesClient}>
+                <PractitionerSessionProvider client={practitionerSessionClient}>
+                  <ExerciseRequestsRefreshProvider
+                    onCount={(count) => {
+                      setRequestsReviewCount(count);
+                    }}
+                  >
+                    <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
+                  </ExerciseRequestsRefreshProvider>
+                </PractitionerSessionProvider>
+              </RoutinesApiProvider>
             </ProgramsApiProvider>
           </MyDefaultsApiProvider>
         </ExerciseMediaApiProvider>

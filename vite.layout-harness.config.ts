@@ -11,5 +11,11 @@ export default defineConfig({
   build: {
     outDir: join(repoRoot, "dist/exercise-requests-layout-harness"),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: join(repoRoot, "test/ui/harness/index.html"),
+        routinesHttp: join(repoRoot, "test/ui/harness/routines-http.html"),
+      },
+    },
   },
 });

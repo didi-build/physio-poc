@@ -28,6 +28,11 @@ import {
   setExerciseRequestsClientForTests,
 } from "../../src/ui/api/exercise-requests-client.js";
 import {
+  RoutinesClient,
+  setRoutinesClientForTests,
+} from "../../src/ui/api/routines-client.js";
+import { SEARCH_ROUTINES_LABEL } from "../../src/ui/copy/routines.js";
+import {
   FAKE_UI_ACCOUNT_SIGNED_IN_LINE,
   FAKE_UI_DISPLAY_NAME,
   stubPractitionerSessionClient,
@@ -48,6 +53,7 @@ afterEach(() => {
   cleanup();
   setExerciseLibraryClientForTests(null);
   setExerciseRequestsClientForTests(null);
+  setRoutinesClientForTests(null);
   vi.restoreAllMocks();
   ensureMatchMediaStub();
 });
@@ -74,6 +80,26 @@ function stubLibraryClient(): ExerciseLibraryClient {
       total_count: 0,
     }),
   } as unknown as ExerciseLibraryClient;
+}
+
+function stubRoutinesClient(): RoutinesClient {
+  return {
+    searchCommunity: vi.fn().mockResolvedValue({
+      routines: [],
+      next_cursor: null,
+      search_link: null,
+      total_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+    listMyRoutines: vi.fn().mockResolvedValue({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    }),
+  } as unknown as RoutinesClient;
 }
 
 function stubProgramsClient(): ProgramsClient {
@@ -117,6 +143,7 @@ function renderApp(
         exerciseLibraryClient={stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient(requestsReviewCount)}
         programsClient={stubProgramsClient()}
+        routinesClient={stubRoutinesClient()}
         practitionerSessionClient={sessionClient}
       />
       <LocationProbe />
@@ -686,7 +713,7 @@ describe("app shell nav (integration)", () => {
     expect(signOut.tagName).toBe("BUTTON");
   });
 
-  it.each(["/routines", "/requests", "/defaults"] as const)(
+  it.each(["/requests", "/defaults"] as const)(
     "does not render search UI anywhere on %s",
     (route) => {
       renderApp(route, 0);
@@ -694,6 +721,16 @@ describe("app shell nav (integration)", () => {
       expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
     },
   );
+
+  it("renders page-level routine search on /routines without shell global search", () => {
+    renderApp("/routines", 0);
+    const header = document.querySelector(".shell-header");
+    expect(header).toBeTruthy();
+    expect(
+      within(header as HTMLElement).queryByRole("searchbox"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText(SEARCH_ROUTINES_LABEL)).toBeInTheDocument();
+  });
 
   it("renders page-level program search on /programs without shell global search", () => {
     renderApp("/programs", 0);
@@ -720,6 +757,119 @@ describe("app shell nav (integration)", () => {
     renderApp("/exercises", 0);
     expect(
       screen.getByRole("searchbox", { name: "Search exercises" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders routine detail without library search on direct entry", async () => {
+    const routinesClient = {
+      ...stubRoutinesClient(),
+      getRoutineDetails: vi.fn().mockResolvedValue({
+        routine_id: "rt-1",
+        body_region_label: "Knee",
+        condition_label: null,
+        who_its_for: null,
+        community: {
+          routine_version_id: "rv-1",
+          version_number: 1,
+          name: "Knee starter",
+          updated_at: "2026-10-25T12:00:00.000Z",
+          created_by: "dev-practitioner",
+          usage_count: 0,
+          rows: [],
+        },
+        my_copy: null,
+        sent_program_count: 0,
+        sent_program_codes: [],
+        conditions_available: false,
+        personal_changes: null,
+        community_change_list: null,
+      }),
+    } as unknown as RoutinesClient;
+    setRoutinesClientForTests(routinesClient);
+    render(
+      <MemoryRouter initialEntries={["/routines/rt-1"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={routinesClient}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Knee starter")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText(SEARCH_ROUTINES_LABEL)).not.toBeInTheDocument();
+  });
+
+  it("renders routine my-copy editor on direct entry", async () => {
+    const routinesClient = {
+      ...stubRoutinesClient(),
+      getRoutineDetails: vi.fn().mockResolvedValue({
+        routine_id: "rt-1",
+        body_region_label: "Knee",
+        condition_label: null,
+        who_its_for: null,
+        community: {
+          routine_version_id: "rv-1",
+          version_number: 1,
+          name: "Knee starter",
+          updated_at: "2026-10-25T12:00:00.000Z",
+          created_by: "dev-practitioner",
+          usage_count: 0,
+          rows: [
+            {
+              position: 0,
+              exercise_id: "ex-1",
+              exercise_version_id: "ver-1",
+              exercise_name: "Heel slide",
+              prescription_type: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        },
+        my_copy: {
+          practitioner_routine_id: "pr-1",
+          source_version_number: 1,
+          edited: false,
+          community_updated: false,
+          rows: [
+            {
+              position: 0,
+              exercise_id: "ex-1",
+              exercise_version_id: "ver-1",
+              exercise_name: "Heel slide",
+              prescription_type: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        },
+        sent_program_count: 0,
+        sent_program_codes: [],
+        conditions_available: false,
+        personal_changes: {
+          baseline_available: true,
+          change_count: 0,
+          your_change_positions: [],
+        },
+        community_change_list: null,
+      }),
+    } as unknown as RoutinesClient;
+    setRoutinesClientForTests(routinesClient);
+    render(
+      <MemoryRouter initialEntries={["/routines/rt-1/my-copy"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={stubProgramsClient()}
+          routinesClient={routinesClient}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Save my copy" }),
     ).toBeInTheDocument();
   });
 });
