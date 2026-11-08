@@ -11,8 +11,16 @@ import { getSessionReadCache } from "./session-read-cache.js";
 export function invalidateAfterExerciseLibraryMutation(exerciseId?: string): void {
   const cache = getSessionReadCache();
   cache.invalidateMatching(
-    (key) => isExercisesListKey(key) || isExerciseDetailKey(key, exerciseId),
+    (key) =>
+      isExercisesListKey(key) ||
+      isExerciseDetailKey(key, exerciseId) ||
+      isProgramBuilderKey(key),
   );
+}
+
+/** Request submit/approve changes My exercises "new from requests" sections. */
+export function invalidateAfterExerciseRequestMutation(): void {
+  invalidateAfterExerciseLibraryMutation();
 }
 
 export function invalidateAfterRoutineLibraryMutation(routineId?: string): void {

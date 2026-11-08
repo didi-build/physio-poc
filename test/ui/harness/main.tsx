@@ -16,6 +16,12 @@ import {
   harnessFixture,
   programsClientForHarness,
 } from "./fixtures.js";
+import {
+  resetHarnessNavReadCounts,
+  wrapExerciseLibraryClientWithHarnessCounts,
+  wrapProgramsClientWithHarnessCounts,
+  wrapRoutinesClientWithHarnessCounts,
+} from "./nav-read-counts.js";
 
 function RequestSubmittedScreen() {
   return (
@@ -49,14 +55,19 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
   }
 
   const fixture = harnessFixture(fixtureId);
+  resetHarnessNavReadCounts();
   return (
     <MemoryRouter initialEntries={fixture.initialEntries}>
       <PhysioApp
-        exerciseLibraryClient={fixture.library}
+        exerciseLibraryClient={wrapExerciseLibraryClientWithHarnessCounts(
+          fixture.library,
+        )}
         exerciseRequestsClient={fixture.requests}
         exerciseMediaClient={fixture.media}
-        programsClient={programsClientForHarness(fixtureId)}
-        routinesClient={fixture.routines}
+        programsClient={wrapProgramsClientWithHarnessCounts(
+          programsClientForHarness(fixtureId),
+        )}
+        routinesClient={wrapRoutinesClientWithHarnessCounts(fixture.routines)}
         practitionerSessionClient={sessionClient}
       />
     </MemoryRouter>

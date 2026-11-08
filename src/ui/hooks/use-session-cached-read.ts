@@ -6,7 +6,7 @@ import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 export type UseSessionCachedReadOptions<T> = {
   cacheKey: SessionReadCacheKey | null;
   enabled?: boolean;
-  fetcher: () => Promise<T>;
+  fetcher: (signal?: AbortSignal) => Promise<T>;
   /** When true, keep showing last good data on error instead of clearing. */
   retainOnError?: boolean;
 };
@@ -17,6 +17,8 @@ export type UseSessionCachedReadResult<T> = {
   loadFailed: boolean;
   refresh: (options?: { force?: boolean }) => Promise<void>;
 };
+
+const MAX_SUPERSEDED_RETRIES = 4;
 
 export function useSessionCachedRead<T>(
   options: UseSessionCachedReadOptions<T>,
@@ -49,7 +51,7 @@ export function useSessionCachedRead<T>(
           setLoading(true);
           setLoadFailed(false);
           try {
-            const next = await fetcherRef.current();
+            const next = await fetcherRef.current(new AbortController().signal);
             if (requestId !== requestIdRef.current) {
               return;
             }
@@ -79,22 +81,50 @@ export function useSessionCachedRead<T>(
         }
         setLoadFailed(false);
       }
-      const result = await cache.fetch(cacheKey!, () => fetcherRef.current(), {
-        force,
-      });
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-      if (result.status === "ok") {
-        setData(result.data);
-        setLoadFailed(false);
+
+      let supersededRetries = 0;
+      while (supersededRetries <= MAX_SUPERSEDED_RETRIES) {
+        const result = await cache.fetch(
+          cacheKey!,
+          (signal) => fetcherRef.current(signal),
+          {
+            force: force && supersededRetries === 0,
+          },
+        );
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        if (result.status === "ok") {
+          setData(result.data);
+          setLoadFailed(false);
+          setLoading(false);
+          return;
+        }
+        if (result.status === "superseded") {
+          supersededRetries += 1;
+          const retryHit = cache.peekSuccess<T>(cacheKey!);
+          if (retryHit) {
+            setData(retryHit.data);
+            setLoadFailed(false);
+            setLoading(false);
+            return;
+          }
+          continue;
+        }
+        if (!retainOnError || !cached) {
+          setData(null);
+        }
+        setLoadFailed(true);
         setLoading(false);
         return;
       }
-      if (!retainOnError || !cached) {
-        setData(null);
+      const finalHit = cache.peekSuccess<T>(cacheKey!);
+      if (finalHit) {
+        setData(finalHit.data);
+        setLoadFailed(false);
+      } else {
+        setLoadFailed(true);
       }
-      setLoadFailed(true);
       setLoading(false);
     },
     [cache, cacheKey, canUseCache, enabled, retainOnError],
@@ -131,6 +161,15 @@ export function useSessionCachedRead<T>(
     setData(null);
     void refresh();
   }, [cache, cacheKey, canUseCache, enabled, refresh]);
+
+  useEffect(() => {
+    if (!cacheKey || !canUseCache) {
+      return undefined;
+    }
+    return () => {
+      cache.releaseInFlightConsumer(cacheKey);
+    };
+  }, [cache, cacheKey, canUseCache]);
 
   return { data, loading, loadFailed, refresh };
 }

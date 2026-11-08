@@ -1,8 +1,9 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import {
   ExerciseRequestsClient,
   getExerciseRequestsClient,
 } from "./exercise-requests-client.js";
+import { wrapExerciseRequestsClientWithCacheInvalidation } from "./caching-exercise-requests-client.js";
 
 const ExerciseRequestsApiContext = createContext<ExerciseRequestsClient | null>(null);
 
@@ -13,8 +14,12 @@ export function ExerciseRequestsApiProvider({
   client?: ExerciseRequestsClient;
   children: ReactNode;
 }) {
+  const value = useMemo(() => {
+    const base = client ?? getExerciseRequestsClient();
+    return client ? base : wrapExerciseRequestsClientWithCacheInvalidation(base);
+  }, [client]);
   return (
-    <ExerciseRequestsApiContext.Provider value={client ?? getExerciseRequestsClient()}>
+    <ExerciseRequestsApiContext.Provider value={value}>
       {children}
     </ExerciseRequestsApiContext.Provider>
   );

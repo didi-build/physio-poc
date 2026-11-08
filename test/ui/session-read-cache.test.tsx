@@ -52,15 +52,15 @@ describe("SessionReadCache", () => {
     cache = new SessionReadCache({ maxEntries: 4 });
     cache.bindSession("practitioner-a");
     const key = buildSessionReadCacheKey("practitioner-a", { resource: "test" });
-    const loader = vi.fn().mockResolvedValue("payload");
+    const loader = vi.fn(() => Promise.resolve("payload"));
 
     await cache.fetch(key, loader);
     const hit = await cache.fetch(key, loader);
 
     expect(loader).toHaveBeenCalledTimes(1);
-    expect(hit.fromCache).toBe(true);
     expect(hit.status).toBe("ok");
     if (hit.status === "ok") {
+      expect(hit.fromCache).toBe(true);
       expect(hit.data).toBe("payload");
     }
   });
@@ -100,7 +100,7 @@ describe("SessionReadCache", () => {
     const loader = vi
       .fn()
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce("ok");
+      .mockImplementationOnce(() => Promise.resolve("ok"));
 
     const first = await cache.fetch(key, loader);
     expect(first.status).toBe("error");
