@@ -392,7 +392,12 @@ describe("Routines library UI (DIDI-1022)", () => {
         change_count: 1,
         your_change_positions: [0],
       },
-      community_change_list: { status: "held_pending_design" },
+      community_change_list: {
+        entries: [
+          { version_number: 2, change_summary: "Adjusted dose" },
+          { version_number: 3, change_summary: null },
+        ],
+      },
     };
     const client = {
       getRoutineDetails: vi.fn().mockResolvedValue(details),
@@ -417,7 +422,18 @@ describe("Routines library UI (DIDI-1022)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("routine-community-changes-held")).toBeInTheDocument();
+    expect(screen.getByTestId("routine-community-changes")).toBeInTheDocument();
+    expect(screen.getByTestId("routine-community-change-v2")).toHaveTextContent(
+      "Adjusted dose",
+    );
+    expect(screen.getByTestId("routine-community-change-v3")).toHaveTextContent("v3");
+    expect(screen.getByTestId("routine-community-change-v3").textContent).not.toContain(
+      "Adjusted",
+    );
+    const multilineSummary = screen
+      .getByTestId("routine-community-change-v2")
+      .querySelector(".rt-update-list-summary");
+    expect(multilineSummary).toHaveTextContent("Adjusted dose");
     expect(
       screen.getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE }),
     ).toBeDisabled();
@@ -509,7 +525,9 @@ describe("Routines library UI (DIDI-1022)", () => {
         change_count: 0,
         your_change_positions: [],
       },
-      community_change_list: { status: "held_pending_design" },
+      community_change_list: {
+        entries: [{ version_number: 2, change_summary: "Line one" }],
+      },
     };
     const adoptCommunityVersion = vi
       .fn()

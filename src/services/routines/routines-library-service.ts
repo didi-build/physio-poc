@@ -564,7 +564,16 @@ export class RoutinesLibraryService {
         personal_changes = projectPersonalChanges(baseline, current);
       }
       if (myCopy?.community_updated) {
-        community_change_list = { status: "held_pending_design" };
+        const newerVersions = await this.versions.listPublishedVersionsAfterBaseline(
+          validatedRoutineId,
+          myCopyRecord.source_version_number,
+        );
+        community_change_list = {
+          entries: newerVersions.map((version) => ({
+            version_number: version.version_number,
+            change_summary: version.change_summary,
+          })),
+        };
       }
     }
 

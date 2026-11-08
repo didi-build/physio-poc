@@ -477,7 +477,11 @@ export function harnessFixture(
               change_count: 1,
               your_change_positions: [0],
             },
-            community_change_list: { status: "held_pending_design" },
+            community_change_list: {
+              entries: [
+                { version_number: 2, change_summary: "Longer hold\nSecond line" },
+              ],
+            },
           }),
         } as unknown as RoutinesClient,
       };

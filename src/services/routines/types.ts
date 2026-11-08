@@ -75,9 +75,14 @@ export type RoutinePersonalChanges = {
   your_change_positions: number[];
 };
 
-/** Community change bullets held until DIDI-1183; never an empty list pretending to be valid. */
+/** One entry per published community version newer than the practitioner's saved baseline. */
+export type RoutineCommunityChangeEntry = {
+  version_number: number;
+  change_summary: string | null;
+};
+
 export type RoutineCommunityChangeList = {
-  status: "held_pending_design";
+  entries: RoutineCommunityChangeEntry[];
 };
 
 export type RoutineDetailsResult = {

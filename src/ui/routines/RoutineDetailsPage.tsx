@@ -308,12 +308,25 @@ export function RoutineDetailsPage() {
           </p>
           <div className="rt-update-panel">
             <h2 className="rt-update-panel-title">{WHAT_CHANGED}</h2>
-            {details.community_change_list?.status === "held_pending_design" ? (
-              <div
-                data-testid="routine-community-changes-held"
-                className="rt-update-list-held"
-                aria-hidden
-              />
+            {details.community_change_list?.entries.length ? (
+              <ul className="rt-update-list" data-testid="routine-community-changes">
+                {details.community_change_list.entries.map((entry) => (
+                  <li
+                    key={entry.version_number}
+                    className="rt-update-list-item"
+                    data-testid={`routine-community-change-v${entry.version_number}`}
+                  >
+                    <span className="rt-update-list-version">
+                      v{entry.version_number}
+                    </span>
+                    {entry.change_summary ? (
+                      <span className="rt-update-list-summary">
+                        {entry.change_summary}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
             ) : null}
             {personalChanges?.baseline_available && editCount > 0 ? (
               <p className="rt-update-warn">

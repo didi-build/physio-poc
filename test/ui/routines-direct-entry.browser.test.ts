@@ -76,6 +76,21 @@ describe("Routines direct entry (browser, DIDI-1022)", () => {
             const titleText = await page.locator(".ex-page-title").textContent();
             expect(titleText).toContain(title);
           }
+          if (fixture === "routines-detail-update") {
+            await page.waitForSelector('[data-testid="routine-community-changes"]', {
+              timeout: 30_000,
+            });
+            const summary = page.locator(
+              '[data-testid="routine-community-change-v2"] .rt-update-list-summary',
+            );
+            const summaryText = (await summary.textContent()) ?? "";
+            expect(summaryText).toContain("Longer hold");
+            expect(summaryText).toContain("Second line");
+            const whiteSpace = await summary.evaluate(
+              (el) => getComputedStyle(el).whiteSpace,
+            );
+            expect(whiteSpace).toBe("pre-wrap");
+          }
           if (assertNoListSearch) {
             const searchCount = await page
               .getByRole("searchbox", { name: "Search routines" })

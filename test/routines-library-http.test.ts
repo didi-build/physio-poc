@@ -899,4 +899,74 @@ describe("Routines library HTTP (session routes)", () => {
       storage.close();
     }
   });
+
+  it("GET routine details returns community_change_list entries over HTTP", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-community-changes");
+      const v1 = await publishRoutine(storage, author, {
+        routine: "http-community-changes",
+        draftVersion: "http-community-changes-draft",
+        row: "http-community-changes-row",
+        name: "HTTP community changes",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      const versions = new RoutineVersionsRepository(storage);
+      const v2 = await versions.savePublishedVersion({
+        id: id("http-cc-v2"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "HTTP community changes v2",
+        copyFromVersionId: v1.id,
+        changeSummary: "Row one\nRow two",
+      });
+      await versions.savePublishedVersion({
+        id: id("http-cc-v3"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "HTTP community changes v3",
+        copyFromVersionId: v2.id,
+      });
+
+      const detailUrl = `${BASE}${routineDetailsPath(routineId)}`;
+      const response = await handleRequest(
+        new Request(detailUrl, { headers: { cookie } }),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        community_change_list: {
+          entries: { version_number: number; change_summary: string | null }[];
+        } | null;
+        personal_changes: unknown;
+      };
+      expect(body.community_change_list).toEqual({
+        entries: [
+          { version_number: 2, change_summary: "Row one\nRow two" },
+          { version_number: 3, change_summary: null },
+        ],
+      });
+      expect(body.personal_changes).toMatchObject({
+        baseline_available: true,
+        change_count: 0,
+      });
+    } finally {
+      storage.close();
+    }
+  });
 });

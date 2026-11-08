@@ -219,7 +219,7 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
         your_change_positions: [0],
       });
       expect(editedDetails.community_change_list).toEqual({
-        status: "held_pending_design",
+        entries: [{ version_number: 2, change_summary: null }],
       });
 
       const adopt = await service.adoptCommunityVersion(saver, routineId);
