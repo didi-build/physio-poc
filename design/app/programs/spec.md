@@ -30,6 +30,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Library update prompt | "Library update for {exercise}": "Programs aren't updated on their own. Update it, or keep your original." with "Update to vN" / "Keep my original" |
 | Publish to the live link? | Program card (name, code, exercise count); "Program name (required)" field on a first publish or when the program has no name; "First publish" or "Changes since {time}"; Share link with Copy (or "No link yet..." on a first publish or closed link); Link expires (1 week, 30 days, 90 days, 1 year default, Never, Pick a date); "Publish now" / "Not yet" |
 | Name required | Empty name: red field, "Add a program name to publish. Use something you will recognise, not the patient's name.", Publish now disabled |
+| Placeholders block publish (DIDI-1186) | Any exercise row still a placeholder ("Pending review"): the Publish sheet shows an amber notice listing each placeholder with "Review draft" and Remove, and Publish now is disabled. Same treatment on first publish, republish and Use for a patient. See "Publish blocked by placeholders (DIDI-1186)" below |
 | Use for a patient | From a routine: the copy is created (code, routine name prefilled) and the practitioner lands on the Publish sheet. Publish now creates the link; Not yet keeps it as a draft ("Kept as a draft. Find it in Programs by name or code {code}.") and it shows in Programs as "Not published yet" |
 | Sent copy | Opening a sent program from Programs edits only that patient's copy |
 | Delete | Sheet "Delete this program?": moves to Recently deleted, restorable for 30 days, closes its share link |
@@ -174,6 +175,86 @@ Removed: the visible up and down buttons. Their names live on only as the screen
 - **Remove:** the visible up and down buttons in `src/ui/programs/ProgramBuilderRowCard.tsx` (lines 187 to 204 on main f4c0ab1), their icons (lines 41 to 71), the row card's `tabIndex` and arrow-key handler (lines 126 to 139). Change `reorderRowAriaLabel` in `src/ui/copy/programs.ts` (lines 236 to 237) to the approved grip name, with `{n}` as the current position.
 - **Tests that reference the up and down buttons or the old label** (on main f4c0ab1): `test/ui/programs-builder-dev-verify.test.tsx` lines 183, 536, 539 and 770 (name `/Reorder Alpha move, position .../`) and line 534 (checks the decorative grip `.pg-row-grip svg`); `test/ui/programs-qa-round1.test.tsx` line 502; `test/ui/programs-builder-actions.test.tsx` lines 178 and 212. They find the buttons by the old label and click them, so they need to move to the screen reader only actions ("Move {name} up" / "Move {name} down"), Shift+arrow on the grip, or the shared reorder action.
 - **Drag library (a note, not a decision):** package.json has no drag library (dependencies are react, react-dom, react-router-dom and the Better Auth and MCP packages). The v12 source does drag with native pointer events, a 280 ms timer and pointer capture, in about 30 lines, and Shift+arrow is a few lines on the grip's key handler. Native pointer events look like the smaller path. dnd-kit (@dnd-kit/core plus @dnd-kit/sortable) would add packages and its keyboard sensor uses Space to pick up and plain arrows to move, which would need changing to match Shift+arrow. Developer's call.
+
+## Publish blocked by placeholders (DIDI-1186)
+
+Locked Product direction (DIDI-594, decision DIDI-1088). Diadem, Nov 8, 2026, 1:45 PM ET, verbatim:
+
+> Block publish until every placeholder is approved or removed.
+
+Variant D. Diadem, Nov 8, 2026, 1:55 PM ET, verbatim: "Go with D". Copy, 1:56 PM ET, verbatim: "Yes, approve all of D's wording". Locked by CTO on DIDI-594, confirmation comment b196ba23 on DIDI-1186. Design: https://designs.magicpath.ai/v1/wisely-road-5070 (MagicPath project 470251620010196992).
+
+### Rule
+
+| Case | Behaviour |
+| -- | -- |
+| Any placeholder remains | Publish is blocked. Placeholders are never published and never silently left out |
+| Every placeholder approved or removed | The placeholder block clears. Publish now stays subject to every other publish requirement, for example the required program name ("Name required" above). An empty placeholder list alone does not enable Publish now |
+| Blocked publish | The live snapshot and the live link stay unchanged. No link is created or updated, and expiry is not applied, as a side effect |
+| Review draft | Only opens that exercise's draft for review. It never approves anything and never implies automatic approval |
+| Remove | Removes only that row from this program (same action as the row's existing Remove {name}). Nothing else changes |
+
+### Where it shows
+
+The existing "Publish to the live link?" sheet (WebAppClickableConcept.tsx :1381-1420) gains a placeholder notice directly under the program card (:1385). Everything else in the sheet is unchanged.
+
+| Scenario | Behaviour |
+| -- | -- |
+| First publish | Notice under the program card, then "Program name (required)", "First publish", the "No link yet. Publishing creates it, ready to copy and send." share link box and Link expires, as today. Publish now disabled while any placeholder remains. Not yet keeps the draft ("Kept as a draft. Find it in Programs by name or code {code}.") |
+| Republish | Notice under the program card, ending with the existing line "Not live yet. Your patient still sees the version published {pub.at}." (spec.md:511). "Changes since {time}", the current share link with Copy and Link expires render as today. The patient keeps seeing the last published version on the same link |
+| Use for a patient | Unchanged landing (Oct 25 lock): the copy is created and the practitioner lands on the Publish sheet. If the routine's exercises include placeholders, the sheet shows the same notice as First publish. Not yet keeps the draft as today |
+
+Notice contents, in order:
+1. Heading with the alert icon (I.alert): "Approve or remove placeholders to publish".
+2. Body: "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." For one: "One exercise is a placeholder. Approve each draft or remove it from this program, then publish."
+3. One list item per placeholder: exercise name, the existing "Pending review" badge, "Review draft" link button, Remove icon button.
+4. Republish only: "Not live yet. Your patient still sees the version published {pub.at}."
+
+When the last placeholder is removed or approved, the heading switches to the check icon (I.check, text-teal-700) and "No placeholders left. You can publish.", the body and list go away, and Publish now follows the other publish requirements.
+
+### 390 px and 1280 px
+
+Tokens are existing ones from design/reference/web-app/generated/WebAppClickableConcept.tsx. No new values.
+
+| Element | 390 px (phone, mobile first) | 1280 px (desktop) | Source |
+| -- | -- | -- | -- |
+| Sheet | Bottom sheet, `rounded-t-3xl`, grabber, `max-h-[88vh]` | Centered dialog, `lg:max-w-lg lg:rounded-3xl` | Sheet :148-160 |
+| Notice container | `mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900` (layout of the "Before you publish" box :1765, amber tones of Badge amber :133) | same | :1765, :133 |
+| Heading | `flex items-start gap-1.5 font-semibold`, icon `mt-0.5 h-4 w-4 shrink-0` | same | :1389 |
+| List | `mt-2 divide-y divide-amber-200`, rows `flex flex-wrap items-center gap-2 py-2`; on 390 the name wraps above the actions | single line per row | :133 tones |
+| Review draft | `linkBtn` (:65), min-h-11 touch target | same | :65 |
+| Remove | `iconBtn` (:64), 44 px target | same | :64, :1330 |
+| Pending review badge | `Badge tone="amber"` | same | :132-134, :1326 |
+| Republish line | `mt-2 text-xs text-amber-800` | same | :1334 |
+| Footer buttons | `flex-col-reverse`, `min-h-12` | `lg:flex-row lg:justify-end`, `lg:min-h-11` | :1382 |
+| Disabled Publish now | `primary` with `disabled:cursor-not-allowed disabled:opacity-50` | same | :59-60 |
+
+### Accessibility
+
+- **Notice role: `role="status"` on the notice section, labelled by its heading (`aria-labelledby`).** Why: in this spec `role="alert"` is used for errors caused by the practitioner's own input or a failure (name required at :1389, save failure "alert once", spec.md:55). The placeholder block is a known condition present when the sheet opens, not an error from an action, so it is announced politely after the dialog title instead of interrupting it.
+- **Publish now:** `disabled` while any placeholder remains (same as the name rule), plus `aria-describedby` pointing at the notice id, so the reason is read with the button. Once the list is empty, `aria-describedby` is removed and the button follows the other publish requirements (for example it stays disabled with the name help if the name is empty).
+- **Removal announcement:** a polite live region (`aria-live="polite"`, sr-only) inside the notice says "Removed {name} from this program." and, when the list becomes empty, also "No placeholders left. You can publish."
+- **Focus on open:** unchanged (sheet heading, existing Sheet behaviour).
+- **Focus after Remove:** moves to the next placeholder's "Review draft" (or the previous one if it was the last row). When the list empties, focus moves to the notice heading ("No placeholders left. You can publish.", `tabIndex={-1}`) so the practitioner hears the state, then continues to Publish now.
+- **Focus after Review draft:** the draft opens for review. On return to the sheet, focus goes back to that row's "Review draft" if it is still a placeholder; if it was approved, focus follows the Remove rule above.
+- **Accessible names:** "Review draft for {name}"; Remove uses the existing "Remove {name}"; the notice is named by its heading "Approve or remove placeholders to publish" (or "No placeholders left. You can publish.").
+- No automatic approval, omission or publication anywhere in this flow.
+
+### Approved copy (Diadem, Nov 8, 2026, 1:56 PM ET)
+
+| Element | String |
+| -- | -- |
+| Notice heading | Approve or remove placeholders to publish |
+| Notice body, {n} | {n} exercises are placeholders. Approve each draft or remove it from this program, then publish. |
+| Notice body, one | One exercise is a placeholder. Approve each draft or remove it from this program, then publish. |
+| Row action | Review draft |
+| Row action, accessible name | Review draft for {name} |
+| After a removal (live region) | Removed {name} from this program. |
+| List empty | No placeholders left. You can publish. |
+
+Reused verbatim, unchanged: "Publish to the live link?", "Publish now", "Not yet", "Pending review", "Remove {name}", "Placeholder. It links to the real exercise once you approve the draft.", "Not live yet. Your patient still sees the version published {pub.at}.", "Kept as a draft. Find it in Programs by name or code {code}.".
+
+DIDI-1105 (type-mismatch messaging after approval) is separate and unchanged.
 
 ## Mockups
 
@@ -677,8 +758,19 @@ Every user-facing string in the parts of the approved source that render this fe
 - Move {name} up (screen reader only)
 - Move {name} down (screen reader only)
 
+### Approved Nov 8, 2026, 1:56 PM ET (DIDI-1186)
+
+- Approve or remove placeholders to publish
+- {n} exercises are placeholders. Approve each draft or remove it from this program, then publish.
+- One exercise is a placeholder. Approve each draft or remove it from this program, then publish.
+- Review draft
+- Review draft for {name} (accessible name)
+- Removed {name} from this program.
+- No placeholders left. You can publish.
+
 ## Changes
 
+- **Nov 8, 2026**: DIDI-1186. Diadem (1:45 PM ET, locked on DIDI-594): "Block publish until every placeholder is approved or removed." Variant D, "Go with D" (1:55 PM ET); copy, "Yes, approve all of D's wording" (1:56 PM ET). Locked by CTO, comment b196ba23. The Publish sheet lists placeholders with Review draft and Remove; Publish now stays disabled while any remain and still follows every other publish requirement; Review draft never approves; a blocked publish leaves the live snapshot and link unchanged. https://linear.app/didi-build/issue/DIDI-1186, https://linear.app/didi-build/issue/DIDI-594
 - **Nov 7, 2026**: DIDI-1178. Diadem (America/Toronto, locked on DIDI-594): on the Programs list, search and origin filters stay above empty-state messaging during initial loading, zero programs and zero matches, the same pattern as the Exercises page. https://linear.app/didi-build/issue/DIDI-1178
 - **Oct 31, 2026**: DIDI-1152. Diadem (1:19 PM ET): keep drag and drop, add Shift with the up and down arrow keys. Diadem (1:28 PM ET): approved the grip name and the move read-out, removed the up and down buttons, hint unchanged. Diadem (1:30 PM ET): screen reader only "Move {name} up" and "Move {name} down" actions on the grip. https://linear.app/didi-build/issue/DIDI-1152
 - **Oct 31, 2026**: Spec alignment: the library updates flag reads "1 library update to review" for one and "{n} library updates to review" for more, as in approved mockups 01, 29 and 05. https://linear.app/didi-build/issue/DIDI-1144
