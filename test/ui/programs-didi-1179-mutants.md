@@ -1,6 +1,6 @@
 # DIDI-1179 mutation table (Programs persistent list controls)
 
-Generated from actual `npm test` runs on branch `cursor/programs-persistent-controls-57e2` (each mutant applied alone to `src/ui/programs/ProgramsListPage.tsx`, then full suite, then `cp /tmp/pg-good.tsx` restore). Baseline after the fix: `197` files passed, `2115` passed, `4` skipped.
+Generated from actual `npm test` runs on branch `cursor/programs-persistent-controls-57e2` (each mutant applied alone to `src/ui/programs/ProgramsListPage.tsx`, then full suite, then `cp /tmp/pg-good.tsx` restore). Mutants captured at `c1153e5` (baseline `197` files, `2115` passed, `4` skipped). Post-merge `0f7fd3f` did not change `ProgramsListPage.tsx` (harness conflict resolution only).
 
 | ID  | Mutant                                                     | Result     | Full suite summary                       | Layout / pin signal                                                    |
 | --- | ---------------------------------------------------------- | ---------- | ---------------------------------------- | ---------------------------------------------------------------------- |
