@@ -6,6 +6,7 @@ import type {
   RoutineExerciseRow,
 } from "../../services/routines/types.js";
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { routineDetailKey } from "../api/navigation-read-cache-keys.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
@@ -32,6 +33,8 @@ export function RoutineMyCopyEditorPage() {
   const [mutationFailed, setMutationFailed] = useState(false);
   const [dirty, setDirty] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionState = usePractitionerSession();
+  const sessionReady = sessionState.status === "ready";
   const cacheKey =
     routineId.length > 0 && sessionEpoch
       ? routineDetailKey(sessionEpoch, routineId)
@@ -42,8 +45,8 @@ export function RoutineMyCopyEditorPage() {
     loadFailed,
   } = useSessionCachedRead<RoutineDetailsResult>({
     cacheKey,
-    enabled: routineId.length > 0 && sessionEpoch.length > 0,
-    fetcher: () => client.getRoutineDetails(routineId),
+    enabled: routineId.length > 0 && sessionReady,
+    fetcher: (signal) => client.getRoutineDetails(routineId, { signal }),
     retainOnError: true,
   });
 
@@ -51,6 +54,14 @@ export function RoutineMyCopyEditorPage() {
     setRows(details?.my_copy?.rows ?? []);
     setDirty(false);
   }, [details]);
+
+  if (sessionState.status === "error") {
+    return (
+      <section className="ex-page rt-my-copy" aria-labelledby="rt-my-copy-heading">
+        <ExerciseLibraryDetailErrorSlot />
+      </section>
+    );
+  }
 
   const showContent = !loading && !loadFailed && details?.my_copy;
 

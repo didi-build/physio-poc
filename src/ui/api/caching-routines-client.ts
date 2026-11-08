@@ -1,10 +1,6 @@
 import type { RoutineExerciseRow } from "../../services/routines/types.js";
 import type { RoutineMutationUndo } from "../../services/routines/types.js";
-import type {
-  CommunitySearchParams,
-  MyRoutinesListParams,
-  RoutinesClient,
-} from "./routines-client.js";
+import type { RoutinesClient } from "./routines-client.js";
 import { invalidateAfterRoutineLibraryMutation } from "./navigation-read-cache-invalidation.js";
 
 function withRoutineInvalidation<T>(
@@ -21,9 +17,10 @@ export function wrapRoutinesClientWithCacheInvalidation(
   inner: RoutinesClient,
 ): RoutinesClient {
   return {
-    searchCommunity: (params: CommunitySearchParams) => inner.searchCommunity(params),
-    listMyRoutines: (params?: MyRoutinesListParams) => inner.listMyRoutines(params),
-    getRoutineDetails: (routineId: string) => inner.getRoutineDetails(routineId),
+    searchCommunity: (params, options) => inner.searchCommunity(params, options),
+    listMyRoutines: (params, options) => inner.listMyRoutines(params, options),
+    getRoutineDetails: (routineId, options) =>
+      inner.getRoutineDetails(routineId, options),
     saveToMyRoutines: (routineId: string) =>
       withRoutineInvalidation(routineId, () => inner.saveToMyRoutines(routineId)),
     removeFromMyRoutines: (routineId: string) =>

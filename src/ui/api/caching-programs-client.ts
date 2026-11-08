@@ -1,4 +1,3 @@
-import type { ProgramOriginFilter } from "../../services/programs/types.js";
 import type { ProgramsClient } from "./programs-client.js";
 import {
   invalidateAfterProgramBuilderMutation,
@@ -17,11 +16,12 @@ export function wrapProgramsClientWithCacheInvalidation(
   inner: ProgramsClient,
 ): ProgramsClient {
   return {
-    listPrograms: (searchQuery?: string, originFilter?: ProgramOriginFilter) =>
-      inner.listPrograms(searchQuery, originFilter),
-    getProgramByCode: (programCode: string) => inner.getProgramByCode(programCode),
-    listDeletedPrograms: () => inner.listDeletedPrograms(),
-    getProgram: (programId: string) => inner.getProgram(programId),
+    listPrograms: (searchQuery, originFilter, options) =>
+      inner.listPrograms(searchQuery, originFilter, options),
+    getProgramByCode: (programCode, options) =>
+      inner.getProgramByCode(programCode, options),
+    listDeletedPrograms: (options) => inner.listDeletedPrograms(options),
+    getProgram: (programId, options) => inner.getProgram(programId, options),
     createProgram: (input) =>
       withProgramsListInvalidation(() => inner.createProgram(input)),
     updateProgramName: (programId, name) =>

@@ -89,7 +89,7 @@ export function ExerciseDetailsPage() {
   } = useSessionCachedRead<ExerciseDetailsResult>({
     cacheKey,
     enabled: sessionReady && exerciseId.length > 0,
-    fetcher: () => client.getExerciseDetails(exerciseId),
+    fetcher: (signal) => client.getExerciseDetails(exerciseId, { signal }),
     retainOnError: true,
   });
 

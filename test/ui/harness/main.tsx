@@ -55,7 +55,6 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
   }
 
   const fixture = harnessFixture(fixtureId);
-  resetHarnessNavReadCounts();
   return (
     <MemoryRouter initialEntries={fixture.initialEntries}>
       <PhysioApp
@@ -81,6 +80,8 @@ if (!rootEl) {
 
 const fixtureParam = new URLSearchParams(window.location.search).get("fixture");
 const fixtureId = (fixtureParam ?? "request-form") as HarnessFixtureId;
+
+resetHarnessNavReadCounts();
 
 createRoot(rootEl).render(
   <StrictMode>

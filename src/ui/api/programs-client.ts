@@ -7,6 +7,7 @@ import type {
   ProgramSearchResult,
 } from "../../services/programs/types.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
   PROGRAMS_API_BASE,
   programPath,
@@ -59,22 +60,28 @@ export class ProgramsClient {
   listPrograms(
     searchQuery?: string,
     originFilter: ProgramOriginFilter = "all",
+    options?: ReadRequestOptions,
   ): Promise<ProgramSearchResult> {
     const path = programsCollectionPath(searchQuery, originFilter);
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<ProgramSearchResult>(response),
     );
   }
 
-  getProgramByCode(programCode: string): Promise<ProgramBuilderView> {
-    return this.fetchFn(programByCodePath(programCode), { method: "GET" }).then(
+  getProgramByCode(
+    programCode: string,
+    options?: ReadRequestOptions,
+  ): Promise<ProgramBuilderView> {
+    return this.fetchFn(programByCodePath(programCode), readGetInit(options)).then(
       (response) => readJson<ProgramBuilderView>(response),
     );
   }
 
-  listDeletedPrograms(): Promise<{ items: ProgramListItem[] }> {
-    return this.fetchFn(programsDeletedListPath(), { method: "GET" }).then((response) =>
-      readJson<{ items: ProgramListItem[] }>(response),
+  listDeletedPrograms(
+    options?: ReadRequestOptions,
+  ): Promise<{ items: ProgramListItem[] }> {
+    return this.fetchFn(programsDeletedListPath(), readGetInit(options)).then(
+      (response) => readJson<{ items: ProgramListItem[] }>(response),
     );
   }
 
@@ -94,8 +101,11 @@ export class ProgramsClient {
     ).then((response) => readJson<ProgramMutationResult>(response));
   }
 
-  getProgram(programId: string): Promise<ProgramBuilderView> {
-    return this.fetchFn(programPath(programId), { method: "GET" }).then((response) =>
+  getProgram(
+    programId: string,
+    options?: ReadRequestOptions,
+  ): Promise<ProgramBuilderView> {
+    return this.fetchFn(programPath(programId), readGetInit(options)).then((response) =>
       readJson<ProgramBuilderView>(response),
     );
   }

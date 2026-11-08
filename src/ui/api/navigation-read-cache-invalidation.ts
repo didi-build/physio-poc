@@ -26,7 +26,11 @@ export function invalidateAfterExerciseRequestMutation(): void {
 export function invalidateAfterRoutineLibraryMutation(routineId?: string): void {
   const cache = getSessionReadCache();
   cache.invalidateMatching(
-    (key) => isRoutinesListKey(key) || isRoutineDetailKey(key, routineId),
+    (key) =>
+      isRoutinesListKey(key) ||
+      isRoutineDetailKey(key, routineId) ||
+      isProgramsListKey(key) ||
+      isProgramBuilderKey(key),
   );
 }
 

@@ -104,7 +104,11 @@ describe("Programs DIDI-1141 wiring (integration, jsdom)", () => {
     await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE });
     await userEvent.click(screen.getByRole("button", { name: FILTER_FROM_SCRATCH }));
     await waitFor(() => {
-      expect(listPrograms).toHaveBeenCalledWith(undefined, "from_scratch");
+      expect(listPrograms).toHaveBeenCalledWith(
+        undefined,
+        "from_scratch",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
     });
   });
 

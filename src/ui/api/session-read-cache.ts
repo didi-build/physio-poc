@@ -20,6 +20,18 @@ export type SessionReadCacheFetchResult<T> =
 
 export type SessionReadCacheLoader<T> = (signal?: AbortSignal) => Promise<T>;
 
+export type SessionReadCacheConsumerLease = {
+  readonly key: SessionReadCacheKey;
+  readonly inFlightId: number;
+  readonly token: symbol;
+};
+
+export type SessionReadCacheFetchHandleOptions = {
+  force?: boolean;
+  /** Called when this caller is tied to a specific in-flight row (for idempotent release). */
+  registerConsumer?: (lease: SessionReadCacheConsumerLease) => void;
+};
+
 export type SessionReadCacheOptions = {
   /** Maximum stored success entries (LRU eviction). */
   maxEntries?: number;
@@ -34,11 +46,13 @@ export type SessionReadCacheOptions = {
 type CacheBucket<T = unknown> = SessionReadCacheSuccess<T>;
 
 type InFlightEntry = {
+  inFlightId: number;
   promise: Promise<unknown>;
   sessionEpoch: number;
-  consumers: number;
   generation: number;
   abortController: AbortController;
+  consumerCount: number;
+  consumerTokens: Set<symbol>;
 };
 
 export const DEFAULT_SESSION_READ_CACHE_MAX_ENTRIES = 192;
@@ -73,10 +87,71 @@ function stableKeyPart(value: unknown): string {
 }
 
 export function estimateSessionReadCachePayloadBytes(value: unknown): number {
+  const seen = new WeakSet<object>();
+  const encode = new TextEncoder();
+
+  const measure = (node: unknown, depth: number): number => {
+    if (depth > 48) {
+      return 64;
+    }
+    if (node === undefined) {
+      return 0;
+    }
+    if (node === null) {
+      return 4;
+    }
+    const kind = typeof node;
+    if (kind === "string") {
+      return encode.encode(node as string).length;
+    }
+    if (kind === "number" || kind === "boolean") {
+      return encode.encode(String(node)).length;
+    }
+    if (kind !== "object") {
+      return encode.encode(String(node)).length;
+    }
+    const obj = node as object;
+    if (seen.has(obj)) {
+      return 8;
+    }
+    seen.add(obj);
+    if (node instanceof Date) {
+      return encode.encode(node.toISOString()).length;
+    }
+    if (node instanceof Set) {
+      let total = 6;
+      for (const item of node) {
+        total += measure(item, depth + 1);
+      }
+      return total;
+    }
+    if (node instanceof Map) {
+      let total = 6;
+      for (const [key, val] of node) {
+        total += measure(key, depth + 1) + measure(val, depth + 1);
+      }
+      return total;
+    }
+    if (Array.isArray(node)) {
+      let total = 2;
+      for (const item of node) {
+        total += measure(item, depth + 1) + 1;
+      }
+      return total;
+    }
+    let total = 2;
+    for (const [key, val] of Object.entries(node as Record<string, unknown>)) {
+      total += encode.encode(key).length + measure(val, depth + 1) + 2;
+    }
+    return total;
+  };
+
   try {
-    return new TextEncoder().encode(JSON.stringify(value)).length;
+    const approx = measure(value, 0);
+    const json = encode.encode(JSON.stringify(value)).length;
+    return Math.max(approx, json);
   } catch {
-    return 1024;
+    return measure(value, 0) || 1024;
   }
 }
 
@@ -103,6 +178,7 @@ export class SessionReadCache {
   private retainedBytes = 0;
   private readonly inFlight = new Map<SessionReadCacheKey, InFlightEntry>();
   private readonly keyInvalidationGeneration = new Map<SessionReadCacheKey, number>();
+  private nextInFlightId = 1;
 
   constructor(options: SessionReadCacheOptions = {}) {
     this.maxEntries = options.maxEntries ?? DEFAULT_SESSION_READ_CACHE_MAX_ENTRIES;
@@ -116,6 +192,10 @@ export class SessionReadCache {
 
   getSessionEpoch(): string {
     return this.sessionEpoch;
+  }
+
+  getSessionGeneration(): number {
+    return this.sessionGeneration;
   }
 
   /**
@@ -162,10 +242,54 @@ export class SessionReadCache {
   /**
    * Read-through GET with in-flight dedupe. Valid hits do not revalidate in the background.
    */
+  private attachConsumer(
+    key: SessionReadCacheKey,
+    entry: InFlightEntry,
+  ): SessionReadCacheConsumerLease {
+    const token = Symbol("session-read-cache-consumer");
+    entry.consumerTokens.add(token);
+    entry.consumerCount += 1;
+    return { key, inFlightId: entry.inFlightId, token };
+  }
+
+  /** Idempotent: only affects the in-flight row identified by the lease. */
+  releaseConsumer(lease: SessionReadCacheConsumerLease): void {
+    const entry = this.inFlight.get(lease.key);
+    if (!entry || entry.inFlightId !== lease.inFlightId) {
+      return;
+    }
+    if (!entry.consumerTokens.delete(lease.token)) {
+      return;
+    }
+    entry.consumerCount = Math.max(0, entry.consumerCount - 1);
+    if (entry.consumerCount === 0) {
+      entry.abortController.abort();
+    }
+  }
+
+  private withManagedConsumer(
+    key: SessionReadCacheKey,
+    entry: InFlightEntry,
+    options: SessionReadCacheFetchHandleOptions | undefined,
+    run: (
+      lease: SessionReadCacheConsumerLease,
+    ) => Promise<SessionReadCacheFetchResult<unknown>>,
+  ): Promise<SessionReadCacheFetchResult<unknown>> {
+    const lease = this.attachConsumer(key, entry);
+    options?.registerConsumer?.(lease);
+    const autoRelease = options?.registerConsumer === undefined;
+    const finalize = () => {
+      if (autoRelease) {
+        this.releaseConsumer(lease);
+      }
+    };
+    return run(lease).finally(finalize);
+  }
+
   async fetch<T>(
     key: SessionReadCacheKey,
     loader: SessionReadCacheLoader<T>,
-    options?: { force?: boolean },
+    options?: SessionReadCacheFetchHandleOptions,
   ): Promise<SessionReadCacheFetchResult<T>> {
     if (!this.sessionEpoch) {
       try {
@@ -184,30 +308,28 @@ export class SessionReadCache {
       }
     }
 
-    const existing = this.inFlight.get(key);
+    const existing = !force ? this.inFlight.get(key) : undefined;
     if (existing && existing.sessionEpoch === this.sessionGeneration) {
-      existing.consumers += 1;
-      try {
-        const data = (await existing.promise) as T;
-        return { status: "ok", data, fromCache: false };
-      } catch (error) {
-        const hadValidCache = this.buckets.has(key);
-        if (this.isSupersededError(error)) {
+      return (await this.withManagedConsumer(key, existing, options, async () => {
+        try {
+          const data = (await existing.promise) as T;
+          return { status: "ok", data, fromCache: false };
+        } catch (error) {
+          const hadValidCache = this.buckets.has(key);
+          if (this.isSupersededError(error)) {
+            const hit = this.peekSuccess<T>(key);
+            if (hit) {
+              return { status: "ok", data: hit.data, fromCache: true };
+            }
+            return { status: "superseded", hadValidCache };
+          }
           const hit = this.peekSuccess<T>(key);
           if (hit) {
             return { status: "ok", data: hit.data, fromCache: true };
           }
-          return { status: "superseded", hadValidCache };
+          return { status: "error", fromCache: false, hadValidCache };
         }
-        const hit = this.peekSuccess<T>(key);
-        if (hit) {
-          return { status: "ok", data: hit.data, fromCache: true };
-        }
-        return { status: "error", fromCache: false, hadValidCache };
-      } finally {
-        existing.consumers = Math.max(0, existing.consumers - 1);
-        this.maybeAbortIdleInFlight(key, existing);
-      }
+      })) as SessionReadCacheFetchResult<T>;
     }
 
     if (this.inFlight.size >= this.maxInFlight) {
@@ -235,55 +357,57 @@ export class SessionReadCache {
         return data;
       } catch (error) {
         if (this.isAbortError(error) || error instanceof SessionReadCacheAbortedError) {
-          throw new SessionReadCacheSupersededError();
+          throw new SessionReadCacheCancelledError();
         }
         throw error;
       }
     })();
 
     const entry: InFlightEntry = {
+      inFlightId: this.nextInFlightId++,
       promise,
       sessionEpoch: captureGeneration,
-      consumers: 1,
       generation: keyGen,
       abortController,
+      consumerCount: 0,
+      consumerTokens: new Set(),
     };
+    const prior = this.inFlight.get(key);
+    if (prior) {
+      prior.abortController.abort();
+    }
     this.inFlight.set(key, entry);
 
-    try {
-      const data = (await promise) as T;
-      return { status: "ok", data, fromCache: false };
-    } catch (error) {
-      if (this.isSupersededError(error)) {
+    return (await this.withManagedConsumer(key, entry, options, async () => {
+      try {
+        const data = (await promise) as T;
+        return { status: "ok", data, fromCache: false };
+      } catch (error) {
+        if (
+          error instanceof SessionReadCacheStaleError ||
+          error instanceof SessionReadCacheCancelledError
+        ) {
+          const hit = this.peekSuccess<T>(key);
+          if (hit) {
+            return { status: "ok", data: hit.data, fromCache: true };
+          }
+          if (error instanceof SessionReadCacheCancelledError) {
+            return { status: "superseded", hadValidCache };
+          }
+          return { status: "superseded", hadValidCache };
+        }
         const hit = this.peekSuccess<T>(key);
         if (hit) {
           return { status: "ok", data: hit.data, fromCache: true };
         }
-        return { status: "superseded", hadValidCache };
+        return { status: "error", fromCache: false, hadValidCache };
+      } finally {
+        const current = this.inFlight.get(key);
+        if (current?.promise === promise) {
+          this.inFlight.delete(key);
+        }
       }
-      const hit = this.peekSuccess<T>(key);
-      if (hit) {
-        return { status: "ok", data: hit.data, fromCache: true };
-      }
-      return { status: "error", fromCache: false, hadValidCache };
-    } finally {
-      const current = this.inFlight.get(key);
-      if (current?.promise === promise) {
-        this.inFlight.delete(key);
-      }
-      entry.consumers = Math.max(0, entry.consumers - 1);
-      this.maybeAbortIdleInFlight(key, entry);
-    }
-  }
-
-  /** Decrement in-flight consumer count (e.g. hook unmount). May abort the network read when no consumers remain. */
-  releaseInFlightConsumer(key: SessionReadCacheKey): void {
-    const entry = this.inFlight.get(key);
-    if (!entry) {
-      return;
-    }
-    entry.consumers = Math.max(0, entry.consumers - 1);
-    this.maybeAbortIdleInFlight(key, entry);
+    })) as SessionReadCacheFetchResult<T>;
   }
 
   invalidate(keys: Iterable<SessionReadCacheKey>): void {
@@ -320,18 +444,8 @@ export class SessionReadCache {
   private isSupersededError(error: unknown): boolean {
     return (
       error instanceof SessionReadCacheStaleError ||
-      error instanceof SessionReadCacheSupersededError
+      error instanceof SessionReadCacheCancelledError
     );
-  }
-
-  private maybeAbortIdleInFlight(key: SessionReadCacheKey, entry: InFlightEntry): void {
-    if (entry.consumers > 0) {
-      return;
-    }
-    const current = this.inFlight.get(key);
-    if (current?.abortController === entry.abortController) {
-      entry.abortController.abort();
-    }
   }
 
   private bumpKeyGeneration(key: SessionReadCacheKey): void {
@@ -431,10 +545,10 @@ export class SessionReadCacheStaleError extends Error {
   }
 }
 
-export class SessionReadCacheSupersededError extends Error {
+export class SessionReadCacheCancelledError extends Error {
   constructor() {
-    super("Session read cache in-flight superseded");
-    this.name = "SessionReadCacheSupersededError";
+    super("Session read cache in-flight cancelled");
+    this.name = "SessionReadCacheCancelledError";
   }
 }
 

@@ -189,14 +189,17 @@ export function ExerciseLibraryPage({
   } = useSessionCachedRead<ExerciseLibrarySnapshot>({
     cacheKey: listCacheKey,
     enabled: sessionReady,
-    fetcher: async () => {
+    fetcher: async (signal) => {
       const trimmed = query.trim();
       if (tab === "mine") {
-        const result = await client.listMyExercises({
-          q: trimmed || undefined,
-          category: apiFilterParams.category,
-          body_region: apiFilterParams.body_region,
-        });
+        const result = await client.listMyExercises(
+          {
+            q: trimmed || undefined,
+            category: apiFilterParams.category,
+            body_region: apiFilterParams.body_region,
+          },
+          { signal },
+        );
         const ids = new Set(
           flattenMySections(result.sections).map((item) => item.exercise_id),
         );
@@ -210,12 +213,15 @@ export function ExerciseLibraryPage({
         };
       }
       const [listResult, searchResult] = await Promise.all([
-        client.listMyExercises(),
-        client.searchApproved({
-          q: trimmed || undefined,
-          ...apiFilterParams,
-          limit: 25,
-        }),
+        client.listMyExercises({}, { signal }),
+        client.searchApproved(
+          {
+            q: trimmed || undefined,
+            ...apiFilterParams,
+            limit: 25,
+          },
+          { signal },
+        ),
       ]);
       const ids = new Set(
         flattenMySections(listResult.sections).map((item) => item.exercise_id),

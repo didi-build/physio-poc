@@ -31,18 +31,18 @@ Keys are `epoch|resource|{sorted params}` via `buildSessionReadCacheKey`. Page-l
 | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Exercise library save/pin/remove/undo/update my copy       | All exercise list/detail keys plus **all** `programs.builder_by_code` (library-update row projections) |
 | Exercise request submit / approve                          | Same as exercise library list invalidation (My exercises “new from requests”)                          |
-| Routine library save/remove/adopt/keep/undo/update my copy | All `routines.community_search`, `routines.my_list`, `routines.page`, and affected `routines.detail`   |
+| Routine library save/remove/adopt/keep/undo/update my copy | Routine list/detail keys plus programs list and **all** `programs.builder_by_code`                     |
 | Program list create/restore/delete                         | All `programs.list`, `programs.list_deleted`, `programs.page`                                          |
 | Program builder row/name/publish/library-update mutations  | Above list keys plus matching `programs.builder_by_code` when code is known                            |
 
 ### Paths intentionally not invalidated (no cached read on write path)
 
-| Surface                                | Rationale                                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `ExerciseRequests` draft `PATCH`       | Draft review uses per-request GET, not navigation list cache.                                                      |
-| `ProgramsNewPage` create then navigate | New builder code has no prior `programs.builder_by_code` entry; list keys invalidated via `createProgram` wrapper. |
-| Exercise media GETs                    | Out of scope (DIDI-1155 `no-store`).                                                                               |
-| My defaults                            | Not part of Exercises/Routines/Programs navigation cache.                                                          |
+| Surface                                          | Rationale                                                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `ExerciseRequests` draft `PATCH` (`updateDraft`) | Draft review uses `getRequest`; covered by `navigation-read-cache-production.integration.test.tsx`.                |
+| `ProgramsNewPage` create then navigate           | New builder code has no prior `programs.builder_by_code` entry; list keys invalidated via `createProgram` wrapper. |
+| Exercise media GETs                              | Out of scope (DIDI-1155 `no-store`).                                                                               |
+| My defaults                                      | Not part of Exercises/Routines/Programs navigation cache.                                                          |
 
 Failed GETs are **not** stored. Load-more or retry after error does not poison prior success entries (`retainOnError` on list/detail hooks).
 

@@ -226,7 +226,11 @@ describe.each([390, 1280])(
         within(shellMain).getByRole("button", { name: FILTER_FROM_SCRATCH }),
       );
       await waitFor(() => {
-        expect(listPrograms).toHaveBeenCalledWith(undefined, "from_scratch");
+        expect(listPrograms).toHaveBeenCalledWith(
+          undefined,
+          "from_scratch",
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
       });
       expect(
         within(shellMain).getByRole("button", {

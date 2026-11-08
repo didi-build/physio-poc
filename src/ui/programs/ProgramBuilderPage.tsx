@@ -17,6 +17,7 @@ import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { useProgramsApi } from "../api/programs-context.js";
 import { programBuilderByCodeKey } from "../api/navigation-read-cache-keys.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
@@ -72,6 +73,7 @@ export function ProgramBuilderPage() {
   programRef.current = program;
   const [loadFailed, setLoadFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
   const [nameDraft, setNameDraft] = useState("");
   const nameDraftRef = useRef(nameDraft);
   nameDraftRef.current = nameDraft;
@@ -175,8 +177,8 @@ export function ProgramBuilderPage() {
     loadFailed: builderLoadFailed,
   } = useSessionCachedRead<ProgramBuilderView>({
     cacheKey: builderCacheKey,
-    enabled: trimmedProgramCode.length > 0 && sessionEpoch.length > 0,
-    fetcher: () => client.getProgramByCode(trimmedProgramCode),
+    enabled: trimmedProgramCode.length > 0 && sessionReady,
+    fetcher: (signal) => client.getProgramByCode(trimmedProgramCode, { signal }),
     retainOnError: true,
   });
 

@@ -1,10 +1,6 @@
 import type { TextOverrideKey } from "../../domain/exercise-text-overrides.js";
 import type { ExerciseMutationUndo } from "../../services/exercise-library/types.js";
-import type {
-  ApprovedSearchParams,
-  ExerciseLibraryClient,
-  MyExercisesListParams,
-} from "./exercise-library-client.js";
+import type { ExerciseLibraryClient } from "./exercise-library-client.js";
 import { invalidateAfterExerciseLibraryMutation } from "./navigation-read-cache-invalidation.js";
 
 function withExerciseInvalidation<T>(
@@ -22,9 +18,10 @@ export function wrapExerciseLibraryClientWithCacheInvalidation(
   inner: ExerciseLibraryClient,
 ): ExerciseLibraryClient {
   return {
-    searchApproved: (params: ApprovedSearchParams) => inner.searchApproved(params),
-    listMyExercises: (params?: MyExercisesListParams) => inner.listMyExercises(params),
-    getExerciseDetails: (exerciseId: string) => inner.getExerciseDetails(exerciseId),
+    searchApproved: (params, options) => inner.searchApproved(params, options),
+    listMyExercises: (params, options) => inner.listMyExercises(params, options),
+    getExerciseDetails: (exerciseId, options) =>
+      inner.getExerciseDetails(exerciseId, options),
     saveToMyExercises: (exerciseId: string) =>
       withExerciseInvalidation(exerciseId, () => inner.saveToMyExercises(exerciseId)),
     setPinned: (exerciseId: string, pinned: boolean) =>

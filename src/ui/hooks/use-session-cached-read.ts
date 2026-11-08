@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionReadCacheKey } from "../api/session-read-cache.js";
+import type {
+  SessionReadCacheConsumerLease,
+  SessionReadCacheKey,
+} from "../api/session-read-cache.js";
 import { getSessionReadCache } from "../api/session-read-cache.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 
@@ -37,6 +40,15 @@ export function useSessionCachedRead<T>(
   const [loading, setLoading] = useState(enabled && initialHit === null);
   const [loadFailed, setLoadFailed] = useState(false);
   const requestIdRef = useRef(0);
+  const activeLeaseRef = useRef<SessionReadCacheConsumerLease | null>(null);
+
+  const releaseActiveLease = useCallback(() => {
+    const lease = activeLeaseRef.current;
+    if (lease) {
+      cache.releaseConsumer(lease);
+      activeLeaseRef.current = null;
+    }
+  }, [cache]);
 
   const refresh = useCallback(
     async (refreshOptions?: { force?: boolean }) => {
@@ -45,6 +57,13 @@ export function useSessionCachedRead<T>(
       }
       const requestId = (requestIdRef.current += 1);
       const force = refreshOptions?.force === true;
+      const epochAtStart = sessionEpoch;
+      const sessionGenerationAtStart = cache.getSessionGeneration();
+
+      const isDisposed = () =>
+        requestId !== requestIdRef.current ||
+        sessionEpoch !== epochAtStart ||
+        cache.getSessionGeneration() !== sessionGenerationAtStart;
 
       if (!canUseCache) {
         if (!cacheKey) {
@@ -52,13 +71,13 @@ export function useSessionCachedRead<T>(
           setLoadFailed(false);
           try {
             const next = await fetcherRef.current(new AbortController().signal);
-            if (requestId !== requestIdRef.current) {
+            if (isDisposed()) {
               return;
             }
             setData(next);
             setLoadFailed(false);
           } catch {
-            if (requestId !== requestIdRef.current) {
+            if (isDisposed()) {
               return;
             }
             if (!retainOnError) {
@@ -66,7 +85,7 @@ export function useSessionCachedRead<T>(
             }
             setLoadFailed(true);
           } finally {
-            if (requestId === requestIdRef.current) {
+            if (!isDisposed()) {
               setLoading(false);
             }
           }
@@ -84,38 +103,68 @@ export function useSessionCachedRead<T>(
 
       let supersededRetries = 0;
       while (supersededRetries <= MAX_SUPERSEDED_RETRIES) {
-        const result = await cache.fetch(
-          cacheKey!,
-          (signal) => fetcherRef.current(signal),
-          {
-            force: force && supersededRetries === 0,
-          },
-        );
-        if (requestId !== requestIdRef.current) {
+        if (isDisposed()) {
+          releaseActiveLease();
           return;
         }
-        if (result.status === "ok") {
-          setData(result.data);
-          setLoadFailed(false);
-          setLoading(false);
-          return;
-        }
-        if (result.status === "superseded") {
-          supersededRetries += 1;
-          const retryHit = cache.peekSuccess<T>(cacheKey!);
-          if (retryHit) {
-            setData(retryHit.data);
+
+        let consumerLease: SessionReadCacheConsumerLease | undefined;
+        try {
+          const result = await cache.fetch(
+            cacheKey!,
+            (signal) => fetcherRef.current(signal),
+            {
+              force: force && supersededRetries === 0,
+              registerConsumer: (lease: SessionReadCacheConsumerLease) => {
+                consumerLease = lease;
+                activeLeaseRef.current = lease;
+              },
+            },
+          );
+          if (isDisposed()) {
+            return;
+          }
+          if (result.status === "ok") {
+            setData(result.data);
             setLoadFailed(false);
             setLoading(false);
             return;
           }
-          continue;
+          if (result.status === "superseded") {
+            supersededRetries += 1;
+            if (isDisposed()) {
+              return;
+            }
+            const retryHit = cache.peekSuccess<T>(cacheKey!);
+            if (retryHit) {
+              setData(retryHit.data);
+              setLoadFailed(false);
+              setLoading(false);
+              return;
+            }
+            continue;
+          }
+          if (!retainOnError || !cached) {
+            setData(null);
+          }
+          setLoadFailed(true);
+          setLoading(false);
+          return;
+        } finally {
+          if (consumerLease) {
+            cache.releaseConsumer(consumerLease);
+            const active = activeLeaseRef.current;
+            if (
+              active &&
+              active.inFlightId === consumerLease.inFlightId &&
+              active.token === consumerLease.token
+            ) {
+              activeLeaseRef.current = null;
+            }
+          }
         }
-        if (!retainOnError || !cached) {
-          setData(null);
-        }
-        setLoadFailed(true);
-        setLoading(false);
+      }
+      if (isDisposed()) {
         return;
       }
       const finalHit = cache.peekSuccess<T>(cacheKey!);
@@ -127,11 +176,20 @@ export function useSessionCachedRead<T>(
       }
       setLoading(false);
     },
-    [cache, cacheKey, canUseCache, enabled, retainOnError],
+    [
+      cache,
+      cacheKey,
+      canUseCache,
+      enabled,
+      releaseActiveLease,
+      retainOnError,
+      sessionEpoch,
+    ],
   );
 
   useEffect(() => {
     requestIdRef.current += 1;
+    releaseActiveLease();
     if (!enabled) {
       setLoading(true);
       return;
@@ -160,16 +218,14 @@ export function useSessionCachedRead<T>(
     }
     setData(null);
     void refresh();
-  }, [cache, cacheKey, canUseCache, enabled, refresh]);
+  }, [cache, cacheKey, canUseCache, enabled, refresh, releaseActiveLease]);
 
   useEffect(() => {
-    if (!cacheKey || !canUseCache) {
-      return undefined;
-    }
     return () => {
-      cache.releaseInFlightConsumer(cacheKey);
+      requestIdRef.current += 1;
+      releaseActiveLease();
     };
-  }, [cache, cacheKey, canUseCache]);
+  }, [releaseActiveLease]);
 
   return { data, loading, loadFailed, refresh };
 }

@@ -83,28 +83,30 @@ export function ProgramsListPage() {
   } = useSessionCachedRead<ProgramsListSnapshot>({
     cacheKey: listCacheKey,
     enabled: sessionReady,
-    fetcher: async () => {
+    fetcher: async (signal) => {
+      const readOpts = { signal };
       const listPromise =
         trimmedQuery.length > 0 || originFilter !== "all"
           ? Promise.all([
               client.listPrograms(
                 trimmedQuery.length > 0 ? trimmedQuery : undefined,
                 originFilter,
+                readOpts,
               ),
-              client.listPrograms(),
+              client.listPrograms(undefined, "all", readOpts),
             ]).then(([filtered, all]) => ({
               items: filtered.items,
               matched_code: filtered.matched_code,
               totalCount: all.items.length,
             }))
-          : client.listPrograms().then((result) => ({
+          : client.listPrograms(undefined, "all", readOpts).then((result) => ({
               items: result.items,
               matched_code: result.matched_code,
               totalCount: result.items.length,
             }));
       const [listResult, deletedResult] = await Promise.all([
         listPromise,
-        client.listDeletedPrograms(),
+        client.listDeletedPrograms(readOpts),
       ]);
       return {
         items: listResult.items,

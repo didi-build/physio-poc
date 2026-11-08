@@ -110,13 +110,14 @@ export function RoutinesPage() {
   } = useSessionCachedRead<RoutinesPageSnapshot>({
     cacheKey: listCacheKey,
     enabled: sessionReady,
-    fetcher: async () => {
+    fetcher: async (signal) => {
+      const readOpts = { signal };
       const apiParams = {
         q: trimmedQuery || undefined,
         ...filterParams,
       };
       if (tab === "all") {
-        const result = await client.searchCommunity(apiParams);
+        const result = await client.searchCommunity(apiParams, readOpts);
         return {
           tab: "all" as const,
           community: result.routines,
@@ -125,7 +126,7 @@ export function RoutinesPage() {
           conditionOptions: result.condition_options,
         };
       }
-      const result = await client.listMyRoutines(apiParams);
+      const result = await client.listMyRoutines(apiParams, readOpts);
       return {
         tab: "mine" as const,
         drafts: result.drafts,

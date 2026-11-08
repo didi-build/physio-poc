@@ -13,6 +13,7 @@ import {
 } from "../../src/ui/api/exercise-library-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
+import { expectReadCacheSignal } from "./navigation-cache-read-expect.js";
 import {
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
@@ -313,7 +314,7 @@ describe("Programs UI (integration, jsdom)", () => {
         screen.getByRole("heading", { name: PROGRAMS_PAGE_TITLE, level: 1 }),
       ).toBeInTheDocument();
     });
-    expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST");
+    expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST", expectReadCacheSignal);
     expect(
       screen.queryByRole("textbox", { name: "Program name" }),
     ).not.toBeInTheDocument();
@@ -332,7 +333,7 @@ describe("Programs UI (integration, jsdom)", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST");
+      expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST", expectReadCacheSignal);
     });
     expect(
       await screen.findByRole("textbox", { name: "Program name" }),

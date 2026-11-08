@@ -51,6 +51,43 @@ describe("SessionReadCache superseded in-flight responses", () => {
     expect(loader).toHaveBeenCalledTimes(1);
   });
 
+  it("unmount does not schedule superseded retry network after dispose", async () => {
+    const cache = new SessionReadCache();
+    setSessionReadCacheForTests(cache);
+    cache.bindSession("00000000-0000-4000-8000-000000000099");
+    const key = buildSessionReadCacheKey("00000000-0000-4000-8000-000000000099", {
+      resource: "hook.unmount",
+    });
+    let calls = 0;
+    const fetcher = vi.fn(() => {
+      calls += 1;
+      return new Promise<string>((resolve) =>
+        setTimeout(() => resolve(`v${calls}`), 80),
+      );
+    });
+
+    function wrapper({ children }: { children: React.ReactNode }) {
+      return (
+        <PractitionerSessionProvider client={stubPractitionerSessionClient()}>
+          <SessionReadCacheProvider>{children}</SessionReadCacheProvider>
+        </PractitionerSessionProvider>
+      );
+    }
+
+    const { unmount } = renderHook(
+      () =>
+        useSessionCachedRead({
+          cacheKey: key,
+          fetcher,
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(calls).toBe(1));
+    unmount();
+    await new Promise((r) => setTimeout(r, 250));
+    expect(calls).toBe(1);
+  });
+
   it("hook retries superseded fetch and does not set loadFailed", async () => {
     const cache = new SessionReadCache();
     setSessionReadCacheForTests(cache);
@@ -127,8 +164,8 @@ describe("SessionReadCache retained byte budget", () => {
   });
 });
 
-describe("SessionReadCache in-flight cancellation", () => {
-  it("aborts the loader when the sole consumer is released before completion", async () => {
+describe("SessionReadCache consumer leases", () => {
+  it("aborts the loader when the sole consumer lease is released before completion", async () => {
     const cache = new SessionReadCache();
     cache.bindSession("p1");
     const key = buildSessionReadCacheKey("p1", { resource: "abort" });
@@ -141,14 +178,23 @@ describe("SessionReadCache in-flight cancellation", () => {
         });
       });
 
-    const inflight = cache.fetch(key, loader);
-    cache.releaseInFlightConsumer(key);
+    let lease:
+      | import("../../src/ui/api/session-read-cache.js").SessionReadCacheConsumerLease
+      | undefined;
+    const inflight = cache.fetch(key, loader, {
+      registerConsumer: (l) => {
+        lease = l;
+      },
+    });
+    if (lease) {
+      cache.releaseConsumer(lease);
+    }
     const result = await inflight;
     expect(aborted).toBe(true);
-    expect(result.status === "superseded" || result.status === "error").toBe(true);
+    expect(result.status).toBe("superseded");
   });
 
-  it("does not abort a shared in-flight read while a second consumer is active", async () => {
+  it("does not abort a shared in-flight read when only one lease is released", async () => {
     const cache = new SessionReadCache();
     cache.bindSession("p1");
     const key = buildSessionReadCacheKey("p1", { resource: "shared" });
@@ -161,17 +207,82 @@ describe("SessionReadCache in-flight cancellation", () => {
         setTimeout(() => resolve("ok"), 40);
       });
 
-    const a = cache.fetch(key, loader);
-    const b = cache.fetch(key, loader);
-    cache.releaseInFlightConsumer(key);
+    let leaseA:
+      | import("../../src/ui/api/session-read-cache.js").SessionReadCacheConsumerLease
+      | undefined;
+    let leaseB:
+      | import("../../src/ui/api/session-read-cache.js").SessionReadCacheConsumerLease
+      | undefined;
+    const a = cache.fetch(key, loader, { registerConsumer: (l) => (leaseA = l) });
+    const b = cache.fetch(key, loader, { registerConsumer: (l) => (leaseB = l) });
+    if (leaseA) {
+      cache.releaseConsumer(leaseA);
+    }
     const [ra, rb] = await Promise.all([a, b]);
     expect(ra.status).toBe("ok");
     expect(rb.status).toBe("ok");
     expect(abortCount).toBe(0);
+    if (leaseB) {
+      cache.releaseConsumer(leaseB);
+    }
+  });
+
+  it("does not abort a newer in-flight row when an older lease is released after it finished", async () => {
+    const cache = new SessionReadCache();
+    cache.bindSession("p1");
+    const key = buildSessionReadCacheKey("p1", { resource: "aba" });
+    let staleLease:
+      | import("../../src/ui/api/session-read-cache.js").SessionReadCacheConsumerLease
+      | undefined;
+    await cache.fetch(key, async () => "first", {
+      registerConsumer: (l) => {
+        staleLease = l;
+      },
+    });
+
+    let aborted = false;
+    const second = cache.fetch(
+      key,
+      (signal) =>
+        new Promise<string>((resolve) => {
+          signal?.addEventListener("abort", () => {
+            aborted = true;
+          });
+          setTimeout(() => resolve("second"), 40);
+        }),
+      { force: true },
+    );
+
+    if (staleLease) {
+      cache.releaseConsumer(staleLease);
+      cache.releaseConsumer(staleLease);
+    }
+
+    const result = await second;
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.data).toBe("second");
+    }
+    expect(aborted).toBe(false);
   });
 });
 
 describe("cross-domain invalidation and production wrappers", () => {
+  it("drops program builder cache keys on routine library mutation", async () => {
+    const cache = new SessionReadCache();
+    setSessionReadCacheForTests(cache);
+    cache.bindSession("p1");
+    const builderKey = buildSessionReadCacheKey("p1", {
+      resource: "programs.builder_by_code",
+      programCode: "PRG-RT",
+    });
+    await cache.fetch(builderKey, () => Promise.resolve({ code: "PRG-RT" }));
+    const { invalidateAfterRoutineLibraryMutation } =
+      await import("../../src/ui/api/navigation-read-cache-invalidation.js");
+    invalidateAfterRoutineLibraryMutation();
+    expect(cache.peekSuccess(builderKey)).toBeNull();
+  });
+
   it("drops program builder cache keys on exercise library mutation", async () => {
     const cache = new SessionReadCache();
     setSessionReadCacheForTests(cache);

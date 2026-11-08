@@ -234,6 +234,7 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         await server.close();
       }
     },
+    60_000,
   );
 
   it.each([390, 1280] as const)(
@@ -290,6 +291,7 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         await server.close();
       }
     },
+    60_000,
   );
 
   it("second practitioner cannot remove owner's copy over HTTP", async () => {
