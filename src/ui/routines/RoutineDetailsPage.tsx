@@ -11,6 +11,7 @@ import {
   usePractitionerSession,
 } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
+import { useProgramsApi } from "../api/programs-context.js";
 import { routineDetailKey } from "../api/navigation-read-cache-keys.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
@@ -53,6 +54,11 @@ import {
   myCopySegmentLabel,
   useVersionN,
 } from "../copy/routines.js";
+import { programCreatedFromRoutineToast } from "../copy/programs.js";
+import {
+  createProgramFromRoutineAtApi,
+  resolveRoutineProgramSource,
+} from "../programs/program-from-routine.js";
 import { ROUTINE_DETAIL_HEADING } from "../copy/routines.js";
 import {
   ExerciseLibraryBusyState,
@@ -83,10 +89,12 @@ function activeRows(
 export function RoutineDetailsPage() {
   const { routineId = "" } = useParams();
   const client = useRoutinesApi();
+  const programsClient = useProgramsApi();
   const practitioner = useCurrentPractitionerIdentity();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [mutationFailed, setMutationFailed] = useState(false);
+  const [routineProgramBusy, setRoutineProgramBusy] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -237,6 +245,39 @@ export function RoutineDetailsPage() {
       })
       .catch(() => {
         setMutationFailed(true);
+      });
+  };
+
+  const startProgramFromRoutine = (openPublishSheet: boolean) => {
+    if (!details) {
+      return;
+    }
+    const apiSource = resolveRoutineProgramSource(saved, source);
+    setMutationFailed(false);
+    setRoutineProgramBusy(true);
+    void createProgramFromRoutineAtApi(programsClient, {
+      routineId,
+      source: apiSource,
+      rowCount: rows.length,
+    })
+      .then((result) => {
+        if (!openPublishSheet) {
+          showToast({ message: programCreatedFromRoutineToast(community.name) });
+        }
+        navigate(
+          fillPhysioAppRoutePattern("programBuilder", {
+            programCode: result.program.code,
+          }),
+          {
+            state: openPublishSheet ? { openPublishSheet: true } : undefined,
+          },
+        );
+      })
+      .catch(() => {
+        setMutationFailed(true);
+      })
+      .finally(() => {
+        setRoutineProgramBusy(false);
       });
   };
 
@@ -454,11 +495,25 @@ export function RoutineDetailsPage() {
 
       <div className="rt-detail-aside">
         <h2>{USE_THIS_ROUTINE}</h2>
-        <button type="button" className="ex-primary-btn" disabled>
+        <button
+          type="button"
+          className="ex-primary-btn"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(true);
+          }}
+        >
           {USE_FOR_PATIENT}
         </button>
         <p className="rt-action-hint">{USE_FOR_PATIENT_HINT}</p>
-        <button type="button" className="ex-secondary-btn" disabled>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(false);
+          }}
+        >
           {CREATE_PROGRAM_FROM_ROUTINE}
         </button>
         <p className="rt-action-hint">{CREATE_PROGRAM_HINT}</p>
@@ -502,10 +557,24 @@ export function RoutineDetailsPage() {
       </div>
 
       <div className="rt-mobile-actions">
-        <button type="button" className="ex-secondary-btn" disabled>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(false);
+          }}
+        >
           {CREATE_PROGRAM}
         </button>
-        <button type="button" className="ex-primary-btn" disabled>
+        <button
+          type="button"
+          className="ex-primary-btn"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(true);
+          }}
+        >
           {USE_FOR_PATIENT}
         </button>
       </div>

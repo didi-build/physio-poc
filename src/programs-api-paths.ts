@@ -67,3 +67,7 @@ export function programRowLibraryUpdateKeepPath(
 ): string {
   return `${programRowPath(programId, rowId)}/library-update/keep`;
 }
+
+export function programsFromRoutinePath(): string {
+  return `${PROGRAMS_API_BASE}/from-routine`;
+}

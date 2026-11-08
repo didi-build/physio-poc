@@ -10,15 +10,18 @@ export type BuilderPublishCardProps = {
   failureAlertShown: boolean;
   showFailureAlert?: boolean;
   publishAllowed: boolean;
+  onPublish: () => void;
   onTryAgain: () => void;
 };
 
 export type BuilderPublishPhoneBarProps = {
   publishAllowed: boolean;
+  onPublish: () => void;
 };
 
 export function BuilderPublishPhoneBar({
   publishAllowed,
+  onPublish,
 }: BuilderPublishPhoneBarProps) {
   return (
     <div className="pg-publish-phone-bar">
@@ -26,6 +29,7 @@ export function BuilderPublishPhoneBar({
         type="button"
         className="pg-btn pg-btn--primary pg-publish-phone-bar-btn"
         disabled={!publishAllowed}
+        onClick={onPublish}
       >
         {PUBLISH}
       </button>
@@ -40,6 +44,7 @@ export function BuilderPublishCard({
   failureAlertShown,
   showFailureAlert = true,
   publishAllowed,
+  onPublish,
   onTryAgain,
 }: BuilderPublishCardProps) {
   const statusLine = formatAutoSaveStatus(autoSaveStatus, publishedAt);
@@ -59,6 +64,7 @@ export function BuilderPublishCard({
         type="button"
         className="pg-btn pg-btn--primary"
         disabled={!publishAllowed}
+        onClick={onPublish}
       >
         {PUBLISH}
       </button>

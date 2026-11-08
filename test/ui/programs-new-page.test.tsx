@@ -103,7 +103,7 @@ function listAndBuilderStubs() {
 }
 
 describe("Programs new page (integration, jsdom)", () => {
-  it("does not render From a routine until DIDI-853 (R1)", async () => {
+  it("renders From a routine and From scratch chooser options (DIDI-1025)", async () => {
     render(
       <MemoryRouter initialEntries={["/programs/new"]}>
         <PhysioApp
@@ -115,7 +115,7 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(
       await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE }),
     ).toBeInTheDocument();
-    expect(screen.queryByText(NEW_PROGRAM_FROM_ROUTINE)).not.toBeInTheDocument();
+    expect(screen.getByText(NEW_PROGRAM_FROM_ROUTINE)).toBeInTheDocument();
     expect(screen.getByText(NEW_PROGRAM_FROM_SCRATCH)).toBeInTheDocument();
   });
 

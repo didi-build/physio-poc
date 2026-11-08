@@ -21,7 +21,9 @@ import {
   programByCodePath,
   programsCollectionPath,
   programsDeletedListPath,
+  programsFromRoutinePath,
 } from "../../programs-api-paths.js";
+import type { RoutineProgramSource } from "../../services/programs/types.js";
 
 export type FetchFn = (
   input: RequestInfo | URL,
@@ -83,6 +85,26 @@ export class ProgramsClient {
     return this.fetchFn(programsDeletedListPath(), readGetInit(options)).then(
       (response) => readJson<{ items: ProgramListItem[] }>(response),
     );
+  }
+
+  createProgramFromRoutine(input: {
+    program_id: string;
+    routine_id: string;
+    source: RoutineProgramSource;
+    row_ids: string[];
+  }): Promise<ProgramMutationResult> {
+    return this.fetchFn(
+      programsFromRoutinePath(),
+      withJsonContentType({
+        method: "POST",
+        body: JSON.stringify({
+          program_id: input.program_id,
+          routine_id: input.routine_id,
+          source: input.source,
+          row_ids: input.row_ids,
+        }),
+      }),
+    ).then((response) => readJson<ProgramMutationResult>(response));
   }
 
   createProgram(input: {

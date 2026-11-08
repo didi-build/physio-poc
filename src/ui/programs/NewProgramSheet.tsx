@@ -2,7 +2,9 @@ import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import { CANCEL } from "../copy/my-defaults.js";
 import {
   NEW_PROGRAM_CHOOSER_INTRO,
+  NEW_PROGRAM_FROM_ROUTINE,
   NEW_PROGRAM_FROM_SCRATCH,
+  NEW_PROGRAM_ROUTINE_BLURB,
   NEW_PROGRAM_SCRATCH_BLURB,
   NEW_PROGRAM_SHEET_TITLE,
 } from "../copy/programs.js";
@@ -10,12 +12,14 @@ import {
 export type NewProgramSheetProps = {
   open: boolean;
   onClose: () => void;
+  onFromRoutine: () => void;
   onFromScratch: () => void;
 };
 
 export function NewProgramSheet({
   open,
   onClose,
+  onFromRoutine,
   onFromScratch,
 }: NewProgramSheetProps) {
   return (
@@ -32,7 +36,14 @@ export function NewProgramSheet({
       }
     >
       <div className="pg-new-program-options">
-        {/* From a routine: DIDI-853 (hidden until wired; no dead control). */}
+        <button type="button" className="pg-new-program-option" onClick={onFromRoutine}>
+          <span className="pg-new-program-option-title">
+            {NEW_PROGRAM_FROM_ROUTINE}
+          </span>
+          <span className="pg-new-program-option-body">
+            {NEW_PROGRAM_ROUTINE_BLURB}
+          </span>
+        </button>
         <button type="button" className="pg-new-program-option" onClick={onFromScratch}>
           <span className="pg-new-program-option-title">
             {NEW_PROGRAM_FROM_SCRATCH}

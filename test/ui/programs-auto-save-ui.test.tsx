@@ -56,6 +56,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
           saveUiState="saved"
           failureAlertShown={false}
           publishAllowed={false}
+          onPublish={() => {}}
           onTryAgain={() => {}}
         />,
       );
@@ -78,6 +79,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         saveUiState="failed"
         failureAlertShown
         publishAllowed={false}
+        onPublish={vi.fn()}
         onTryAgain={vi.fn()}
       />,
     );

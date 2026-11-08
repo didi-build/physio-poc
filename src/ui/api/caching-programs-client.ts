@@ -24,6 +24,12 @@ export function wrapProgramsClientWithCacheInvalidation(
     getProgram: (programId, options) => inner.getProgram(programId, options),
     createProgram: (input) =>
       withProgramsListInvalidation(() => inner.createProgram(input)),
+    createProgramFromRoutine: (input) =>
+      inner.createProgramFromRoutine(input).then((result) => {
+        invalidateAfterProgramBuilderMutation(result.program.code);
+        invalidateAfterProgramsListMutation();
+        return result;
+      }),
     updateProgramName: (programId, name) =>
       inner.updateProgramName(programId, name).then((result) => {
         invalidateAfterProgramBuilderMutation(result.program.code);

@@ -10,6 +10,7 @@ import {
   programRowsReorderPath,
   programsCollectionPath,
   programsDeletedListPath,
+  programsFromRoutinePath,
 } from "../../src/programs-api-paths.js";
 import { ProgramsClient } from "../../src/ui/api/programs-client.js";
 
@@ -79,6 +80,30 @@ describe("ProgramsClient (unit)", () => {
     const [, init] = fetchFn.mock.calls[0]!;
     expect(fetchFn.mock.calls[0]![0]).toBe(PROGRAMS_API_BASE);
     assertJsonWrite(init as RequestInit, "POST", { program_id: "p1" });
+  });
+
+  it("POST from-routine sends JSON content-type and body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: { program_id: "p1" } }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.createProgramFromRoutine({
+      program_id: "p1",
+      routine_id: "r1",
+      source: "community",
+      row_ids: ["row-1"],
+    });
+    const [, init] = fetchFn.mock.calls[0]!;
+    expect(fetchFn.mock.calls[0]![0]).toBe(programsFromRoutinePath());
+    assertJsonWrite(init as RequestInit, "POST", {
+      program_id: "p1",
+      routine_id: "r1",
+      source: "community",
+      row_ids: ["row-1"],
+    });
   });
 
   it("PATCH name sends JSON content-type and body", async () => {

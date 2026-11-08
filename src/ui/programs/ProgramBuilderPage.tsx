@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import {
   exerciseParamsEqual,
@@ -40,6 +40,7 @@ import {
   deletedProgramToast,
   duplicatedRowToast,
   formatAutoSaveStatus,
+  keptAsDraftToast,
 } from "../copy/programs.js";
 import { AddExerciseSheet } from "./AddExerciseSheet.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
@@ -54,6 +55,8 @@ import {
 } from "./ProgramsStates.js";
 import { useProgramAutoSave } from "./use-program-auto-save.js";
 import { useProgramLeaveGuard } from "./program-leave-guard.js";
+import { ProgramBuilderOriginBanner } from "./ProgramBuilderOriginBanner.js";
+import { PublishToLiveLinkSheet } from "./PublishToLiveLinkSheet.js";
 
 function noteDraftsFromProgram(program: ProgramBuilderView): Record<string, string> {
   const drafts: Record<string, string> = {};
@@ -66,6 +69,7 @@ function noteDraftsFromProgram(program: ProgramBuilderView): Record<string, stri
 export function ProgramBuilderPage() {
   const client = useProgramsApi();
   const navigate = useNavigate();
+  const location = useLocation();
   const { programCode = "" } = useParams();
   const { showToast } = useToast();
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
@@ -108,6 +112,9 @@ export function ProgramBuilderPage() {
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [pendingLeaveTo, setPendingLeaveTo] = useState<string | null>(null);
   const [redirectToList, setRedirectToList] = useState(false);
+  const [publishSheetOpen, setPublishSheetOpen] = useState(false);
+  const [publishNameError, setPublishNameError] = useState(false);
+  const [publishMutationFailed, setPublishMutationFailed] = useState(false);
 
   const saveName = useCallback(async () => {
     const current = programRef.current;
@@ -151,6 +158,14 @@ export function ProgramBuilderPage() {
   }, [program, doseAdjustDraft]);
   const isDesktopLayout = useMinWidth1024();
   const { setGuard } = useProgramLeaveGuard();
+
+  useEffect(() => {
+    const state = location.state as { openPublishSheet?: boolean } | null;
+    if (state?.openPublishSheet) {
+      setPublishSheetOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     setGuard({
@@ -528,6 +543,13 @@ export function ProgramBuilderPage() {
     displayProgram.auto_save_status,
     publishedAt,
   );
+  const publishNowAllowed =
+    autoSave.publishAllowed && nameDraft.trim().length > 0 && !rowMutationBusy;
+  const openPublishSheet = () => {
+    setPublishNameError(false);
+    setPublishMutationFailed(false);
+    setPublishSheetOpen(true);
+  };
 
   return (
     <section className="pg-builder" aria-busy={rowMutationBusy ? true : undefined}>
@@ -553,6 +575,11 @@ export function ProgramBuilderPage() {
         />
       </label>
       <p className="pg-name-help">{builderNameHelpText(displayProgram.code)}</p>
+
+      {displayProgram.routine_origin ? (
+        <ProgramBuilderOriginBanner origin={displayProgram.routine_origin} />
+      ) : null}
+      {publishMutationFailed ? <ProgramsBuilderErrorSlot /> : null}
 
       <div className="pg-builder-layout">
         <div className="pg-builder-main">
@@ -934,12 +961,39 @@ export function ProgramBuilderPage() {
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
           showFailureAlert={isDesktopLayout}
-          publishAllowed={false}
+          publishAllowed={autoSave.publishAllowed && !rowMutationBusy}
+          onPublish={openPublishSheet}
           onTryAgain={autoSave.tryAgain}
         />
       </div>
 
-      <BuilderPublishPhoneBar publishAllowed={false} />
+      <BuilderPublishPhoneBar
+        publishAllowed={autoSave.publishAllowed && !rowMutationBusy}
+        onPublish={openPublishSheet}
+      />
+
+      <PublishToLiveLinkSheet
+        open={publishSheetOpen}
+        program={displayProgram}
+        nameDraft={nameDraft}
+        onNameChange={onNameChange}
+        onClose={() => {
+          setPublishSheetOpen(false);
+        }}
+        onNotYet={() => {
+          setPublishSheetOpen(false);
+          showToast({ message: keptAsDraftToast(displayProgram.code) });
+        }}
+        onPublishNow={() => {
+          if (nameDraft.trim().length === 0) {
+            setPublishNameError(true);
+            return;
+          }
+          setPublishMutationFailed(true);
+        }}
+        publishNowDisabled={!publishNowAllowed}
+        showNameRequiredError={publishNameError}
+      />
 
       <AddExerciseSheet
         open={addExerciseOpen}

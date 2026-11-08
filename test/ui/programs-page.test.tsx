@@ -379,7 +379,7 @@ describe("Programs UI (integration, jsdom)", () => {
       await Promise.resolve();
     });
     expect(screen.getAllByText(AUTO_SAVE_SAVED).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: PUBLISH })[0]).not.toBeDisabled();
     vi.useRealTimers();
   });
 
