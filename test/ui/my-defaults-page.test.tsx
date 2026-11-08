@@ -27,8 +27,15 @@ import {
 import { typeDefaultEditorTypeTitleId } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
 import {
   EDGE_CASE_OWN,
+  TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
+  assertDoseFieldAccessibleName,
+  assertDoseFieldLabelInCard,
+  collectDoseAccessibleLabelIds,
+  doseParamKeyFromField,
   resolveAriaLabelledByName,
 } from "./type-default-editor-a11y-helpers.js";
+import { TYPE_DEFAULT_FOOTNOTE_LABEL_IDS } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
+import { ADD_PARAMETER } from "../../src/ui/copy/my-defaults.js";
 
 afterEach(() => {
   cleanup();
@@ -187,14 +194,15 @@ describe("My defaults page (integration, jsdom)", () => {
         name: editYourTypeDefaultLabel(TYPE_LABELS.stretching),
       }),
     );
-    const holdInput = within(card).getByDisplayValue("45");
+    const holdInput = within(card).getByRole("textbox", { name: "Hold in seconds" });
     await userEvent.clear(holdInput);
     await userEvent.type(holdInput, "50");
+    assertDoseFieldAccessibleName(holdInput, "Hold in seconds");
     await userEvent.click(within(card).getByRole("button", { name: SAVE }));
     expect(upsertTypeDefault).toHaveBeenCalledWith("stretching", savedParams);
   });
 
-  it("resolves every dose input name through its card heading on the page", async () => {
+  it("uses spec dose accessible names on each exercise type card", async () => {
     render(
       <MemoryRouter initialEntries={["/defaults"]}>
         <PhysioApp
@@ -220,11 +228,109 @@ describe("My defaults page (integration, jsdom)", () => {
       );
       expect(fields.length).toBeGreaterThan(0);
       for (const field of fields) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey !== null) {
+          assertDoseFieldLabelInCard(field, card);
+          assertDoseFieldAccessibleName(
+            field,
+            TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+          );
+          continue;
+        }
         const labelledBy = field.getAttribute("aria-labelledby") ?? "";
         expect(labelledBy.split(/\s+/)).toContain(heading.id);
         expect(resolveAriaLabelledByName(field).length).toBeGreaterThan(0);
-        expect(document.getElementById(heading.id)).toBe(heading);
       }
     }
+  });
+
+  it("keeps dose label ids unique when several type editors are open", async () => {
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE });
+
+    const concurrentTypes = ["stretching", "isometric", "concentric"] as const;
+    const cards: HTMLElement[] = [];
+    for (const type of concurrentTypes) {
+      const card = screen.getByTestId(`type-default-${type}`);
+      cards.push(card);
+      await userEvent.click(
+        within(card).getByRole("button", {
+          name: editYourTypeDefaultLabel(TYPE_LABELS[type]),
+        }),
+      );
+    }
+
+    const documentLabelIds: string[] = [];
+    for (const card of cards) {
+      const ids = collectDoseAccessibleLabelIds(card);
+      expect(ids.length).toBeGreaterThan(0);
+      documentLabelIds.push(...ids);
+      for (const field of card.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      )) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey === null) {
+          continue;
+        }
+        assertDoseFieldLabelInCard(field, card);
+        assertDoseFieldAccessibleName(
+          field,
+          TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+        );
+        expect(resolveAriaLabelledByName(field)).not.toContain(
+          TYPE_LABELS[concurrentTypes[0]!],
+        );
+      }
+    }
+    expect(new Set(documentLabelIds).size).toBe(documentLabelIds.length);
+  });
+
+  it("wires addable down and rest fields through the card heading and footnote ids", async () => {
+    render(
+      <MemoryRouter initialEntries={["/defaults"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          myDefaultsClient={stubMyDefaultsClient()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: MY_DEFAULTS_PAGE_TITLE });
+
+    const card = screen.getByTestId("type-default-eccentric");
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: editYourTypeDefaultLabel(TYPE_LABELS.eccentric),
+      }),
+    );
+    const heading = within(card).getByRole("heading", { level: 2 });
+    const descentInput = card.querySelector(
+      'input.md-param-input[data-md-param="descent_s"]',
+    ) as HTMLInputElement;
+    expect(descentInput).not.toBeNull();
+    let labelledBy = descentInput.getAttribute("aria-labelledby") ?? "";
+    const descentParts = labelledBy.split(/\s+/);
+    expect(descentParts).toContain(heading.id);
+    expect(descentParts).toContain(TYPE_DEFAULT_FOOTNOTE_LABEL_IDS.down);
+    expect(resolveAriaLabelledByName(descentInput)).toContain("down");
+
+    await userEvent.click(within(card).getByRole("button", { name: ADD_PARAMETER }));
+    const restInput = card.querySelector(
+      'input.md-param-input[data-md-param="rest_s"]',
+    ) as HTMLInputElement;
+    expect(restInput).not.toBeNull();
+    labelledBy = restInput.getAttribute("aria-labelledby") ?? "";
+    const restParts = labelledBy.split(/\s+/);
+    expect(restParts).toContain(heading.id);
+    expect(restParts).toContain(TYPE_DEFAULT_FOOTNOTE_LABEL_IDS.rest);
+    expect(resolveAriaLabelledByName(restInput)).toContain("rest");
   });
 });

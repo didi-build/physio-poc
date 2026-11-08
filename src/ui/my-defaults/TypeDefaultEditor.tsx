@@ -26,7 +26,11 @@ import {
   matchApprovedPerDayOptionValue,
   perDayValueHasApprovedLabel,
 } from "./type-default-editor-options.js";
-import { doseParamAriaLabelledBy } from "./type-default-editor-a11y.js";
+import {
+  TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
+  doseParamAriaLabelledBy,
+  type TypeDefaultDoseAccessibleParamKey,
+} from "./type-default-editor-a11y.js";
 
 /** Stored and saved, but no approved readout or field labels on mock 01 or 02. */
 const UI_HIDDEN_PARAM_KEYS = new Set<ParamKey>(["ascent_s"]);
@@ -155,12 +159,24 @@ export function TypeDefaultEditor({
       <div className="md-param-grid">
         {visibleKeys.map((key) => {
           const labelledBy = doseParamAriaLabelledBy(typeTitleId, key);
+          const doseAccessibleName =
+            key in TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES
+              ? TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[
+                  key as TypeDefaultDoseAccessibleParamKey
+                ]
+              : null;
           if (key === "per_day") {
             if (perDayUsesApprovedSelect) {
               return (
                 <label key={key} className="md-param-field">
+                  {doseAccessibleName ? (
+                    <span id={labelledBy} className="sr-only">
+                      {doseAccessibleName}
+                    </span>
+                  ) : null}
                   <select
                     className="md-param-input"
+                    data-md-param={key}
                     aria-labelledby={labelledBy}
                     value={matchApprovedPerDayOptionValue(draft.per_day)}
                     onChange={(event) => {
@@ -178,9 +194,15 @@ export function TypeDefaultEditor({
             }
             return (
               <label key={key} className="md-param-field">
+                {doseAccessibleName ? (
+                  <span id={labelledBy} className="sr-only">
+                    {doseAccessibleName}
+                  </span>
+                ) : null}
                 <input
                   className="md-param-input"
                   inputMode="numeric"
+                  data-md-param={key}
                   aria-labelledby={labelledBy}
                   value={numericFieldValue(
                     typeof draft.per_day === "number" ? draft.per_day : undefined,
@@ -195,9 +217,15 @@ export function TypeDefaultEditor({
 
           return (
             <label key={key} className="md-param-field">
+              {doseAccessibleName ? (
+                <span id={labelledBy} className="sr-only">
+                  {doseAccessibleName}
+                </span>
+              ) : null}
               <input
                 className="md-param-input"
                 inputMode="numeric"
+                data-md-param={key}
                 aria-labelledby={labelledBy}
                 value={numericFieldValue(draft[key])}
                 onChange={(event) => {

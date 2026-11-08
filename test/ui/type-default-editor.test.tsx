@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
@@ -12,10 +12,18 @@ import {
 } from "../../src/domain/type-default-param-layout.js";
 import {
   EDGE_CASE_OWN,
+  TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
+  assertDoseFieldAccessibleName,
+  assertDoseFieldLabelInCard,
+  collectDoseAccessibleLabelIds,
+  doseParamKeyFromField,
   renderTypeDefaultEditor,
   resolveAriaLabelledByName,
   valueDerivedAccessibleName,
 } from "./type-default-editor-a11y-helpers.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
+import { TypeDefaultEditor } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
+import { typeDefaultEditorTypeTitleId } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
 
 afterEach(() => {
   cleanup();
@@ -162,5 +170,95 @@ describe("TypeDefaultEditor (jsdom)", () => {
       }
       unmount();
     }
+  });
+
+  it("uses the spec accessible name for each wired dose input", () => {
+    for (const type of PRESCRIPTION_TYPES) {
+      const { container, unmount } = renderTypeDefaultEditor({
+        type,
+        own: EDGE_CASE_OWN[type],
+        onSave: () => {},
+        onCancel: () => {},
+      });
+      const fields = container.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      );
+      for (const field of fields) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey === null) {
+          continue;
+        }
+        assertDoseFieldAccessibleName(
+          field,
+          TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+        );
+      }
+      unmount();
+    }
+  });
+
+  it("scopes dose label element ids when two editors mount together", () => {
+    const stretchTitleId = typeDefaultEditorTypeTitleId("stretching");
+    const isoTitleId = typeDefaultEditorTypeTitleId("isometric");
+    const { container } = render(
+      <div>
+        <h2 id={stretchTitleId}>{TYPE_LABELS.stretching}</h2>
+        <TypeDefaultEditor
+          type="stretching"
+          typeTitleId={stretchTitleId}
+          own={EDGE_CASE_OWN.stretching}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+        <h2 id={isoTitleId}>{TYPE_LABELS.isometric}</h2>
+        <TypeDefaultEditor
+          type="isometric"
+          typeTitleId={isoTitleId}
+          own={EDGE_CASE_OWN.isometric}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+      </div>,
+    );
+    const labelIds = collectDoseAccessibleLabelIds(container);
+    expect(labelIds.length).toBeGreaterThan(1);
+    expect(new Set(labelIds).size).toBe(labelIds.length);
+    const editors = container.querySelectorAll(".md-type-edit");
+    expect(editors).toHaveLength(2);
+    for (const editor of editors) {
+      for (const field of editor.querySelectorAll(
+        "input.md-param-input, select.md-param-input",
+      )) {
+        const paramKey = doseParamKeyFromField(field);
+        if (paramKey === null) {
+          continue;
+        }
+        assertDoseFieldLabelInCard(field, editor);
+        assertDoseFieldAccessibleName(
+          field,
+          TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES[paramKey],
+        );
+      }
+    }
+  });
+
+  it("keeps the spec accessible name after editing a dose value", async () => {
+    renderTypeDefaultEditor({
+      type: "isometric",
+      own: { reps: 12, hold_s: 45, sets: 1, days_per_week: 4 },
+      onSave: () => {},
+      onCancel: () => {},
+    });
+
+    const holdInput = screen.getByRole("textbox", { name: "Hold in seconds" });
+    await userEvent.clear(holdInput);
+    await userEvent.type(holdInput, "99");
+    assertDoseFieldAccessibleName(holdInput, "Hold in seconds");
+    expect(holdInput).toHaveValue("99");
+
+    const repsInput = screen.getByRole("textbox", { name: "Reps" });
+    await userEvent.clear(repsInput);
+    await userEvent.type(repsInput, "8");
+    assertDoseFieldAccessibleName(repsInput, "Reps");
   });
 });

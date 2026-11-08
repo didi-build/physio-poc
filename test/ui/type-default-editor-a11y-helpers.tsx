@@ -3,6 +3,7 @@
  */
 import { render, type RenderOptions } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { expect } from "vitest";
 import type { ExerciseParams } from "../../src/domain/exercise-params.js";
 import type { PrescriptionType } from "../../src/domain/exercise-types.js";
 import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
@@ -10,7 +11,11 @@ import {
   TypeDefaultEditor,
   type TypeDefaultEditorProps,
 } from "../../src/ui/my-defaults/TypeDefaultEditor.js";
-import { typeDefaultEditorTypeTitleId } from "../../src/ui/my-defaults/type-default-editor-a11y.js";
+import {
+  TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES,
+  type TypeDefaultDoseAccessibleParamKey,
+  typeDefaultEditorTypeTitleId,
+} from "../../src/ui/my-defaults/type-default-editor-a11y.js";
 import { TypeDefaultsFootnote } from "../../src/ui/my-defaults/TypeDefaultsFootnote.js";
 
 export function resolveAriaLabelledByName(
@@ -64,4 +69,44 @@ export const EDGE_CASE_OWN: Record<PrescriptionType, ExerciseParams> = {
 /** Simulates the removed value-derived aria-label mutant from PR #35 review. */
 export function valueDerivedAccessibleName(value: string): string {
   return value;
+}
+
+export { TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES };
+
+export function doseParamKeyFromField(
+  field: Element,
+): TypeDefaultDoseAccessibleParamKey | null {
+  const key = field.getAttribute("data-md-param");
+  if (key !== null && key in TYPE_DEFAULT_DOSE_ACCESSIBLE_NAMES) {
+    return key as TypeDefaultDoseAccessibleParamKey;
+  }
+  return null;
+}
+
+export function assertDoseFieldAccessibleName(
+  field: Element,
+  expected: string,
+  root: Document = document,
+): void {
+  expect(resolveAriaLabelledByName(field, root)).toBe(expected);
+}
+
+/** Asserts the input's aria-labelledby target lives inside `card` (not another editor). */
+export function assertDoseFieldLabelInCard(field: Element, card: Element): void {
+  const labelId = field.getAttribute("aria-labelledby")?.trim();
+  expect(labelId).toBeTruthy();
+  expect(card.querySelector(`#${CSS.escape(labelId!)}`)).not.toBeNull();
+}
+
+export function collectDoseAccessibleLabelIds(container: ParentNode): string[] {
+  const ids: string[] = [];
+  for (const field of container.querySelectorAll(
+    "input.md-param-input[data-md-param], select.md-param-input[data-md-param]",
+  )) {
+    const labelId = field.getAttribute("aria-labelledby")?.trim();
+    if (labelId) {
+      ids.push(labelId);
+    }
+  }
+  return ids;
 }
