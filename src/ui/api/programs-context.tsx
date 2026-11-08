@@ -1,5 +1,6 @@
-import { createContext, useContext, type ReactNode } from "react";
-import { getProgramsClient, type ProgramsClient } from "./programs-client.js";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { getProgramsClient, ProgramsClient } from "./programs-client.js";
+import { wrapProgramsClientWithCacheInvalidation } from "./caching-programs-client.js";
 
 const ProgramsApiContext = createContext<ProgramsClient | null>(null);
 
@@ -10,7 +11,10 @@ export function ProgramsApiProvider({
   client?: ProgramsClient;
   children: ReactNode;
 }) {
-  const value = client ?? getProgramsClient();
+  const value = useMemo(() => {
+    const base = client ?? getProgramsClient();
+    return client ? base : wrapProgramsClientWithCacheInvalidation(base);
+  }, [client]);
   return (
     <ProgramsApiContext.Provider value={value}>{children}</ProgramsApiContext.Provider>
   );

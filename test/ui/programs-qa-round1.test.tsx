@@ -7,6 +7,7 @@ import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
+import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -384,6 +385,7 @@ describe("Programs builder save UX (QA round 1)", () => {
     });
     for (const program of [openLinkProgram, closedLinkProgram]) {
       cleanup();
+      resetSessionReadCacheForTests();
       render(
         <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
           <PhysioApp

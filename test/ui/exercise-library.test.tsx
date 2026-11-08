@@ -11,6 +11,8 @@ import {
   physioAppSpaRoutePath,
 } from "../../src/app-routes.js";
 import { PhysioApp } from "../../src/ui/App.js";
+import { NavigationTestProviders } from "./navigation-test-providers.js";
+import { expectReadCacheSignal } from "./navigation-cache-read-expect.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -162,16 +164,18 @@ function renderMyCopy(client: ExerciseLibraryClient) {
         fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
       ]}
     >
-      <ExerciseLibraryApiProvider client={client}>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path={physioAppSpaRoutePath("exerciseMyCopy")}
-              element={<MyCopyEditorPage />}
-            />
-          </Routes>
-        </ToastProvider>
-      </ExerciseLibraryApiProvider>
+      <NavigationTestProviders>
+        <ExerciseLibraryApiProvider client={client}>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={physioAppSpaRoutePath("exerciseMyCopy")}
+                element={<MyCopyEditorPage />}
+              />
+            </Routes>
+          </ToastProvider>
+        </ExerciseLibraryApiProvider>
+      </NavigationTestProviders>
     </MemoryRouter>,
   );
 }
@@ -183,16 +187,18 @@ function renderDetails(client: ExerciseLibraryClient) {
         fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
       ]}
     >
-      <ExerciseLibraryApiProvider client={client}>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path={physioAppSpaRoutePath("exerciseDetail")}
-              element={<ExerciseDetailsPage />}
-            />
-          </Routes>
-        </ToastProvider>
-      </ExerciseLibraryApiProvider>
+      <NavigationTestProviders>
+        <ExerciseLibraryApiProvider client={client}>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={physioAppSpaRoutePath("exerciseDetail")}
+                element={<ExerciseDetailsPage />}
+              />
+            </Routes>
+          </ToastProvider>
+        </ExerciseLibraryApiProvider>
+      </NavigationTestProviders>
     </MemoryRouter>,
   );
 }
@@ -308,6 +314,7 @@ describe("Exercise library UI", () => {
           body_region: "knee",
           sort: "a_to_z",
         }),
+        expectReadCacheSignal,
       );
     });
   });
@@ -545,7 +552,10 @@ describe("Exercise library UI", () => {
     await userEvent.setup().click(screen.getByRole("link", { name: /Open me/i }));
 
     await waitFor(() => {
-      expect(client.getExerciseDetails).toHaveBeenCalledWith("ex-open");
+      expect(client.getExerciseDetails).toHaveBeenCalledWith(
+        "ex-open",
+        expectReadCacheSignal,
+      );
     });
   });
 

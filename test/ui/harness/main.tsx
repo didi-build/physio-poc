@@ -16,6 +16,12 @@ import {
   harnessFixture,
   programsClientForHarness,
 } from "./fixtures.js";
+import {
+  resetHarnessNavReadCounts,
+  wrapExerciseLibraryClientWithHarnessCounts,
+  wrapProgramsClientWithHarnessCounts,
+  wrapRoutinesClientWithHarnessCounts,
+} from "./nav-read-counts.js";
 
 function RequestSubmittedScreen() {
   return (
@@ -52,10 +58,15 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
   return (
     <MemoryRouter initialEntries={fixture.initialEntries}>
       <PhysioApp
-        exerciseLibraryClient={fixture.library}
+        exerciseLibraryClient={wrapExerciseLibraryClientWithHarnessCounts(
+          fixture.library,
+        )}
         exerciseRequestsClient={fixture.requests}
         exerciseMediaClient={fixture.media}
-        programsClient={programsClientForHarness()}
+        programsClient={wrapProgramsClientWithHarnessCounts(
+          programsClientForHarness(fixtureId),
+        )}
+        routinesClient={wrapRoutinesClientWithHarnessCounts(fixture.routines)}
         practitionerSessionClient={sessionClient}
       />
     </MemoryRouter>
@@ -69,6 +80,8 @@ if (!rootEl) {
 
 const fixtureParam = new URLSearchParams(window.location.search).get("fixture");
 const fixtureId = (fixtureParam ?? "request-form") as HarnessFixtureId;
+
+resetHarnessNavReadCounts();
 
 createRoot(rootEl).render(
   <StrictMode>

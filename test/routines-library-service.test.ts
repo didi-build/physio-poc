@@ -24,6 +24,7 @@ import {
   RoutinesRepository,
 } from "../src/storage/repositories/routines.js";
 import { ProgramsRepository } from "../src/storage/repositories/programs.js";
+import { personalChangesUnavailable } from "../src/services/routines/routine-personal-change-projection.js";
 
 const BODY_REGION_KNEE = "br-knee";
 
@@ -211,6 +212,17 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
         ],
       });
 
+      const editedDetails = await service.getRoutineDetails(saver, routineId);
+      expect(editedDetails.personal_changes).toMatchObject({
+        baseline_available: true,
+        change_count: 1,
+        your_change_positions: [0],
+      });
+      expect(editedDetails.community_change_list).toEqual({
+        baseline_available: true,
+        entries: [{ version_number: 2, change_summary: null }],
+      });
+
       const adopt = await service.adoptCommunityVersion(saver, routineId);
       expect(adopt.adopted_version).toBe(2);
       const afterAdopt = await new PractitionerRoutinesRepository(
@@ -247,6 +259,132 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
       await service.applyUndo(saver, routineId, save.undo);
       await expect(service.removeFromMyRoutines(saver, routineId)).rejects.toThrow(
         RoutinesLibraryServiceError,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("getRoutineDetails personal_changes baseline unavailable when baseline version row is missing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId, published: v1 } = await publishRoutine(storage, author, {
+        name: "Baseline missing",
+        routineId: id("routine-baseline-missing"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      const versions = new RoutineVersionsRepository(storage);
+      await service.saveToMyRoutines(author, routineId);
+      await versions.savePublishedVersion({
+        id: id("rv-baseline-missing-v2"),
+        routineId,
+        createdBy: author,
+        createdAt: TS,
+        name: "Baseline missing v2",
+        copyFromVersionId: v1.id,
+      });
+      await storage.run(
+        `DELETE FROM routine_version_rows WHERE routine_version_id = ?`,
+        [v1.id],
+      );
+      await storage.run("PRAGMA foreign_keys = OFF");
+      await storage.run(`DELETE FROM routine_versions WHERE id = ?`, [v1.id]);
+      await storage.run("PRAGMA foreign_keys = ON");
+      await expect(service.getRoutineDetails(author, routineId)).resolves.toMatchObject(
+        {
+          personal_changes: personalChangesUnavailable(),
+        },
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("getRoutineDetails personal_changes baseline unavailable when baseline version belongs to another routine", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId, published: v1 } = await publishRoutine(storage, author, {
+        name: "Baseline mismatch A",
+        routineId: id("routine-baseline-mismatch-a"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const { published: vOther } = await publishRoutine(storage, author, {
+        name: "Baseline mismatch B",
+        routineId: id("routine-baseline-mismatch-b"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const copy = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      await storage.run(
+        `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
+        [vOther.id, copy!.id],
+      );
+      await expect(service.getRoutineDetails(author, routineId)).resolves.toMatchObject(
+        {
+          personal_changes: personalChangesUnavailable(),
+        },
+      );
+      await storage.run(
+        `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
+        [v1.id, copy!.id],
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("getRoutineDetails personal_changes baseline unavailable when baseline version is not published", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const { exerciseId, versionId } = await seedApprovedExerciseVersion(
+        storage,
+        author,
+      );
+      const { routineId } = await publishRoutine(storage, author, {
+        name: "Baseline draft",
+        routineId: id("routine-baseline-draft"),
+        exerciseId,
+        exerciseVersionId: versionId,
+      });
+      const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyRoutines(author, routineId);
+      const draftBaselineId = id("rv-unpublished-baseline");
+      await storage.run(
+        `INSERT INTO routine_versions (
+          id, routine_id, version_number, status, name,
+          change_summary, restored_from_version_id, created_by, created_at
+        ) VALUES (?, ?, 0, 'draft', 'draft', NULL, NULL, ?, ?)`,
+        [draftBaselineId, routineId, author, TS],
+      );
+      const copy = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      await storage.run(
+        `UPDATE practitioner_routines SET source_routine_version_id = ? WHERE id = ?`,
+        [draftBaselineId, copy!.id],
+      );
+      await expect(service.getRoutineDetails(author, routineId)).resolves.toMatchObject(
+        {
+          personal_changes: personalChangesUnavailable(),
+        },
       );
     } finally {
       storage.close();

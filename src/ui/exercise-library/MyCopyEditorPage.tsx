@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
@@ -7,6 +6,10 @@ import {
   type TextOverrideKey,
 } from "../../domain/exercise-text-overrides.js";
 import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
+import { exerciseDetailKey } from "../api/navigation-read-cache-keys.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   DESCRIPTION_FIELD,
@@ -48,31 +51,25 @@ export function MyCopyEditorPage() {
   const client = useExerciseLibraryApi();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [details, setDetails] = useState<ExerciseDetailsResult | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
+  const cacheKey =
+    sessionReady && exerciseId.length > 0 && sessionEpoch
+      ? exerciseDetailKey(sessionEpoch, exerciseId)
+      : null;
+  const {
+    data: details,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<ExerciseDetailsResult>({
+    cacheKey,
+    enabled: sessionReady && exerciseId.length > 0,
+    fetcher: (signal) => client.getExerciseDetails(exerciseId, { signal }),
+    retainOnError: true,
+  });
 
-  const load = () => {
-    setLoading(true);
-    setLoadFailed(false);
-    void client
-      .getExerciseDetails(exerciseId)
-      .then((result) => {
-        setDetails(result);
-      })
-      .catch(() => {
-        setLoadFailed(true);
-        setDetails(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  };
-
-  useEffect(() => {
-    load();
-  }, [exerciseId, client]);
-
+  const loading = !sessionReady || cacheLoading;
   const showEditorContent = !loading && !loadFailed && details !== null;
   const pageTitle = details
     ? (details.resolved_text.find((field) => field.key === "title")?.resolved ??
@@ -102,13 +99,15 @@ export function MyCopyEditorPage() {
   const titleField = details.resolved_text.find((field) => field.key === "title");
 
   const applyUseLibrary = (key: TextOverrideKey) => {
-    void client
-      .updateMyCopy(exerciseId, { use_library_version: [key] })
-      .then(setDetails);
+    void client.updateMyCopy(exerciseId, { use_library_version: [key] }).then(() => {
+      void refresh({ force: true });
+    });
   };
 
   const applyKeepMine = (key: TextOverrideKey) => {
-    void client.updateMyCopy(exerciseId, { keep_mine: [key] }).then(setDetails);
+    void client.updateMyCopy(exerciseId, { keep_mine: [key] }).then(() => {
+      void refresh({ force: true });
+    });
   };
 
   const onRemove = () => {

@@ -4,6 +4,7 @@ import {
   getExerciseLibraryClient,
   type ExerciseLibraryClientOptions,
 } from "./exercise-library-client.js";
+import { wrapExerciseLibraryClientWithCacheInvalidation } from "./caching-exercise-library-client.js";
 
 const ExerciseLibraryApiContext = createContext<ExerciseLibraryClient | null>(null);
 
@@ -18,10 +19,10 @@ export function ExerciseLibraryApiProvider({
   client,
   clientOptions,
 }: ExerciseLibraryApiProviderProps) {
-  const value = useMemo(
-    () => client ?? new ExerciseLibraryClient(clientOptions),
-    [client, clientOptions],
-  );
+  const value = useMemo(() => {
+    const base = client ?? new ExerciseLibraryClient(clientOptions);
+    return client ? base : wrapExerciseLibraryClientWithCacheInvalidation(base);
+  }, [client, clientOptions]);
   return (
     <ExerciseLibraryApiContext.Provider value={value}>
       {children}

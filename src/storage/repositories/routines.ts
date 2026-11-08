@@ -404,6 +404,21 @@ export class RoutineVersionsRepository {
     );
   }
 
+  /** Published versions with version_number strictly greater than baseline, ascending. */
+  async listPublishedVersionsAfterBaseline(
+    routineId: string,
+    baselineVersionNumber: number,
+  ): Promise<RoutineVersionRecord[]> {
+    return this.sql.all<RoutineVersionRecord>(
+      `SELECT id, routine_id, version_number, status, name, change_summary,
+              restored_from_version_id, created_by, created_at
+       FROM routine_versions
+       WHERE routine_id = ? AND status = 'published' AND version_number > ?
+       ORDER BY version_number ASC`,
+      [routineId, baselineVersionNumber],
+    );
+  }
+
   async publishDraft(input: {
     routineId: string;
     authorId: string;

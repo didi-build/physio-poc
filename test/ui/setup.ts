@@ -4,6 +4,7 @@ import {
   clearUiPractitionerSessionStub,
   installDefaultUiPractitionerSessionStub,
 } from "./fake-practitioner-session-fixture.js";
+import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
 
 function ensureMatchMediaStub() {
   vi.stubGlobal(
@@ -66,4 +67,5 @@ beforeEach(() => {
 
 afterEach(() => {
   clearUiPractitionerSessionStub();
+  resetSessionReadCacheForTests();
 });

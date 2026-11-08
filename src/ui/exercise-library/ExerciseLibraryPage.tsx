@@ -11,7 +11,10 @@ import type {
 import type { DraftInProgressSummary } from "../../services/exercise-requests/types.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
-import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
+import {
+  useCurrentPractitionerIdentity,
+  usePractitionerSession,
+} from "../api/practitioner-session-context.js";
 import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
@@ -67,6 +70,9 @@ import {
 } from "../exercise-requests/RequestForm.js";
 import { requestedByLabel } from "../exercise-requests/requested-by-label.js";
 import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { buildSessionReadCacheKey } from "../api/session-read-cache.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 
 function flattenMySections(sections: {
   new_from_requests: MyExerciseListItem[];
@@ -116,6 +122,26 @@ export type ExerciseLibraryPageProps = {
   onRequestsChanged?: () => void;
 };
 
+type ExerciseLibrarySnapshot = {
+  mySections: {
+    new_from_requests: MyExerciseListItem[];
+    pinned: MyExerciseListItem[];
+    recently_used_and_saved: MyExerciseListItem[];
+  };
+  myListState:
+    "ok" | "no_saved_exercises_with_filters" | "nothing_in_my_exercises_matches";
+  mySearchQuery: string | undefined;
+  allExercises: ApprovedExerciseSummary[];
+  allTotal: number;
+  myIds: Set<string>;
+};
+
+const EMPTY_MY_SECTIONS: ExerciseLibrarySnapshot["mySections"] = {
+  new_from_requests: [],
+  pinned: [],
+  recently_used_and_saved: [],
+};
+
 export function ExerciseLibraryPage({
   initialTab,
   onRequestsChanged,
@@ -130,20 +156,6 @@ export function ExerciseLibraryPage({
   const [tab, setTab] = useState<LibraryTab>(initialTab);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
-  const [mySections, setMySections] = useState<{
-    new_from_requests: MyExerciseListItem[];
-    pinned: MyExerciseListItem[];
-    recently_used_and_saved: MyExerciseListItem[];
-  }>({ new_from_requests: [], pinned: [], recently_used_and_saved: [] });
-  const [myListState, setMyListState] = useState<
-    "ok" | "no_saved_exercises_with_filters" | "nothing_in_my_exercises_matches"
-  >("ok");
-  const [mySearchQuery, setMySearchQuery] = useState<string | undefined>();
-  const [allExercises, setAllExercises] = useState<ApprovedExerciseSummary[]>([]);
-  const [allTotal, setAllTotal] = useState(0);
-  const [myIds, setMyIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [similarDrafts, setSimilarDrafts] = useState<DraftInProgressSummary[]>([]);
   const [reqNote, setReqNote] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
@@ -152,51 +164,87 @@ export function ExerciseLibraryPage({
   const location = useLocation();
 
   const apiFilterParams = useMemo(() => filtersToApiParams(filters), [filters]);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
+  const trimmedQuery = query.trim();
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setLoadFailed(false);
-    try {
+  const listCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? buildSessionReadCacheKey(sessionEpoch, {
+            resource: "exercise_library.page",
+            tab,
+            q: trimmedQuery,
+            ...apiFilterParams,
+          })
+        : null,
+    [apiFilterParams, sessionEpoch, sessionReady, tab, trimmedQuery],
+  );
+
+  const {
+    data: snapshot,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<ExerciseLibrarySnapshot>({
+    cacheKey: listCacheKey,
+    enabled: sessionReady,
+    fetcher: async (signal) => {
       const trimmed = query.trim();
       if (tab === "mine") {
-        const result = await client.listMyExercises({
-          q: trimmed || undefined,
-          category: apiFilterParams.category,
-          body_region: apiFilterParams.body_region,
-        });
-        setMySections(result.sections);
-        setMyListState(result.list_state);
-        setMySearchQuery(result.search_query);
+        const result = await client.listMyExercises(
+          {
+            q: trimmed || undefined,
+            category: apiFilterParams.category,
+            body_region: apiFilterParams.body_region,
+          },
+          { signal },
+        );
         const ids = new Set(
           flattenMySections(result.sections).map((item) => item.exercise_id),
         );
-        setMyIds(ids);
-      } else {
-        const [listResult, searchResult] = await Promise.all([
-          client.listMyExercises(),
-          client.searchApproved({
+        return {
+          mySections: result.sections,
+          myListState: result.list_state,
+          mySearchQuery: result.search_query,
+          allExercises: [],
+          allTotal: 0,
+          myIds: ids,
+        };
+      }
+      const [listResult, searchResult] = await Promise.all([
+        client.listMyExercises({}, { signal }),
+        client.searchApproved(
+          {
             q: trimmed || undefined,
             ...apiFilterParams,
             limit: 25,
-          }),
-        ]);
-        setAllExercises(searchResult.exercises);
-        setAllTotal(searchResult.total_count);
-        const ids = new Set(
-          flattenMySections(listResult.sections).map((item) => item.exercise_id),
-        );
-        setMyIds(ids);
-      }
-    } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [apiFilterParams, client, query, tab]);
+          },
+          { signal },
+        ),
+      ]);
+      const ids = new Set(
+        flattenMySections(listResult.sections).map((item) => item.exercise_id),
+      );
+      return {
+        mySections: EMPTY_MY_SECTIONS,
+        myListState: "ok" as const,
+        mySearchQuery: undefined,
+        allExercises: searchResult.exercises,
+        allTotal: searchResult.total_count,
+        myIds: ids,
+      };
+    },
+  });
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const loading = !sessionReady || cacheLoading;
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
+  const mySections = snapshot?.mySections ?? EMPTY_MY_SECTIONS;
+  const myListState = snapshot?.myListState ?? "ok";
+  const mySearchQuery = snapshot?.mySearchQuery;
+  const allExercises = snapshot?.allExercises ?? [];
+  const allTotal = snapshot?.allTotal ?? 0;
+  const myIds = snapshot?.myIds ?? new Set<string>();
 
   useEffect(() => {
     setTab(initialTab);
@@ -226,7 +274,6 @@ export function ExerciseLibraryPage({
     [mySections],
   );
 
-  const trimmedQuery = query.trim();
   const exactMatch = hasExactTitleMatch(
     trimmedQuery,
     allExercises.map((item) => item.exercise_name),
@@ -261,10 +308,12 @@ export function ExerciseLibraryPage({
     showToast({
       message: TOAST_SAVED_MY,
       onUndo: () => {
-        void client.applyUndo(exerciseId, undo).then(() => reload());
+        void client.applyUndo(exerciseId, undo).then(() => {
+          void reload();
+        });
       },
     });
-    await reload();
+    await refresh({ force: true });
   };
 
   const switchTab = (next: LibraryTab) => {
