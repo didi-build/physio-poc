@@ -40,6 +40,9 @@ function stubProgramsClient(): ProgramsClient {
   } as unknown as ProgramsClient;
 }
 
+const practitionerSessionClient = new PractitionerSessionClient();
+const routinesClient = new RoutinesClient();
+
 const params = new URLSearchParams(window.location.search);
 const routineId = params.get("routineId") ?? "";
 const entry =
@@ -59,8 +62,8 @@ createRoot(rootEl).render(
           exerciseLibraryClient={stubLibraryClient()}
           exerciseRequestsClient={stubRequestsClient()}
           programsClient={stubProgramsClient()}
-          routinesClient={new RoutinesClient()}
-          practitionerSessionClient={new PractitionerSessionClient()}
+          routinesClient={routinesClient}
+          practitionerSessionClient={practitionerSessionClient}
         />
       </MemoryRouter>
     </div>

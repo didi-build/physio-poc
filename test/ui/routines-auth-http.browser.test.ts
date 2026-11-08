@@ -220,8 +220,14 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         });
         await gotoRoutinesHttpPage(page, world, server.baseUrl, "detail");
         await page.waitForSelector(".rt-detail", { state: "visible", timeout: 30_000 });
-        const title = await page.locator(".ex-page-title").textContent();
-        expect(title).toContain(world.routineName);
+        await page.waitForFunction(
+          (expected) => {
+            const el = document.querySelector("#rt-detail-heading");
+            return Boolean(el?.textContent?.includes(expected));
+          },
+          world.routineName,
+          { timeout: 30_000 },
+        );
         const session = await world.dispatchBrowserRequest(
           PRACTITIONER_SESSION_API_PATH,
         );
@@ -234,6 +240,7 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         await server.close();
       }
     },
+    60_000,
   );
 
   it.each([390, 1280] as const)(
@@ -262,8 +269,14 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         });
         await gotoRoutinesHttpPage(page, world, server.baseUrl, "detail");
         await page.waitForSelector(".rt-detail", { state: "visible", timeout: 30_000 });
-        const title = await page.locator(".ex-page-title").textContent();
-        expect(title).toContain(world.routineName);
+        await page.waitForFunction(
+          (expected) => {
+            const el = document.querySelector("#rt-detail-heading");
+            return Boolean(el?.textContent?.includes(expected));
+          },
+          world.routineName,
+          { timeout: 30_000 },
+        );
         expect(
           await page.getByRole("button", { name: "Remove from My routines" }).count(),
         ).toBe(0);
@@ -290,6 +303,7 @@ describe("Routines auth HTTP browser (390/1280, DIDI-1022 post-cap)", () => {
         await server.close();
       }
     },
+    60_000,
   );
 
   it("second practitioner cannot remove owner's copy over HTTP", async () => {

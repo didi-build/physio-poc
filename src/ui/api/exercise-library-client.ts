@@ -6,6 +6,7 @@ import type {
   MyExercisesListResult,
   SearchApprovedExercisesResult,
 } from "../../services/exercise-library/types.js";
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
   EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
   EXERCISE_LIBRARY_MY_EXERCISES_PATH,
@@ -72,7 +73,10 @@ export class ExerciseLibraryClient {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
-  searchApproved(params: ApprovedSearchParams): Promise<SearchApprovedExercisesResult> {
+  searchApproved(
+    params: ApprovedSearchParams,
+    options?: ReadRequestOptions,
+  ): Promise<SearchApprovedExercisesResult> {
     const path = buildSearchUrl(EXERCISE_LIBRARY_APPROVED_SEARCH_PATH, {
       q: params.q,
       category: params.category,
@@ -81,26 +85,33 @@ export class ExerciseLibraryClient {
       cursor: params.cursor,
       limit: params.limit !== undefined ? String(params.limit) : undefined,
     });
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<SearchApprovedExercisesResult>(response),
     );
   }
 
-  listMyExercises(params: MyExercisesListParams = {}): Promise<MyExercisesListResult> {
+  listMyExercises(
+    params: MyExercisesListParams = {},
+    options?: ReadRequestOptions,
+  ): Promise<MyExercisesListResult> {
     const path = buildSearchUrl(EXERCISE_LIBRARY_MY_EXERCISES_PATH, {
       q: params.q,
       category: params.category,
       body_region: params.body_region,
     });
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<MyExercisesListResult>(response),
     );
   }
 
-  getExerciseDetails(exerciseId: string): Promise<ExerciseDetailsResult> {
-    return this.fetchFn(exerciseLibraryExerciseDetailsPath(exerciseId), {
-      method: "GET",
-    }).then((response) => readJson<ExerciseDetailsResult>(response));
+  getExerciseDetails(
+    exerciseId: string,
+    options?: ReadRequestOptions,
+  ): Promise<ExerciseDetailsResult> {
+    return this.fetchFn(
+      exerciseLibraryExerciseDetailsPath(exerciseId),
+      readGetInit(options),
+    ).then((response) => readJson<ExerciseDetailsResult>(response));
   }
 
   saveToMyExercises(exerciseId: string): Promise<{ undo: ExerciseMutationUndo }> {

@@ -244,6 +244,7 @@ describe("Routines library UI (DIDI-1022)", () => {
     await waitFor(() => {
       expect(client.searchCommunity).toHaveBeenCalledWith(
         expect.objectContaining({ q: "knee" }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
     });
     expect(screen.getByText(allRoutinesIntro(1))).toBeInTheDocument();

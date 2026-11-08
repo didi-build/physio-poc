@@ -28,7 +28,10 @@ function listSourceFiles(dir: string): string[] {
 }
 
 function isRelativeUiModuleImportLine(line: string): boolean {
-  return /^\s*(import|export)\s.*\sfrom\s["'][^"']*\/api\/[^"']*["']/.test(line);
+  if (/^\s*(import|export)\s.*\sfrom\s["'][^"']*\/api\/[^"']*["']/.test(line)) {
+    return true;
+  }
+  return /from\s+["'][^"']*\/api\/[^"']*["']/.test(line);
 }
 
 function lineHardcodesHttpApiPath(line: string): boolean {

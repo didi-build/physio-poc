@@ -33,6 +33,7 @@ import {
 } from "./physio-app-match-routes.js";
 import type { PractitionerSessionClient } from "./api/practitioner-session-client.js";
 import { PractitionerSessionProvider } from "./api/practitioner-session-context.js";
+import { SessionReadCacheProvider } from "./api/session-read-cache-context.js";
 import type { RoutinesClient } from "./api/routines-client.js";
 import { RoutinesApiProvider } from "./api/routines-context.js";
 import { RoutineDetailsPage } from "./routines/RoutineDetailsPage.js";
@@ -143,13 +144,15 @@ export function PhysioApp({
             <ProgramsApiProvider client={programsClient}>
               <RoutinesApiProvider client={routinesClient}>
                 <PractitionerSessionProvider client={practitionerSessionClient}>
-                  <ExerciseRequestsRefreshProvider
-                    onCount={(count) => {
-                      setRequestsReviewCount(count);
-                    }}
-                  >
-                    <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
-                  </ExerciseRequestsRefreshProvider>
+                  <SessionReadCacheProvider>
+                    <ExerciseRequestsRefreshProvider
+                      onCount={(count) => {
+                        setRequestsReviewCount(count);
+                      }}
+                    >
+                      <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
+                    </ExerciseRequestsRefreshProvider>
+                  </SessionReadCacheProvider>
                 </PractitionerSessionProvider>
               </RoutinesApiProvider>
             </ProgramsApiProvider>

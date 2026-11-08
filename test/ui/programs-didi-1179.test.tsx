@@ -150,6 +150,7 @@ describe.each([390, 1280])(
         widthPx,
       );
       await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE });
+      await waitFor(() => expect(listPrograms).toHaveBeenCalled());
       expect(screen.queryByTestId("programs-empty")).not.toBeInTheDocument();
       resolveList({ items: [], matched_code: null });
       await screen.findByTestId("programs-empty");
@@ -178,6 +179,7 @@ describe.each([390, 1280])(
         widthPx,
       );
       await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE });
+      await waitFor(() => expect(listPrograms).toHaveBeenCalled());
       const shellMain = document.querySelector(".shell-main") as HTMLElement;
       expectControlsVisible(shellMain);
       resolveList({ items: [], matched_code: null });
@@ -224,7 +226,11 @@ describe.each([390, 1280])(
         within(shellMain).getByRole("button", { name: FILTER_FROM_SCRATCH }),
       );
       await waitFor(() => {
-        expect(listPrograms).toHaveBeenCalledWith(undefined, "from_scratch");
+        expect(listPrograms).toHaveBeenCalledWith(
+          undefined,
+          "from_scratch",
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
       });
       expect(
         within(shellMain).getByRole("button", {

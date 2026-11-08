@@ -6,6 +6,7 @@ import type {
   SearchCommunityRoutinesResult,
 } from "../../services/routines/types.js";
 import type { RoutineExerciseRow } from "../../services/routines/types.js";
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
   ROUTINES_COMMUNITY_SEARCH_PATH,
   ROUTINES_MY_ROUTINES_PATH,
@@ -67,6 +68,7 @@ export class RoutinesClient {
 
   searchCommunity(
     params: CommunitySearchParams,
+    options?: ReadRequestOptions,
   ): Promise<SearchCommunityRoutinesResult> {
     const path = buildSearchUrl(ROUTINES_COMMUNITY_SEARCH_PATH, {
       q: params.q,
@@ -76,24 +78,30 @@ export class RoutinesClient {
       cursor: params.cursor,
       limit: params.limit !== undefined ? String(params.limit) : undefined,
     });
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<SearchCommunityRoutinesResult>(response),
     );
   }
 
-  listMyRoutines(params: MyRoutinesListParams = {}): Promise<MyRoutinesListResult> {
+  listMyRoutines(
+    params: MyRoutinesListParams = {},
+    options?: ReadRequestOptions,
+  ): Promise<MyRoutinesListResult> {
     const path = buildSearchUrl(ROUTINES_MY_ROUTINES_PATH, {
       q: params.q,
       body_region: params.body_region,
       condition_id: params.condition_id,
     });
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<MyRoutinesListResult>(response),
     );
   }
 
-  getRoutineDetails(routineId: string): Promise<RoutineDetailsResult> {
-    return this.fetchFn(routineDetailsPath(routineId), { method: "GET" }).then(
+  getRoutineDetails(
+    routineId: string,
+    options?: ReadRequestOptions,
+  ): Promise<RoutineDetailsResult> {
+    return this.fetchFn(routineDetailsPath(routineId), readGetInit(options)).then(
       (response) => readJson<RoutineDetailsResult>(response),
     );
   }

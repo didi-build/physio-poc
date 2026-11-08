@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import {
@@ -9,6 +16,10 @@ import {
 import type { ProgramBuilderView } from "../../services/programs/types.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import { useProgramsApi } from "../api/programs-context.js";
+import { programBuilderByCodeKey } from "../api/navigation-read-cache-keys.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
 import { useToast } from "../components/Toast.js";
 import { CANCEL } from "../copy/my-defaults.js";
@@ -60,8 +71,9 @@ export function ProgramBuilderPage() {
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
   const programRef = useRef(program);
   programRef.current = program;
-  const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
   const [nameDraft, setNameDraft] = useState("");
   const nameDraftRef = useRef(nameDraft);
   nameDraftRef.current = nameDraft;
@@ -153,40 +165,51 @@ export function ProgramBuilderPage() {
     };
   }, [autoSave.hasUnsavedEdits, doseDraftDiffersFromServer, setGuard]);
 
-  useEffect(() => {
-    const code = programCode.trim();
-    if (code.length === 0) {
+  const trimmedProgramCode = programCode.trim();
+  const builderCacheKey =
+    trimmedProgramCode.length > 0 && sessionEpoch
+      ? programBuilderByCodeKey(sessionEpoch, trimmedProgramCode)
+      : null;
+
+  const {
+    data: cachedProgram,
+    loading,
+    loadFailed: builderLoadFailed,
+  } = useSessionCachedRead<ProgramBuilderView>({
+    cacheKey: builderCacheKey,
+    enabled: trimmedProgramCode.length > 0 && sessionReady,
+    fetcher: (signal) => client.getProgramByCode(trimmedProgramCode, { signal }),
+    retainOnError: true,
+  });
+
+  useLayoutEffect(() => {
+    if (trimmedProgramCode.length === 0) {
       setRedirectToList(true);
       return;
     }
-    setLoading(true);
+    if (builderLoadFailed) {
+      setRedirectToList(true);
+      setProgram(null);
+      setLoadFailed(true);
+      return;
+    }
+    if (!cachedProgram) {
+      return;
+    }
+    setRedirectToList(false);
     setLoadFailed(false);
-    void client
-      .getProgramByCode(code)
-      .then((view) => {
-        setProgram(view);
-        setNameDraft(view.name ?? "");
-        setNoteDrafts(noteDraftsFromProgram(view));
-        doseServerConfirmedFilteredRef.current.clear();
-        for (const r of view.rows) {
-          doseServerConfirmedFilteredRef.current.set(
-            r.id,
-            filterExerciseParamsForPrescriptionType(
-              { ...r.params },
-              r.prescription_type,
-            ),
-          );
-        }
-        autoSaveRef.current.markSaved();
-      })
-      .catch(() => {
-        setRedirectToList(true);
-        setProgram(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [client, programCode]);
+    setProgram(cachedProgram);
+    setNameDraft(cachedProgram.name ?? "");
+    setNoteDrafts(noteDraftsFromProgram(cachedProgram));
+    doseServerConfirmedFilteredRef.current.clear();
+    for (const r of cachedProgram.rows) {
+      doseServerConfirmedFilteredRef.current.set(
+        r.id,
+        filterExerciseParamsForPrescriptionType({ ...r.params }, r.prescription_type),
+      );
+    }
+    autoSaveRef.current.markSaved();
+  }, [builderLoadFailed, cachedProgram, trimmedProgramCode]);
 
   useEffect(() => {
     setDoseAdjustDraft(null);
@@ -471,11 +494,14 @@ export function ProgramBuilderPage() {
       });
   };
 
+  const builderView = program ?? cachedProgram ?? null;
+  const showBuilderLoading = loading && builderView === null;
+
   if (redirectToList) {
     return <Navigate to={fillPhysioAppRoutePattern("programs")} replace />;
   }
 
-  if (loading) {
+  if (showBuilderLoading) {
     return (
       <section className="pg-builder" aria-busy>
         <ProgramsBuilderBusyState />
@@ -483,11 +509,11 @@ export function ProgramBuilderPage() {
     );
   }
 
-  if (!program && !loadFailed) {
+  if (!builderView && !loadFailed) {
     return null;
   }
 
-  if (loadFailed || !program) {
+  if (loadFailed || !builderView) {
     return (
       <section className="pg-builder">
         <ProgramsBuilderErrorSlot />
@@ -495,8 +521,13 @@ export function ProgramBuilderPage() {
     );
   }
 
+  const displayProgram = program ?? builderView;
+
   const rowActionsDisabled = rowMutationBusy;
-  const publishStatusLine = formatAutoSaveStatus(program.auto_save_status, publishedAt);
+  const publishStatusLine = formatAutoSaveStatus(
+    displayProgram.auto_save_status,
+    publishedAt,
+  );
 
   return (
     <section className="pg-builder" aria-busy={rowMutationBusy ? true : undefined}>
@@ -509,7 +540,7 @@ export function ProgramBuilderPage() {
       >
         {PROGRAMS_PAGE_TITLE}
       </button>
-      <p className="pg-code-chip">{program.code}</p>
+      <p className="pg-code-chip">{displayProgram.code}</p>
       <label className="pg-name-field">
         <span id="pg-program-name-label">{PROGRAM_NAME_LABEL}</span>
         <input
@@ -521,7 +552,7 @@ export function ProgramBuilderPage() {
           }}
         />
       </label>
-      <p className="pg-name-help">{builderNameHelpText(program.code)}</p>
+      <p className="pg-name-help">{builderNameHelpText(displayProgram.code)}</p>
 
       <div className="pg-builder-layout">
         <div className="pg-builder-main">
@@ -546,7 +577,7 @@ export function ProgramBuilderPage() {
                 void autoSave
                   .runSave(`apply-library:${prompt.row_id}`, async () => {
                     const result = await client.applyLibraryUpdate(
-                      program.program_id,
+                      displayProgram.program_id,
                       prompt.row_id,
                     );
                     applyProgram(result.program);
@@ -560,7 +591,7 @@ export function ProgramBuilderPage() {
                 void autoSave
                   .runSave(`keep-library:${prompt.row_id}`, async () => {
                     const result = await client.keepLibraryUpdate(
-                      program.program_id,
+                      displayProgram.program_id,
                       prompt.row_id,
                     );
                     applyProgram(result.program);
@@ -574,7 +605,7 @@ export function ProgramBuilderPage() {
           <div className="pg-exercises-heading-row">
             <h2 className="pg-exercises-heading">{EXERCISES_SECTION}</h2>
             <p className="pg-exercises-total">
-              {exercisesSectionTotalCount(program.rows.length)}
+              {exercisesSectionTotalCount(displayProgram.rows.length)}
             </p>
           </div>
           <p className="pg-rows-hint">
@@ -595,16 +626,16 @@ export function ProgramBuilderPage() {
             </svg>
             {BUILDER_ROWS_HINT}
           </p>
-          {program.rows.length === 0 ? (
+          {displayProgram.rows.length === 0 ? (
             <p className="pg-rows-empty">{BUILDER_EMPTY_ROWS}</p>
           ) : (
             <div className="pg-rows">
-              {program.rows.map((row, index) => (
+              {displayProgram.rows.map((row, index) => (
                 <ProgramBuilderRowCard
                   key={row.id}
                   row={row}
                   index={index}
-                  total={program.rows.length}
+                  total={displayProgram.rows.length}
                   noteDraft={noteDrafts[row.id] ?? row.note ?? ""}
                   actionsDisabled={rowActionsDisabled}
                   onMoveUp={() => {
@@ -619,7 +650,7 @@ export function ProgramBuilderPage() {
                     void autoSave
                       .runSave(`duplicate-row:${row.id}`, async () => {
                         const result = await client.duplicateRow(
-                          program.program_id,
+                          displayProgram.program_id,
                           row.id,
                           newRowId,
                         );
@@ -638,7 +669,7 @@ export function ProgramBuilderPage() {
                     void autoSave
                       .runSave(`delete-row:${row.id}`, async () => {
                         const result = await client.deleteRow(
-                          program.program_id,
+                          displayProgram.program_id,
                           row.id,
                         );
                         applyProgram(result.program);
@@ -656,7 +687,7 @@ export function ProgramBuilderPage() {
                     void autoSave
                       .runSave(`row-type:${row.id}`, async () => {
                         const result = await client.updateRow(
-                          program.program_id,
+                          displayProgram.program_id,
                           row.id,
                           {
                             prescription_type: type,
@@ -685,7 +716,7 @@ export function ProgramBuilderPage() {
                     void autoSave
                       .runSave(`row-version:${row.id}`, async () => {
                         const result = await client.updateRow(
-                          program.program_id,
+                          displayProgram.program_id,
                           row.id,
                           {
                             exercise_version_id: versionId,
@@ -849,7 +880,7 @@ export function ProgramBuilderPage() {
                     void autoSave
                       .runSave(`row-params-reset:${row.id}`, async () => {
                         const result = await client.updateRow(
-                          program.program_id,
+                          displayProgram.program_id,
                           row.id,
                           { params: row.resolved_params },
                         );
@@ -898,7 +929,7 @@ export function ProgramBuilderPage() {
           </button>
         </div>
         <BuilderPublishCard
-          autoSaveStatus={program.auto_save_status}
+          autoSaveStatus={displayProgram.auto_save_status}
           publishedAt={publishedAt}
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
@@ -946,7 +977,7 @@ export function ProgramBuilderPage() {
           </>
         }
       >
-        <DeleteProgramSheetBody program={program} />
+        <DeleteProgramSheetBody program={displayProgram} />
       </ConfirmSheet>
 
       <LeaveWithoutSavingSheet

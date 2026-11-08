@@ -6,7 +6,11 @@ import type {
   RoutineExerciseRow,
 } from "../../services/routines/types.js";
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
+import { routineDetailKey } from "../api/navigation-read-cache-keys.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   BACK_ROUTINES,
@@ -25,29 +29,39 @@ export function RoutineMyCopyEditorPage() {
   const client = useRoutinesApi();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [details, setDetails] = useState<RoutineDetailsResult | null>(null);
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [mutationFailed, setMutationFailed] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionState = usePractitionerSession();
+  const sessionReady = sessionState.status === "ready";
+  const cacheKey =
+    routineId.length > 0 && sessionEpoch
+      ? routineDetailKey(sessionEpoch, routineId)
+      : null;
+  const {
+    data: details,
+    loading,
+    loadFailed,
+  } = useSessionCachedRead<RoutineDetailsResult>({
+    cacheKey,
+    enabled: routineId.length > 0 && sessionReady,
+    fetcher: (signal) => client.getRoutineDetails(routineId, { signal }),
+    retainOnError: true,
+  });
 
   useEffect(() => {
-    setLoading(true);
-    setLoadFailed(false);
-    void client
-      .getRoutineDetails(routineId)
-      .then((result) => {
-        setDetails(result);
-        setRows(result.my_copy?.rows ?? []);
-      })
-      .catch(() => {
-        setLoadFailed(true);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [routineId, client]);
+    setRows(details?.my_copy?.rows ?? []);
+    setDirty(false);
+  }, [details]);
+
+  if (sessionState.status === "error") {
+    return (
+      <section className="ex-page rt-my-copy" aria-labelledby="rt-my-copy-heading">
+        <ExerciseLibraryDetailErrorSlot />
+      </section>
+    );
+  }
 
   const showContent = !loading && !loadFailed && details?.my_copy;
 

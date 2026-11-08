@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   fillPhysioAppRoutePattern,
@@ -10,7 +10,11 @@ import type {
   MyRoutineSavedItem,
   RoutineConditionOption,
 } from "../../services/routines/types.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { buildSessionReadCacheKey } from "../api/session-read-cache.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   ALL_ROUTINES_EMPTY_HEADING,
@@ -51,6 +55,23 @@ import {
 
 export type { RoutinesTab };
 
+type RoutinesPageSnapshot =
+  | {
+      tab: "all";
+      community: CommunityRoutineSummary[];
+      communityTotal: number;
+      conditionsAvailable: boolean;
+      conditionOptions: RoutineConditionOption[];
+    }
+  | {
+      tab: "mine";
+      drafts: MyRoutineDraftItem[];
+      saved: MyRoutineSavedItem[];
+      flaggedCount: number;
+      conditionsAvailable: boolean;
+      conditionOptions: RoutineConditionOption[];
+    };
+
 export function RoutinesPage() {
   const client = useRoutinesApi();
   const navigate = useNavigate();
@@ -63,58 +84,72 @@ export function RoutinesPage() {
   const [filters, setFilters] = useState<RoutineLibraryFilters>(
     DEFAULT_ROUTINE_FILTERS,
   );
-  const [community, setCommunity] = useState<CommunityRoutineSummary[]>([]);
-  const [communityTotal, setCommunityTotal] = useState(0);
-  const [drafts, setDrafts] = useState<MyRoutineDraftItem[]>([]);
-  const [saved, setSaved] = useState<MyRoutineSavedItem[]>([]);
-  const [flaggedCount, setFlaggedCount] = useState(0);
-  const [conditionsAvailable, setConditionsAvailable] = useState(false);
-  const [conditionOptions, setConditionOptions] = useState<RoutineConditionOption[]>(
-    [],
-  );
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
-
   const filterParams = useMemo(() => routineFiltersToApiParams(filters), [filters]);
   const trimmedQuery = query.trim();
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
 
+  const listCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? buildSessionReadCacheKey(sessionEpoch, {
+            resource: "routines.page",
+            tab,
+            q: trimmedQuery,
+            ...filterParams,
+          })
+        : null,
+    [filterParams, sessionEpoch, sessionReady, tab, trimmedQuery],
+  );
+
+  const {
+    data: snapshot,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<RoutinesPageSnapshot>({
+    cacheKey: listCacheKey,
+    enabled: sessionReady,
+    fetcher: async (signal) => {
+      const readOpts = { signal };
+      const apiParams = {
+        q: trimmedQuery || undefined,
+        ...filterParams,
+      };
+      if (tab === "all") {
+        const result = await client.searchCommunity(apiParams, readOpts);
+        return {
+          tab: "all" as const,
+          community: result.routines,
+          communityTotal: result.total_count,
+          conditionsAvailable: result.conditions_available,
+          conditionOptions: result.condition_options,
+        };
+      }
+      const result = await client.listMyRoutines(apiParams, readOpts);
+      return {
+        tab: "mine" as const,
+        drafts: result.drafts,
+        saved: result.saved,
+        flaggedCount: result.flagged_count,
+        conditionsAvailable: result.conditions_available,
+        conditionOptions: result.condition_options,
+      };
+    },
+  });
+
+  const loading = !sessionReady || cacheLoading;
   const reload = useCallback(() => {
-    setLoading(true);
-    setLoadFailed(false);
-    const apiParams = {
-      q: trimmedQuery || undefined,
-      ...filterParams,
-    };
-    const task =
-      tab === "all"
-        ? client.searchCommunity(apiParams)
-        : client.listMyRoutines(apiParams);
-    void task
-      .then((result) => {
-        if (tab === "all" && "routines" in result) {
-          setCommunity(result.routines);
-          setCommunityTotal(result.total_count);
-          setConditionsAvailable(result.conditions_available);
-          setConditionOptions(result.condition_options);
-        } else if ("saved" in result) {
-          setDrafts(result.drafts);
-          setSaved(result.saved);
-          setFlaggedCount(result.flagged_count);
-          setConditionsAvailable(result.conditions_available);
-          setConditionOptions(result.condition_options);
-        }
-      })
-      .catch(() => {
-        setLoadFailed(true);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [client, tab, trimmedQuery, filterParams]);
+    void refresh({ force: true });
+  }, [refresh]);
 
-  useEffect(() => {
-    reload();
-  }, [reload]);
+  const community = snapshot?.tab === "all" ? snapshot.community : [];
+  const communityTotal = snapshot?.tab === "all" ? snapshot.communityTotal : 0;
+  const drafts = snapshot?.tab === "mine" ? snapshot.drafts : [];
+  const saved = snapshot?.tab === "mine" ? snapshot.saved : [];
+  const flaggedCount = snapshot?.tab === "mine" ? snapshot.flaggedCount : 0;
+  const conditionsAvailable = snapshot?.conditionsAvailable ?? false;
+  const conditionOptions = snapshot?.conditionOptions ?? [];
 
   const onQueryChange = (value: string) => {
     setQuery(value);
