@@ -11,6 +11,7 @@ import {
   physioAppSpaRoutePath,
 } from "../../src/app-routes.js";
 import { PhysioApp } from "../../src/ui/App.js";
+import { NavigationTestProviders } from "./navigation-test-providers.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -162,16 +163,18 @@ function renderMyCopy(client: ExerciseLibraryClient) {
         fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
       ]}
     >
-      <ExerciseLibraryApiProvider client={client}>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path={physioAppSpaRoutePath("exerciseMyCopy")}
-              element={<MyCopyEditorPage />}
-            />
-          </Routes>
-        </ToastProvider>
-      </ExerciseLibraryApiProvider>
+      <NavigationTestProviders>
+        <ExerciseLibraryApiProvider client={client}>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={physioAppSpaRoutePath("exerciseMyCopy")}
+                element={<MyCopyEditorPage />}
+              />
+            </Routes>
+          </ToastProvider>
+        </ExerciseLibraryApiProvider>
+      </NavigationTestProviders>
     </MemoryRouter>,
   );
 }
@@ -183,16 +186,18 @@ function renderDetails(client: ExerciseLibraryClient) {
         fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
       ]}
     >
-      <ExerciseLibraryApiProvider client={client}>
-        <ToastProvider>
-          <Routes>
-            <Route
-              path={physioAppSpaRoutePath("exerciseDetail")}
-              element={<ExerciseDetailsPage />}
-            />
-          </Routes>
-        </ToastProvider>
-      </ExerciseLibraryApiProvider>
+      <NavigationTestProviders>
+        <ExerciseLibraryApiProvider client={client}>
+          <ToastProvider>
+            <Routes>
+              <Route
+                path={physioAppSpaRoutePath("exerciseDetail")}
+                element={<ExerciseDetailsPage />}
+              />
+            </Routes>
+          </ToastProvider>
+        </ExerciseLibraryApiProvider>
+      </NavigationTestProviders>
     </MemoryRouter>,
   );
 }

@@ -12,6 +12,7 @@ import {
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
 import {
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
@@ -183,7 +184,9 @@ describe("Programs UI (integration, jsdom)", () => {
       await screen.findByRole("heading", { name: PROGRAMS_PAGE_TITLE }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("programs-list-controls")).toBeVisible();
-    expect(screen.getByText(PROGRAMS_EMPTY_HEADING)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(PROGRAMS_EMPTY_HEADING)).toBeInTheDocument();
+    });
     expect(screen.getByText(RECENTLY_DELETED_EMPTY)).toBeInTheDocument();
     expect(listCountLabel(0)).toBeNull();
   });
@@ -507,20 +510,23 @@ describe("Programs UI (integration, jsdom)", () => {
     });
 
     cleanup();
+    resetSessionReadCacheForTests();
+    const listDeletedPrograms = vi.fn().mockResolvedValue({
+      items: [{ ...LIST_ITEM, deleted_at: "2026-10-24" }],
+    });
     render(
       <MemoryRouter initialEntries={["/programs"]}>
         <PhysioApp
           exerciseLibraryClient={stubLibraryClient()}
           programsClient={stubProgramsClient({
             listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
-            listDeletedPrograms: vi.fn().mockResolvedValue({
-              items: [{ ...LIST_ITEM, deleted_at: "2026-10-24" }],
-            }),
+            listDeletedPrograms,
             restoreProgram,
           })}
         />
       </MemoryRouter>,
     );
+    await waitFor(() => expect(listDeletedPrograms).toHaveBeenCalled());
     await userEvent.click(await screen.findByRole("button", { name: RESTORE }));
     expect(
       await screen.findByText(restoredProgramToast("Knee program A")),

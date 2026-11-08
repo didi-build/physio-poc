@@ -3,7 +3,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
 import type { ProgramOriginFilter } from "../../services/programs/types.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useProgramsApi } from "../api/programs-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { buildSessionReadCacheKey } from "../api/session-read-cache.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   CLEAR_SEARCH,
@@ -31,6 +35,13 @@ import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
 
+type ProgramsListSnapshot = {
+  items: ProgramListItem[];
+  matchedCode: string | null;
+  totalCount: number;
+  deletedItems: ProgramListItem[];
+};
+
 function parseOriginFilter(value: string | null): ProgramOriginFilter {
   if (value === "from_routine" || value === "from_scratch") {
     return value;
@@ -43,62 +54,76 @@ export function ProgramsListPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
-  const [items, setItems] = useState<ProgramListItem[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [matchedCode, setMatchedCode] = useState<string | null>(null);
-  const [deletedItems, setDeletedItems] = useState<ProgramListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
   const [newSheetOpen, setNewSheetOpen] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
   const originFilter = parseOriginFilter(searchParams.get("origin"));
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
 
+  const listCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? buildSessionReadCacheKey(sessionEpoch, {
+            resource: "programs.page",
+            q: trimmedQuery,
+            origin: originFilter,
+          })
+        : null,
+    [originFilter, sessionEpoch, sessionReady, trimmedQuery],
+  );
+
+  const {
+    data: snapshot,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<ProgramsListSnapshot>({
+    cacheKey: listCacheKey,
+    enabled: sessionReady,
+    fetcher: async () => {
+      const listPromise =
+        trimmedQuery.length > 0 || originFilter !== "all"
+          ? Promise.all([
+              client.listPrograms(
+                trimmedQuery.length > 0 ? trimmedQuery : undefined,
+                originFilter,
+              ),
+              client.listPrograms(),
+            ]).then(([filtered, all]) => ({
+              items: filtered.items,
+              matched_code: filtered.matched_code,
+              totalCount: all.items.length,
+            }))
+          : client.listPrograms().then((result) => ({
+              items: result.items,
+              matched_code: result.matched_code,
+              totalCount: result.items.length,
+            }));
+      const [listResult, deletedResult] = await Promise.all([
+        listPromise,
+        client.listDeletedPrograms(),
+      ]);
+      return {
+        items: listResult.items,
+        matchedCode: listResult.matched_code,
+        totalCount: listResult.totalCount,
+        deletedItems: deletedResult.items,
+      };
+    },
+  });
+
+  const loading = !sessionReady || cacheLoading;
   const load = useCallback(() => {
-    setLoading(true);
-    setLoadFailed(false);
-    const listPromise =
-      trimmedQuery.length > 0 || originFilter !== "all"
-        ? Promise.all([
-            client.listPrograms(
-              trimmedQuery.length > 0 ? trimmedQuery : undefined,
-              originFilter,
-            ),
-            client.listPrograms(),
-          ]).then(([filtered, all]) => ({
-            items: filtered.items,
-            matched_code: filtered.matched_code,
-            totalCount: all.items.length,
-          }))
-        : client.listPrograms().then((result) => ({
-            items: result.items,
-            matched_code: result.matched_code,
-            totalCount: result.items.length,
-          }));
+    void refresh({ force: true });
+  }, [refresh]);
 
-    void Promise.all([listPromise, client.listDeletedPrograms()])
-      .then(([listResult, deletedResult]) => {
-        setItems(listResult.items);
-        setMatchedCode(listResult.matched_code);
-        setTotalCount(listResult.totalCount);
-        setDeletedItems(deletedResult.items);
-      })
-      .catch(() => {
-        setLoadFailed(true);
-        setItems([]);
-        setTotalCount(0);
-        setDeletedItems([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [client, trimmedQuery, originFilter]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const items = snapshot?.items ?? [];
+  const totalCount = snapshot?.totalCount ?? 0;
+  const matchedCode = snapshot?.matchedCode ?? null;
+  const deletedItems = snapshot?.deletedItems ?? [];
 
   useEffect(() => {
     if (searchParams.get("new") === "1") {
@@ -136,7 +161,7 @@ export function ProgramsListPage() {
         );
       })
       .catch(() => {
-        setLoadFailed(true);
+        void refresh({ force: true });
       });
   };
 

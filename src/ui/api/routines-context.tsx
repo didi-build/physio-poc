@@ -4,6 +4,7 @@ import {
   RoutinesClient,
   type RoutinesClientOptions,
 } from "./routines-client.js";
+import { wrapRoutinesClientWithCacheInvalidation } from "./caching-routines-client.js";
 
 const RoutinesApiContext = createContext<RoutinesClient | null>(null);
 
@@ -18,10 +19,10 @@ export function RoutinesApiProvider({
   client,
   clientOptions,
 }: RoutinesApiProviderProps) {
-  const value = useMemo(
-    () => client ?? new RoutinesClient(clientOptions),
-    [client, clientOptions],
-  );
+  const value = useMemo(() => {
+    const base = client ?? new RoutinesClient(clientOptions);
+    return client ? base : wrapRoutinesClientWithCacheInvalidation(base);
+  }, [client, clientOptions]);
   return (
     <RoutinesApiContext.Provider value={value}>{children}</RoutinesApiContext.Provider>
   );

@@ -8,6 +8,9 @@ import type {
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
+import { routineDetailKey } from "../api/navigation-read-cache-keys.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   BACK_ROUTINES,
@@ -80,35 +83,34 @@ export function RoutineDetailsPage() {
   const practitioner = useCurrentPractitionerIdentity();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [details, setDetails] = useState<RoutineDetailsResult | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [mutationFailed, setMutationFailed] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
-
-  const load = () => {
-    setLoading(true);
-    setLoadFailed(false);
-    void client
-      .getRoutineDetails(routineId)
-      .then((result) => {
-        setDetails(result);
-        if (result.my_copy) {
-          setSource("mine");
-        }
-      })
-      .catch(() => {
-        setLoadFailed(true);
-        setDetails(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  };
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const cacheKey =
+    routineId.length > 0 && sessionEpoch
+      ? routineDetailKey(sessionEpoch, routineId)
+      : null;
+  const {
+    data: details,
+    loading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<RoutineDetailsResult>({
+    cacheKey,
+    enabled: routineId.length > 0 && sessionEpoch.length > 0,
+    fetcher: () => client.getRoutineDetails(routineId),
+    retainOnError: true,
+  });
 
   useEffect(() => {
-    load();
-  }, [routineId, client]);
+    if (details?.my_copy) {
+      setSource("mine");
+    }
+  }, [details?.my_copy]);
+
+  const load = () => {
+    void refresh({ force: true });
+  };
 
   const showDetailContent = !loading && !loadFailed && details !== null;
   const name = details?.community.name ?? ROUTINE_DETAIL_HEADING;
