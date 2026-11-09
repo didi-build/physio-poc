@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  buildProgramBuilderLink,
 } from "../src/mcp-connector/index.js";
 import { handleRequest } from "../src/http/app.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
@@ -338,7 +337,11 @@ describe("MCP tools with real data (DIDI-1023)", () => {
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
           arguments: { from_routine_id: publishedId },
         });
-        expect(builder.isError).not.toBe(true);
+        expect(builder.isError).toBe(true);
+        expect(toolErrorText(builder)).toBe("not_supported_v1");
+        expect((builder.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
+        );
         const afterBuilder = await snapshotMcpRoutineRelatedTables(storage);
         expect(afterBuilder).toEqual(beforeBuilder);
       },
@@ -411,54 +414,105 @@ describe("MCP tools with real data (DIDI-1023)", () => {
     );
   });
 
-  it("get_program_builder_link from_routine_id returns exact program-new deep link", async () => {
+  it("get_program_builder_link owner-published from_routine_id returns not_supported_v1 without writes", async () => {
     const storage = await openMigratedDatabase();
-    const owner = testOpaqueEntityId("didi-1023-deeplink");
-    await seedPractitioner(storage, owner, "deeplink@example.com");
+    const owner = testOpaqueEntityId("didi-1023-not-supported");
+    await seedPractitioner(storage, owner, "not-supported@example.com");
     const routineId = await seedOwnerPublishedRoutine(storage, owner, {
-      name: "Deep link routine",
-      seed: "deeplink",
+      name: "Published for v1 block",
+      seed: "not-supported",
     });
-    const { deps, cookie } = mcpDepsOnStorage(storage, owner, "deeplink@example.com");
-    const expected = buildProgramBuilderLink(MCP_TEST_CONFIG.webAppBaseUrl, {
-      from_routine_id: routineId,
-    });
+    const { deps, cookie } = mcpDepsOnStorage(
+      storage,
+      owner,
+      "not-supported@example.com",
+    );
+
+    const assertNotSupportedV1 = (result: {
+      isError?: boolean;
+      structuredContent?: unknown;
+    }): void => {
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toBe("not_supported_v1");
+      const body = result.structuredContent as {
+        error_code?: string;
+        builder_link?: string;
+        manage_url?: string;
+        from_routine_id?: string;
+      };
+      expect(body.error_code).toBe("not_supported_v1");
+      expect(body.builder_link).toBeUndefined();
+      expect(body.manage_url).toBeUndefined();
+      expect(body.from_routine_id).toBeUndefined();
+    };
+
+    const mcpFetch: FetchLike = async (input, init) => {
+      const parsed = new URL(input instanceof URL ? input.href : input);
+      const headers = new Headers(init?.headers);
+      headers.set("cookie", cookie);
+      return handleRequest(
+        new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body: init?.body ?? undefined,
+        }),
+        deps,
+      );
+    };
 
     await withMcpClient(
       async (client) => {
+        const before = await snapshotMcpRoutineRelatedTables(storage);
         const result = await client.callTool({
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
           arguments: { from_routine_id: routineId },
         });
-        expect(result.isError).not.toBe(true);
-        const body = result.structuredContent as {
-          builder_link?: string;
-          from_routine_id?: string;
-          summary?: string;
-        };
-        expect(body.builder_link).toBe(expected);
-        expect(body.builder_link).toBe(
-          `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${routineId}`,
+        const after = await snapshotMcpRoutineRelatedTables(storage);
+        expect(after).toEqual(before);
+        assertNotSupportedV1(
+          result as { isError?: boolean; structuredContent?: unknown },
         );
-        expect(body.from_routine_id).toBe(routineId);
-        expect(body.summary).toBe("");
-        expect(JSON.stringify(body)).not.toMatch(/Created/i);
       },
-      {
-        fetch: async (input, init) => {
-          const parsed = new URL(input instanceof URL ? input.href : input);
-          const headers = new Headers(init?.headers);
-          headers.set("cookie", cookie);
-          return handleRequest(
-            new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
-              method: init?.method ?? "GET",
-              headers,
-              body: init?.body ?? undefined,
-            }),
-            deps,
-          );
-        },
+      { fetch: mcpFetch },
+    );
+
+    await ensureMcpBearerSchema(storage);
+    const bearerDeps = await createProductionStyleMcpDeps(storage);
+    const bearerToken = await seedBearerMcpAccessToken(
+      bearerDeps,
+      owner,
+      "not-supported@example.com",
+    );
+    const bearerMcpFetch: FetchLike = async (input, init) => {
+      const parsed = new URL(input instanceof URL ? input.href : input);
+      const headers = new Headers(init?.headers);
+      for (const [key, value] of Object.entries(mcpRequestHeaders(bearerToken))) {
+        headers.set(key, value);
+      }
+      return handleRequest(
+        new Request(`${MCP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body: init?.body ?? undefined,
+        }),
+        bearerDeps,
+      );
+    };
+
+    await withMcpClient(
+      async (client) => {
+        const before = await snapshotMcpRoutineRelatedTables(storage);
+        const result = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: routineId },
+        });
+        const after = await snapshotMcpRoutineRelatedTables(storage);
+        expect(after).toEqual(before);
+        assertNotSupportedV1(
+          result as { isError?: boolean; structuredContent?: unknown },
+        );
       },
+      { baseUrl: MCP_TEST_BASE, fetch: bearerMcpFetch },
     );
   });
 

@@ -165,16 +165,9 @@ export class PhysioMcpToolService {
           error_code: "routine_not_found",
         });
       }
-      const builderLink = buildProgramBuilderLink(this.config.webAppBaseUrl, {
-        from_routine_id: head.routine_id,
+      throw new PhysioMcpStructuredToolError({
+        error_code: "not_supported_v1",
       });
-      return {
-        summary: "",
-        share_link: "",
-        builder_link: builderLink,
-        manage_url: appUrl(this.config, "programNew"),
-        from_routine_id: head.routine_id,
-      };
     }
 
     if (!programCode) {

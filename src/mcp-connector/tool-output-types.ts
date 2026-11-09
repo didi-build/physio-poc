@@ -14,17 +14,14 @@ export type SearchApprovedExercisesToolOutputFields = {
   match_count: number;
 };
 
-/** `get_program_builder_link` success payload when `from_routine_id` resolves to an owner-published routine. */
-export type GetProgramBuilderLinkFromRoutineToolOutputFields = {
-  /** Normalized routine id echoed from the request. */
-  from_routine_id: string;
-  /** Empty on this path: V1 returns only the deep link fields, not write-flow copy. */
-  summary: "";
-};
-
 /** Structured MCP error when `from_routine_id` does not resolve for the owner (missing or cross-owner). */
 export type GetProgramBuilderLinkRoutineNotFoundError = {
   error_code: "routine_not_found";
+};
+
+/** V1: owner-published routine resolves, but the web app cannot start a program from routine yet (DIDI-853). */
+export type GetProgramBuilderLinkNotSupportedV1Error = {
+  error_code: "not_supported_v1";
 };
 
 /** `get_program_builder_link` success payload when `program_code` resolved to a stored program. */

@@ -214,7 +214,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("returns builder_link and manage_url for code, routine, and blank inputs", async () => {
+  it("returns builder_link for blank input and not_supported_v1 for owner-published from_routine_id", async () => {
     const base = MCP_TEST_CONFIG.webAppBaseUrl;
     const routineId = id("mcp-http-builder-routine");
     const fetch = await mcpHttpFetchWithOwnerRoutine("mcp-http-builder-routine");
@@ -224,12 +224,11 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
           arguments: { from_routine_id: routineId },
         });
-        const routineBody = byRoutine.structuredContent as Record<string, unknown>;
-        expect(routineBody.builder_link).toBe(
-          `${base}/programs/new?from_routine_id=${routineId}`,
-        );
-        expect(routineBody.manage_url).toBe(`${base}/programs/new`);
-        expect(routineBody.from_routine_id).toBe(routineId);
+        expect(byRoutine.isError).toBe(true);
+        expect(toolErrorText(byRoutine)).toBe("not_supported_v1");
+        expect(
+          (byRoutine.structuredContent as { error_code?: string }).error_code,
+        ).toBe("not_supported_v1");
 
         const blank = await client.callTool({
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -243,11 +242,11 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
           arguments: { from_routine_id: `  ${routineId}  ` },
         });
-        const trimmedBody = trimmed.structuredContent as Record<string, unknown>;
-        expect(trimmedBody.builder_link).toBe(
-          `${base}/programs/new?from_routine_id=${routineId}`,
+        expect(trimmed.isError).toBe(true);
+        expect(toolErrorText(trimmed)).toBe("not_supported_v1");
+        expect((trimmed.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
         );
-        expect(trimmedBody.from_routine_id).toBe(routineId);
       },
       { fetch },
     );
@@ -409,14 +408,10 @@ describe("Physio MCP HTTP validation", () => {
           name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
           arguments: { from_routine_id: upper },
         });
-        expect(result.isError).not.toBe(true);
-        const body = result.structuredContent as {
-          from_routine_id?: string;
-          builder_link?: string;
-        };
-        expect(body.from_routine_id).toBe(lower);
-        expect(body.builder_link).toBe(
-          `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${lower}`,
+        expect(result.isError).toBe(true);
+        expect(toolErrorText(result)).toBe("not_supported_v1");
+        expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
         );
       },
       { fetch },

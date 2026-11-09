@@ -60,7 +60,7 @@ export {
 } from "./get-program-contract.js";
 
 export type {
-  GetProgramBuilderLinkFromRoutineToolOutputFields,
+  GetProgramBuilderLinkNotSupportedV1Error,
   GetProgramBuilderLinkRoutineNotFoundError,
   GetProgramBuilderLinkToolOutputFields,
   GetProgramShareLinkOrPdfToolOutputFields,
