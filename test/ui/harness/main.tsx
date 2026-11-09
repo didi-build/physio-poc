@@ -12,6 +12,7 @@ import "../../../src/ui/styles/shell.css";
 import "../../../src/ui/styles/sign-in.css";
 import "../../../src/ui/styles/programs.css";
 import {
+  baseMyDefaultsClient,
   type HarnessFixtureId,
   harnessFixture,
   programsClientForHarness,
@@ -20,6 +21,7 @@ import {
   resetHarnessNavReadCounts,
   wrapExerciseLibraryClientWithHarnessCounts,
   wrapExerciseRequestsClientWithHarnessCounts,
+  wrapMyDefaultsClientWithHarnessCounts,
   wrapProgramsClientWithHarnessCounts,
   wrapRoutinesClientWithHarnessCounts,
 } from "./nav-read-counts.js";
@@ -70,6 +72,9 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
           programsClientForHarness(fixtureId),
         )}
         routinesClient={wrapRoutinesClientWithHarnessCounts(fixture.routines)}
+        myDefaultsClient={wrapMyDefaultsClientWithHarnessCounts(
+          fixture.myDefaults ?? baseMyDefaultsClient(),
+        )}
         practitionerSessionClient={sessionClient}
       />
     </MemoryRouter>
@@ -86,10 +91,12 @@ const fixtureId = (fixtureParam ?? "request-form") as HarnessFixtureId;
 
 resetHarnessNavReadCounts();
 
+const app = (
+  <div data-layout-root={fixtureId}>
+    <HarnessApp fixtureId={fixtureId} />
+  </div>
+);
+
 createRoot(rootEl).render(
-  <StrictMode>
-    <div data-layout-root={fixtureId}>
-      <HarnessApp fixtureId={fixtureId} />
-    </div>
-  </StrictMode>,
+  fixtureId === "app-wide-cache-nav" ? app : <StrictMode>{app}</StrictMode>,
 );
