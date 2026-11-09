@@ -79,7 +79,7 @@ describe("PublicLinkPage (UI)", () => {
     expect(
       screen.getByRole("heading", {
         level: 2,
-        name: "1. Heel slide",
+        name: `Heel slide, ${TYPE_LABELS.stretching.toLowerCase()}`,
       }),
     ).toBeInTheDocument();
     expect(screen.getByText("30s hold")).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("PublicLinkPage (UI)", () => {
       expect(
         screen.getByRole("heading", {
           level: 2,
-          name: `1. Bridge, ${TYPE_LABELS.eccentric.toLowerCase()}`,
+          name: `Bridge, ${TYPE_LABELS.eccentric.toLowerCase()}`,
         }),
       ).toBeInTheDocument();
     });

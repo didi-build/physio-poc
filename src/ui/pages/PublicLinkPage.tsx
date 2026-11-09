@@ -9,21 +9,9 @@ import {
 } from "../../copy/programs-share.js";
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { publicShareLinkApiPath } from "../../programs-api-paths.js";
-import type {
-  PublicShareLinkOpenRow,
-  PublicShareLinkView,
-} from "../../services/programs/program-publish-service.js";
+import type { PublicShareLinkView } from "../../services/programs/program-publish-service.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
 import { PublicLinkExerciseVideo } from "../exercise-visual/PublicLinkExerciseVideo.js";
-
-function rowHeading(row: PublicShareLinkOpenRow, index: number): string {
-  const position = index + 1;
-  const typeLabel = TYPE_LABELS[row.prescription_type];
-  if (row.prescription_type === "stretching") {
-    return `${position}. ${row.title}`;
-  }
-  return `${position}. ${row.title}, ${typeLabel.toLowerCase()}`;
-}
 
 export function PublicLinkPage() {
   const { code } = useParams();
@@ -109,14 +97,16 @@ export function PublicLinkPage() {
         </div>
       </header>
       <ol className="link-page-rows">
-        {view.rows.map((row, index) => (
+        {view.rows.map((row) => (
           <li key={row.position} className="link-page-row">
-            <h2 className="link-page-row-title">{rowHeading(row, index)}</h2>
-            <p className="link-page-row-dose">{formatExerciseParams(row.params)}</p>
+            <h2>
+              {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
+            </h2>
+            <p className="pg-muted">{formatExerciseParams(row.params)}</p>
             <div className="link-page-row-visual">
               <PublicLinkExerciseVideo alt={row.title} />
             </div>
-            {row.note ? <p className="link-page-row-note">{row.note}</p> : null}
+            {row.note ? <p>{row.note}</p> : null}
           </li>
         ))}
       </ol>
