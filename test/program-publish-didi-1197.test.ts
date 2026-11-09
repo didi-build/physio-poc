@@ -467,6 +467,184 @@ describe("program publish DIDI-1197", () => {
     }
   });
 
+  it("over HTTP revives an expired link with the default when the saved custom_date is past and nothing is picked", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(PUBLISH_NOW));
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1197-stale-custom");
+      const links = new ShareLinksRepository(storage);
+      const publishInitial = new ProgramPublishService(
+        storage,
+        WEB_BASE,
+        () => "2026-02-01T12:00:00.000Z",
+      );
+      const publishRevive = new ProgramPublishService(
+        storage,
+        WEB_BASE,
+        () => PUBLISH_NOW,
+      );
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Stale custom revive",
+      });
+      await seedExerciseRow(storage, programId, practitionerId);
+      const first = await publishInitial.publishProgram(practitionerId, programId, {
+        linkExpiry: {
+          expiresIn: SHARE_LINK_EXPIRES_IN.custom_date,
+          customExpiresOn: "2026-02-15",
+        },
+      });
+      await seedExpiredOpenLink(storage, programId);
+      const before = await snapshotPublishContractState(storage, programId);
+      expect(before.link_expires_in).toBe(SHARE_LINK_EXPIRES_IN.custom_date);
+      expect(before.link_expires_on).toBe("2026-02-15");
+
+      const defaultChoice = await links.resolveDefaultExpiryForProgram(
+        practitionerId,
+        new Date(PUBLISH_NOW),
+      );
+      const defaultExpiresAt = resolveShareLinkExpiresAt(
+        defaultChoice,
+        new Date(PUBLISH_NOW),
+      );
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { share_link: string };
+      expect(body.share_link).toBe(first.share_link);
+
+      const after = await snapshotPublishContractState(storage, programId);
+      expect(after.open_link?.id).toBe(before.open_link?.id);
+      expect(after.open_link?.token).toBe(before.open_link?.token);
+      expect(after.open_link?.expires_at).toBe(defaultExpiresAt);
+      expect(after.link_expires_in).toBe(defaultChoice.expiresIn);
+      expect(after.link_expires_on).toBe(defaultChoice.customExpiresOn ?? null);
+      expect(after.share_link_count).toBe(1);
+
+      const connector = await publishRevive.getShareConnectorView(
+        practitionerId,
+        programId,
+      );
+      expect(connector.open_share_link).toBe(true);
+      expect(connector.share_link_state).toBe("live");
+    } finally {
+      storage.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("over HTTP returns invalid_input with no writes when an explicit past custom_date is picked", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(PUBLISH_NOW));
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1197-pick-past-custom");
+      const publishInitial = new ProgramPublishService(
+        storage,
+        WEB_BASE,
+        () => "2026-02-01T12:00:00.000Z",
+      );
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Pick past custom",
+      });
+      await seedExerciseRow(storage, programId, practitionerId);
+      await publishInitial.publishProgram(practitionerId, programId, {
+        linkExpiry: {
+          expiresIn: SHARE_LINK_EXPIRES_IN.custom_date,
+          customExpiresOn: "2026-02-15",
+        },
+      });
+      await seedExpiredOpenLink(storage, programId);
+      const before = await snapshotPublishContractState(storage, programId);
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              expires_in: SHARE_LINK_EXPIRES_IN.custom_date,
+              custom_expires_on: "2026-02-15",
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string; message: string };
+      expect(body.error).toBe("invalid_input");
+      expect(body.message).toBe("");
+
+      const after = await snapshotPublishContractState(storage, programId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("republishing a live open link without a pick updates only the snapshot in the batch", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1197-live-nopick");
+      const programs = new ProgramsRepository(storage);
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => PUBLISH_NOW);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Live no pick",
+      });
+      await seedExerciseRow(storage, programId, practitionerId);
+      await publish.publishProgram(practitionerId, programId, {
+        linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.one_week },
+      });
+      const before = await snapshotPublishContractState(storage, programId);
+      const liveExpiresAt = before.open_link?.expires_at;
+
+      await storage.run(`UPDATE programs SET name = ? WHERE id = ?`, [
+        "Live no pick v2",
+        programId,
+      ]);
+      await publish.publishProgram(practitionerId, programId);
+      const after = await snapshotPublishContractState(storage, programId);
+
+      expect(after.open_link?.id).toBe(before.open_link?.id);
+      expect(after.open_link?.token).toBe(before.open_link?.token);
+      expect(after.open_link?.expires_at).toBe(liveExpiresAt);
+      expect(after.link_expires_in).toBe(before.link_expires_in);
+      expect(after.link_expires_on).toBe(before.link_expires_on);
+      expect(after.open_link?.closed_at).toBeNull();
+      expect(after.published_snapshot_json).not.toBe(before.published_snapshot_json);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("maps publish_open_link_closed_race when publish batch retries still fail", async () => {
     const storage = await openMigratedDatabase();
     try {

@@ -1346,6 +1346,19 @@ export class ShareLinksRepository {
     );
   }
 
+  async resolveDefaultExpiryForProgram(
+    practitionerId: string,
+    now: Date = new Date(),
+  ): Promise<ShareLinkExpiryChoice> {
+    const defaults = new ShareLinkDefaultsRepository(this.sql);
+    const practitionerChoice = await defaults.getPractitionerDefault(practitionerId);
+    if (practitionerChoice) {
+      return validateShareLinkExpiryChoice(practitionerChoice, now);
+    }
+    const globalChoice = await defaults.getGlobalDefault();
+    return validateShareLinkExpiryChoice(globalChoice, now);
+  }
+
   async resolveExpiryForProgram(
     program: ProgramRecord,
     practitionerId: string,
@@ -1360,13 +1373,7 @@ export class ShareLinksRepository {
         now,
       );
     }
-    const defaults = new ShareLinkDefaultsRepository(this.sql);
-    const practitionerChoice = await defaults.getPractitionerDefault(practitionerId);
-    if (practitionerChoice) {
-      return validateShareLinkExpiryChoice(practitionerChoice, now);
-    }
-    const globalChoice = await defaults.getGlobalDefault();
-    return validateShareLinkExpiryChoice(globalChoice, now);
+    return this.resolveDefaultExpiryForProgram(practitionerId, now);
   }
 
   async createOpenLinkForProgram(input: {

@@ -185,7 +185,7 @@ export class ProgramPublishService {
         );
       } catch (err) {
         if (err instanceof ShareLinkExpiryValidationError) {
-          throw new ProgramPublishServiceError(err.message, "invalid_input");
+          throw new ProgramPublishServiceError("", "invalid_input");
         }
         throw err;
       }
@@ -224,7 +224,7 @@ export class ProgramPublishService {
 
     let batchLinkExpiry = validatedLinkExpiry;
     if (openLinkExpired && batchLinkExpiry === undefined) {
-      batchLinkExpiry = await this.links.resolveExpiryForProgram(
+      batchLinkExpiry = await this.resolveReviveExpiryWhenUnpicked(
         program,
         practitionerId,
         expiryNow,
@@ -237,9 +237,20 @@ export class ProgramPublishService {
       expiresAt: string | null;
       createdAt: string;
     }> => {
-      const choice =
-        validatedLinkExpiry ??
-        (await this.links.resolveExpiryForProgram(program, practitionerId, expiryNow));
+      let choice: ShareLinkExpiryChoice;
+      if (validatedLinkExpiry) {
+        choice = validatedLinkExpiry;
+      } else {
+        try {
+          choice = await this.links.resolveExpiryForProgram(
+            program,
+            practitionerId,
+            expiryNow,
+          );
+        } catch (err) {
+          this.rethrowShareLinkExpiryValidation(err);
+        }
+      }
       return {
         id: generateOpaqueEntityId(),
         token: generateShareLinkToken(),
@@ -472,6 +483,32 @@ export class ProgramPublishService {
     return program;
   }
 
+  /**
+   * Expired-link republish without a picked expiry (uses program saved choice, else default).
+   * On invalid saved choice: fall back via `resolveDefaultExpiryForProgram` (see Linear comment `bc46bdda-1fe3-49af-b6e1-c2162cdc4c37` on DIDI-1197).
+   */
+  private async resolveReviveExpiryWhenUnpicked(
+    program: ProgramRecord,
+    practitionerId: string,
+    now: Date,
+  ): Promise<ShareLinkExpiryChoice> {
+    try {
+      return await this.links.resolveExpiryForProgram(program, practitionerId, now);
+    } catch (err) {
+      if (err instanceof ShareLinkExpiryValidationError) {
+        return await this.links.resolveDefaultExpiryForProgram(practitionerId, now);
+      }
+      throw err;
+    }
+  }
+
+  private rethrowShareLinkExpiryValidation(err: unknown): never {
+    if (err instanceof ShareLinkExpiryValidationError) {
+      throw new ProgramPublishServiceError("", "invalid_input");
+    }
+    throw err;
+  }
+
   private parseOpaqueId(value: string, label: string): string {
     try {
       return validateOpaqueEntityId(value, label);
@@ -506,6 +543,9 @@ export class ProgramPublishService {
       if (err.message === "Program not found" || err.message === "Program is deleted") {
         throw new ProgramPublishServiceError("Program not found", "program_not_found");
       }
+    }
+    if (err instanceof ShareLinkExpiryValidationError) {
+      throw new ProgramPublishServiceError("", "invalid_input");
     }
     throw err;
   }
