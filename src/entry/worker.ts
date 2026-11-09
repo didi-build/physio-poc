@@ -21,11 +21,9 @@ export default {
     env: WorkerEnv,
     ctx: WorkerExecutionContext = noopExecutionContext,
   ): Promise<Response> {
-    const { deps, setupInflight } =
-      await createWorkerAppDependenciesForWorkerFetch(env);
-    if (setupInflight) {
-      ctx.waitUntil(setupInflight);
-    }
+    const deps = await createWorkerAppDependenciesForWorkerFetch(env, {
+      waitUntil: (promise) => ctx.waitUntil(promise),
+    });
     return handleRequest(request, deps);
   },
 };

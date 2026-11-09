@@ -18,7 +18,7 @@
     "build:ui": "vite build",
     "build:layout-harness": "vite build --config vite.layout-harness.config.ts",
     "test": "vitest run",
-    "test:worker": "vitest run test/worker-entry-production-auth.test.ts test/worker-entry-fail-closed.test.ts test/worker-entry.test.ts test/worker-exercise-library.test.ts test/mcp-worker-local.test.ts test/d1-binding-production-deploy.test.ts test/worker-production-bundle.test.ts test/worker-production-auth-wiring.test.ts test/worker-production-ui-static.test.ts test/worker-health-first-auth-stall.test.ts test/worker-production-deps-stall.test.ts test/worker-api-session-resolution-once.test.ts",
+    "test:worker": "vitest run test/worker-entry-production-auth.test.ts test/worker-entry-fail-closed.test.ts test/worker-entry.test.ts test/worker-exercise-library.test.ts test/mcp-worker-local.test.ts test/d1-binding-production-deploy.test.ts test/worker-production-bundle.test.ts test/worker-production-auth-wiring.test.ts test/worker-production-ui-static.test.ts test/worker-health-first-auth-stall.test.ts test/worker-production-deps-stall.test.ts test/worker-api-session-resolution-once.test.ts test/worker-production-setup-wait-until.test.ts",
     "test:watch": "vitest",
     "secrets": "secretlint \"**/*\"",
     "conflict-markers": "node scripts/check-conflict-markers.mjs",

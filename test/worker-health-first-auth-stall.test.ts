@@ -57,7 +57,9 @@ describe("Worker health-first better-auth stall regression (DIDI-1187 M3)", () =
       });
 
       const started = Date.now();
-      const authOk = await server.fetch(AUTH_OK_PATH);
+      const authOk = await server.fetch(AUTH_OK_PATH, {
+        signal: AbortSignal.timeout(3_000),
+      });
       const elapsedMs = Date.now() - started;
 
       expect(authOk.status).toBe(200);

@@ -145,6 +145,7 @@ async function buildProductionAppDependencies(
 async function resolveWorkerProductionAppDependencies(
   env: WorkerEnv,
   cacheKey: string,
+  registerWaitUntil?: (promise: Promise<AppDependencies>) => void,
 ): Promise<AppDependencies> {
   if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
     return cachedProductionDeps;
@@ -166,45 +167,37 @@ async function resolveWorkerProductionAppDependencies(
   })();
   productionSetupInflightKey = cacheKey;
   productionSetupInflight = inflight;
+  registerWaitUntil?.(inflight);
   return inflight;
 }
 
-function willStartProductionSetup(cacheKey: string): boolean {
-  if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
-    return false;
-  }
-  if (productionSetupInflight && productionSetupInflightKey === cacheKey) {
-    return false;
-  }
-  return true;
-}
+export type WorkerProductionSetupWaitUntil = (promise: Promise<unknown>) => void;
 
-export type WorkerFetchDependencies = {
-  deps: AppDependencies;
-  /** When set, the fetch call started setup; the Worker entry should ctx.waitUntil it. */
-  setupInflight: Promise<AppDependencies> | null;
+export type WorkerFetchDependencyOptions = {
+  waitUntil?: WorkerProductionSetupWaitUntil;
 };
 
 export async function createWorkerAppDependencies(
   env: WorkerEnv,
 ): Promise<AppDependencies> {
-  return (await createWorkerAppDependenciesForWorkerFetch(env)).deps;
+  return createWorkerAppDependenciesForWorkerFetch(env);
 }
 
 export async function createWorkerAppDependenciesForWorkerFetch(
   env: WorkerEnv,
-): Promise<WorkerFetchDependencies> {
+  options?: WorkerFetchDependencyOptions,
+): Promise<AppDependencies> {
   if (!isWorkerProductionAuthEnvComplete(env) || !env.PHYSIO_DB) {
-    return { deps: createFailClosedWorkerAppDependencies(env), setupInflight: null };
+    return createFailClosedWorkerAppDependencies(env);
   }
   try {
     assertWorkerProductionAuthConfigValid(env);
     const cacheKey = workerProductionEnvCacheKey(env);
-    const startedSetup = willStartProductionSetup(cacheKey);
-    const depsPromise = resolveWorkerProductionAppDependencies(env, cacheKey);
-    const setupInflight = startedSetup ? productionSetupInflight : null;
-    const deps = await depsPromise;
-    return { deps, setupInflight };
+    return await resolveWorkerProductionAppDependencies(
+      env,
+      cacheKey,
+      options?.waitUntil,
+    );
   } catch {
     if (!workerProductionMisconfigLogged) {
       console.log(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
@@ -214,6 +207,6 @@ export async function createWorkerAppDependenciesForWorkerFetch(
     cachedProductionDeps = null;
     productionSetupInflightKey = null;
     productionSetupInflight = null;
-    return { deps: createFailClosedWorkerAppDependencies(env), setupInflight: null };
+    return createFailClosedWorkerAppDependencies(env);
   }
 }
