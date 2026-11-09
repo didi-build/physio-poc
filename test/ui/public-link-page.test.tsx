@@ -17,6 +17,10 @@ import {
   PUBLIC_LINK_SAVE_AS_PDF,
 } from "../../src/copy/programs-share.js";
 import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
+import {
+  EXERCISE_VISUAL_PLACEHOLDER_END_SRC,
+  EXERCISE_VISUAL_PLACEHOLDER_START_SRC,
+} from "../../src/ui/exercise-visual/placeholders.js";
 
 const PRINT_STYLESHEET = join(process.cwd(), "src/ui/styles/public-link-page.css");
 
@@ -86,6 +90,36 @@ describe("PublicLinkPage (UI)", () => {
     expect(
       screen.getByText("This link stays open until your physiotherapist closes it."),
     ).toBeInTheDocument();
+  });
+
+  it("does not render per-row visuals or stock placeholder images without media", async () => {
+    renderOpenLink([
+      {
+        position: 0,
+        title: "Heel slide",
+        prescription_type: "stretching",
+        params: { hold_s: 30 },
+        note: null,
+      },
+      {
+        position: 1,
+        title: "Bridge",
+        prescription_type: "eccentric",
+        params: { reps: 10 },
+        note: null,
+      },
+    ]);
+    await waitFor(() => {
+      expect(screen.getByText("30s hold")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("public-link-exercise-video")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Play video" })).toBeNull();
+    const images = document.querySelectorAll("img");
+    for (const img of images) {
+      const src = img.getAttribute("src") ?? "";
+      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_START_SRC);
+      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_END_SRC);
+    }
   });
 
   it("renders every published row and includes print-layout hooks", async () => {
@@ -192,9 +226,6 @@ describe("public link page print stylesheet", () => {
     expect(css).toContain("@media print");
     expect(css).toMatch(/\.link-page-no-print\s*\{[^}]*display:\s*none/);
     expect(css).toMatch(/\.link-page-row\s*\{[^}]*break-inside:\s*avoid/);
-    expect(css).toMatch(/\.exercise-motion-link-toggle[^}]*display:\s*none/);
-    expect(css).toMatch(
-      /\.exercise-motion-link-static-grid--screen-hidden[^}]*display:\s*grid/,
-    );
+    expect(css).not.toContain("exercise-motion");
   });
 });

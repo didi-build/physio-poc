@@ -11,7 +11,6 @@ import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { publicShareLinkApiPath } from "../../programs-api-paths.js";
 import type { PublicShareLinkView } from "../../services/programs/program-publish-service.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
-import { PublicLinkExerciseVideo } from "../exercise-visual/PublicLinkExerciseVideo.js";
 
 export function PublicLinkPage() {
   const { code } = useParams();
@@ -103,9 +102,6 @@ export function PublicLinkPage() {
               {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
             </h2>
             <p className="pg-muted">{formatExerciseParams(row.params)}</p>
-            <div className="link-page-row-visual">
-              <PublicLinkExerciseVideo alt={row.title} />
-            </div>
             {row.note ? <p>{row.note}</p> : null}
           </li>
         ))}
