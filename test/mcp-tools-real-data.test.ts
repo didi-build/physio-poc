@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { describe, expect, it, vi } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
@@ -26,6 +27,7 @@ import {
   MCP_TEST_CONFIG,
   MCP_TEST_BASE,
   createTestPhysioMcpHttpHandler,
+  toolErrorText,
   withMcpClient,
 } from "./mcp-server-test-utils.js";
 import { MCP_PATH } from "../src/http/app.js";
@@ -33,6 +35,9 @@ import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 
 const BASE = MCP_TEST_BASE;
+const PINNED_NOW = "2026-10-31T12:00:00.000Z";
+const PINNED_EXPIRED = "2026-10-31T11:59:59.999Z";
+const MISSING_PROGRAM_CODE = "PRG-ZZZZ";
 
 async function seedExerciseRow(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -57,9 +62,11 @@ async function seedExerciseRow(
   });
 }
 
-async function migratedMcpDeps(practitionerId: string, email: string) {
-  const storage = await openMigratedDatabase();
-  await seedPractitioner(storage, practitionerId, email);
+function mcpDepsOnStorage(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  email: string,
+) {
   const auth = new FakeAuthPort({
     practitioner: { practitionerId, email, displayName: "MCP QA" },
     sessionCookieName: `physio.fake_session.${practitionerId}`,
@@ -75,6 +82,12 @@ async function migratedMcpDeps(practitionerId: string, email: string) {
     },
     cookie: auth.createSessionCookieHeader(),
   };
+}
+
+async function migratedMcpDeps(practitionerId: string, email: string) {
+  const storage = await openMigratedDatabase();
+  await seedPractitioner(storage, practitionerId, email);
+  return mcpDepsOnStorage(storage, practitionerId, email);
 }
 
 describe("MCP tools with real data (DIDI-1016)", () => {
@@ -303,12 +316,173 @@ describe("MCP tools with real data (DIDI-1016)", () => {
     );
   });
 
+  it("get_program_share_link_or_pdf over HTTP returns no live share_link or pdf_url for expired, closed, boundary, and superseded links", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(PINNED_NOW));
+    try {
+      const practitionerId = testOpaqueEntityId("mcp-inactive-links");
+      const { deps, cookie } = await migratedMcpDeps(
+        practitionerId,
+        "inactive-links@example.com",
+      );
+      const programs = new ProgramsRepository(deps.sql);
+      const publish = new ProgramPublishService(
+        deps.sql,
+        MCP_TEST_CONFIG.webAppBaseUrl,
+        () => PINNED_NOW,
+      );
+
+      const mcpFetch =
+        (requestCookie: string): FetchLike =>
+        async (input, init) => {
+          const parsed = new URL(input instanceof URL ? input.href : input);
+          const headers = new Headers(init?.headers);
+          headers.set("cookie", requestCookie);
+          return handleRequest(
+            new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
+              method: init?.method ?? "GET",
+              headers,
+              body: init?.body ?? undefined,
+            }),
+            deps,
+          );
+        };
+
+      const assertNoLiveShareOrPdf = (body: Record<string, unknown>, label: string) => {
+        expect(body.share_link, label).toBe("");
+        expect(body.pdf_url, label).toBe("");
+        expect(String(body.share_link), label).not.toMatch(/\/l\//);
+      };
+
+      await seedApprovedExerciseVersion(deps.sql, practitionerId);
+
+      const createPublishedProgram = async (suffix: string, name: string) => {
+        const programId = id(`mcp-inactive-${suffix}`);
+        await programs.create({
+          id: programId,
+          createdBy: practitionerId,
+          createdAt: TS,
+          name,
+        });
+        await seedExerciseRow(deps.sql, programId, practitionerId, {
+          skipApprovedSeed: true,
+        });
+        await publish.publishProgram(practitionerId, programId);
+        const code = (await programs.findById(programId))!.code;
+        return { programId, code };
+      };
+
+      const { code: expiredCode, programId: expiredProgramId } =
+        await createPublishedProgram("expired", "Expired link");
+      await deps.sql.run(
+        `UPDATE share_links SET expires_at = ? WHERE program_id = ? AND closed_at IS NULL`,
+        [PINNED_EXPIRED, expiredProgramId],
+      );
+
+      const { code: closedCode, programId: closedProgramId } =
+        await createPublishedProgram("closed", "Closed link");
+      await publish.closeShareLink(practitionerId, closedProgramId);
+
+      const { code: boundaryCode, programId: boundaryProgramId } =
+        await createPublishedProgram("boundary", "Boundary expiry");
+      await deps.sql.run(
+        `UPDATE share_links SET expires_at = ? WHERE program_id = ? AND closed_at IS NULL`,
+        [PINNED_NOW, boundaryProgramId],
+      );
+
+      const { code: supersededCode, programId: supersededProgramId } =
+        await createPublishedProgram("superseded", "Superseded tokens");
+      await publish.closeShareLink(practitionerId, supersededProgramId);
+      await publish.publishProgram(practitionerId, supersededProgramId);
+      await publish.closeShareLink(practitionerId, supersededProgramId);
+
+      await withMcpClient(
+        async (client) => {
+          for (const [label, code] of [
+            ["expired", expiredCode],
+            ["closed", closedCode],
+            ["boundary", boundaryCode],
+            ["superseded", supersededCode],
+          ] as const) {
+            const result = await client.callTool({
+              name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+              arguments: { program_code: code },
+            });
+            expect(result.isError, label).not.toBe(true);
+            assertNoLiveShareOrPdf(
+              result.structuredContent as Record<string, unknown>,
+              label,
+            );
+          }
+        },
+        { baseUrl: BASE, fetch: mcpFetch(cookie) },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cross-owner get_program_builder_link matches missing-code not-found and does not leak owner data", async () => {
+    const storage = await openMigratedDatabase();
+    const ownerA = testOpaqueEntityId("mcp-builder-owner-a");
+    const ownerB = testOpaqueEntityId("mcp-builder-owner-b");
+    await seedPractitioner(storage, ownerA, "buildera@example.com");
+    await seedPractitioner(storage, ownerB, "builderb@example.com");
+    const ownerBDeps = mcpDepsOnStorage(storage, ownerB, "builderb@example.com");
+    const programs = new ProgramsRepository(storage);
+    const programId = id("mcp-builder-cross");
+    await programs.create({
+      id: programId,
+      createdBy: ownerA,
+      createdAt: TS,
+      name: "Owner A only",
+    });
+    const ownerProgramCode = (await programs.findById(programId))!.code;
+
+    const mcpFetch =
+      (sessionDeps: typeof ownerBDeps): FetchLike =>
+      async (input, init) => {
+        const parsed = new URL(input instanceof URL ? input.href : input);
+        const headers = new Headers(init?.headers);
+        headers.set("cookie", sessionDeps.cookie);
+        return handleRequest(
+          new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
+            method: init?.method ?? "GET",
+            headers,
+            body: init?.body ?? undefined,
+          }),
+          sessionDeps.deps,
+        );
+      };
+
+    await withMcpClient(
+      async (client) => {
+        const missing = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { program_code: MISSING_PROGRAM_CODE },
+        });
+        const foreign = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { program_code: ownerProgramCode },
+        });
+        expect(missing.isError).toBe(true);
+        expect(foreign.isError).toBe(true);
+        expect(toolErrorText(foreign)).toBe(toolErrorText(missing));
+        expect(toolErrorText(foreign)).toMatch(/Program not found/i);
+        expect(foreign.structuredContent).toBeFalsy();
+      },
+      { fetch: mcpFetch(ownerBDeps) },
+    );
+  });
+
   it("cross-owner program_code returns Program not found", async () => {
+    const storage = await openMigratedDatabase();
     const ownerA = testOpaqueEntityId("mcp-owner-a");
     const ownerB = testOpaqueEntityId("mcp-owner-b");
-    const ownerADeps = await migratedMcpDeps(ownerA, "a@example.com");
-    const ownerBDeps = await migratedMcpDeps(ownerB, "b@example.com");
-    const programs = new ProgramsRepository(ownerADeps.deps.sql);
+    await seedPractitioner(storage, ownerA, "a@example.com");
+    await seedPractitioner(storage, ownerB, "b@example.com");
+    const ownerBDeps = mcpDepsOnStorage(storage, ownerB, "b@example.com");
+    const programs = new ProgramsRepository(storage);
     const programId = id("mcp-cross-owner");
     await programs.create({
       id: programId,
