@@ -656,6 +656,88 @@ describe("MCP tools with real data (DIDI-1016)", () => {
     }
   });
 
+  it("get_program_share_link_or_pdf returns ambiguous_title with owner-only candidates when title matches multiple programs", async () => {
+    const storage = await openMigratedDatabase();
+    const ownerA = testOpaqueEntityId("mcp-ambig-owner-a");
+    const ownerB = testOpaqueEntityId("mcp-ambig-owner-b");
+    await seedPractitioner(storage, ownerA, "ambig-a@example.com");
+    await seedPractitioner(storage, ownerB, "ambig-b@example.com");
+    const { deps, cookie } = mcpDepsOnStorage(storage, ownerA, "ambig-a@example.com");
+    const programs = new ProgramsRepository(storage);
+    const sharedTitle = "Shared program title";
+
+    const firstId = id("mcp-ambig-first");
+    await programs.create({
+      id: firstId,
+      createdBy: ownerA,
+      createdAt: TS,
+      name: sharedTitle,
+    });
+    const secondId = id("mcp-ambig-second");
+    await programs.create({
+      id: secondId,
+      createdBy: ownerA,
+      createdAt: TS,
+      name: sharedTitle,
+    });
+    const foreignId = id("mcp-ambig-foreign");
+    await programs.create({
+      id: foreignId,
+      createdBy: ownerB,
+      createdAt: TS,
+      name: sharedTitle,
+    });
+
+    const ownerCodes = new Set([
+      (await programs.findById(firstId))!.code,
+      (await programs.findById(secondId))!.code,
+    ]);
+    const foreignCode = (await programs.findById(foreignId))!.code;
+    expect(foreignCode).not.toBe("");
+
+    await withMcpClient(
+      async (client) => {
+        const result = await client.callTool({
+          name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+          arguments: { program_title: sharedTitle },
+        });
+        expect(result.isError).toBe(true);
+        const body = result.structuredContent as {
+          error_code?: string;
+          program_title?: string;
+          candidates?: { program_code?: string; program_title?: string | null }[];
+        };
+        expect(body.error_code).toBe("ambiguous_title");
+        expect(body.program_title).toBe(sharedTitle);
+        expect(body.candidates?.length).toBe(2);
+        const codes = body.candidates!.map((row) => row.program_code);
+        expect(new Set(codes)).toEqual(ownerCodes);
+        expect(codes).not.toContain(foreignCode);
+        for (const candidate of body.candidates!) {
+          expect(typeof candidate.program_code).toBe("string");
+          expect(candidate.program_code).toMatch(/^PRG-/);
+          expect(candidate.program_title).toBe(sharedTitle);
+        }
+        expect(toolErrorText(result)).toBe("ambiguous_title");
+      },
+      {
+        fetch: async (input, init) => {
+          const parsed = new URL(input instanceof URL ? input.href : input);
+          const headers = new Headers(init?.headers);
+          headers.set("cookie", cookie);
+          return handleRequest(
+            new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
+              method: init?.method ?? "GET",
+              headers,
+              body: init?.body ?? undefined,
+            }),
+            deps,
+          );
+        },
+      },
+    );
+  });
+
   it("cross-owner get_program_builder_link matches missing-code not-found and does not leak owner data", async () => {
     const storage = await openMigratedDatabase();
     const ownerA = testOpaqueEntityId("mcp-builder-owner-a");

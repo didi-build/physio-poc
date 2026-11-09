@@ -23,7 +23,7 @@ import {
   foundProgramByCodeSummary,
   programShareSummary,
 } from "./connector-copy.js";
-import { stubGetProgramBuilderLink, stubSearchRoutines } from "./stub-tool-handler.js";
+import { invokePhysioMcpStubTool } from "./stub-tool-handler.js";
 import {
   PhysioMcpStructuredToolError,
   PhysioMcpToolInputError,
@@ -112,7 +112,7 @@ export class PhysioMcpToolService {
   async searchRoutines(
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return stubSearchRoutines(input, this.config);
+    return invokePhysioMcpStubTool(SEARCH_ROUTINES_TOOL_NAME, input, this.config);
   }
 
   async getProgramBuilderLink(
@@ -123,7 +123,11 @@ export class PhysioMcpToolService {
         ? input.program_code
         : undefined;
     if (!programCode) {
-      return stubGetProgramBuilderLink(input, this.config);
+      return invokePhysioMcpStubTool(
+        GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        input,
+        this.config,
+      );
     }
 
     const builder = new ProgramBuilderService(this.sql);

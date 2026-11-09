@@ -59,6 +59,12 @@ export {
   type ProgramVersionRef,
 } from "./get-program-contract.js";
 
+export type {
+  GetProgramBuilderLinkToolOutputFields,
+  GetProgramShareLinkOrPdfToolOutputFields,
+  SearchApprovedExercisesToolOutputFields,
+} from "./tool-output-types.js";
+
 export {
   PATIENT_DETAIL_REJECTION_MESSAGE,
   validateFreeTextForPatientDetails,
