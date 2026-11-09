@@ -6,8 +6,10 @@ import {
   PUBLIC_LINK_PRINT,
   PUBLIC_LINK_SAVE_AS_PDF,
 } from "../../copy/programs-share.js";
+import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { publicShareLinkApiPath } from "../../programs-api-paths.js";
 import type { PublicShareLinkView } from "../../services/programs/program-publish-service.js";
+import { TYPE_LABELS } from "../copy/my-defaults.js";
 
 export function PublicLinkPage() {
   const { code } = useParams();
@@ -88,6 +90,9 @@ export function PublicLinkPage() {
         {view.rows.map((row) => (
           <li key={row.position}>
             <h2>{row.title}</h2>
+            <p className="pg-muted">
+              {TYPE_LABELS[row.prescription_type]}. {formatExerciseParams(row.params)}
+            </p>
             {row.note ? <p>{row.note}</p> : null}
           </li>
         ))}

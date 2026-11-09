@@ -534,16 +534,46 @@ export class ProgramsRepository {
       rows: snapshotRows,
     };
     const snapshotJson = JSON.stringify(payload);
-    await this.sql.run(
+    const draftVersion = program.draft_version;
+    const update = await this.sql.run(
       `UPDATE programs SET
         published_version = draft_version,
         published_name = ?,
         published_at = ?,
         published_snapshot_json = ?,
         draft_updated_at = ?
-       WHERE id = ? AND deleted_at IS NULL`,
-      [publishName, publishedAt, snapshotJson, publishedAt, programId],
+       WHERE id = ? AND deleted_at IS NULL
+         AND draft_version = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM program_rows
+           WHERE program_id = ? AND exercise_request_id IS NOT NULL
+         )`,
+      [
+        publishName,
+        publishedAt,
+        snapshotJson,
+        publishedAt,
+        programId,
+        draftVersion,
+        programId,
+      ],
     );
+    if (update.rowsAffected === 0) {
+      const current = await this.findById(programId);
+      const currentRows = await new ProgramRowsRepository(this.sql).listForProgram(
+        programId,
+      );
+      if (currentRows.some((row) => row.exercise_request_id !== null)) {
+        throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+      }
+      if (!current || current.deleted_at) {
+        throw new ProgramRepositoryError("Program not found");
+      }
+      if (current.draft_version !== draftVersion) {
+        throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+      }
+      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+    }
     return payload;
   }
 

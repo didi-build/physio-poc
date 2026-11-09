@@ -1,4 +1,5 @@
 import type { AppDependencies } from "../app.js";
+import { safeDecodePathSegment } from "../safe-decode-path-segment.js";
 import {
   PUBLIC_SHARE_LINK_UNAVAILABLE_BODY,
   ProgramPublishService,
@@ -28,7 +29,17 @@ export async function handlePublicShareLinkRequest(
     return null;
   }
 
-  const token = decodeURIComponent(match[1]!);
+  const tokenRaw = match[1]!;
+  const token = safeDecodePathSegment(tokenRaw);
+  if (token === null) {
+    if (request.method === "HEAD") {
+      return new Response(null, { status: 200, headers: JSON_HEADERS });
+    }
+    return new Response(PUBLIC_SHARE_LINK_UNAVAILABLE_BODY, {
+      status: 200,
+      headers: JSON_HEADERS,
+    });
+  }
   const publishService = new ProgramPublishService(deps.sql, deps.config.webAppBaseUrl);
   const view = await publishService.getPublicShareLinkByToken(token);
   if (request.method === "HEAD") {

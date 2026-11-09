@@ -167,8 +167,19 @@ export class ProgramPublishService {
     const validatedProgramId = this.parseOpaqueId(programId, "Program id");
     const program = await this.requireOwnedProgram(practitionerId, validatedProgramId);
 
+    let validatedLinkExpiry: ShareLinkExpiryChoice | undefined;
     if (options.linkExpiry) {
-      await this.applyLinkExpiry(validatedProgramId, options.linkExpiry);
+      try {
+        validatedLinkExpiry = validateShareLinkExpiryChoice(
+          options.linkExpiry,
+          new Date(this.now()),
+        );
+      } catch (err) {
+        if (err instanceof ShareLinkExpiryValidationError) {
+          throw new ProgramPublishServiceError(err.message, "invalid_input");
+        }
+        throw err;
+      }
     }
 
     try {
@@ -196,6 +207,13 @@ export class ProgramPublishService {
     }
 
     const publishedAt = this.now();
+    if (validatedLinkExpiry) {
+      await this.programs.setLinkExpiry(
+        validatedProgramId,
+        validatedLinkExpiry,
+        new Date(publishedAt),
+      );
+    }
     try {
       await this.programs.publish(validatedProgramId, publishedAt);
     } catch (err) {

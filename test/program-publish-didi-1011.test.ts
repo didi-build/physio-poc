@@ -660,7 +660,24 @@ describe("DIDI-1011 program publish HTTP (integration)", () => {
       await builder.deleteProgram(practitionerId, deletedProgramId);
       const deleted = await readPublicShareLinkResponse(deps, deletedToken);
 
-      for (const result of [unknown, closed, expired, neverPublished, deleted]) {
+      const malformedResponse = await handleRequest(
+        new Request(`${BASE}/api/public/share-links/%E0%A4%A`),
+        deps,
+      );
+      const malformed = {
+        status: malformedResponse.status,
+        headers: malformedResponse.headers,
+        bodyText: await malformedResponse.text(),
+      };
+
+      for (const result of [
+        unknown,
+        closed,
+        expired,
+        neverPublished,
+        deleted,
+        malformed,
+      ]) {
         expectCanonicalUnavailableHttpResponse(result);
       }
       expect(
@@ -670,6 +687,7 @@ describe("DIDI-1011 program publish HTTP (integration)", () => {
           expired.bodyText,
           neverPublished.bodyText,
           deleted.bodyText,
+          malformed.bodyText,
         ]).size,
       ).toBe(1);
     } finally {

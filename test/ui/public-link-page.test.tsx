@@ -11,6 +11,7 @@ import {
   PUBLIC_LINK_PAGE_INTRO,
   PUBLIC_LINK_SAVE_AS_PDF,
 } from "../../src/copy/programs-share.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 
 afterEach(() => {
   cleanup();
@@ -33,7 +34,7 @@ describe("PublicLinkPage (UI)", () => {
               position: 0,
               title: "Heel slide",
               prescription_type: "stretching",
-              params: {},
+              params: { hold_s: 30 },
               note: null,
             },
           ],
@@ -54,6 +55,7 @@ describe("PublicLinkPage (UI)", () => {
     expect(
       screen.getByRole("button", { name: PUBLIC_LINK_SAVE_AS_PDF }),
     ).toBeInTheDocument();
+    expect(screen.getByText(`${TYPE_LABELS.stretching}. 30s hold`)).toBeInTheDocument();
   });
 
   it("renders the closed state without extra program details", async () => {

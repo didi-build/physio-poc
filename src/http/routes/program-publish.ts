@@ -7,6 +7,7 @@ import {
 } from "../../services/programs/index.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
+import { safeDecodePathSegment } from "../safe-decode-path-segment.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -70,7 +71,14 @@ export async function handleProgramPublishRequest(
     return practitionerId;
   }
 
-  const programId = decodeURIComponent(match[1]!);
+  const programIdRaw = match[1]!;
+  const programId = safeDecodePathSegment(programIdRaw);
+  if (programId === null) {
+    return Response.json(
+      { error: "program_not_found", message: "Program not found" },
+      { status: 404, headers: JSON_HEADERS },
+    );
+  }
   const action = match[2]!;
 
   if (action === "publish" && request.method === "POST") {
