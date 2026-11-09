@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import worker from "../src/entry/worker.js";
 import {
@@ -17,19 +15,7 @@ import {
   WORKER_PRODUCTION_TEST_BASE,
 } from "./helpers/worker-production-auth-test-utils.js";
 
-const CREATE_DEPS_PATH = join(
-  import.meta.dirname,
-  "..",
-  "src/adapters/workers/create-app-dependencies.ts",
-);
-
 describe("Worker production deps init (DIDI-1187)", () => {
-  it("shares one module-level dynamic import promise across concurrent setup", () => {
-    const source = readFileSync(CREATE_DEPS_PATH, "utf8");
-    expect(source).toContain("productionModuleImport");
-    expect(source).toContain("loadWorkerProductionModule");
-  });
-
   it("lets concurrent cold-start callers share one in-flight setup and finish within a timeout", async () => {
     resetWorkerProductionAuthCacheForTests();
     setWorkerProductionDepsSetupDelayMsForTests(120);

@@ -128,6 +128,15 @@ async function buildProductionAppDependencies(
 ): Promise<AppDependencies> {
   const { createWorkerProductionAppDependencies } = await loadWorkerProductionModule();
   const deps = createWorkerProductionAppDependencies(env);
+  const auth = deps.auth as {
+    getBetterAuthRuntime?: () => {
+      $context: Promise<{ checkSchema?: () => Promise<void> }>;
+    };
+  };
+  if (typeof auth.getBetterAuthRuntime === "function") {
+    const ctx = await auth.getBetterAuthRuntime().$context;
+    await ctx.checkSchema?.();
+  }
   cachedProductionEnvKey = cacheKey;
   cachedProductionDeps = deps;
   return deps;
@@ -160,16 +169,42 @@ async function resolveWorkerProductionAppDependencies(
   return inflight;
 }
 
+function willStartProductionSetup(cacheKey: string): boolean {
+  if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
+    return false;
+  }
+  if (productionSetupInflight && productionSetupInflightKey === cacheKey) {
+    return false;
+  }
+  return true;
+}
+
+export type WorkerFetchDependencies = {
+  deps: AppDependencies;
+  /** When set, the fetch call started setup; the Worker entry should ctx.waitUntil it. */
+  setupInflight: Promise<AppDependencies> | null;
+};
+
 export async function createWorkerAppDependencies(
   env: WorkerEnv,
 ): Promise<AppDependencies> {
+  return (await createWorkerAppDependenciesForWorkerFetch(env)).deps;
+}
+
+export async function createWorkerAppDependenciesForWorkerFetch(
+  env: WorkerEnv,
+): Promise<WorkerFetchDependencies> {
   if (!isWorkerProductionAuthEnvComplete(env) || !env.PHYSIO_DB) {
-    return createFailClosedWorkerAppDependencies(env);
+    return { deps: createFailClosedWorkerAppDependencies(env), setupInflight: null };
   }
   try {
     assertWorkerProductionAuthConfigValid(env);
     const cacheKey = workerProductionEnvCacheKey(env);
-    return await resolveWorkerProductionAppDependencies(env, cacheKey);
+    const startedSetup = willStartProductionSetup(cacheKey);
+    const depsPromise = resolveWorkerProductionAppDependencies(env, cacheKey);
+    const setupInflight = startedSetup ? productionSetupInflight : null;
+    const deps = await depsPromise;
+    return { deps, setupInflight };
   } catch {
     if (!workerProductionMisconfigLogged) {
       console.log(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
@@ -179,6 +214,6 @@ export async function createWorkerAppDependencies(
     cachedProductionDeps = null;
     productionSetupInflightKey = null;
     productionSetupInflight = null;
-    return createFailClosedWorkerAppDependencies(env);
+    return { deps: createFailClosedWorkerAppDependencies(env), setupInflight: null };
   }
 }
