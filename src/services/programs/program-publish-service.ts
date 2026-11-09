@@ -27,6 +27,7 @@ import { buildPublicShareLinkUrl } from "../../app-routes.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
+  PUBLISH_STALE_DRAFT_MESSAGE,
   ProgramRepositoryError,
   ProgramsRepository,
   ShareLinksRepository,
@@ -51,6 +52,7 @@ export class ProgramPublishServiceError extends Error {
       | "program_not_found"
       | "name_required"
       | "placeholders_block_publish"
+      | "stale_draft_retry"
       | "invalid_input",
   ) {
     super(message);
@@ -207,21 +209,22 @@ export class ProgramPublishService {
     }
 
     const publishedAt = this.now();
+    const openLinkBeforePublish =
+      await this.links.findOpenByProgramId(validatedProgramId);
     try {
-      await this.programs.publish(validatedProgramId, publishedAt);
+      await this.programs.publish(validatedProgramId, publishedAt, {
+        linkExpiry: validatedLinkExpiry,
+        openLinkId: openLinkBeforePublish?.id,
+        expiryNow: new Date(publishedAt),
+      });
     } catch (err) {
       this.mapPublishRepositoryError(err);
     }
 
-    if (validatedLinkExpiry) {
-      await this.programs.setLinkExpiry(
-        validatedProgramId,
-        validatedLinkExpiry,
-        new Date(publishedAt),
-      );
+    let openLink = openLinkBeforePublish;
+    if (!openLink) {
+      openLink = await this.links.findOpenByProgramId(validatedProgramId);
     }
-
-    let openLink = await this.links.findOpenByProgramId(validatedProgramId);
     if (!openLink) {
       openLink = await this.links.createOpenLinkForProgram({
         id: generateOpaqueEntityId(),
@@ -422,6 +425,12 @@ export class ProgramPublishService {
       );
     }
     if (err instanceof ProgramRepositoryError) {
+      if (err.message === PUBLISH_STALE_DRAFT_MESSAGE) {
+        throw new ProgramPublishServiceError(
+          PUBLISH_STALE_DRAFT_MESSAGE,
+          "stale_draft_retry",
+        );
+      }
       if (err.message === PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE) {
         throw new ProgramPublishServiceError(
           PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,

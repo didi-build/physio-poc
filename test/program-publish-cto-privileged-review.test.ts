@@ -228,18 +228,19 @@ describe("CTO privileged review — publish/share-link (DIDI-1011 / DIDI-1104)",
       await seedExerciseRow(storage, programId, practitionerId);
       const before = await snapshotPublishContractState(storage, programId);
 
-      const baseRun = storage.run.bind(storage);
+      const baseBatch = storage.batch.bind(storage);
       let injected = false;
-      vi.spyOn(storage, "run").mockImplementation(async (sql, params) => {
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
         if (
           !injected &&
-          typeof sql === "string" &&
-          sql.includes("published_version = draft_version")
+          statements.some((statement) =>
+            statement.sql.includes("published_version = draft_version"),
+          )
         ) {
           injected = true;
           await seedPlaceholderRow(storage, practitionerId, programId, id("req-race"));
         }
-        return baseRun(sql, params);
+        return baseBatch(statements);
       });
 
       await expect(programs.publish(programId, TS)).rejects.toThrow(
@@ -273,13 +274,14 @@ describe("CTO privileged review — publish/share-link (DIDI-1011 / DIDI-1104)",
       });
       const before = await snapshotPublishContractState(storage, programId);
 
-      const baseRun = storage.run.bind(storage);
+      const baseBatch = storage.batch.bind(storage);
       let injected = false;
-      vi.spyOn(storage, "run").mockImplementation(async (sql, params) => {
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
         if (
           !injected &&
-          typeof sql === "string" &&
-          sql.includes("published_version = draft_version")
+          statements.some((statement) =>
+            statement.sql.includes("published_version = draft_version"),
+          )
         ) {
           injected = true;
           await seedPlaceholderRow(
@@ -289,7 +291,7 @@ describe("CTO privileged review — publish/share-link (DIDI-1011 / DIDI-1104)",
             id("req-http-race"),
           );
         }
-        return baseRun(sql, params);
+        return baseBatch(statements);
       });
 
       const { deps, cookie } = apiDeps(storage, practitionerId);

@@ -31,6 +31,7 @@ import {
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import { likeContainsPattern } from "../../domain/sql-like.js";
+import { SqlBatchGuardError } from "../errors/sql-batch-error.js";
 import { isSqlDuplicateIdError } from "../errors/sql-duplicate-id-error.js";
 import {
   loadPublishedRoutineVersionForRoutine,
@@ -90,6 +91,9 @@ export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** design/app/programs/spec.md Publish blocked by placeholders (DIDI-1186). */
 export const PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE =
   "Approve or remove placeholders to publish";
+
+/** Repository-only signal when publish races a draft_version change (DIDI-1189). */
+export const PUBLISH_STALE_DRAFT_MESSAGE = "Publish stale draft";
 
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
@@ -513,9 +517,95 @@ export class ProgramsRepository {
     );
   }
 
+  buildPublishSnapshotUpdateStatement(input: {
+    programId: string;
+    draftVersion: number;
+    publishName: string;
+    publishedAt: string;
+    snapshotJson: string;
+  }): SqlBatchStatement {
+    return {
+      sql: `UPDATE programs SET
+        published_version = draft_version,
+        published_name = ?,
+        published_at = ?,
+        published_snapshot_json = ?,
+        draft_updated_at = ?
+       WHERE id = ? AND deleted_at IS NULL
+         AND draft_version = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM program_rows
+           WHERE program_id = ? AND exercise_request_id IS NOT NULL
+         )`,
+      bindings: [
+        input.publishName,
+        input.publishedAt,
+        input.snapshotJson,
+        input.publishedAt,
+        input.programId,
+        input.draftVersion,
+        input.programId,
+      ],
+      minRowsAffected: 1,
+    };
+  }
+
+  buildProgramLinkExpiryUpdateStatement(input: {
+    programId: string;
+    expiresIn: ShareLinkExpiresIn;
+    customExpiresOn: string | null;
+  }): SqlBatchStatement {
+    return {
+      sql: `UPDATE programs SET link_expires_in = ?, link_expires_on = ? WHERE id = ? AND deleted_at IS NULL`,
+      bindings: [input.expiresIn, input.customExpiresOn, input.programId],
+      minRowsAffected: 1,
+    };
+  }
+
+  buildOpenShareLinkExpiresAtUpdateStatement(input: {
+    linkId: string;
+    expiresAt: string | null;
+  }): SqlBatchStatement {
+    return {
+      sql: `UPDATE share_links SET expires_at = ? WHERE id = ? AND closed_at IS NULL`,
+      bindings: [input.expiresAt, input.linkId],
+      minRowsAffected: 1,
+    };
+  }
+
+  private async throwPublishGuardFailure(
+    programId: string,
+    expectedDraftVersion: number,
+    guardError: SqlBatchGuardError,
+    hadExpiryWrites: boolean,
+  ): Promise<never> {
+    const current = await this.findById(programId);
+    const currentRows = await new ProgramRowsRepository(this.sql).listForProgram(
+      programId,
+    );
+    if (currentRows.some((row) => row.exercise_request_id !== null)) {
+      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+    }
+    if (!current || current.deleted_at) {
+      throw new ProgramRepositoryError("Program not found");
+    }
+    if (current.draft_version !== expectedDraftVersion) {
+      throw new ProgramRepositoryError(PUBLISH_STALE_DRAFT_MESSAGE);
+    }
+    if (hadExpiryWrites) {
+      throw guardError;
+    }
+    throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+  }
+
   async publish(
     programId: string,
     publishedAt: string,
+    writeOptions?: {
+      linkExpiry?: ShareLinkExpiryChoice;
+      openLinkId?: string;
+      expiryNow?: Date;
+    },
   ): Promise<PublishedProgramSnapshot> {
     const program = await this.findById(programId);
     if (!program || program.deleted_at) {
@@ -535,44 +625,51 @@ export class ProgramsRepository {
     };
     const snapshotJson = JSON.stringify(payload);
     const draftVersion = program.draft_version;
-    const update = await this.sql.run(
-      `UPDATE programs SET
-        published_version = draft_version,
-        published_name = ?,
-        published_at = ?,
-        published_snapshot_json = ?,
-        draft_updated_at = ?
-       WHERE id = ? AND deleted_at IS NULL
-         AND draft_version = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM program_rows
-           WHERE program_id = ? AND exercise_request_id IS NOT NULL
-         )`,
-      [
+    const statements: SqlBatchStatement[] = [
+      this.buildPublishSnapshotUpdateStatement({
+        programId,
+        draftVersion,
         publishName,
         publishedAt,
         snapshotJson,
-        publishedAt,
-        programId,
-        draftVersion,
-        programId,
-      ],
-    );
-    if (update.rowsAffected === 0) {
-      const current = await this.findById(programId);
-      const currentRows = await new ProgramRowsRepository(this.sql).listForProgram(
-        programId,
+      }),
+    ];
+    if (writeOptions?.linkExpiry) {
+      const expiryNow = writeOptions.expiryNow ?? new Date(publishedAt);
+      const validated = validateShareLinkExpiryChoice(
+        writeOptions.linkExpiry,
+        expiryNow,
       );
-      if (currentRows.some((row) => row.exercise_request_id !== null)) {
-        throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+      statements.push(
+        this.buildProgramLinkExpiryUpdateStatement({
+          programId,
+          expiresIn: validated.expiresIn,
+          customExpiresOn: validated.customExpiresOn ?? null,
+        }),
+      );
+      if (writeOptions.openLinkId) {
+        const linkId = validateOpaqueEntityId(writeOptions.openLinkId, "Share link id");
+        const expiresAt = resolveShareLinkExpiresAt(validated, expiryNow);
+        statements.push(
+          this.buildOpenShareLinkExpiresAtUpdateStatement({
+            linkId,
+            expiresAt,
+          }),
+        );
       }
-      if (!current || current.deleted_at) {
-        throw new ProgramRepositoryError("Program not found");
+    }
+    try {
+      await this.sql.batch(statements);
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        return this.throwPublishGuardFailure(
+          programId,
+          draftVersion,
+          error,
+          writeOptions?.linkExpiry !== undefined,
+        );
       }
-      if (current.draft_version !== draftVersion) {
-        throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
-      }
-      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+      throw error;
     }
     return payload;
   }

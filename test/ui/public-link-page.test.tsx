@@ -64,6 +64,42 @@ describe("PublicLinkPage (UI)", () => {
     expect(screen.getByText("30s hold")).toBeInTheDocument();
   });
 
+  it("omits the dose line when exercise params are empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          availability: "open",
+          program_name: "Week one",
+          published_at: "2026-04-01T00:00:00.000Z",
+          expiry_line: "This link stays open until your physiotherapist closes it.",
+          rows: [
+            {
+              position: 0,
+              title: "Heel slide",
+              prescription_type: "stretching",
+              params: {},
+              note: null,
+            },
+          ],
+        }),
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={["/l/demo-token"]}>
+        <Routes>
+          <Route path="/l/:code" element={<PublicLinkPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Week one" })).toBeInTheDocument();
+    });
+    const listItem = screen.getByRole("listitem");
+    expect(listItem.querySelectorAll("p.pg-muted")).toHaveLength(0);
+  });
+
   it("renders the closed state without extra program details", async () => {
     vi.stubGlobal(
       "fetch",
