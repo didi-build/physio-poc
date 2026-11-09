@@ -237,6 +237,52 @@ describe("program publish DIDI-1197", () => {
     }
   });
 
+  it("repository publish ignores open-link revive when practitionerId does not own the program", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerId = await seedPractitioner(
+        storage,
+        id("1197-repo-owner"),
+        "repo-owner@example.com",
+      );
+      const otherId = await seedPractitioner(
+        storage,
+        id("1197-repo-other"),
+        "repo-other@example.com",
+      );
+      const programId = id("prog-1197-repo-cross");
+      const programs = new ProgramsRepository(storage);
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => PUBLISH_NOW);
+      await programs.create({
+        id: programId,
+        createdBy: ownerId,
+        createdAt: TS,
+        name: "Repo cross owner",
+      });
+      await seedExerciseRow(storage, programId, ownerId);
+      await publish.publishProgram(ownerId, programId);
+      const open = await new ShareLinksRepository(storage).findOpenByProgramId(
+        programId,
+      );
+      await seedExpiredOpenLink(storage, programId);
+      const before = await snapshotPublishContractState(storage, programId);
+
+      await expect(
+        programs.publish(programId, PUBLISH_NOW, {
+          linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.one_week },
+          openLinkId: open!.id,
+          expiryNow: new Date(PUBLISH_NOW),
+          practitionerId: otherId,
+        }),
+      ).rejects.toBeInstanceOf(SqlBatchGuardError);
+
+      const after = await snapshotPublishContractState(storage, programId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("does not let a cross-owner practitioner revive or rewrite the link", async () => {
     const storage = await openMigratedDatabase();
     try {
