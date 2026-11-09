@@ -1,15 +1,16 @@
 # DIDI-1023 MCP routines QA mutants
 
-Each mutant was applied alone, then the full `npm test` suite ran with `GIT_CONFIG_*` unset. Tracked sources were restored before the next row. Baseline on this branch: **222** files passed, **2283** passed, **4** skipped.
+Each mutant was applied alone, then the full `npm test` suite ran with `GIT_CONFIG_*` unset. Tracked sources were restored before the next row. Baseline on this branch: **222** files passed, **2284** passed, **4** skipped.
 
-| Id       | Mutant                                                                                                               | Killing test(s)                                                                                                                                         | Result |
-| -------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| M1023-1a | `routines-library-service.ts` `searchOwnerPublishedRoutinesForMcp`: drop `createdBy` on published search/count       | `mcp-tools-real-data-didi-1023.test.ts` owner-only search and cross-owner search isolation                                                              | Killed |
-| M1023-1b | `routines-library-service.ts` `searchOwnerPublishedRoutinesForMcp`: append author drafts to MCP results              | `mcp-tools-real-data-didi-1023.test.ts` > search_routines returns only owner published routines and excludes drafts and other owners                    | Killed |
-| M1023-1c | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: call `createProgramFromRoutine` on `from_routine_id` success   | `mcp-tools-real-data-didi-1023.test.ts` table-snapshot test, deep-link test, and `mcp-server-http.test.ts` seeded from-routine builder paths            | Killed |
-| M1023-1d | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `builder_link` targets `routineDetail` instead of `programNew` | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link; related HTTP builder assertions | Killed |
-| M1023-1e | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: restore `summary` `Created program from routine` on success    | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link (no Created prose)               | Killed |
-| M1023-1f | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `PhysioMcpToolInputError` prose instead of `routine_not_found` | `mcp-tools-real-data-didi-1023.test.ts` cross-owner from_routine_id; `mcp-server-http.test.ts` unknown routine UUID                                     | Killed |
+| Id       | Mutant                                                                                                                | Killing test(s)                                                                                                                                         | Result |
+| -------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| M1023-1a | `routines-library-service.ts` `searchOwnerPublishedRoutinesForMcp`: drop `createdBy` on published search/count        | `mcp-tools-real-data-didi-1023.test.ts` owner-only search and cross-owner search isolation                                                              | Killed |
+| M1023-1b | `routines-library-service.ts` `searchOwnerPublishedRoutinesForMcp`: append author drafts to MCP results               | `mcp-tools-real-data-didi-1023.test.ts` > search_routines returns only owner published routines and excludes drafts and other owners                    | Killed |
+| M1023-1c | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: call `createProgramFromRoutine` on `from_routine_id` success    | `mcp-tools-real-data-didi-1023.test.ts` table-snapshot test, deep-link test, and `mcp-server-http.test.ts` seeded from-routine builder paths            | Killed |
+| M1023-1d | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `builder_link` targets `routineDetail` instead of `programNew`  | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link; related HTTP builder assertions | Killed |
+| M1023-1e | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: restore `summary` `Created program from routine` on success     | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link (no Created prose)               | Killed |
+| M1023-1f | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `PhysioMcpToolInputError` prose instead of `routine_not_found`  | `mcp-tools-real-data-didi-1023.test.ts` cross-owner from_routine_id; `mcp-server-http.test.ts` unknown routine UUID                                     | Killed |
+| M1023-1g | `routines-library-service.ts` `findOwnerPublishedRoutineHead`: return synthetic head for owner drafts without publish | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link treats owner draft-only from_routine_id like a missing id                            | Killed |
 
 ## M1023-1a full-suite tail (verbatim)
 
@@ -83,4 +84,16 @@ AssertionError: expected 'Created program from routine' to be '' // Object.is eq
 AssertionError: expected 'Routine not found' to be 'routine_not_found' // Object.is equality
 ```
 
-**Totals:** 6 mutants run against the full suite, **6 killed**, **0 equivalent**, **0 survived**.
+## M1023-1g full-suite tail (verbatim)
+
+```
+ Test Files  3 failed | 219 passed (222)
+      Tests  4 failed | 2280 passed | 4 skipped (2288)
+```
+
+```
+ FAIL  test/mcp-tools-real-data-didi-1023.test.ts > MCP tools with real data (DIDI-1023) > get_program_builder_link treats owner draft-only from_routine_id like a missing id
+AssertionError: expected undefined to be true // Object.is equality
+```
+
+**Totals:** 7 mutants run against the full suite, **7 killed**, **0 equivalent**, **0 survived**.

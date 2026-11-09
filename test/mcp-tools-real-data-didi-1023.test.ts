@@ -190,7 +190,113 @@ async function seedOwnerDraftRoutine(
   return routineId;
 }
 
+function expectIdenticalRoutineNotFoundFromRoutine(
+  missing: { isError?: boolean; structuredContent?: unknown },
+  draft: { isError?: boolean; structuredContent?: unknown },
+): void {
+  expect(missing.isError).toBe(true);
+  expect(draft.isError).toBe(true);
+  expect(toolErrorText(draft)).toBe(toolErrorText(missing));
+  expect(toolErrorText(draft)).toBe("routine_not_found");
+  const missingBody = missing.structuredContent as { error_code?: string };
+  const draftBody = draft.structuredContent as { error_code?: string };
+  expect(draftBody.error_code).toBe("routine_not_found");
+  expect(missingBody.error_code).toBe("routine_not_found");
+}
+
 describe("MCP tools with real data (DIDI-1023)", () => {
+  it("get_program_builder_link treats owner draft-only from_routine_id like a missing id", async () => {
+    const storage = await openMigratedDatabase();
+    const owner = testOpaqueEntityId("didi-1023-draft-builder");
+    await seedPractitioner(storage, owner, "draft-builder@example.com");
+    const draftId = await seedOwnerDraftRoutine(storage, owner);
+    const missingId = testOpaqueEntityId("didi-1023-missing-draft-compare");
+    const { deps, cookie } = mcpDepsOnStorage(
+      storage,
+      owner,
+      "draft-builder@example.com",
+    );
+
+    const mcpFetch: FetchLike = async (input, init) => {
+      const parsed = new URL(input instanceof URL ? input.href : input);
+      const headers = new Headers(init?.headers);
+      headers.set("cookie", cookie);
+      return handleRequest(
+        new Request(`${BASE}${parsed.pathname}${parsed.search}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body: init?.body ?? undefined,
+        }),
+        deps,
+      );
+    };
+
+    await withMcpClient(
+      async (client) => {
+        const before = await snapshotMcpRoutineRelatedTables(storage);
+        const missing = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: missingId },
+        });
+        const draft = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: draftId },
+        });
+        const after = await snapshotMcpRoutineRelatedTables(storage);
+        expect(after).toEqual(before);
+        expectIdenticalRoutineNotFoundFromRoutine(
+          missing as { isError?: boolean; structuredContent?: unknown },
+          draft as { isError?: boolean; structuredContent?: unknown },
+        );
+      },
+      { fetch: mcpFetch },
+    );
+
+    await ensureMcpBearerSchema(storage);
+    const bearerDeps = await createProductionStyleMcpDeps(storage);
+    const bearerToken = await seedBearerMcpAccessToken(
+      bearerDeps,
+      owner,
+      "draft-builder@example.com",
+    );
+    const bearerMcpFetch: FetchLike = async (input, init) => {
+      const parsed = new URL(input instanceof URL ? input.href : input);
+      const headers = new Headers(init?.headers);
+      for (const [key, value] of Object.entries(mcpRequestHeaders(bearerToken))) {
+        headers.set(key, value);
+      }
+      return handleRequest(
+        new Request(`${MCP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body: init?.body ?? undefined,
+        }),
+        bearerDeps,
+      );
+    };
+
+    await withMcpClient(
+      async (client) => {
+        const before = await snapshotMcpRoutineRelatedTables(storage);
+        const missing = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: missingId },
+        });
+        const draft = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: draftId },
+        });
+        const after = await snapshotMcpRoutineRelatedTables(storage);
+        expect(after).toEqual(before);
+        expectIdenticalRoutineNotFoundFromRoutine(
+          missing as { isError?: boolean; structuredContent?: unknown },
+          draft as { isError?: boolean; structuredContent?: unknown },
+        );
+      },
+      { baseUrl: MCP_TEST_BASE, fetch: bearerMcpFetch },
+    );
+  });
+
   it("search_routines and get_program_builder_link leave all routine/program tables unchanged", async () => {
     const storage = await openMigratedDatabase();
     const owner = testOpaqueEntityId("didi-1023-snapshot-owner");
