@@ -59,9 +59,3 @@
 .sign-in-google-button:hover {
   background: #115e59;
 }
-
-.link-page-root {
-  min-height: 100vh;
-  padding: 1.5rem;
-  background: #ffffff;
-}

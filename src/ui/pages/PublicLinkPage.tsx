@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   PUBLIC_LINK_CLOSED_HEADING,
+  PUBLIC_LINK_EXERCISE_PROGRAM_LABEL,
   PUBLIC_LINK_PAGE_INTRO,
   PUBLIC_LINK_PRINT,
   PUBLIC_LINK_SAVE_AS_PDF,
@@ -61,7 +62,7 @@ export function PublicLinkPage() {
 
   if (view?.availability === "unavailable") {
     return (
-      <main className="link-page-root">
+      <main className="link-page-root link-page-root--unavailable">
         <h1>{view.heading}</h1>
       </main>
     );
@@ -72,31 +73,43 @@ export function PublicLinkPage() {
   }
 
   return (
-    <main className="link-page-root">
-      <header>
-        <h1>{view.program_name}</h1>
-        <p className="pg-muted">{PUBLIC_LINK_PAGE_INTRO}</p>
-        <p className="pg-muted">{view.expiry_line}</p>
-        <div className="link-page-actions">
-          <button type="button" className="pg-btn-primary" onClick={handlePrint}>
+    <main className="link-page-root link-page-print-document">
+      <header className="link-page-header">
+        <p className="link-page-kind">{PUBLIC_LINK_EXERCISE_PROGRAM_LABEL}</p>
+        <h1 className="link-page-title">{view.program_name}</h1>
+        <p className="link-page-intro">{PUBLIC_LINK_PAGE_INTRO}</p>
+        <div className="link-page-actions link-page-no-print">
+          <button
+            type="button"
+            className="pg-btn pg-btn--primary"
+            onClick={handlePrint}
+          >
             {PUBLIC_LINK_SAVE_AS_PDF}
           </button>
-          <button type="button" className="pg-btn-secondary" onClick={handlePrint}>
+          <button
+            type="button"
+            className="pg-btn pg-btn--secondary"
+            onClick={handlePrint}
+          >
             {PUBLIC_LINK_PRINT}
           </button>
         </div>
       </header>
       <ol className="link-page-rows">
-        {view.rows.map((row) => (
-          <li key={row.position}>
-            <h2>
-              {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
-            </h2>
-            <p className="pg-muted">{formatExerciseParams(row.params)}</p>
-            {row.note ? <p>{row.note}</p> : null}
-          </li>
-        ))}
+        {view.rows.map((row) => {
+          const doseLine = formatExerciseParams(row.params);
+          return (
+            <li key={row.position} className="link-page-row">
+              <h2>
+                {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
+              </h2>
+              {doseLine ? <p className="pg-muted">{doseLine}</p> : null}
+              {row.note ? <p>{row.note}</p> : null}
+            </li>
+          );
+        })}
       </ol>
+      <p className="link-page-footer">{view.expiry_line}</p>
     </main>
   );
 }

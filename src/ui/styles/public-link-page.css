@@ -1,0 +1,103 @@
+.link-page-root {
+  min-height: 100vh;
+  padding: 1rem;
+  max-width: 42rem;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #0f172a;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+}
+
+.link-page-header {
+  margin-bottom: 1.25rem;
+}
+
+.link-page-kind {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.link-page-title {
+  margin: 0.25rem 0 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.link-page-intro,
+.link-page-footer {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.link-page-footer {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.75rem;
+}
+
+.link-page-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.link-page-actions .pg-btn {
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+
+.link-page-rows {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.link-page-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  padding: 0.75rem;
+}
+
+.link-page-root--unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.link-page-root--unavailable h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+@media print {
+  .link-page-no-print {
+    display: none !important;
+  }
+
+  .link-page-root {
+    min-height: auto;
+    padding: 0;
+    max-width: none;
+  }
+
+  .link-page-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-color: #cbd5e1;
+  }
+}
