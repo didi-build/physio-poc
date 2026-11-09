@@ -7,7 +7,7 @@ import {
 import { readMcpPractitionerId } from "./mcp-request-context.js";
 import { PhysioMcpToolService } from "./physio-mcp-tool-service.js";
 import {
-  PhysioMcpToolInputError,
+  PhysioMcpStructuredToolError,
   validatePhysioMcpToolInput,
 } from "./validate-tool-input.js";
 
@@ -26,10 +26,7 @@ export async function invokePhysioMcpTool(
   const name = toolName as PhysioMcpToolName;
 
   if (name === SEARCH_ROUTINES_TOOL_NAME) {
-    const practitionerId = readMcpPractitionerId(request);
-    if (!practitionerId) {
-      throw new PhysioMcpToolInputError("Authentication required");
-    }
+    const practitionerId = requireMcpPractitionerId(request);
     const service = new PhysioMcpToolService({
       practitionerId,
       config: deps.config,
@@ -38,10 +35,7 @@ export async function invokePhysioMcpTool(
     return service.searchRoutines(input);
   }
 
-  const practitionerId = readMcpPractitionerId(request);
-  if (!practitionerId) {
-    throw new PhysioMcpToolInputError("Authentication required");
-  }
+  const practitionerId = requireMcpPractitionerId(request);
 
   const service = new PhysioMcpToolService({
     practitionerId,
@@ -49,6 +43,14 @@ export async function invokePhysioMcpTool(
     sql: deps.sql,
   });
   return service.invokeTool(name, input);
+}
+
+function requireMcpPractitionerId(request: Request): string {
+  const practitionerId = readMcpPractitionerId(request);
+  if (!practitionerId) {
+    throw new PhysioMcpStructuredToolError({ error_code: "auth_required" });
+  }
+  return practitionerId;
 }
 
 /** @deprecated Use invokePhysioMcpTool. Retained for stub unit tests. */

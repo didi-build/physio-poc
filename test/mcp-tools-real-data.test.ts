@@ -9,6 +9,8 @@ import {
   buildWebAppExerciseSearchUrl,
 } from "../src/mcp-connector/index.js";
 import { handleRequest } from "../src/http/app.js";
+import { invokePhysioMcpTool } from "../src/services/mcp/tool-handler.js";
+import { PhysioMcpStructuredToolError } from "../src/services/mcp/validate-tool-input.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
@@ -198,6 +200,26 @@ describe("MCP tools with real data (DIDI-1016)", () => {
       deps,
     );
     expect(response.status).toBe(401);
+  });
+
+  it("invokePhysioMcpTool returns auth_required when the practitioner header is missing", async () => {
+    const storage = await openMigratedDatabase();
+    let error: unknown;
+    try {
+      await invokePhysioMcpTool(
+        SEARCH_APPROVED_EXERCISES_TOOL_NAME,
+        { query: "calf" },
+        new Request(`${BASE}${MCP_PATH}`, { method: "POST" }),
+        { sql: storage, config: MCP_TEST_CONFIG },
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(PhysioMcpStructuredToolError);
+    expect((error as PhysioMcpStructuredToolError).structured).toEqual({
+      error_code: "auth_required",
+    });
+    expect((error as PhysioMcpStructuredToolError).message).toBe("auth_required");
   });
 
   it("search_approved_exercises returns real rows and search_link when empty", async () => {
@@ -448,6 +470,8 @@ describe("MCP tools with real data (DIDI-1016)", () => {
         };
 
       const assertNoLiveShareOrPdf = (body: Record<string, unknown>, label: string) => {
+        expect(body.share_link_state, label).not.toBe("live");
+        expect(["closed", "expired", "none"], label).toContain(body.share_link_state);
         expect(body.share_link, label).toBe("");
         expect(body.pdf_url, label).toBe("");
         expect(String(body.share_link), label).not.toMatch(/\/l\//);
@@ -494,6 +518,26 @@ describe("MCP tools with real data (DIDI-1016)", () => {
       await publish.closeShareLink(practitionerId, supersededProgramId);
       await publish.publishProgram(practitionerId, supersededProgramId);
       await publish.closeShareLink(practitionerId, supersededProgramId);
+
+      const assertConnectorViewInactive = async (
+        programId: string,
+        expectedState: "closed" | "expired",
+        label: string,
+      ) => {
+        const view = await publish.getShareConnectorView(practitionerId, programId);
+        expect(view.share_link_state, label).toBe(expectedState);
+        expect(view.share_link, label).toBe("");
+        expect(view.open_share_link, label).toBe(false);
+      };
+
+      await assertConnectorViewInactive(expiredProgramId, "expired", "expired-view");
+      await assertConnectorViewInactive(closedProgramId, "closed", "closed-view");
+      await assertConnectorViewInactive(boundaryProgramId, "expired", "boundary-view");
+      await assertConnectorViewInactive(
+        supersededProgramId,
+        "closed",
+        "superseded-view",
+      );
 
       const { code: liveSoonCode, programId: liveSoonProgramId } =
         await createPublishedProgram("live-soon", "Just before expiry");
