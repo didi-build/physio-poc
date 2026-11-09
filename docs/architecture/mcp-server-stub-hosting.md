@@ -28,7 +28,7 @@ After deploy, the MCP URL is `https://physio-poc.diademshoukralla.workers.dev/mc
 
 ## Privacy
 
-No patient information is stored or logged. Request bodies are not logged. `search_routines` and blank `get_program_builder_link` responses remain labelled placeholders until later tickets.
+No patient information is stored or logged. Request bodies are not logged. Blank `get_program_builder_link` (no `program_code` or `from_routine_id`) remains a labelled placeholder until later tickets.
 
 ## Local tests
 

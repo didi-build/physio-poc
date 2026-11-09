@@ -14,6 +14,12 @@ export type SearchApprovedExercisesToolOutputFields = {
   match_count: number;
 };
 
+/** `get_program_builder_link` success payload when `from_routine_id` resolves to an owner-published routine. */
+export type GetProgramBuilderLinkFromRoutineToolOutputFields = {
+  /** Normalized routine id echoed from the request. */
+  from_routine_id: string;
+};
+
 /** `get_program_builder_link` success payload when `program_code` resolved to a stored program. */
 export type GetProgramBuilderLinkToolOutputFields = {
   /** Program display title when set; null when the draft has no name. */

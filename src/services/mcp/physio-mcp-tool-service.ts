@@ -18,10 +18,13 @@ import {
   ProgramPublishServiceError,
 } from "../programs/program-publish-service.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
+import { RoutinesLibraryService } from "../routines/routines-library-service.js";
 import {
   approvedExerciseSearchSummary,
+  createdProgramFromRoutineSummary,
   foundProgramByCodeSummary,
   programShareSummary,
+  searchedRoutinesSummary,
 } from "./connector-copy.js";
 import { invokePhysioMcpStubTool } from "./stub-tool-handler.js";
 import {
@@ -112,7 +115,25 @@ export class PhysioMcpToolService {
   async searchRoutines(
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return invokePhysioMcpStubTool(SEARCH_ROUTINES_TOOL_NAME, input, this.config);
+    const library = new RoutinesLibraryService(this.sql, this.config);
+    const query = String(input.query ?? "");
+    const result = await library.searchOwnerPublishedRoutinesForMcp({
+      practitionerId: this.practitionerId,
+      query,
+      limit: typeof input.limit === "number" ? input.limit : undefined,
+      cursor: typeof input.cursor === "string" ? input.cursor : undefined,
+    });
+
+    const output: Record<string, unknown> = {
+      summary: searchedRoutinesSummary(),
+      share_link: "",
+      manage_url: result.manage_url,
+      routines: result.routines,
+    };
+    if (result.next_cursor) {
+      output.next_cursor = result.next_cursor;
+    }
+    return output;
   }
 
   async getProgramBuilderLink(
@@ -122,12 +143,41 @@ export class PhysioMcpToolService {
       typeof input.program_code === "string" && input.program_code.length > 0
         ? input.program_code
         : undefined;
-    if (!programCode) {
+    const routineId =
+      typeof input.from_routine_id === "string" &&
+      input.from_routine_id.trim().length > 0
+        ? input.from_routine_id.trim()
+        : undefined;
+    if (!programCode && !routineId) {
       return invokePhysioMcpStubTool(
         GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         input,
         this.config,
       );
+    }
+    if (!programCode && routineId) {
+      const library = new RoutinesLibraryService(this.sql, this.config);
+      const head = await library.findOwnerPublishedRoutineHead(
+        this.practitionerId,
+        routineId,
+      );
+      if (!head) {
+        throw new PhysioMcpToolInputError("Routine not found");
+      }
+      const builderLink = buildProgramBuilderLink(this.config.webAppBaseUrl, {
+        from_routine_id: head.routine_id,
+      });
+      return {
+        summary: createdProgramFromRoutineSummary(),
+        share_link: "",
+        builder_link: builderLink,
+        manage_url: appUrl(this.config, "programNew"),
+        from_routine_id: head.routine_id,
+      };
+    }
+
+    if (!programCode) {
+      throw new PhysioMcpToolInputError("Program not found");
     }
 
     const builder = new ProgramBuilderService(this.sql);
