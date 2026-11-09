@@ -159,14 +159,14 @@ export async function handleRequest(
   }
 
   if (pathname.startsWith("/api/")) {
-    return guardAndRun(request, deps, sessionGuardOptions, async () => {
+    return guardAndRun(request, deps, sessionGuardOptions, async (context) => {
       if (pathname.startsWith("/api/me/")) {
         const queryRejected = rejectQueryPractitionerId(url);
         if (queryRejected) {
           return queryRejected;
         }
       }
-      const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const sessionPractitioner = context?.sessionPractitioner ?? null;
       const practitionerSessionResponse = await handlePractitionerSessionRequest(
         request,
         deps,
@@ -259,7 +259,7 @@ async function guardAndRun(
   request: Request,
   deps: AppDependencies,
   sessionGuardOptions: { extraSessionPublicPath?: (pathname: string) => boolean },
-  next: () => Promise<Response>,
+  next: (context?: AppRouteHandlerContext) => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (!requiresPractitionerSession(url.pathname, request.method, sessionGuardOptions)) {
@@ -278,7 +278,7 @@ async function guardAndRun(
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);
   }
-  return next();
+  return next({ sessionPractitioner: practitioner });
 }
 
 function unauthenticatedAppResponse(
