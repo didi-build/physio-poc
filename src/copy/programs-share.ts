@@ -12,6 +12,9 @@ export const PUBLIC_LINK_SAVE_AS_PDF = "Save as PDF";
 
 export const PUBLIC_LINK_PRINT = "Print";
 
+/** Verbatim design/app/programs/spec.md Copy inventory (link / PDF preview). */
+export const PUBLIC_LINK_EXERCISE_PROGRAM_LABEL = "Exercise program";
+
 export const PUBLIC_LINK_EXPIRY_NEVER =
   "This link stays open until your physiotherapist closes it.";
 
