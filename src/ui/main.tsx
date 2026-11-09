@@ -7,6 +7,7 @@ import "./styles/my-defaults.css";
 import "./styles/shell.css";
 import "./styles/sign-in.css";
 import "./styles/programs.css";
+import "./styles/public-link-page.css";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {

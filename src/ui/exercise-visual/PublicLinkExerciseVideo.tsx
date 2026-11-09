@@ -26,8 +26,39 @@ export function PublicLinkExerciseVideo(sources: PublicLinkExerciseVideoProps = 
   const alt = sources.alt ?? defaults.alt;
   const [playing, setPlaying] = useState(false);
 
+  const staticGridClass = [
+    "exercise-motion-link-static-grid",
+    playing ? "exercise-motion-link-static-grid--screen-hidden" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div data-testid="public-link-exercise-video">
+      <div className={staticGridClass}>
+        <figure>
+          <img
+            src={startSrc}
+            alt={exerciseMotionStartAlt(alt)}
+            className="exercise-motion-static-img"
+            data-testid="public-link-static-start"
+          />
+          <figcaption className="exercise-motion-static-caption">
+            {LINK_START_CAPTION}
+          </figcaption>
+        </figure>
+        <figure>
+          <img
+            src={endSrc}
+            alt={exerciseMotionEndAlt(alt)}
+            className="exercise-motion-static-img"
+            data-testid="public-link-static-end"
+          />
+          <figcaption className="exercise-motion-static-caption">
+            {LINK_END_CAPTION}
+          </figcaption>
+        </figure>
+      </div>
       {playing ? (
         <ExerciseMotion
           startSrc={startSrc}
@@ -35,35 +66,10 @@ export function PublicLinkExerciseVideo(sources: PublicLinkExerciseVideoProps = 
           alt={alt}
           className="mt-2"
         />
-      ) : (
-        <div className="exercise-motion-link-static-grid">
-          <figure>
-            <img
-              src={startSrc}
-              alt={exerciseMotionStartAlt(alt)}
-              className="exercise-motion-static-img"
-              data-testid="public-link-static-start"
-            />
-            <figcaption className="exercise-motion-static-caption">
-              {LINK_START_CAPTION}
-            </figcaption>
-          </figure>
-          <figure>
-            <img
-              src={endSrc}
-              alt={exerciseMotionEndAlt(alt)}
-              className="exercise-motion-static-img"
-              data-testid="public-link-static-end"
-            />
-            <figcaption className="exercise-motion-static-caption">
-              {LINK_END_CAPTION}
-            </figcaption>
-          </figure>
-        </div>
-      )}
+      ) : null}
       <button
         type="button"
-        className="exercise-motion-link-toggle"
+        className="exercise-motion-link-toggle link-page-no-print"
         onClick={() => {
           setPlaying((current) => !current);
         }}
