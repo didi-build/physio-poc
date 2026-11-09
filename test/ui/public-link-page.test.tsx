@@ -63,7 +63,6 @@ describe("PublicLinkPage (UI)", () => {
         ok: true,
         json: async () => ({
           availability: "unavailable",
-          reason: "closed",
           heading: PUBLIC_LINK_CLOSED_HEADING,
         }),
       }),

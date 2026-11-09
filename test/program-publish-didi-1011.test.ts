@@ -3,10 +3,15 @@ import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
   ProgramPublishService,
   ProgramPublishServiceError,
+  PUBLIC_SHARE_LINK_UNAVAILABLE_BODY,
+  PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW,
 } from "../src/services/programs/program-publish-service.js";
+import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
   ProgramRowsRepository,
@@ -22,6 +27,7 @@ import { SHARE_LINK_EXPIRES_IN } from "../src/mcp-connector/share-link-expiry.js
 import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../src/copy/programs-share.js";
 import {
   publicShareLinkApiPath,
+  programPath,
   programPublishPath,
   programShareLinkPath,
 } from "../src/programs-api-paths.js";
@@ -82,6 +88,83 @@ async function seedExerciseRow(
     textSnapshot: { title: "Heel slide" },
     draftUpdatedAt: TS,
   });
+}
+
+function secondApiDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practId: string,
+  email: string,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: practId,
+      email,
+      displayName: "Other coach",
+    },
+    sessionCookieName: `physio.fake_session.${practId}`,
+  });
+  return {
+    deps: {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      auth,
+    },
+    cookie: auth.createSessionCookieHeader(),
+  };
+}
+
+async function snapshotPublishShareState(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  programId: string,
+) {
+  const programs = new ProgramsRepository(storage);
+  const links = new ShareLinksRepository(storage);
+  const program = await programs.findById(programId);
+  const open = await links.findOpenByProgramId(programId);
+  const latest = await links.findLatestByProgramId(programId);
+  return {
+    published_version: program?.published_version ?? null,
+    published_at: program?.published_at ?? null,
+    published_snapshot_json: program?.published_snapshot_json ?? null,
+    open_link: open
+      ? {
+          id: open.id,
+          token: open.token,
+          expires_at: open.expires_at,
+          closed_at: open.closed_at,
+        }
+      : null,
+    latest_link_id: latest?.id ?? null,
+  };
+}
+
+async function readPublicShareLinkResponse(
+  deps: ReturnType<typeof apiDeps>["deps"],
+  token: string,
+): Promise<{ status: number; headers: Headers; bodyText: string }> {
+  const response = await handleRequest(
+    new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+    deps,
+  );
+  return {
+    status: response.status,
+    headers: response.headers,
+    bodyText: await response.text(),
+  };
+}
+
+function expectCanonicalUnavailableHttpResponse(result: {
+  status: number;
+  headers: Headers;
+  bodyText: string;
+}): void {
+  expect(result.status).toBe(200);
+  expect(result.headers.get("content-type")).toBe("application/json");
+  expect(result.headers.get("cache-control")).toBe("no-store");
+  expect(result.bodyText).toBe(PUBLIC_SHARE_LINK_UNAVAILABLE_BODY);
+  expect(result.bodyText.length).toBe(PUBLIC_SHARE_LINK_UNAVAILABLE_BODY.length);
 }
 
 async function seedPlaceholderRow(
@@ -309,13 +392,9 @@ describe("DIDI-1011 program publish service (integration)", () => {
       const closedView = await publish.getPublicShareLinkByToken(
         decodeURIComponent(token),
       );
-      expect(closedView).toEqual({
-        availability: "unavailable",
-        reason: "closed",
-        heading: "This link was closed",
-      });
+      expect(closedView).toEqual(PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW);
       const unknown = await publish.getPublicShareLinkByToken("not-a-real-token");
-      expect(unknown).toMatchObject({ reason: "unknown" });
+      expect(unknown).toEqual(PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW);
       expect(JSON.stringify(unknown)).not.toContain("Close me");
     } finally {
       storage.close();
@@ -350,11 +429,7 @@ describe("DIDI-1011 program publish service (integration)", () => {
         token,
         new Date("2026-01-05T12:00:00.000Z"),
       );
-      expect(view).toMatchObject({
-        availability: "unavailable",
-        reason: "expired",
-        heading: "This link was closed",
-      });
+      expect(view).toEqual(PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW);
       expect(JSON.stringify(view)).not.toContain("Secret name");
     } finally {
       storage.close();
@@ -471,6 +546,333 @@ describe("DIDI-1011 program publish HTTP (integration)", () => {
       expect(del.status).toBe(200);
       const connector = (await del.json()) as { share_link_status: string };
       expect(connector.share_link_status).toBe("closed");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns byte-identical unavailable HTTP responses for unknown, closed, expired, never-published, and deleted tokens", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      const links = new ShareLinksRepository(storage);
+      const publish = new ProgramPublishService(
+        storage,
+        WEB_BASE,
+        () => "2026-06-01T00:00:00.000Z",
+      );
+      const builder = new ProgramBuilderService(storage);
+      const { deps } = apiDeps(storage, practitionerId);
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const addFixtureExerciseRow = async (programId: string, rowId: string) => {
+        await new ProgramRowsRepository(storage).replaceRow({
+          id: rowId,
+          programId,
+          position: 0,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          prescriptionType: "stretching",
+          params: { hold_s: 30 },
+          textSnapshot: { title: "Heel slide" },
+          draftUpdatedAt: TS,
+        });
+      };
+
+      const unknown = await readPublicShareLinkResponse(
+        deps,
+        id("missing-share-token"),
+      );
+
+      const closedProgramId = id("prog-http-closed");
+      await programs.create({
+        id: closedProgramId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Closed HTTP",
+      });
+      await addFixtureExerciseRow(closedProgramId, id("row-http-closed"));
+      const closedPublished = await publish.publishProgram(
+        practitionerId,
+        closedProgramId,
+      );
+      const closedToken = decodeURIComponent(
+        closedPublished.share_link.split("/l/")[1]!,
+      );
+      await publish.closeShareLink(practitionerId, closedProgramId);
+      const closed = await readPublicShareLinkResponse(deps, closedToken);
+
+      const expiredProgramId = id("prog-http-expired");
+      await programs.create({
+        id: expiredProgramId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Expired HTTP",
+      });
+      await addFixtureExerciseRow(expiredProgramId, id("row-http-expired"));
+      const expiredPublished = await publish.publishProgram(
+        practitionerId,
+        expiredProgramId,
+        {
+          linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.never },
+        },
+      );
+      await storage.run(
+        `UPDATE share_links SET expires_at = ? WHERE program_id = ? AND closed_at IS NULL`,
+        ["2020-01-01T00:00:00.000Z", expiredProgramId],
+      );
+      const expiredToken = decodeURIComponent(
+        expiredPublished.share_link.split("/l/")[1]!,
+      );
+      const expired = await readPublicShareLinkResponse(deps, expiredToken);
+
+      const neverProgramId = id("prog-http-never");
+      await programs.create({
+        id: neverProgramId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Never published HTTP",
+      });
+      await addFixtureExerciseRow(neverProgramId, id("row-http-never"));
+      const neverLink = await links.createOpenLinkForProgram({
+        id: generateOpaqueEntityId(),
+        programId: neverProgramId,
+        practitionerId,
+        createdAt: TS,
+      });
+      const neverPublished = await readPublicShareLinkResponse(deps, neverLink.token);
+
+      const deletedProgramId = id("prog-http-deleted");
+      await programs.create({
+        id: deletedProgramId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Deleted HTTP",
+      });
+      await addFixtureExerciseRow(deletedProgramId, id("row-http-deleted"));
+      const deletedPublished = await publish.publishProgram(
+        practitionerId,
+        deletedProgramId,
+      );
+      const deletedToken = decodeURIComponent(
+        deletedPublished.share_link.split("/l/")[1]!,
+      );
+      await builder.deleteProgram(practitionerId, deletedProgramId);
+      const deleted = await readPublicShareLinkResponse(deps, deletedToken);
+
+      for (const result of [unknown, closed, expired, neverPublished, deleted]) {
+        expectCanonicalUnavailableHttpResponse(result);
+      }
+      expect(
+        new Set([
+          unknown.bodyText,
+          closed.bodyText,
+          expired.bodyText,
+          neverPublished.bodyText,
+          deleted.bodyText,
+        ]).size,
+      ).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("publishes over HTTP after a placeholder is approved and linked (DIDI-1104)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("pub-owner"),
+        "owner@example.com",
+      );
+      const approver = await seedPractitioner(
+        storage,
+        id("pub-appr"),
+        "appr@example.com",
+      );
+      await seedApprovedExerciseVersion(storage, approver);
+      const requests = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T11:00:00.000Z",
+      });
+      const submitted = await requests.submitRequest({
+        practitionerId: owner,
+        requestedName: "Approved move",
+        formOpenedAt: "2026-10-30T10:00:00.000Z",
+      });
+      expect(submitted.outcome).toBe("created");
+      if (submitted.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+
+      const programId = id("prog-appr-http");
+      const rowId = id("row-appr-http");
+      const builder = new ProgramBuilderService(storage);
+      await builder.createProgram(owner, { programId, name: "After approve" });
+      await builder.addPlaceholderRow(owner, programId, {
+        rowId,
+        exerciseRequestId: submitted.request_id,
+        prescriptionType: "stretching",
+      });
+
+      const approve = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T15:00:00.000Z",
+      });
+      await approve.approveRequest({
+        practitionerId: approver,
+        requestId: submitted.request_id,
+      });
+
+      const row = await new ProgramRowsRepository(storage).findById(rowId);
+      expect(row?.exercise_request_id).toBeNull();
+      expect(row?.exercise_version_id).not.toBeNull();
+
+      const { deps, cookie } = apiDeps(storage, owner);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const published = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(published.status).toBe(200);
+      expect(
+        (await new ProgramsRepository(storage).findById(programId))?.published_at,
+      ).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects the first publish while a placeholder is pending and creates no share link", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programs = new ProgramsRepository(storage);
+      const programId = id("prog-first-ph");
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Placeholder only",
+      });
+      await seedPlaceholderRow(storage, practitionerId, programId, id("req-first-ph"));
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("placeholders_block_publish");
+
+      const linkCount = await storage.first<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM share_links WHERE program_id = ?`,
+        [programId],
+      );
+      expect(linkCount?.c ?? 0).toBe(0);
+      expect((await programs.findById(programId))?.published_version).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not change published_version or share-link state on read-only share-link traffic or program save", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerId = await seedPractitioner(
+        storage,
+        id("owner-sfx"),
+        "owner@example.com",
+      );
+      const otherId = await seedPractitioner(
+        storage,
+        id("other-sfx"),
+        "other@example.com",
+      );
+      const programId = id("prog-sfx");
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: programId,
+        createdBy: ownerId,
+        createdAt: TS,
+        name: "Side effect guard",
+      });
+      await seedExerciseRow(storage, programId, ownerId);
+
+      const { deps: ownerDeps, cookie: ownerCookie } = apiDeps(storage, ownerId);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const published = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie: ownerCookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        ownerDeps,
+      );
+      expect(published.status).toBe(200);
+      const publishBody = (await published.json()) as { share_link: string };
+      const token = decodeURIComponent(publishBody.share_link.split("/l/")[1]!);
+
+      const before = await snapshotPublishShareState(storage, programId);
+
+      const shareUrl = `${BASE}${programShareLinkPath(programId)}`;
+      const ownerShare = await handleRequest(
+        new Request(shareUrl, {
+          headers: { cookie: ownerCookie },
+        }),
+        ownerDeps,
+      );
+      expect(ownerShare.status).toBe(200);
+
+      const { deps: otherDeps, cookie: otherCookie } = secondApiDeps(
+        storage,
+        otherId,
+        "other@example.com",
+      );
+      const otherShare = await handleRequest(
+        new Request(shareUrl, {
+          headers: { cookie: otherCookie },
+        }),
+        otherDeps,
+      );
+      expect(otherShare.status).toBe(404);
+
+      const publicRead = await readPublicShareLinkResponse(ownerDeps, token);
+      expect(publicRead.status).toBe(200);
+
+      const patchUrl = `${BASE}${programPath(programId)}`;
+      const saved = await handleRequest(
+        new Request(
+          patchUrl,
+          mutatingAppApiRequestInit(patchUrl, {
+            method: "PATCH",
+            headers: { cookie: ownerCookie },
+            body: JSON.stringify({ name: "Renamed side effect guard" }),
+          }),
+        ),
+        ownerDeps,
+      );
+      expect(saved.status).toBe(200);
+
+      const after = await snapshotPublishShareState(storage, programId);
+      expect(after).toEqual(before);
     } finally {
       storage.close();
     }

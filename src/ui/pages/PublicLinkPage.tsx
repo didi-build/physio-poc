@@ -18,7 +18,6 @@ export function PublicLinkPage() {
     if (!code) {
       setView({
         availability: "unavailable",
-        reason: "unknown",
         heading: PUBLIC_LINK_CLOSED_HEADING,
       });
       return;
@@ -41,7 +40,6 @@ export function PublicLinkPage() {
           setLoadError(true);
           setView({
             availability: "unavailable",
-            reason: "unknown",
             heading: PUBLIC_LINK_CLOSED_HEADING,
           });
         }

@@ -97,9 +97,17 @@ export type PublicShareLinkOpenView = {
 
 export type PublicShareLinkUnavailableView = {
   availability: "unavailable";
-  reason: "closed" | "expired" | "unknown";
   heading: typeof PUBLIC_LINK_CLOSED_HEADING;
 };
+
+export const PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW: PublicShareLinkUnavailableView = {
+  availability: "unavailable",
+  heading: PUBLIC_LINK_CLOSED_HEADING,
+};
+
+export const PUBLIC_SHARE_LINK_UNAVAILABLE_BODY = JSON.stringify(
+  PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW,
+);
 
 export type PublicShareLinkView =
   PublicShareLinkOpenView | PublicShareLinkUnavailableView;
@@ -129,14 +137,8 @@ function linkIsExpired(link: ShareLinkRecord, requestTime: Date): boolean {
   return !Number.isNaN(expiresMs) && expiresMs <= requestTime.getTime();
 }
 
-function unavailableView(
-  reason: PublicShareLinkUnavailableView["reason"],
-): PublicShareLinkUnavailableView {
-  return {
-    availability: "unavailable",
-    reason,
-    heading: PUBLIC_LINK_CLOSED_HEADING,
-  };
+function unavailableView(): PublicShareLinkUnavailableView {
+  return PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW;
 }
 
 export class ProgramPublishService {
@@ -293,31 +295,31 @@ export class ProgramPublishService {
   ): Promise<PublicShareLinkView> {
     const trimmed = token.trim();
     if (trimmed.length === 0) {
-      return unavailableView("unknown");
+      return unavailableView();
     }
     const link = await this.links.findByToken(trimmed);
     if (!link) {
-      return unavailableView("unknown");
+      return unavailableView();
     }
     if (link.closed_at !== null) {
-      return unavailableView("closed");
+      return unavailableView();
     }
     if (linkIsExpired(link, requestTime)) {
-      return unavailableView("expired");
+      return unavailableView();
     }
 
     const program = await this.programs.findById(link.program_id);
     if (!program || program.deleted_at) {
-      return unavailableView("closed");
+      return unavailableView();
     }
     const snapshot = this.programs.getPublishedSnapshot(program);
     if (!snapshot) {
-      return unavailableView("closed");
+      return unavailableView();
     }
 
     const openLink = await this.links.findOpenByProgramId(program.id);
     if (!openLink || openLink.id !== link.id) {
-      return unavailableView("closed");
+      return unavailableView();
     }
 
     const expiryLine = this.buildExpiryLine(openLink);
