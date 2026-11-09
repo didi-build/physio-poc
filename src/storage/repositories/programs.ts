@@ -95,6 +95,9 @@ export const PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE =
 /** Internal publish-batch guard result; same token as HTTP `stale_draft_retry` (not user-facing copy). */
 export const PUBLISH_STALE_DRAFT_SIGNAL = "stale_draft_retry";
 
+/** Open link was closed between read and publish batch (not user-facing copy). */
+export const PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL = "publish_open_link_closed_race";
+
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
     return value as PrescriptionType;
@@ -564,11 +567,54 @@ export class ProgramsRepository {
 
   buildOpenShareLinkExpiresAtUpdateStatement(input: {
     linkId: string;
+    programId: string;
+    practitionerId: string;
     expiresAt: string | null;
   }): SqlBatchStatement {
     return {
-      sql: `UPDATE share_links SET expires_at = ? WHERE id = ? AND closed_at IS NULL`,
-      bindings: [input.expiresAt, input.linkId],
+      sql: `UPDATE share_links SET expires_at = ?
+       WHERE id = ? AND closed_at IS NULL AND program_id = ?
+         AND EXISTS (
+           SELECT 1 FROM programs
+           WHERE id = ? AND created_by = ? AND deleted_at IS NULL
+         )`,
+      bindings: [
+        input.expiresAt,
+        input.linkId,
+        input.programId,
+        input.programId,
+        input.practitionerId,
+      ],
+      minRowsAffected: 1,
+    };
+  }
+
+  buildOpenShareLinkInsertBatchStatement(input: {
+    linkId: string;
+    programId: string;
+    practitionerId: string;
+    token: string;
+    expiresAt: string | null;
+    createdAt: string;
+  }): SqlBatchStatement {
+    return {
+      sql: `INSERT INTO share_links (id, program_id, token, expires_at, closed_at, created_at)
+       SELECT ?, ?, ?, ?, NULL, ?
+       FROM programs
+       WHERE id = ? AND deleted_at IS NULL AND created_by = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM share_links WHERE program_id = ? AND closed_at IS NULL
+         )`,
+      bindings: [
+        input.linkId,
+        input.programId,
+        input.token,
+        input.expiresAt,
+        input.createdAt,
+        input.programId,
+        input.practitionerId,
+        input.programId,
+      ],
       minRowsAffected: 1,
     };
   }
@@ -577,7 +623,11 @@ export class ProgramsRepository {
     programId: string,
     expectedDraftVersion: number,
     guardError: SqlBatchGuardError,
-    hadExpiryWrites: boolean,
+    batchContext: {
+      hadProgramExpiryWrite: boolean;
+      openLinkId?: string;
+      hadNewLinkInsert: boolean;
+    },
   ): Promise<never> {
     const current = await this.findById(programId);
     const currentRows = await new ProgramRowsRepository(this.sql).listForProgram(
@@ -592,7 +642,20 @@ export class ProgramsRepository {
     if (current.draft_version !== expectedDraftVersion) {
       throw new ProgramRepositoryError(PUBLISH_STALE_DRAFT_SIGNAL);
     }
-    if (hadExpiryWrites) {
+    if (batchContext.openLinkId) {
+      const link = await this.sql.first<{ closed_at: string | null }>(
+        `SELECT closed_at FROM share_links WHERE id = ?`,
+        [batchContext.openLinkId],
+      );
+      if (link?.closed_at !== null && link?.closed_at !== undefined) {
+        throw new ProgramRepositoryError(PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL);
+      }
+    }
+    const hadLinkWrites =
+      batchContext.hadProgramExpiryWrite ||
+      batchContext.openLinkId !== undefined ||
+      batchContext.hadNewLinkInsert;
+    if (hadLinkWrites) {
       throw guardError;
     }
     throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
@@ -605,6 +668,13 @@ export class ProgramsRepository {
       linkExpiry?: ShareLinkExpiryChoice;
       openLinkId?: string;
       expiryNow?: Date;
+      practitionerId?: string;
+      newOpenLink?: {
+        id: string;
+        token: string;
+        expiresAt: string | null;
+        createdAt: string;
+      };
     },
   ): Promise<PublishedProgramSnapshot> {
     const program = await this.findById(programId);
@@ -625,6 +695,8 @@ export class ProgramsRepository {
     };
     const snapshotJson = JSON.stringify(payload);
     const draftVersion = program.draft_version;
+    const expiryNow = writeOptions?.expiryNow ?? new Date(publishedAt);
+    const practitionerId = writeOptions?.practitionerId;
     const statements: SqlBatchStatement[] = [
       this.buildPublishSnapshotUpdateStatement({
         programId,
@@ -634,12 +706,15 @@ export class ProgramsRepository {
         snapshotJson,
       }),
     ];
+    let hadProgramExpiryWrite = false;
+    let openLinkIdForBatch: string | undefined;
+    const hadNewLinkInsert = writeOptions?.newOpenLink !== undefined;
     if (writeOptions?.linkExpiry) {
-      const expiryNow = writeOptions.expiryNow ?? new Date(publishedAt);
       const validated = validateShareLinkExpiryChoice(
         writeOptions.linkExpiry,
         expiryNow,
       );
+      hadProgramExpiryWrite = true;
       statements.push(
         this.buildProgramLinkExpiryUpdateStatement({
           programId,
@@ -647,27 +722,45 @@ export class ProgramsRepository {
           customExpiresOn: validated.customExpiresOn ?? null,
         }),
       );
-      if (writeOptions.openLinkId) {
+      if (writeOptions.openLinkId && practitionerId) {
         const linkId = validateOpaqueEntityId(writeOptions.openLinkId, "Share link id");
+        openLinkIdForBatch = linkId;
         const expiresAt = resolveShareLinkExpiresAt(validated, expiryNow);
         statements.push(
           this.buildOpenShareLinkExpiresAtUpdateStatement({
             linkId,
+            programId,
+            practitionerId,
             expiresAt,
           }),
         );
       }
     }
+    if (writeOptions?.newOpenLink) {
+      if (!practitionerId) {
+        throw new ProgramRepositoryError("Share link insert failed");
+      }
+      const newLink = writeOptions.newOpenLink;
+      statements.push(
+        this.buildOpenShareLinkInsertBatchStatement({
+          linkId: validateOpaqueEntityId(newLink.id, "Share link id"),
+          programId,
+          practitionerId,
+          token: newLink.token,
+          expiresAt: newLink.expiresAt,
+          createdAt: newLink.createdAt,
+        }),
+      );
+    }
     try {
       await this.sql.batch(statements);
     } catch (error) {
       if (error instanceof SqlBatchGuardError) {
-        return this.throwPublishGuardFailure(
-          programId,
-          draftVersion,
-          error,
-          writeOptions?.linkExpiry !== undefined,
-        );
+        return this.throwPublishGuardFailure(programId, draftVersion, error, {
+          hadProgramExpiryWrite,
+          openLinkId: openLinkIdForBatch,
+          hadNewLinkInsert,
+        });
       }
       throw error;
     }
@@ -1253,6 +1346,19 @@ export class ShareLinksRepository {
     );
   }
 
+  async resolveDefaultExpiryForProgram(
+    practitionerId: string,
+    now: Date = new Date(),
+  ): Promise<ShareLinkExpiryChoice> {
+    const defaults = new ShareLinkDefaultsRepository(this.sql);
+    const practitionerChoice = await defaults.getPractitionerDefault(practitionerId);
+    if (practitionerChoice) {
+      return validateShareLinkExpiryChoice(practitionerChoice, now);
+    }
+    const globalChoice = await defaults.getGlobalDefault();
+    return validateShareLinkExpiryChoice(globalChoice, now);
+  }
+
   async resolveExpiryForProgram(
     program: ProgramRecord,
     practitionerId: string,
@@ -1267,13 +1373,7 @@ export class ShareLinksRepository {
         now,
       );
     }
-    const defaults = new ShareLinkDefaultsRepository(this.sql);
-    const practitionerChoice = await defaults.getPractitionerDefault(practitionerId);
-    if (practitionerChoice) {
-      return validateShareLinkExpiryChoice(practitionerChoice, now);
-    }
-    const globalChoice = await defaults.getGlobalDefault();
-    return validateShareLinkExpiryChoice(globalChoice, now);
+    return this.resolveDefaultExpiryForProgram(practitionerId, now);
   }
 
   async createOpenLinkForProgram(input: {

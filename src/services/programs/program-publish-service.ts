@@ -9,9 +9,11 @@ import {
 } from "../../domain/opaque-entity-id.js";
 import {
   ShareLinkExpiryValidationError,
+  resolveShareLinkExpiresAt,
   validateShareLinkExpiryChoice,
   type ShareLinkExpiryChoice,
 } from "../../domain/share-link-expiry.js";
+import { generateShareLinkToken } from "../../domain/share-link-token.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import {
   computeMcpShareLinkState,
@@ -29,6 +31,7 @@ import { buildPublicShareLinkUrl } from "../../app-routes.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
+  PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL,
   PUBLISH_STALE_DRAFT_SIGNAL,
   ProgramRepositoryError,
   ProgramsRepository,
@@ -55,6 +58,7 @@ export class ProgramPublishServiceError extends Error {
       | "name_required"
       | "placeholders_block_publish"
       | "stale_draft_retry"
+      | "publish_open_link_closed_race"
       | "invalid_input",
   ) {
     super(message);
@@ -181,7 +185,7 @@ export class ProgramPublishService {
         );
       } catch (err) {
         if (err instanceof ShareLinkExpiryValidationError) {
-          throw new ProgramPublishServiceError(err.message, "invalid_input");
+          throw new ProgramPublishServiceError("", "invalid_input");
         }
         throw err;
       }
@@ -212,30 +216,95 @@ export class ProgramPublishService {
     }
 
     const publishedAt = this.now();
+    const expiryNow = new Date(publishedAt);
     const openLinkBeforePublish =
       await this.links.findOpenByProgramId(validatedProgramId);
-    try {
-      await this.programs.publish(validatedProgramId, publishedAt, {
-        linkExpiry: validatedLinkExpiry,
-        openLinkId: openLinkBeforePublish?.id,
-        expiryNow: new Date(publishedAt),
-      });
-    } catch (err) {
-      this.mapPublishRepositoryError(err);
+    const openLinkExpired =
+      openLinkBeforePublish !== null && linkIsExpired(openLinkBeforePublish, expiryNow);
+
+    let batchLinkExpiry = validatedLinkExpiry;
+    if (openLinkExpired && batchLinkExpiry === undefined) {
+      batchLinkExpiry = await this.resolveReviveExpiryWhenUnpicked(
+        program,
+        practitionerId,
+        expiryNow,
+      );
     }
 
-    let openLink = openLinkBeforePublish;
-    if (!openLink) {
-      openLink = await this.links.findOpenByProgramId(validatedProgramId);
-    }
-    if (!openLink) {
-      openLink = await this.links.createOpenLinkForProgram({
+    const buildNewOpenLinkInBatch = async (): Promise<{
+      id: string;
+      token: string;
+      expiresAt: string | null;
+      createdAt: string;
+    }> => {
+      let choice: ShareLinkExpiryChoice;
+      if (validatedLinkExpiry) {
+        choice = validatedLinkExpiry;
+      } else {
+        try {
+          choice = await this.links.resolveExpiryForProgram(
+            program,
+            practitionerId,
+            expiryNow,
+          );
+        } catch (err) {
+          this.rethrowShareLinkExpiryValidation(err);
+        }
+      }
+      return {
         id: generateOpaqueEntityId(),
-        programId: validatedProgramId,
-        practitionerId,
+        token: generateShareLinkToken(),
+        expiresAt: resolveShareLinkExpiresAt(choice, expiryNow),
         createdAt: publishedAt,
-        now: new Date(publishedAt),
+      };
+    };
+
+    const runPublishBatch = async (input: {
+      openLinkId?: string;
+      newOpenLink?: {
+        id: string;
+        token: string;
+        expiresAt: string | null;
+        createdAt: string;
+      };
+    }): Promise<void> => {
+      await this.programs.publish(validatedProgramId, publishedAt, {
+        linkExpiry: batchLinkExpiry,
+        openLinkId: input.openLinkId,
+        newOpenLink: input.newOpenLink,
+        expiryNow,
+        practitionerId,
       });
+    };
+
+    try {
+      if (openLinkBeforePublish) {
+        await runPublishBatch({ openLinkId: openLinkBeforePublish.id });
+      } else {
+        await runPublishBatch({
+          newOpenLink: await buildNewOpenLinkInBatch(),
+        });
+      }
+    } catch (err) {
+      if (
+        err instanceof ProgramRepositoryError &&
+        err.message === PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL
+      ) {
+        try {
+          await runPublishBatch({
+            newOpenLink: await buildNewOpenLinkInBatch(),
+          });
+        } catch (retryErr) {
+          this.mapPublishRepositoryError(retryErr);
+        }
+      } else {
+        this.mapPublishRepositoryError(err);
+      }
+    }
+
+    const openLink = await this.links.findOpenByProgramId(validatedProgramId);
+    if (!openLink) {
+      throw new ProgramPublishServiceError("Program not found", "program_not_found");
     }
 
     const refreshed = await this.programs.findById(validatedProgramId);
@@ -414,6 +483,32 @@ export class ProgramPublishService {
     return program;
   }
 
+  /**
+   * Expired-link republish without a picked expiry (uses program saved choice, else default).
+   * On invalid saved choice: fall back via `resolveDefaultExpiryForProgram` (see Linear comment `bc46bdda-1fe3-49af-b6e1-c2162cdc4c37` on DIDI-1197).
+   */
+  private async resolveReviveExpiryWhenUnpicked(
+    program: ProgramRecord,
+    practitionerId: string,
+    now: Date,
+  ): Promise<ShareLinkExpiryChoice> {
+    try {
+      return await this.links.resolveExpiryForProgram(program, practitionerId, now);
+    } catch (err) {
+      if (err instanceof ShareLinkExpiryValidationError) {
+        return await this.links.resolveDefaultExpiryForProgram(practitionerId, now);
+      }
+      throw err;
+    }
+  }
+
+  private rethrowShareLinkExpiryValidation(err: unknown): never {
+    if (err instanceof ShareLinkExpiryValidationError) {
+      throw new ProgramPublishServiceError("", "invalid_input");
+    }
+    throw err;
+  }
+
   private parseOpaqueId(value: string, label: string): string {
     try {
       return validateOpaqueEntityId(value, label);
@@ -436,6 +531,9 @@ export class ProgramPublishService {
       if (err.message === PUBLISH_STALE_DRAFT_SIGNAL) {
         throw new ProgramPublishServiceError("", "stale_draft_retry");
       }
+      if (err.message === PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL) {
+        throw new ProgramPublishServiceError("", "publish_open_link_closed_race");
+      }
       if (err.message === PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE) {
         throw new ProgramPublishServiceError(
           PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
@@ -445,6 +543,9 @@ export class ProgramPublishService {
       if (err.message === "Program not found" || err.message === "Program is deleted") {
         throw new ProgramPublishServiceError("Program not found", "program_not_found");
       }
+    }
+    if (err instanceof ShareLinkExpiryValidationError) {
+      throw new ProgramPublishServiceError("", "invalid_input");
     }
     throw err;
   }
