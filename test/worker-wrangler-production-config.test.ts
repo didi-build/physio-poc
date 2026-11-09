@@ -36,6 +36,14 @@ describe("Worker wrangler production config (DIDI-1153)", () => {
     ]);
   });
 
+  it("enables observability traces in wrangler.jsonc (DIDI-1187)", () => {
+    const parsed = parseWranglerJsonc(readFileSync(WRANGLER_PATH, "utf8"));
+    const observability = parsed.observability as Record<string, unknown>;
+    expect(observability.enabled).toBe(true);
+    const traces = observability.traces as Record<string, unknown>;
+    expect(traces.enabled).toBe(true);
+  });
+
   it("rejects a downgraded compatibility_date in wrangler.jsonc (mutation X18)", () => {
     const parsed = parseWranglerJsonc(readFileSync(WRANGLER_PATH, "utf8"));
     expect(parsed.compatibility_date).toBe("2025-10-29");

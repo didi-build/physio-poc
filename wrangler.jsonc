@@ -18,6 +18,9 @@
   },
   "observability": {
     "enabled": true,
+    "traces": {
+      "enabled": true,
+    },
   },
   "vars": {
     "WEB_APP_BASE_URL": "https://physio-poc.diademshoukralla.workers.dev",

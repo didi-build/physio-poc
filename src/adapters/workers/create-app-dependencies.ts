@@ -47,6 +47,22 @@ function workerPhysioDbCacheToken(db: PhysioD1Database | undefined): string {
 
 let cachedProductionEnvKey: string | null = null;
 let cachedProductionDeps: AppDependencies | null = null;
+let productionSetupInflightKey: string | null = null;
+let productionSetupInflight: Promise<AppDependencies> | null = null;
+
+type WorkerProductionModule =
+  typeof import("./create-worker-production-app-dependencies.js");
+
+let productionModuleImport: Promise<WorkerProductionModule> | null = null;
+
+function loadWorkerProductionModule(): Promise<WorkerProductionModule> {
+  productionModuleImport ??= import("./create-worker-production-app-dependencies.js");
+  return productionModuleImport;
+}
+
+export function resetWorkerProductionModuleImportForTests(): void {
+  productionModuleImport = null;
+}
 
 function workerProductionEnvCacheKey(env: WorkerEnv): string {
   return [
@@ -61,10 +77,20 @@ function workerProductionEnvCacheKey(env: WorkerEnv): string {
 
 let workerProductionMisconfigLogged = false;
 
+let workerProductionDepsSetupDelayMsForTests = 0;
+
+export function setWorkerProductionDepsSetupDelayMsForTests(ms: number): void {
+  workerProductionDepsSetupDelayMsForTests = Math.max(0, ms);
+}
+
 export function resetWorkerProductionAuthCacheForTests(): void {
   cachedProductionEnvKey = null;
   cachedProductionDeps = null;
   workerProductionMisconfigLogged = false;
+  productionSetupInflightKey = null;
+  productionSetupInflight = null;
+  workerProductionDepsSetupDelayMsForTests = 0;
+  productionModuleImport = null;
 }
 
 export function createFailClosedWorkerAppDependencies(env: WorkerEnv): AppDependencies {
@@ -79,6 +105,61 @@ export function createFailClosedWorkerAppDependencies(env: WorkerEnv): AppDepend
   };
 }
 
+async function awaitWorkerProductionDepsSetupDelayForTests(): Promise<void> {
+  const delayMs = workerProductionDepsSetupDelayMsForTests;
+  if (delayMs <= 0) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+function finishProductionSetupInflight(cacheKey: string): void {
+  if (productionSetupInflightKey === cacheKey) {
+    productionSetupInflightKey = null;
+    productionSetupInflight = null;
+  }
+}
+
+async function buildProductionAppDependencies(
+  env: WorkerEnv,
+  cacheKey: string,
+): Promise<AppDependencies> {
+  const { createWorkerProductionAppDependencies } = await loadWorkerProductionModule();
+  const deps = createWorkerProductionAppDependencies(env);
+  cachedProductionEnvKey = cacheKey;
+  cachedProductionDeps = deps;
+  return deps;
+}
+
+async function resolveWorkerProductionAppDependencies(
+  env: WorkerEnv,
+  cacheKey: string,
+): Promise<AppDependencies> {
+  if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
+    return cachedProductionDeps;
+  }
+  if (productionSetupInflight && productionSetupInflightKey === cacheKey) {
+    return productionSetupInflight;
+  }
+
+  const inflight = (async () => {
+    try {
+      await awaitWorkerProductionDepsSetupDelayForTests();
+      if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
+        return cachedProductionDeps;
+      }
+      return await buildProductionAppDependencies(env, cacheKey);
+    } finally {
+      finishProductionSetupInflight(cacheKey);
+    }
+  })();
+  productionSetupInflightKey = cacheKey;
+  productionSetupInflight = inflight;
+  return inflight;
+}
+
 export async function createWorkerAppDependencies(
   env: WorkerEnv,
 ): Promise<AppDependencies> {
@@ -88,15 +169,7 @@ export async function createWorkerAppDependencies(
   try {
     assertWorkerProductionAuthConfigValid(env);
     const cacheKey = workerProductionEnvCacheKey(env);
-    if (cachedProductionEnvKey === cacheKey && cachedProductionDeps) {
-      return cachedProductionDeps;
-    }
-    const { createWorkerProductionAppDependencies } =
-      await import("./create-worker-production-app-dependencies.js");
-    const deps = createWorkerProductionAppDependencies(env);
-    cachedProductionEnvKey = cacheKey;
-    cachedProductionDeps = deps;
-    return deps;
+    return await resolveWorkerProductionAppDependencies(env, cacheKey);
   } catch {
     if (!workerProductionMisconfigLogged) {
       console.log(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
@@ -104,6 +177,8 @@ export async function createWorkerAppDependencies(
     }
     cachedProductionEnvKey = null;
     cachedProductionDeps = null;
+    productionSetupInflightKey = null;
+    productionSetupInflight = null;
     return createFailClosedWorkerAppDependencies(env);
   }
 }
