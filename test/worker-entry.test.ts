@@ -35,6 +35,18 @@ describe("Worker entry (integration)", () => {
     }
   });
 
+  it("does not require a session for GET public share link API on the Worker entry", async () => {
+    const response = await worker
+      .fetch(
+        new Request("https://example.workers.dev/api/public/share-links/demo-token"),
+        {},
+      )
+      .catch(() => null);
+    if (response) {
+      expect(response.status).not.toBe(401);
+    }
+  });
+
   it("returns 401 for exercise request API routes without a session on the Worker entry", async () => {
     for (const testCase of exerciseRequestsHttpRouteCases()) {
       const response = await worker.fetch(

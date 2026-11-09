@@ -16,6 +16,8 @@ import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import { handleProgramPublishRequest } from "./routes/program-publish.js";
+import { handlePublicShareLinkRequest } from "./routes/public-share-link.js";
 import {
   handlePractitionerSessionRequest,
   PRACTITIONER_SESSION_JSON_HEADERS,
@@ -159,6 +161,10 @@ export async function handleRequest(
   }
 
   if (pathname.startsWith("/api/")) {
+    const publicShareLink = await handlePublicShareLinkRequest(request, deps);
+    if (publicShareLink) {
+      return publicShareLink;
+    }
     return guardAndRun(request, deps, sessionGuardOptions, async (context) => {
       if (pathname.startsWith("/api/me/")) {
         const queryRejected = rejectQueryPractitionerId(url);
@@ -180,6 +186,12 @@ export async function handleRequest(
         if (csrfRejection) {
           return csrfRejection;
         }
+      }
+      const programPublishResponse = await handleProgramPublishRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (programPublishResponse) {
+        return programPublishResponse;
       }
       const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
         sessionPractitioner,

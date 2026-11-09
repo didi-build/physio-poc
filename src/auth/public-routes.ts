@@ -1,5 +1,6 @@
 import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 import { MCP_PATH } from "../http/app.js";
+import { isPublicShareLinkApiPath } from "../http/routes/public-share-link.js";
 
 export type SessionGuardOptions = {
   /** Dev/test only: marks paths public for session guard (set from Node entry, not Worker). */
@@ -22,6 +23,11 @@ export const SESSION_PUBLIC_ROUTE_SAMPLES: readonly SessionPublicRouteSample[] =
   { ruleId: "health", samplePath: "/health", method: "HEAD" },
   { ruleId: "health", samplePath: "/health", method: "POST" },
   { ruleId: "public-link", samplePath: "/l/demo-code", method: "GET" },
+  {
+    ruleId: "public-share-link-api",
+    samplePath: "/api/public/share-links/demo-token",
+    method: "GET",
+  },
   { ruleId: "better-auth-api", samplePath: "/api/auth/sign-in/social", method: "POST" },
   { ruleId: "sign-in", samplePath: "/sign-in", method: "GET" },
   { ruleId: "build-assets", samplePath: "/assets/index.js", method: "GET" },
@@ -65,7 +71,7 @@ export function requiresPractitionerSession(
     return true;
   }
   if (pathname.startsWith("/api/")) {
-    return !isPublicApiAuthPath(pathname);
+    return !isPublicApiAuthPath(pathname) && !isPublicShareLinkApiPath(pathname);
   }
   if (options.extraSessionPublicPath?.(pathname)) {
     return false;
