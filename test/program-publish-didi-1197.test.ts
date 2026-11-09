@@ -492,6 +492,11 @@ describe("program publish DIDI-1197", () => {
         name: "Stale custom revive",
       });
       await seedExerciseRow(storage, programId, practitionerId);
+      await storage.run(
+        `INSERT INTO share_link_defaults (id, scope, practitioner_id, expires_in, custom_expires_on)
+         VALUES (?, 'practitioner', ?, ?, NULL)`,
+        [id("def-1197-revive"), practitionerId, SHARE_LINK_EXPIRES_IN.one_week],
+      );
       const first = await publishInitial.publishProgram(practitionerId, programId, {
         linkExpiry: {
           expiresIn: SHARE_LINK_EXPIRES_IN.custom_date,
