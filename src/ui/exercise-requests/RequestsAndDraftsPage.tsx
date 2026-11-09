@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { InProgressRequestListItem } from "../../services/exercise-requests/types.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { exerciseRequestsInProgressListKey } from "../api/navigation-read-cache-keys.js";
+import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
 import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { EXERCISE_REQUESTS_LIST_ERROR_MESSAGE } from "../copy/exercise-requests-states.js";
 import {
   AI_DRAFTING,
@@ -34,36 +39,46 @@ function canReview(item: InProgressRequestListItem): boolean {
   return item.status === "drafting" && item.exercise_id !== null;
 }
 
-export type RequestsAndDraftsPageProps = {
-  onRequestsChanged?: () => void;
-};
-
-export function RequestsAndDraftsPage({
-  onRequestsChanged,
-}: RequestsAndDraftsPageProps) {
+export function RequestsAndDraftsPage() {
   const client = useExerciseRequestsApi();
   const currentPractitioner = useCurrentPractitionerIdentity();
-  const [requests, setRequests] = useState<InProgressRequestListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionState = usePractitionerSession();
+  const sessionReady = sessionState.status === "ready";
+  const { registerRequestsListFocusRefresh } = useExerciseRequestsRefresh();
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setLoadFailed(false);
-    try {
-      const result = await client.listInProgress();
-      setRequests(result.requests);
-      onRequestsChanged?.();
-    } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [client, onRequestsChanged]);
+  const listCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? exerciseRequestsInProgressListKey(sessionEpoch)
+        : null,
+    [sessionEpoch, sessionReady],
+  );
+
+  const {
+    data: listData,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<{ requests: InProgressRequestListItem[] }>({
+    cacheKey: listCacheKey,
+    enabled: true,
+    fetcher: (signal) =>
+      client.listInProgress({ signal }).then((result) => ({
+        requests: result.requests,
+      })),
+  });
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    const focusRefresh = () => refresh({ force: true });
+    registerRequestsListFocusRefresh(focusRefresh);
+    return () => {
+      registerRequestsListFocusRefresh(null);
+    };
+  }, [refresh, registerRequestsListFocusRefresh]);
+
+  const loading = cacheLoading;
+  const requests = listData?.requests ?? [];
 
   const sessionBusy =
     loading ||

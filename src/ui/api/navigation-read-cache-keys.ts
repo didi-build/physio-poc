@@ -15,7 +15,13 @@ export type NavigationReadResource =
   | "routines.detail"
   | "programs.list"
   | "programs.list_deleted"
-  | "programs.builder_by_code";
+  | "programs.builder_by_code"
+  | "exercise_requests.in_progress_list"
+  | "exercise_requests.in_progress_count"
+  | "exercise_requests.detail"
+  | "exercise_requests.similar"
+  | "my_defaults.page"
+  | "exercise_media.regeneration_quota";
 
 export function navigationCacheKey(
   sessionEpoch: string,
@@ -87,6 +93,36 @@ export function programBuilderByCodeKey(
   return navigationCacheKey(sessionEpoch, "programs.builder_by_code", { programCode });
 }
 
+export function exerciseRequestsInProgressListKey(sessionEpoch: string): string {
+  return navigationCacheKey(sessionEpoch, "exercise_requests.in_progress_list", {});
+}
+
+export function exerciseRequestsInProgressCountKey(sessionEpoch: string): string {
+  return navigationCacheKey(sessionEpoch, "exercise_requests.in_progress_count", {});
+}
+
+export function exerciseRequestDetailKey(
+  sessionEpoch: string,
+  requestId: string,
+): string {
+  return navigationCacheKey(sessionEpoch, "exercise_requests.detail", { requestId });
+}
+
+export function exerciseRequestsSimilarKey(
+  sessionEpoch: string,
+  query: string,
+): string {
+  return navigationCacheKey(sessionEpoch, "exercise_requests.similar", { q: query });
+}
+
+export function myDefaultsPageKey(sessionEpoch: string): string {
+  return navigationCacheKey(sessionEpoch, "my_defaults.page", {});
+}
+
+export function exerciseMediaRegenerationQuotaKey(sessionEpoch: string): string {
+  return navigationCacheKey(sessionEpoch, "exercise_media.regeneration_quota", {});
+}
+
 /** Prefix matchers for mutation invalidation (see docs/architecture/navigation-session-read-cache.md). */
 export function isExercisesListKey(key: string): boolean {
   return (
@@ -140,4 +176,34 @@ export function isProgramBuilderKey(key: string, programCode?: string): boolean 
     return true;
   }
   return key.includes(`programCode:${programCode}`);
+}
+
+export function isExerciseRequestsInProgressListKey(key: string): boolean {
+  return key.includes("|exercise_requests.in_progress_list|");
+}
+
+export function isExerciseRequestsInProgressCountKey(key: string): boolean {
+  return key.includes("|exercise_requests.in_progress_count|");
+}
+
+export function isExerciseRequestDetailKey(key: string, requestId?: string): boolean {
+  if (!key.includes("|exercise_requests.detail|")) {
+    return false;
+  }
+  if (!requestId) {
+    return true;
+  }
+  return key.includes(`requestId:${requestId}`);
+}
+
+export function isExerciseRequestsSimilarKey(key: string): boolean {
+  return key.includes("|exercise_requests.similar|");
+}
+
+export function isMyDefaultsPageKey(key: string): boolean {
+  return key.includes("|my_defaults.page|");
+}
+
+export function isExerciseMediaRegenerationQuotaKey(key: string): boolean {
+  return key.includes("|exercise_media.regeneration_quota|");
 }

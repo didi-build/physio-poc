@@ -70,6 +70,7 @@ import {
 } from "../exercise-requests/RequestForm.js";
 import { requestedByLabel } from "../exercise-requests/requested-by-label.js";
 import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
+import { exerciseRequestsSimilarKey } from "../api/navigation-read-cache-keys.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { buildSessionReadCacheKey } from "../api/session-read-cache.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
@@ -156,7 +157,6 @@ export function ExerciseLibraryPage({
   const [tab, setTab] = useState<LibraryTab>(initialTab);
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
-  const [similarDrafts, setSimilarDrafts] = useState<DraftInProgressSummary[]>([]);
   const [reqNote, setReqNote] = useState("");
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
@@ -280,28 +280,23 @@ export function ExerciseLibraryPage({
   );
   const showNoExactMatch = tab === "all" && trimmedQuery.length > 0 && !exactMatch;
 
-  useEffect(() => {
-    if (!showNoExactMatch || loadFailed) {
-      setSimilarDrafts([]);
-      return;
-    }
-    let cancelled = false;
-    void requestsClient.listSimilar(trimmedQuery).then(
-      (result) => {
-        if (!cancelled) {
-          setSimilarDrafts(result.drafts_in_progress);
-        }
-      },
-      () => {
-        if (!cancelled) {
-          setSimilarDrafts([]);
-        }
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [loadFailed, requestsClient, showNoExactMatch, trimmedQuery]);
+  const similarCacheKey = useMemo(
+    () =>
+      showNoExactMatch && sessionReady && sessionEpoch && !loadFailed
+        ? exerciseRequestsSimilarKey(sessionEpoch, trimmedQuery)
+        : null,
+    [loadFailed, sessionEpoch, sessionReady, showNoExactMatch, trimmedQuery],
+  );
+
+  const { data: similarResult } = useSessionCachedRead({
+    cacheKey: similarCacheKey,
+    enabled: showNoExactMatch && sessionReady && !loadFailed,
+    fetcher: (signal) => requestsClient.listSimilar(trimmedQuery, { signal }),
+    retainOnError: false,
+  });
+
+  const similarDrafts: DraftInProgressSummary[] =
+    similarResult?.drafts_in_progress ?? [];
 
   const handleSave = async (exerciseId: string) => {
     const { undo } = await client.saveToMyExercises(exerciseId);

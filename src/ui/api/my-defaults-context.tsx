@@ -1,4 +1,5 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { wrapMyDefaultsClientWithCacheInvalidation } from "./caching-my-defaults-client.js";
 import { getMyDefaultsClient, type MyDefaultsClient } from "./my-defaults-client.js";
 
 const MyDefaultsApiContext = createContext<MyDefaultsClient | null>(null);
@@ -10,7 +11,10 @@ export function MyDefaultsApiProvider({
   client?: MyDefaultsClient;
   children: ReactNode;
 }) {
-  const value = client ?? getMyDefaultsClient();
+  const value = useMemo(() => {
+    const base = client ?? getMyDefaultsClient();
+    return client ? base : wrapMyDefaultsClientWithCacheInvalidation(base);
+  }, [client]);
   return (
     <MyDefaultsApiContext.Provider value={value}>
       {children}

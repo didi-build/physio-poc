@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
+import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
 import { ensureMatchMediaStub, mockMinWidth1024 } from "./setup.js";
 import {
   act,
@@ -343,6 +344,7 @@ describe("app shell nav (integration)", () => {
       expect(badge?.textContent).toBe("4");
     });
     cleanup();
+    resetSessionReadCacheForTests();
     ensureMatchMediaStub();
 
     renderApp("/exercises", 12);

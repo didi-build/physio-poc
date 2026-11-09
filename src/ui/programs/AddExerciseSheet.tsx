@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import type {
   ApprovedExerciseSummary,
   MyExerciseListItem,
 } from "../../services/exercise-library/types.js";
 import { useExerciseLibraryApi } from "../api/exercise-library-context.js";
+import {
+  exercisesApprovedSearchKey,
+  exercisesMyListKey,
+} from "../api/navigation-read-cache-keys.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useDebouncedValue } from "../hooks/use-debounced-value.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import {
   ADD_EXERCISE,
   ADD_EXERCISE_SHEET_INTRO,
@@ -47,41 +55,47 @@ export function AddExerciseSheet({
   const library = useExerciseLibraryApi();
   const [tab, setTab] = useState<"mine" | "all">("mine");
   const [query, setQuery] = useState("");
-  const [myItems, setMyItems] = useState<MyExerciseListItem[]>([]);
-  const [approved, setApproved] = useState<ApprovedExerciseSummary[]>([]);
-  const [loading, setLoading] = useState(false);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const trimmedQuery = debouncedQuery.trim();
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    setLoading(true);
-    void library
-      .listMyExercises({ q: query || undefined })
-      .then((result) => {
-        if (result.list_state === "ok") {
-          setMyItems(flattenMy(result.sections));
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [library, open, query]);
+  const myListKey = useMemo(
+    () =>
+      open && sessionReady && sessionEpoch
+        ? exercisesMyListKey(sessionEpoch, { q: trimmedQuery || undefined })
+        : null,
+    [open, sessionEpoch, sessionReady, trimmedQuery],
+  );
 
-  useEffect(() => {
-    if (!open || tab !== "all") {
-      return;
-    }
-    setLoading(true);
-    void library
-      .searchApproved({ q: query || undefined })
-      .then((result) => {
-        setApproved(result.exercises);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [library, open, tab, query]);
+  const approvedSearchKey = useMemo(
+    () =>
+      open && sessionReady && sessionEpoch && tab === "all"
+        ? exercisesApprovedSearchKey(sessionEpoch, { q: trimmedQuery || undefined })
+        : null,
+    [open, sessionEpoch, sessionReady, tab, trimmedQuery],
+  );
+
+  const { data: myListResult, loading: myLoading } = useSessionCachedRead({
+    cacheKey: myListKey,
+    enabled: open && sessionReady,
+    fetcher: (signal) =>
+      library.listMyExercises({ q: trimmedQuery || undefined }, { signal }),
+  });
+
+  const { data: approvedResult, loading: approvedLoading } = useSessionCachedRead({
+    cacheKey: approvedSearchKey,
+    enabled: open && sessionReady && tab === "all",
+    fetcher: (signal) =>
+      library.searchApproved({ q: trimmedQuery || undefined }, { signal }),
+  });
+
+  const myItems =
+    myListResult?.list_state === "ok"
+      ? flattenMy(myListResult.sections)
+      : ([] as MyExerciseListItem[]);
+  const approved: ApprovedExerciseSummary[] = approvedResult?.exercises ?? [];
+  const loading = tab === "mine" ? myLoading : approvedLoading;
 
   const myFiltered = myItems;
   const showMyEmpty =

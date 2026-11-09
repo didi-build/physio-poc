@@ -1,4 +1,5 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { wrapExerciseMediaClientWithCacheInvalidation } from "./caching-exercise-media-client.js";
 import {
   ExerciseMediaClient,
   getExerciseMediaClient,
@@ -13,8 +14,12 @@ export function ExerciseMediaApiProvider({
   client?: ExerciseMediaClient;
   children: ReactNode;
 }) {
+  const value = useMemo(() => {
+    const base = client ?? getExerciseMediaClient();
+    return client ? base : wrapExerciseMediaClientWithCacheInvalidation(base);
+  }, [client]);
   return (
-    <ExerciseMediaApiContext.Provider value={client ?? getExerciseMediaClient()}>
+    <ExerciseMediaApiContext.Provider value={value}>
       {children}
     </ExerciseMediaApiContext.Provider>
   );

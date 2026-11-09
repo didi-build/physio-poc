@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import type { MyDefaultsPageView } from "../../services/my-defaults/types.js";
+import { myDefaultsPageKey } from "../api/navigation-read-cache-keys.js";
 import { useMyDefaultsApi } from "../api/my-defaults-context.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   PROGRAMS,
@@ -40,29 +44,33 @@ const PRACTITIONER_EXPIRY_CHOICES = [
 export function MyDefaultsPage() {
   const client = useMyDefaultsApi();
   const { showToast } = useToast();
-  const [page, setPage] = useState<MyDefaultsPageView | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
   const [savingExpiry, setSavingExpiry] = useState(false);
+  const [pageOverride, setPageOverride] = useState<MyDefaultsPageView | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    setLoadFailed(false);
-    void client
-      .getPage()
-      .then(setPage)
-      .catch(() => {
-        setLoadFailed(true);
-        setPage(null);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  };
+  const pageCacheKey = useMemo(
+    () => (sessionReady && sessionEpoch ? myDefaultsPageKey(sessionEpoch) : null),
+    [sessionEpoch, sessionReady],
+  );
+
+  const {
+    data: cachedPage,
+    loading: cacheLoading,
+    loadFailed,
+    refresh,
+  } = useSessionCachedRead<MyDefaultsPageView>({
+    cacheKey: pageCacheKey,
+    enabled: true,
+    fetcher: (signal) => client.getPage({ signal }),
+  });
+
+  const loading = cacheLoading;
+  const page = pageOverride ?? cachedPage;
 
   useEffect(() => {
-    load();
-  }, [client]);
+    setPageOverride(null);
+  }, [cachedPage]);
 
   const effectiveExpiry = page?.share_link_expiry.effective.expiresIn;
   const differsFromGlobal =
@@ -79,9 +87,12 @@ export function MyDefaultsPage() {
     void client
       .updateShareLinkExpiry(expiresIn)
       .then((shareLinkExpiry) => {
-        setPage((current) =>
-          current ? { ...current, share_link_expiry: shareLinkExpiry } : current,
+        setPageOverride((current) =>
+          current || cachedPage
+            ? { ...(current ?? cachedPage)!, share_link_expiry: shareLinkExpiry }
+            : null,
         );
+        void refresh({ force: true });
         const toastMessage =
           expiresIn === SHARE_LINK_EXPIRES_IN.never
             ? NEW_LINKS_NEVER_EXPIRE
@@ -91,7 +102,7 @@ export function MyDefaultsPage() {
         }
       })
       .catch(() => {
-        setLoadFailed(true);
+        /* loadFailed from cache hook unchanged; prior page stays visible */
       })
       .finally(() => {
         setSavingExpiry(false);
@@ -170,16 +181,17 @@ export function MyDefaultsPage() {
                 entry={entry}
                 onSave={(type, params) => {
                   void client.upsertTypeDefault(type, params).then((updated) => {
-                    setPage((current) =>
-                      current
+                    setPageOverride((current) =>
+                      current || cachedPage
                         ? {
-                            ...current,
-                            exercise_types: current.exercise_types.map((row) =>
-                              row.type === type ? updated : row,
+                            ...(current ?? cachedPage)!,
+                            exercise_types: (current ?? cachedPage)!.exercise_types.map(
+                              (row) => (row.type === type ? updated : row),
                             ),
                           }
-                        : current,
+                        : null,
                     );
+                    void refresh({ force: true });
                     showToast({
                       message: savedYourTypeDefaultToast(TYPE_LABELS[type]),
                     });
@@ -187,16 +199,17 @@ export function MyDefaultsPage() {
                 }}
                 onReset={(type) => {
                   void client.resetTypeDefault(type).then((updated) => {
-                    setPage((current) =>
-                      current
+                    setPageOverride((current) =>
+                      current || cachedPage
                         ? {
-                            ...current,
-                            exercise_types: current.exercise_types.map((row) =>
-                              row.type === type ? updated : row,
+                            ...(current ?? cachedPage)!,
+                            exercise_types: (current ?? cachedPage)!.exercise_types.map(
+                              (row) => (row.type === type ? updated : row),
                             ),
                           }
-                        : current,
+                        : null,
                     );
+                    void refresh({ force: true });
                   });
                 }}
               />
