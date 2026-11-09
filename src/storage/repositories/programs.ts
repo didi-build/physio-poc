@@ -87,6 +87,10 @@ export type ProgramRecord = {
 
 export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** design/app/programs/spec.md Publish blocked by placeholders (DIDI-1186). */
+export const PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE =
+  "Approve or remove placeholders to publish";
+
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
     return value as PrescriptionType;
@@ -519,6 +523,9 @@ export class ProgramsRepository {
     }
     const publishName = validateProgramName(program.name ?? "");
     const rows = await new ProgramRowsRepository(this.sql).listForProgram(programId);
+    if (rows.some((row) => row.exercise_request_id !== null)) {
+      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+    }
     const snapshotRows = rows.map(rowToSnapshot);
     const payload: PublishedProgramSnapshot = {
       version: program.draft_version,
@@ -1046,6 +1053,20 @@ export class ShareLinksRepository {
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
       [programId],
+    );
+  }
+
+  async findByToken(token: string): Promise<ShareLinkRecord | null> {
+    const trimmed = token.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    return this.sql.first<ShareLinkRecord>(
+      `SELECT id, program_id, token, expires_at, closed_at, created_at
+       FROM share_links
+       WHERE token = ?
+       LIMIT 1`,
+      [trimmed],
     );
   }
 

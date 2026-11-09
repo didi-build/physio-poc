@@ -190,6 +190,15 @@ export function buildStubPublicShareLink(webAppBaseUrl: string): string {
   return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${PHYSIO_APP_ROUTE_PATTERNS.stubPublicShareLink}`;
 }
 
+export function buildPublicShareLinkPath(token: string): string {
+  const trimmed = token.trim();
+  return `/l/${encodeURIComponent(trimmed)}`;
+}
+
+export function buildPublicShareLinkUrl(webAppBaseUrl: string, token: string): string {
+  return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${buildPublicShareLinkPath(token)}`;
+}
+
 export function buildWebAppRoutineSearchUrl(
   webAppBaseUrl: string,
   routineQuery: string,

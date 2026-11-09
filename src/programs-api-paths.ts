@@ -67,3 +67,15 @@ export function programRowLibraryUpdateKeepPath(
 ): string {
   return `${programRowPath(programId, rowId)}/library-update/keep`;
 }
+
+export function programPublishPath(programId: string): string {
+  return `${programPath(programId)}/publish`;
+}
+
+export function programShareLinkPath(programId: string): string {
+  return `${programPath(programId)}/share-link`;
+}
+
+export function publicShareLinkApiPath(token: string): string {
+  return `/api/public/share-links/${encodeURIComponent(token.trim())}`;
+}
