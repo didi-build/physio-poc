@@ -207,6 +207,21 @@ export class ProgramBuilderService {
     });
   }
 
+  async listOwnedProgramsByExactTitle(
+    practitionerId: string,
+    title: string,
+  ): Promise<ProgramListItem[]> {
+    const trimmed = title.trim();
+    if (!trimmed) {
+      return [];
+    }
+    const result = await this.listPrograms(practitionerId, { searchQuery: trimmed });
+    const normalized = trimmed.toLowerCase();
+    return result.items.filter(
+      (item) => (item.name ?? "").trim().toLowerCase() === normalized,
+    );
+  }
+
   async getProgramByCode(
     practitionerId: string,
     programCode: string,

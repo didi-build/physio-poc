@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
 import { PROGRAMS_API_BASE } from "./helpers/program-builder-http-paths.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
@@ -32,7 +31,10 @@ import {
   practitionerUnderscoreIdQuerySuffix,
 } from "./helpers/invalid-input-query-guard.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { ShareLinkDefaultsRepository } from "../src/storage/repositories/programs.js";
@@ -61,7 +63,7 @@ function apiDeps(
       sql: storage,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       auth,
     },
     cookie: auth.createSessionCookieHeader(),

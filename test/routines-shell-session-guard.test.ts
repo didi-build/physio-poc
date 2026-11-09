@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { fillPhysioAppRoutePattern } from "../src/app-routes.js";
 import { handleRequest } from "../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import type { AppDependencies } from "../src/http/app.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { openMigratedDatabase } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
 
@@ -23,7 +25,7 @@ async function unsignedShellDeps(mode: "redirect" | "service-unavailable"): Prom
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth: new FakeAuthPort({ practitioner: null }),
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       guardedAppWithoutSession: mode,
     },
   };

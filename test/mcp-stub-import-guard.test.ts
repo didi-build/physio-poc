@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { PhysioServerConfig } from "../src/http/config.js";
+import type { PhysioMcpHttpDeps } from "../src/services/mcp/tool-handler.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
-import { createPhysioMcpServer } from "../src/adapters/workers/mcp/create-physio-mcp-server.js";
 import {
   assertProductionMcpStubImportGraph,
   isForbiddenMcpStubDependency,
@@ -105,7 +104,7 @@ describe("MCP stub import graph guard", () => {
     expect(isForbiddenMcpStubDependency("src/mcp-connector/index.ts")).toBe(false);
   });
 
-  it("MCP handler factories accept PhysioServerConfig only", () => {
+  it("MCP handler factories accept PhysioMcpHttpDeps only", () => {
     type Equals<A, B> =
       (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
         ? true
@@ -113,34 +112,10 @@ describe("MCP stub import graph guard", () => {
 
     type HttpParamsEquals = Equals<
       Parameters<typeof createPhysioMcpHttpHandler>,
-      [PhysioServerConfig]
-    >;
-    type ServerParamsEquals = Equals<
-      Parameters<typeof createPhysioMcpServer>,
-      [PhysioServerConfig]
+      [PhysioMcpHttpDeps]
     >;
 
     const assertHttp: HttpParamsEquals = true;
-    const assertServer: ServerParamsEquals = true;
     expect(assertHttp).toBe(true);
-    expect(assertServer).toBe(true);
-
-    type WidenedConfigParam = Equals<
-      [PhysioServerConfig & { repo?: unknown }],
-      [PhysioServerConfig]
-    >;
-    type SecondParamFactory = (
-      config: PhysioServerConfig,
-      repo?: { findById(id: string): Promise<unknown> },
-    ) => void;
-    type SecondParamEquals = Equals<
-      Parameters<SecondParamFactory>,
-      [PhysioServerConfig]
-    >;
-
-    const widenedParamMutationFails: WidenedConfigParam = false;
-    const secondParamMutationFails: SecondParamEquals = false;
-    expect(widenedParamMutationFails).toBe(false);
-    expect(secondParamMutationFails).toBe(false);
   });
 });

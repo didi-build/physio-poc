@@ -179,6 +179,43 @@ export const programTitleProperty: JsonSchema = {
   description: `Non-identifying program title the practitioner uses to recognise this program later. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
+export const nullableProgramTitleProperty: JsonSchema = {
+  type: ["string", "null"],
+  maxLength: MAX_LENGTH_PROGRAM_TITLE,
+  description: `Non-identifying program title, or null when unset. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+};
+
+export const matchCountOutputProperty: JsonSchema = {
+  type: "integer",
+  minimum: 0,
+  description: "Number of approved exercises returned in exercises.",
+};
+
+export const exerciseCountOutputProperty: JsonSchema = {
+  type: "integer",
+  minimum: 0,
+  description: "Number of exercises on the program draft.",
+};
+
+export const draftStateOutputProperty: JsonSchema = {
+  type: "string",
+  enum: ["draft_only", "published_only", "published_with_draft_changes"],
+  description:
+    "Whether the program is draft-only, published, or published with newer draft changes.",
+};
+
+export const hasNewerDraftOutputProperty: JsonSchema = {
+  type: "boolean",
+  description:
+    "True when a published version exists and the saved draft is newer than what patients see.",
+};
+
+export const shareLinkStateOutputProperty: JsonSchema = {
+  type: "string",
+  enum: ["live", "closed", "expired", "none"],
+  description: "Whether the program has a live, closed, expired, or no share link.",
+};
+
 export const programCodeProperty: JsonSchema = {
   type: "string",
   pattern: "^PRG-[A-Z0-9]+$",
@@ -303,14 +340,9 @@ export const routineSummarySchema: JsonSchema = {
 export const ambiguousProgramMatchSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["program_code", "program_title", "updated_at"],
+  required: ["program_code", "program_title"],
   properties: {
     program_code: programCodeProperty,
-    program_title: programTitleProperty,
-    updated_at: {
-      type: "string",
-      format: "date-time",
-      description: "When this program was last updated.",
-    },
+    program_title: nullableProgramTitleProperty,
   },
 };

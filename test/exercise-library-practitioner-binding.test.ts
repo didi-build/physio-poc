@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -11,7 +14,6 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import {
@@ -144,7 +146,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth: new FakeAuthPort({ practitioner: null }),
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
 
     const before = await storage.first<{ c: number }>(
@@ -196,7 +198,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
 
     const before = await storage.first<{
@@ -289,7 +291,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
     const apiMe = `${BASE}/api/me`;
 
@@ -361,7 +363,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
 
     const before = await storage.first<{
@@ -458,7 +460,7 @@ describe("Exercise library practitioner session binding (integration)", () => {
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
 
     const patchUrl = `${BASE}${exerciseLibraryMyExerciseItemPath(EX_B)}`;

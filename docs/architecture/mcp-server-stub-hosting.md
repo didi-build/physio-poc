@@ -1,17 +1,17 @@
 # Physio MCP stub server (DIDI-991)
 
-Remote MCP server over Streamable HTTP on `/mcp`, hosted on the same Cloudflare Worker as the web app (`physio-poc`). Implements DIDI-989 tool definitions from `src/mcp-connector/` with labelled example responses only; nothing is stored.
+Remote MCP server over Streamable HTTP on `/mcp`, hosted on the same Cloudflare Worker as the web app (`physio-poc`). Implements DIDI-989 tool definitions from `src/mcp-connector/`. OAuth bearer auth (DIDI-1043) gates the endpoint; read-only tools in `src/services/mcp/` call shared services with owner-scoped data (DIDI-1016).
 
 ## Layout (ADR 0004)
 
-| Path                        | Role                                                       |
-| --------------------------- | ---------------------------------------------------------- |
-| `src/mcp-connector/`        | Tool JSON Schema contract (DIDI-989)                       |
-| `src/services/mcp/`         | Stub tool handlers and Workers-safe input validation       |
-| `src/http/app.ts`           | Web-standard `handleRequest` (routes `/health` and `/mcp`) |
-| `src/adapters/workers/mcp/` | MCP SDK Streamable HTTP wiring (platform imports allowed)  |
-| `src/entry/worker.ts`       | Cloudflare Worker entry                                    |
-| `wrangler.jsonc`            | Worker name pin (`physio-poc`)                             |
+| Path                        | Role                                                             |
+| --------------------------- | ---------------------------------------------------------------- |
+| `src/mcp-connector/`        | Tool JSON Schema contract (DIDI-989)                             |
+| `src/services/mcp/`         | Tool handlers, connector copy, and Workers-safe input validation |
+| `src/http/app.ts`           | Web-standard `handleRequest` (routes `/health` and `/mcp`)       |
+| `src/adapters/workers/mcp/` | MCP SDK Streamable HTTP wiring (platform imports allowed)        |
+| `src/entry/worker.ts`       | Cloudflare Worker entry                                          |
+| `wrangler.jsonc`            | Worker name pin (`physio-poc`)                                   |
 
 Platform-specific code stays under `src/entry/` and `src/adapters/workers/`. Deploy workflow: `.github/workflows/deploy-physio-mcp-worker.yml`.
 
@@ -28,7 +28,7 @@ After deploy, the MCP URL is `https://physio-poc.diademshoukralla.workers.dev/mc
 
 ## Privacy
 
-No patient information is stored or logged. Request bodies are not logged. Stub responses use made-up exercise and program names only.
+No patient information is stored or logged. Request bodies are not logged. `search_routines` and blank `get_program_builder_link` responses remain labelled placeholders until later tickets.
 
 ## Local tests
 

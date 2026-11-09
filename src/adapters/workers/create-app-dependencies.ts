@@ -95,12 +95,13 @@ export function resetWorkerProductionAuthCacheForTests(): void {
 
 export function createFailClosedWorkerAppDependencies(env: WorkerEnv): AppDependencies {
   const config = resolveWorkerFailClosedPhysioServerConfig(env);
+  const sql = new D1SqlStorage(env.PHYSIO_DB);
   return {
-    sql: new D1SqlStorage(env.PHYSIO_DB),
+    sql,
     objects: new InMemoryObjectStorage(),
     config,
     auth: new FailClosedAuthPort(),
-    mcp: createPhysioMcpHttpHandler(config),
+    mcp: createPhysioMcpHttpHandler({ config, sql }),
     guardedAppWithoutSession: "service-unavailable",
   };
 }

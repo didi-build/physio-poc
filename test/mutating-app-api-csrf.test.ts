@@ -16,8 +16,10 @@ import {
   MUTATING_APP_API_ROUTE_SAMPLES,
   mutatingAppApiRouteSampleKey,
 } from "./helpers/mutating-app-api-route-registry.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -228,7 +230,7 @@ async function sessionDeps(): Promise<{
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     },
     cookie: auth.createSessionCookieHeader(),
     sqlCalls,

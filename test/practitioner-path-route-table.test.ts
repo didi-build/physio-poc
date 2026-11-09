@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
 import {
   PRACTITIONER_PATH_ROUTE_SAMPLES,
@@ -26,7 +25,10 @@ import {
   practitionerPathProbeRequestBody,
   probedPractitionerPathRouteKeys,
 } from "./helpers/practitioner-path-route-dispatch-probe.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { exerciseMediaGeneratePath } from "../src/exercise-media-api-paths.js";
 
@@ -111,7 +113,7 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
       const probed = await probedPractitionerPathRouteKeys(
@@ -152,7 +154,7 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
 
@@ -207,7 +209,7 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
 
@@ -276,7 +278,7 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
       const path = `/api/me/my-exercises/${EXERCISE_ID}`;
@@ -323,7 +325,7 @@ describe("HTTP route table (practitioner-scoped session routes)", () => {
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
       const path = exerciseMediaGeneratePath(FIXTURE_VERSION_ID);

@@ -92,7 +92,7 @@ export async function createNodeAppDependencies(
     cimdMetadataFetch,
     consentClock,
   });
-  const mcpHandler = createPhysioMcpHttpHandler(config);
+  const mcpHandler = createPhysioMcpHttpHandler({ config, sql: sqlPort });
   return {
     sql: sqlPort,
     objects: new InMemoryObjectStorage(),

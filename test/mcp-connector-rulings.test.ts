@@ -85,7 +85,7 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
 
   it("pins literal required arrays on tool output schemas", () => {
     expect(schemaRequired(searchApprovedExercisesOutputSchema).sort()).toEqual(
-      ["exercises", "manage_url", "share_link", "summary"].sort(),
+      ["exercises", "manage_url", "match_count", "share_link", "summary"].sort(),
     );
     const searchRoutines = PHYSIO_MCP_TOOLS.find(
       (t) => t.name === SEARCH_ROUTINES_TOOL_NAME,
@@ -105,12 +105,15 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
     expect(schemaRequired(getProgram.outputSchema).sort()).toEqual(
       [
         "draft",
+        "draft_state",
+        "has_newer_draft",
         "manage_link",
         "manage_url",
         "pdf_url",
         "publish_link",
         "published",
         "share_link",
+        "share_link_state",
         "summary",
       ].sort(),
     );

@@ -14,8 +14,10 @@ import {
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import {
+  computeMcpShareLinkState,
   inferGetProgramDisplayState,
   type ProgramVersionRef,
+  type McpShareLinkState,
 } from "../../mcp-connector/get-program-contract.js";
 import {
   PROGRAM_PUBLISH_NAME_REQUIRED,
@@ -74,6 +76,7 @@ export type ProgramShareConnectorView = {
   display_state: GetProgramDisplayState;
   share_link: string;
   share_link_status: ShareLinkStatus;
+  share_link_state: McpShareLinkState;
   expires_at: string | null;
   open_share_link: boolean;
   draft: ProgramVersionRef | null;
@@ -303,6 +306,11 @@ export class ProgramPublishService {
       display_state: inferGetProgramDisplayState(draft, published),
       share_link: shareLink,
       share_link_status: shareLinkStatus,
+      share_link_state: computeMcpShareLinkState({
+        latestLink,
+        openShareLink: openLink !== null && shareLinkStatus === "open",
+        requestTimeIso: this.now(),
+      }),
       expires_at: openLink?.expires_at ?? null,
       open_share_link: openLink !== null && shareLinkStatus === "open",
       draft,

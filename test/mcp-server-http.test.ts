@@ -16,18 +16,12 @@ import {
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   getPhysioMcpTool,
   getProgramBuilderLinkInputSchema,
   isValidOpaqueEntityId,
   validateOpaqueEntityId,
 } from "../src/mcp-connector/index.js";
-import {
-  STUB_DRAFT_ONLY_PROGRAM_CODE,
-  STUB_PUBLISHED_ONLY_PROGRAM_CODE,
-  STUB_SEARCH_NO_MATCH_QUERY,
-} from "../src/services/mcp/stub-tool-handler.js";
 import {
   MCP_TEST_CONFIG,
   toolErrorText,
@@ -65,9 +59,12 @@ function encodedQParamLength(searchLink: string): number {
 const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: { query: "calf stretch" },
   [SEARCH_ROUTINES_TOOL_NAME]: { query: "knee mobility" },
-  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: { program_code: "PRG-STUB01" },
-  [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: { program_code: "PRG-STUB01" },
+  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: {},
 };
+
+const TOOLS_FOR_OUTPUT_SCHEMA_SMOKE = PHYSIO_MCP_TOOL_NAMES.filter(
+  (name) => name !== GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+);
 
 function parseWranglerJsonc(text: string): Record<string, unknown> {
   const errors: ParseError[] = [];
@@ -123,7 +120,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
 
   it("returns example structured content for each tool", async () => {
     await withMcpClient(async (client) => {
-      for (const name of PHYSIO_MCP_TOOL_NAMES) {
+      for (const name of TOOLS_FOR_OUTPUT_SCHEMA_SMOKE) {
         const result = await client.callTool({
           name,
           arguments: minimalArgsByTool[name],
@@ -131,7 +128,8 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
         expect(result.isError, name).not.toBe(true);
         expect(result.structuredContent, name).toBeTruthy();
         const summary = (result.structuredContent as { summary?: string }).summary;
-        expect(String(summary), name).toMatch(/^Example response:/);
+        expect(typeof summary, name).toBe("string");
+        expect(String(summary).length, name).toBeGreaterThan(0);
 
         const tool = getPhysioMcpTool(name);
         expect(tool).toBeDefined();
@@ -141,11 +139,12 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("returns empty search results with search_link for the fixed no-match query", async () => {
+  it("returns empty search results with search_link when nothing matches", async () => {
+    const noMatch = "zzzz-mcp-http-no-approved-match";
     await withMcpClient(async (client) => {
       const result = await client.callTool({
         name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
-        arguments: { query: STUB_SEARCH_NO_MATCH_QUERY },
+        arguments: { query: noMatch },
       });
       expect(result.isError).not.toBe(true);
       const body = result.structuredContent as {
@@ -154,10 +153,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
       };
       expect(body.exercises).toEqual([]);
       expect(body.search_link).toBe(
-        buildWebAppExerciseSearchUrl(
-          MCP_TEST_CONFIG.webAppBaseUrl,
-          STUB_SEARCH_NO_MATCH_QUERY,
-        ),
+        buildWebAppExerciseSearchUrl(MCP_TEST_CONFIG.webAppBaseUrl, noMatch),
       );
     });
   });
@@ -165,17 +161,6 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
   it("returns builder_link and manage_url for code, routine, and blank inputs", async () => {
     const base = MCP_TEST_CONFIG.webAppBaseUrl;
     await withMcpClient(async (client) => {
-      const byCode = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { program_code: "PRG-STUB01" },
-      });
-      expect(byCode.isError).not.toBe(true);
-      const codeBody = byCode.structuredContent as Record<string, unknown>;
-      expect(codeBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
-      expect(codeBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
-      expect(codeBody.program_code).toBe("PRG-STUB01");
-      expect(codeBody.from_routine_id).toBeUndefined();
-
       const byRoutine = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         arguments: { from_routine_id: SAMPLE_ROUTINE_UUID },
@@ -194,18 +179,6 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
       const blankBody = blank.structuredContent as Record<string, unknown>;
       expect(blankBody.builder_link).toBe(`${base}/programs/new`);
       expect(blankBody.manage_url).toBe(`${base}/programs/new`);
-
-      const both = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: {
-          program_code: "PRG-STUB01",
-          from_routine_id: SAMPLE_ROUTINE_UUID,
-        },
-      });
-      const bothBody = both.structuredContent as Record<string, unknown>;
-      expect(bothBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
-      expect(bothBody.program_code).toBe("PRG-STUB01");
-      expect(bothBody.from_routine_id).toBeUndefined();
 
       const trimmed = await client.callTool({
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -251,78 +224,6 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
       });
       const link201 = (at201.structuredContent as { search_link?: string }).search_link;
       expect(encodedQParamLength(link201!)).toBe(199);
-    });
-  });
-
-  it("returns share_link, pdf_url, publish_link, and manage_link for each stub share state", async () => {
-    const base = MCP_TEST_CONFIG.webAppBaseUrl;
-    const shareUrl = buildStubPublicShareLink(base);
-    const pdfUrl = `${shareUrl}.pdf`;
-
-    await withMcpClient(async (client) => {
-      const draftOnly = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_DRAFT_ONLY_PROGRAM_CODE },
-      });
-      const draftBody = draftOnly.structuredContent as Record<string, unknown>;
-      expect(draftBody.share_link).toBe("");
-      expect(draftBody.pdf_url).toBe("");
-      expect(draftBody.publish_link).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/publish`,
-      );
-      expect(draftBody.manage_link).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/share`,
-      );
-      expect(draftBody.manage_url).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}`,
-      );
-
-      const publishedOnly = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_PUBLISHED_ONLY_PROGRAM_CODE },
-      });
-      const pubBody = publishedOnly.structuredContent as Record<string, unknown>;
-      expect(pubBody.share_link).toBe(shareUrl);
-      expect(pubBody.pdf_url).toBe(pdfUrl);
-      expect(pubBody.publish_link).toBe("");
-      expect(pubBody.manage_link).toBe(
-        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}/share`,
-      );
-      expect(pubBody.manage_url).toBe(
-        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}`,
-      );
-      expect(pubBody.draft).toBeNull();
-
-      const draftAndPublished = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: "PRG-STUB01" },
-      });
-      const bothBody = draftAndPublished.structuredContent as Record<string, unknown>;
-      expect(bothBody.share_link).toBe(shareUrl);
-      expect(bothBody.pdf_url).toBe(pdfUrl);
-      expect(bothBody.publish_link).toBe(`${base}/programs/PRG-STUB01/publish`);
-      expect(bothBody.manage_link).toBe(`${base}/programs/PRG-STUB01/share`);
-      expect(bothBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
-      expect(bothBody.draft).not.toBeNull();
-      expect(bothBody.published).not.toBeNull();
-    });
-  });
-
-  it("returns publish_link for draft-only get_program_share_link_or_pdf stub", async () => {
-    await withMcpClient(async (client) => {
-      const result = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_DRAFT_ONLY_PROGRAM_CODE },
-      });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as {
-        publish_link?: string;
-        share_link?: string;
-      };
-      expect(body.share_link).toBe("");
-      expect(body.publish_link).toBe(
-        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/publish`,
-      );
     });
   });
 });

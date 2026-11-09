@@ -35,7 +35,7 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     objects: new InMemoryObjectStorage(),
     config,
     auth: authBundle.auth,
-    mcp: createPhysioMcpHttpHandler(config),
+    mcp: createPhysioMcpHttpHandler({ config, sql }),
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
     guardedAppWithoutSession: "redirect",
     uiStatic,

@@ -76,7 +76,7 @@ async function createAuthTestDeps(
     objects: new InMemoryObjectStorage(),
     config: serverConfig,
     auth: new BetterAuthPort(runtime, storage, serverConfig.auth),
-    mcp: createPhysioMcpHttpHandler(serverConfig),
+    mcp: createPhysioMcpHttpHandler({ config: serverConfig, sql: storage }),
     fakeGooglePreAuth: handleFakeGoogleRequest,
     extraSessionPublicPath: isFakeGoogleOAuthPath,
   };
