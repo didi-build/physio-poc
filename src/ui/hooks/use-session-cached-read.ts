@@ -195,7 +195,11 @@ export function useSessionCachedRead<T>(
       return;
     }
     if (!cacheKey) {
-      setLoading(true);
+      if (enabled) {
+        void refresh();
+      } else {
+        setLoading(true);
+      }
       return;
     }
     if (!canUseCache) {

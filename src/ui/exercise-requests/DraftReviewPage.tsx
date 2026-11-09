@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
@@ -7,7 +7,16 @@ import type {
 } from "../../services/exercise-requests/types.js";
 import { useExerciseMediaApi } from "../api/exercise-media-context.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
-import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
+import {
+  exerciseMediaRegenerationQuotaKey,
+  exerciseRequestDetailKey,
+} from "../api/navigation-read-cache-keys.js";
+import {
+  useCurrentPractitionerIdentity,
+  usePractitionerSession,
+} from "../api/practitioner-session-context.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
   DESCRIPTION_FIELD,
@@ -60,38 +69,65 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const mediaClient = useExerciseMediaApi();
   const currentPractitioner = useCurrentPractitionerIdentity();
   const { showToast } = useToast();
-  const [view, setView] = useState<ExerciseRequestDraftView | null>(null);
-  const [loading, setLoading] = useState(true);
+  const sessionEpoch = useSessionReadCacheEpoch();
+  const sessionReady = usePractitionerSession().status === "ready";
+  const [viewOverride, setViewOverride] = useState<ExerciseRequestDraftView | null>(
+    null,
+  );
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenMode, setRegenMode] = useState<"general" | "start" | "end">("general");
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
-  const [quota, setQuota] = useState<Awaited<
-    ReturnType<typeof mediaClient.getRegenerationQuota>
-  > | null>(null);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [requestView, quotaView] = await Promise.all([
-        requestsClient.getRequest(requestId),
-        mediaClient.getRegenerationQuota(),
-      ]);
-      setView(requestView);
-      setQuota(quotaView);
-    } finally {
-      setLoading(false);
-    }
-  }, [mediaClient, requestId, requestsClient]);
+  const detailCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch && requestId
+        ? exerciseRequestDetailKey(sessionEpoch, requestId)
+        : null,
+    [requestId, sessionEpoch, sessionReady],
+  );
+  const quotaCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? exerciseMediaRegenerationQuotaKey(sessionEpoch)
+        : null,
+    [sessionEpoch, sessionReady],
+  );
+
+  const {
+    data: cachedView,
+    loading: viewLoading,
+    refresh: refreshView,
+  } = useSessionCachedRead<ExerciseRequestDraftView>({
+    cacheKey: detailCacheKey,
+    enabled: sessionReady && requestId.length > 0,
+    fetcher: (signal) => requestsClient.getRequest(requestId, { signal }),
+  });
+
+  const {
+    data: quota,
+    loading: quotaLoading,
+    refresh: refreshQuota,
+  } = useSessionCachedRead<
+    Awaited<ReturnType<typeof mediaClient.getRegenerationQuota>>
+  >({
+    cacheKey: quotaCacheKey,
+    enabled: sessionReady,
+    fetcher: (signal) => mediaClient.getRegenerationQuota({ signal }),
+  });
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    setViewOverride(null);
+  }, [cachedView, requestId]);
+
+  const view = viewOverride ?? cachedView ?? null;
+  const loading = !sessionReady || viewLoading || quotaLoading;
 
   const patchField = async (patch: DraftFieldPatch) => {
     const updated = await requestsClient.updateDraft(requestId, patch);
-    setView(updated);
+    setViewOverride(updated);
+    void refreshView({ force: true });
   };
 
   const approve = async () => {
@@ -123,8 +159,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         scope,
         note: regenNote.trim() || null,
       });
-      const nextQuota = await mediaClient.getRegenerationQuota();
-      setQuota(nextQuota);
+      await refreshQuota({ force: true });
       setRegenOpen(false);
       setRegenNote("");
     } finally {

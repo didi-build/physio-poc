@@ -19,6 +19,7 @@ import {
 import {
   resetHarnessNavReadCounts,
   wrapExerciseLibraryClientWithHarnessCounts,
+  wrapExerciseRequestsClientWithHarnessCounts,
   wrapProgramsClientWithHarnessCounts,
   wrapRoutinesClientWithHarnessCounts,
 } from "./nav-read-counts.js";
@@ -61,7 +62,9 @@ function HarnessApp({ fixtureId }: { fixtureId: HarnessFixtureId }) {
         exerciseLibraryClient={wrapExerciseLibraryClientWithHarnessCounts(
           fixture.library,
         )}
-        exerciseRequestsClient={fixture.requests}
+        exerciseRequestsClient={wrapExerciseRequestsClientWithHarnessCounts(
+          fixture.requests,
+        )}
         exerciseMediaClient={fixture.media}
         programsClient={wrapProgramsClientWithHarnessCounts(
           programsClientForHarness(fixtureId),
