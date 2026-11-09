@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
@@ -16,6 +18,11 @@ import {
   ProgramRowsRepository,
 } from "../src/storage/repositories/programs.js";
 import {
+  applyMigration,
+  MIGRATION_0004_ID,
+  MIGRATION_0006_ID,
+} from "../src/storage/migrations/apply.js";
+import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
@@ -31,13 +38,100 @@ import {
   withMcpClient,
 } from "./mcp-server-test-utils.js";
 import { MCP_PATH } from "../src/http/app.js";
+import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
+import { mcpOAuthResourceUrl } from "../src/auth/mcp-oauth/paths.js";
+import type { AppDependencies } from "../src/http/app.js";
+import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
+import type { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
+import {
+  createMcpBearerAuthHandler,
+  createNodeAuthPort,
+} from "../src/adapters/node/create-auth-port.js";
 import { createNodeAppDependencies } from "../src/adapters/node/create-node-app-dependencies.js";
+import { resolveTestPhysioServerConfig } from "../src/adapters/node/resolve-node-config.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
+import {
+  CHATGPT_CIMD_CLIENT_ID,
+  mcpRequestHeaders,
+  signTestMcpAccessToken,
+} from "./helpers/mcp-oauth-test-utils.js";
 
 const BASE = MCP_TEST_BASE;
 const PINNED_NOW = "2026-10-31T12:00:00.000Z";
 const PINNED_EXPIRED = "2026-10-31T11:59:59.999Z";
+const PINNED_JUST_BEFORE_EXPIRY = "2026-10-31T12:00:01.000Z";
 const MISSING_PROGRAM_CODE = "PRG-ZZZZ";
+const REPO_ROOT = join(import.meta.dirname, "..");
+const MIGRATION_0004_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0004_better_auth.sql"),
+  "utf8",
+);
+const MIGRATION_0006_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0006_mcp_oauth.sql"),
+  "utf8",
+);
+
+async function ensureMcpBearerSchema(sql: SqlStoragePort): Promise<void> {
+  await applyMigration(sql, MIGRATION_0004_ID, MIGRATION_0004_SQL);
+  await applyMigration(sql, MIGRATION_0006_ID, MIGRATION_0006_SQL);
+}
+
+async function snapshotProgramShareTables(sql: SqlStoragePort) {
+  const programs = await sql.all(`SELECT * FROM programs ORDER BY id`);
+  const shareLinks = await sql.all(`SELECT * FROM share_links ORDER BY id`);
+  return { programs, shareLinks };
+}
+
+async function createProductionStyleMcpDeps(
+  storage: BetterSqliteStorage,
+): Promise<AppDependencies> {
+  const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET, {
+    fakeGoogleProvider: false,
+    authBaseUrl: MCP_TEST_BASE,
+    webAppBaseUrl: MCP_TEST_CONFIG.webAppBaseUrl,
+  });
+  const authBundle = createNodeAuthPort(storage.nativeDatabase(), storage, config, {
+    cimdMetadataFetch: async () => new Response(null, { status: 404 }),
+  });
+  return {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config,
+    auth: authBundle.auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, config),
+    mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, storage),
+  };
+}
+
+async function seedBearerMcpAccessToken(
+  deps: AppDependencies,
+  practitionerId: string,
+  email: string,
+): Promise<string> {
+  const userId = generateOpaqueEntityId();
+  const sessionId = generateOpaqueEntityId();
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+  await deps.sql.run(
+    `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, "practitionerId")
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [userId, "Bearer MCP", email, 1, now, now, practitionerId],
+  );
+  await deps.sql.run(
+    `INSERT INTO "session" (id, expiresAt, token, createdAt, updatedAt, userId)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [sessionId, expiresAt, generateOpaqueEntityId(), now, now, userId],
+  );
+  const authBase = MCP_TEST_BASE.replace(/\/$/, "");
+  return signTestMcpAccessToken(deps, {
+    sid: sessionId,
+    sub: userId,
+    aud: [mcpOAuthResourceUrl(MCP_TEST_BASE)],
+    azp: CHATGPT_CIMD_CLIENT_ID,
+    iss: `${authBase}/api/auth`,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  });
+}
 
 async function seedExerciseRow(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -63,7 +157,7 @@ async function seedExerciseRow(
 }
 
 function mcpDepsOnStorage(
-  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  storage: BetterSqliteStorage,
   practitionerId: string,
   email: string,
 ) {
@@ -91,6 +185,10 @@ async function migratedMcpDeps(practitionerId: string, email: string) {
 }
 
 describe("MCP tools with real data (DIDI-1016)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("returns 401 for unauthenticated /mcp", async () => {
     const storage = await openMigratedDatabase();
     const practitionerId = await seedPractitioner(storage);
@@ -317,11 +415,12 @@ describe("MCP tools with real data (DIDI-1016)", () => {
   });
 
   it("get_program_share_link_or_pdf over HTTP returns no live share_link or pdf_url for expired, closed, boundary, and superseded links", async () => {
+    vi.useRealTimers();
     vi.useFakeTimers();
     vi.setSystemTime(new Date(PINNED_NOW));
     try {
       const practitionerId = testOpaqueEntityId("mcp-inactive-links");
-      const { deps, cookie } = await migratedMcpDeps(
+      const { deps, cookie, storage } = await migratedMcpDeps(
         practitionerId,
         "inactive-links@example.com",
       );
@@ -396,6 +495,48 @@ describe("MCP tools with real data (DIDI-1016)", () => {
       await publish.publishProgram(practitionerId, supersededProgramId);
       await publish.closeShareLink(practitionerId, supersededProgramId);
 
+      const { code: liveSoonCode, programId: liveSoonProgramId } =
+        await createPublishedProgram("live-soon", "Just before expiry");
+      await deps.sql.run(
+        `UPDATE share_links SET expires_at = ? WHERE program_id = ? AND closed_at IS NULL`,
+        [PINNED_JUST_BEFORE_EXPIRY, liveSoonProgramId],
+      );
+
+      const republishProgramId = id("mcp-inactive-republish");
+      await programs.create({
+        id: republishProgramId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Republish open link",
+      });
+      await seedExerciseRow(deps.sql, republishProgramId, practitionerId, {
+        skipApprovedSeed: true,
+      });
+      const firstPublish = await publish.publishProgram(
+        practitionerId,
+        republishProgramId,
+      );
+      const supersededToken = decodeURIComponent(
+        firstPublish.share_link.split("/l/")[1]!,
+      );
+      await publish.closeShareLink(practitionerId, republishProgramId);
+      const secondPublish = await publish.publishProgram(
+        practitionerId,
+        republishProgramId,
+      );
+      const currentOpenToken = decodeURIComponent(
+        secondPublish.share_link.split("/l/")[1]!,
+      );
+      expect(currentOpenToken).not.toBe(supersededToken);
+      expect(String(secondPublish.share_link)).toMatch(/\/l\//);
+      const openRow = await deps.sql.first<{ token: string }>(
+        `SELECT token FROM share_links WHERE program_id = ? AND closed_at IS NULL LIMIT 1`,
+        [republishProgramId],
+      );
+      expect(openRow?.token).toBe(currentOpenToken);
+
+      const beforeTables = await snapshotProgramShareTables(deps.sql);
+
       await withMcpClient(
         async (client) => {
           for (const [label, code] of [
@@ -414,8 +555,57 @@ describe("MCP tools with real data (DIDI-1016)", () => {
               label,
             );
           }
+
+          const liveSoon = await client.callTool({
+            name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+            arguments: { program_code: liveSoonCode },
+          });
+          const liveSoonBody = liveSoon.structuredContent as Record<string, unknown>;
+          expect(String(liveSoonBody.share_link)).toMatch(/\/l\//);
+          expect(String(liveSoonBody.pdf_url)).toMatch(/\.pdf$/);
         },
         { baseUrl: BASE, fetch: mcpFetch(cookie) },
+      );
+
+      const afterTables = await snapshotProgramShareTables(deps.sql);
+      expect(afterTables).toEqual(beforeTables);
+
+      await ensureMcpBearerSchema(deps.sql);
+      const bearerDeps = await createProductionStyleMcpDeps(storage);
+      const bearerToken = await seedBearerMcpAccessToken(
+        bearerDeps,
+        practitionerId,
+        "inactive-links@example.com",
+      );
+      const bearerMcpFetch: FetchLike = async (input, init) => {
+        const parsed = new URL(input instanceof URL ? input.href : input);
+        const headers = new Headers(init?.headers);
+        for (const [key, value] of Object.entries(mcpRequestHeaders(bearerToken))) {
+          headers.set(key, value);
+        }
+        return handleRequest(
+          new Request(`${MCP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+            method: init?.method ?? "GET",
+            headers,
+            body: init?.body ?? undefined,
+          }),
+          bearerDeps,
+        );
+      };
+
+      await withMcpClient(
+        async (client) => {
+          const closedBearer = await client.callTool({
+            name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+            arguments: { program_code: closedCode },
+          });
+          expect(closedBearer.isError).not.toBe(true);
+          assertNoLiveShareOrPdf(
+            closedBearer.structuredContent as Record<string, unknown>,
+            "closed-bearer",
+          );
+        },
+        { baseUrl: MCP_TEST_BASE, fetch: bearerMcpFetch },
       );
     } finally {
       vi.useRealTimers();
@@ -455,24 +645,55 @@ describe("MCP tools with real data (DIDI-1016)", () => {
         );
       };
 
-    await withMcpClient(
-      async (client) => {
-        const missing = await client.callTool({
-          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-          arguments: { program_code: MISSING_PROGRAM_CODE },
-        });
-        const foreign = await client.callTool({
-          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-          arguments: { program_code: ownerProgramCode },
-        });
-        expect(missing.isError).toBe(true);
-        expect(foreign.isError).toBe(true);
-        expect(toolErrorText(foreign)).toBe(toolErrorText(missing));
-        expect(toolErrorText(foreign)).toMatch(/Program not found/i);
-        expect(foreign.structuredContent).toBeFalsy();
-      },
-      { fetch: mcpFetch(ownerBDeps) },
+    const expectCrossOwnerBuilderNotFound = async (
+      client: Parameters<Parameters<typeof withMcpClient>[0]>[0],
+    ) => {
+      const missing = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { program_code: MISSING_PROGRAM_CODE },
+      });
+      const foreign = await client.callTool({
+        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+        arguments: { program_code: ownerProgramCode },
+      });
+      expect(missing.isError).toBe(true);
+      expect(foreign.isError).toBe(true);
+      expect(toolErrorText(foreign)).toBe(toolErrorText(missing));
+      expect(toolErrorText(foreign)).toMatch(/Program not found/i);
+      expect(foreign.structuredContent).toBeFalsy();
+    };
+
+    await withMcpClient(async (client) => expectCrossOwnerBuilderNotFound(client), {
+      fetch: mcpFetch(ownerBDeps),
+    });
+
+    await ensureMcpBearerSchema(storage);
+    const bearerDeps = await createProductionStyleMcpDeps(storage);
+    const bearerToken = await seedBearerMcpAccessToken(
+      bearerDeps,
+      ownerB,
+      "builderb@example.com",
     );
+    const bearerMcpFetch: FetchLike = async (input, init) => {
+      const parsed = new URL(input instanceof URL ? input.href : input);
+      const headers = new Headers(init?.headers);
+      for (const [key, value] of Object.entries(mcpRequestHeaders(bearerToken))) {
+        headers.set(key, value);
+      }
+      return handleRequest(
+        new Request(`${MCP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body: init?.body ?? undefined,
+        }),
+        bearerDeps,
+      );
+    };
+
+    await withMcpClient(async (client) => expectCrossOwnerBuilderNotFound(client), {
+      baseUrl: MCP_TEST_BASE,
+      fetch: bearerMcpFetch,
+    });
   });
 
   it("cross-owner program_code returns Program not found", async () => {
