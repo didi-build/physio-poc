@@ -335,7 +335,8 @@ describe("MCP tools with real data (DIDI-1023)", () => {
           `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${routineId}`,
         );
         expect(body.from_routine_id).toBe(routineId);
-        expect(body.summary).toBe("Created program from routine");
+        expect(body.summary).toBe("");
+        expect(JSON.stringify(body)).not.toMatch(/Created/i);
       },
       {
         fetch: async (input, init) => {
@@ -405,8 +406,11 @@ describe("MCP tools with real data (DIDI-1023)", () => {
         expect(missingBuilder.isError).toBe(true);
         expect(foreignBuilder.isError).toBe(true);
         expect(toolErrorText(foreignBuilder)).toBe(toolErrorText(missingBuilder));
-        expect(toolErrorText(foreignBuilder)).toMatch(/Routine not found/i);
-        expect(foreignBuilder.structuredContent).toBeFalsy();
+        expect(toolErrorText(foreignBuilder)).toBe("routine_not_found");
+        const foreignBody = foreignBuilder.structuredContent as { error_code?: string };
+        const missingBody = missingBuilder.structuredContent as { error_code?: string };
+        expect(foreignBody.error_code).toBe("routine_not_found");
+        expect(missingBody.error_code).toBe("routine_not_found");
       },
       { fetch: mcpFetch },
     );
@@ -441,7 +445,10 @@ describe("MCP tools with real data (DIDI-1023)", () => {
           arguments: { from_routine_id: foreignRoutine },
         });
         expect(result.isError).toBe(true);
-        expect(toolErrorText(result)).toMatch(/Routine not found/i);
+        expect(toolErrorText(result)).toBe("routine_not_found");
+        expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+          "routine_not_found",
+        );
       },
       { baseUrl: MCP_TEST_BASE, fetch: bearerMcpFetch },
     );

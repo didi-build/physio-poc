@@ -386,7 +386,10 @@ describe("Physio MCP HTTP validation", () => {
         arguments: { from_routine_id: generatedId },
       });
       expect(result.isError).toBe(true);
-      expect(toolErrorText(result)).toMatch(/Routine not found/i);
+      expect(toolErrorText(result)).toBe("routine_not_found");
+      expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+        "routine_not_found",
+      );
     });
   });
 

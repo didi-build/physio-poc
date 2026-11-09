@@ -8,6 +8,8 @@ Each mutant was applied alone, then the full `npm test` suite ran with `GIT_CONF
 | M1023-1b | `routines-library-service.ts` `searchOwnerPublishedRoutinesForMcp`: append author drafts to MCP results              | `mcp-tools-real-data-didi-1023.test.ts` > search_routines returns only owner published routines and excludes drafts and other owners                    | Killed |
 | M1023-1c | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: call `createProgramFromRoutine` on `from_routine_id` success   | `mcp-tools-real-data-didi-1023.test.ts` table-snapshot test, deep-link test, and `mcp-server-http.test.ts` seeded from-routine builder paths            | Killed |
 | M1023-1d | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `builder_link` targets `routineDetail` instead of `programNew` | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link; related HTTP builder assertions | Killed |
+| M1023-1e | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: restore `summary` `Created program from routine` on success    | `mcp-tools-real-data-didi-1023.test.ts` > get_program_builder_link from_routine_id returns exact program-new deep link (no Created prose)               | Killed |
+| M1023-1f | `physio-mcp-tool-service.ts` `getProgramBuilderLink`: `PhysioMcpToolInputError` prose instead of `routine_not_found` | `mcp-tools-real-data-didi-1023.test.ts` cross-owner from_routine_id; `mcp-server-http.test.ts` unknown routine UUID                                     | Killed |
 
 ## M1023-1a full-suite tail (verbatim)
 
@@ -57,4 +59,28 @@ AssertionError: expected true not to be true // Object.is equality
 AssertionError: expected 'https://app.example.com/routines/0000…' to be 'https://app.example.com/programs/new?…' // Object.is equality
 ```
 
-**Totals:** 4 mutants run against the full suite, **4 killed**, **0 equivalent**, **0 survived**.
+## M1023-1e full-suite tail (verbatim)
+
+```
+ Test Files  1 failed | 221 passed (222)
+      Tests  1 failed | 2282 passed | 4 skipped (2287)
+```
+
+```
+ FAIL  test/mcp-tools-real-data-didi-1023.test.ts > MCP tools with real data (DIDI-1023) > get_program_builder_link from_routine_id returns exact program-new deep link
+AssertionError: expected 'Created program from routine' to be '' // Object.is equality
+```
+
+## M1023-1f full-suite tail (verbatim)
+
+```
+ Test Files  2 failed | 220 passed (222)
+      Tests  2 failed | 2281 passed | 4 skipped (2287)
+```
+
+```
+ FAIL  test/mcp-tools-real-data-didi-1023.test.ts > MCP tools with real data (DIDI-1023) > cross-owner routine search and from_routine_id match missing-id not-found without leak
+AssertionError: expected 'Routine not found' to be 'routine_not_found' // Object.is equality
+```
+
+**Totals:** 6 mutants run against the full suite, **6 killed**, **0 equivalent**, **0 survived**.

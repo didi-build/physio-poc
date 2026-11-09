@@ -21,7 +21,6 @@ import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { RoutinesLibraryService } from "../routines/routines-library-service.js";
 import {
   approvedExerciseSearchSummary,
-  createdProgramFromRoutineSummary,
   foundProgramByCodeSummary,
   programShareSummary,
   searchedRoutinesSummary,
@@ -162,13 +161,15 @@ export class PhysioMcpToolService {
         routineId,
       );
       if (!head) {
-        throw new PhysioMcpToolInputError("Routine not found");
+        throw new PhysioMcpStructuredToolError({
+          error_code: "routine_not_found",
+        });
       }
       const builderLink = buildProgramBuilderLink(this.config.webAppBaseUrl, {
         from_routine_id: head.routine_id,
       });
       return {
-        summary: createdProgramFromRoutineSummary(),
+        summary: "",
         share_link: "",
         builder_link: builderLink,
         manage_url: appUrl(this.config, "programNew"),
