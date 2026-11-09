@@ -15,7 +15,10 @@ import {
   RoutineVersionsRepository,
 } from "../src/storage/repositories/routines.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import {
@@ -151,7 +154,7 @@ function apiDeps(
       sql: storage,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       auth,
     },
     cookie: auth.createSessionCookieHeader(),
@@ -646,7 +649,10 @@ describe("Program from routine HTTP routes (DIDI-1133)", () => {
         ...workerDeps,
         sql: storage,
         auth,
-        mcp: createPhysioMcpHttpHandler(workerDeps.config),
+        mcp: createPhysioMcpHttpHandler({
+          config: workerDeps.config,
+          sql: workerDeps.sql,
+        }),
         objects: new InMemoryObjectStorage(),
       };
       const path = routineSentProgramsPath(id("http-worker-routine"));

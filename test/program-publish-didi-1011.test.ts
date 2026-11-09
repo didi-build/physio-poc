@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
@@ -40,7 +39,10 @@ import {
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
@@ -63,7 +65,7 @@ function apiDeps(
       sql: storage,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       auth,
     },
     cookie: auth.createSessionCookieHeader(),
@@ -108,7 +110,7 @@ function secondApiDeps(
       sql: storage,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       auth,
     },
     cookie: auth.createSessionCookieHeader(),

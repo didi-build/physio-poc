@@ -51,13 +51,18 @@ describe("Worker production auth wiring (AC2, DIDI-1153)", () => {
   it("accepts a signed MCP bearer token when the Better Auth session is active", async () => {
     const { deps } = await createWorkerProductionAuthTestDeps();
     const userId = generateOpaqueEntityId();
+    const practitionerId = generateOpaqueEntityId();
     const sessionId = generateOpaqueEntityId();
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
     await deps.sql.run(
-      `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [userId, "Fixture", "fixture@example.com", 1, now, now],
+      "INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)",
+      [practitionerId, "fixture@example.com", now],
+    );
+    await deps.sql.run(
+      `INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt, "practitionerId")
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [userId, "Fixture", "fixture@example.com", 1, now, now, practitionerId],
     );
     await deps.sql.run(
       `INSERT INTO "session" (id, expiresAt, token, createdAt, updatedAt, userId)

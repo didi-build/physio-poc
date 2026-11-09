@@ -1,6 +1,5 @@
 import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
 import { handleRequest } from "../../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../../src/storage/adapters/memory/in-memory-object-storage.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import { RoutinesLibraryService } from "../../src/services/routines/index.js";
@@ -8,7 +7,10 @@ import {
   PractitionerRoutineRowsRepository,
   PractitionerRoutinesRepository,
 } from "../../src/storage/repositories/routines.js";
-import { MCP_TEST_CONFIG } from "../mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "../mcp-server-test-utils.js";
 import { mutatingAppApiRequestInit } from "./mutating-app-api-request.js";
 import {
   FIXTURE_EXERCISE_ID,
@@ -55,7 +57,7 @@ function buildAuthDeps(
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     },
   };
 }

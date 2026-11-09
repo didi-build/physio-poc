@@ -120,7 +120,10 @@ describe("Worker exercise library routes (integration)", () => {
       ...workerDeps,
       sql: storage,
       auth,
-      mcp: createPhysioMcpHttpHandler(workerDeps.config),
+      mcp: createPhysioMcpHttpHandler({
+        config: workerDeps.config,
+        sql: workerDeps.sql,
+      }),
       objects: new InMemoryObjectStorage(),
     };
 

@@ -27,6 +27,7 @@ import { handleRoutinesRequest } from "./routes/routines.js";
 import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
+import { attachMcpPractitionerId } from "../services/mcp/mcp-request-context.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
@@ -157,7 +158,7 @@ export async function handleRequest(
     if (!practitioner) {
       return jsonUnauthorized();
     }
-    return deps.mcp(request);
+    return deps.mcp(attachMcpPractitionerId(request, practitioner.practitionerId));
   }
 
   if (pathname.startsWith("/api/")) {

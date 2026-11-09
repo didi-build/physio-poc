@@ -1,8 +1,10 @@
 import { FakeAuthPort } from "../../src/auth/fake-auth-port.js";
 import { handleRequest } from "../../src/http/app.js";
-import { createPhysioMcpHttpHandler } from "../../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../../src/storage/adapters/memory/in-memory-object-storage.js";
-import { MCP_TEST_CONFIG } from "../mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "../mcp-server-test-utils.js";
 import { mutatingAppApiRequestInit } from "./mutating-app-api-request.js";
 import { publishRoutine, seedTwoPractitioners } from "./from-routine-http-fixture.js";
 import { id } from "./opaque-test-ids.js";
@@ -49,7 +51,7 @@ export function appDepsForRoutinesHttpUi(
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
       auth,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     },
     cookie: auth.createSessionCookieHeader(),
   };

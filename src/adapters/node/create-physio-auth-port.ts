@@ -13,6 +13,8 @@ import {
 } from "./create-physio-better-auth-instance.js";
 import type { PhysioMcpConsentClock } from "../../auth/mcp-oauth/consent-routes.js";
 import { BetterAuthPort } from "./better-auth-port.js";
+import { attachMcpPractitionerId } from "../../services/mcp/mcp-request-context.js";
+import { resolvePractitionerIdForMcpAccessToken } from "../../services/mcp/resolve-mcp-practitioner.js";
 
 export type PhysioAuthPortBundle = {
   auth: AuthPort;
@@ -118,11 +120,18 @@ export function createMcpBearerAuthHandler(
 
   return (request, mcpHandler) =>
     createMcpProtectedRequestHandler(verificationOptions, (innerRequest, claims) => {
-      return isAccessTokenSessionActive(claims).then((active) => {
+      return isAccessTokenSessionActive(claims).then(async (active) => {
         if (!active) {
           return mcpAuthChallengeResponse("token inactive");
         }
-        return mcpHandler(innerRequest);
+        const practitionerId = await resolvePractitionerIdForMcpAccessToken(
+          sql,
+          claims,
+        );
+        if (!practitionerId) {
+          return mcpAuthChallengeResponse("token inactive");
+        }
+        return mcpHandler(attachMcpPractitionerId(innerRequest, practitionerId));
       });
     })(request);
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
 import { handleRequest } from "../src/http/app.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
@@ -27,7 +26,10 @@ import {
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { createFakePhysioD1Database } from "./helpers/fake-physio-d1-database.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import {
@@ -865,7 +867,7 @@ describe("Exercise request merge alias HTTP", () => {
         sql: storage,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         auth,
       });
       expect(response.status).toBe(409);

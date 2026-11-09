@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv-provider.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
 import { createPhysioMcpServer } from "../src/adapters/workers/mcp/create-physio-mcp-server.js";
 import {
   PHYSIO_MCP_SDK_JSON_SCHEMA_VALIDATION_ERROR,
@@ -9,7 +10,10 @@ import {
 
 describe("Physio MCP Workers-safe jsonSchemaValidator", () => {
   it("wires PhysioMcpWorkersSafeJsonSchemaValidator instead of the SDK Ajv default", () => {
-    const server = createPhysioMcpServer(MCP_TEST_CONFIG);
+    const server = createPhysioMcpServer(
+      { config: MCP_TEST_CONFIG, sql: new InMemorySqlStorage() },
+      new Request("https://physio.test.example/mcp"),
+    );
     const internal = server as unknown as {
       _jsonSchemaValidator: PhysioMcpWorkersSafeJsonSchemaValidator;
     };

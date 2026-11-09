@@ -6,7 +6,10 @@ import {
   exerciseLibraryExerciseDetailsPath,
   exerciseLibraryMyExerciseItemPath,
 } from "../src/exercise-library-api-paths.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -16,7 +19,6 @@ import {
   versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { PractitionerExercisesRepository } from "../src/storage/repositories/exercise-data.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
@@ -122,7 +124,7 @@ describe("handleExerciseLibraryRequest null session (direct, integration)", () =
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth: new FakeAuthPort({ practitioner: null }),
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       };
 
       const before = await storage.first<{ c: number }>(

@@ -115,7 +115,7 @@ function stubSearchApprovedExercises(
   };
 }
 
-function stubSearchRoutines(
+export function stubSearchRoutines(
   input: Record<string, unknown>,
   config: PhysioServerConfig,
 ): Record<string, unknown> {
@@ -136,7 +136,7 @@ function stubSearchRoutines(
   };
 }
 
-function stubGetProgramBuilderLink(
+export function stubGetProgramBuilderLink(
   input: Record<string, unknown>,
   config: PhysioServerConfig,
 ): Record<string, unknown> {
