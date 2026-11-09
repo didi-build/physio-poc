@@ -92,8 +92,8 @@ export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 export const PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE =
   "Approve or remove placeholders to publish";
 
-/** Repository-only signal when publish races a draft_version change (DIDI-1189). */
-export const PUBLISH_STALE_DRAFT_MESSAGE = "Publish stale draft";
+/** Internal publish-batch guard result; same token as HTTP `stale_draft_retry` (not user-facing copy). */
+export const PUBLISH_STALE_DRAFT_SIGNAL = "stale_draft_retry";
 
 function assertPrescriptionType(value: string): PrescriptionType {
   if ((PRESCRIPTION_TYPES as readonly string[]).includes(value)) {
@@ -590,7 +590,7 @@ export class ProgramsRepository {
       throw new ProgramRepositoryError("Program not found");
     }
     if (current.draft_version !== expectedDraftVersion) {
-      throw new ProgramRepositoryError(PUBLISH_STALE_DRAFT_MESSAGE);
+      throw new ProgramRepositoryError(PUBLISH_STALE_DRAFT_SIGNAL);
     }
     if (hadExpiryWrites) {
       throw guardError;

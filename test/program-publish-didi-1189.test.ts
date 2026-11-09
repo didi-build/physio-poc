@@ -8,7 +8,9 @@ import {
   ProgramPublishServiceError,
 } from "../src/services/programs/program-publish-service.js";
 import {
-  PUBLISH_STALE_DRAFT_MESSAGE,
+  PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
+  PUBLISH_STALE_DRAFT_SIGNAL,
+  ProgramRepositoryError,
   ProgramRowsRepository,
   ProgramsRepository,
   ShareLinksRepository,
@@ -176,6 +178,7 @@ describe("program publish DIDI-1189", () => {
       );
       expect(staleError).toMatchObject({
         code: "stale_draft_retry",
+        message: "",
       } satisfies Partial<ProgramPublishServiceError>);
       expect(staleError).not.toMatchObject({
         code: "placeholders_block_publish",
@@ -186,7 +189,7 @@ describe("program publish DIDI-1189", () => {
     }
   });
 
-  it("repository publish throws PUBLISH_STALE_DRAFT_MESSAGE when draft_version races the batch", async () => {
+  it("repository publish signals stale_draft_retry when draft_version races the batch", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -206,8 +209,18 @@ describe("program publish DIDI-1189", () => {
         ]);
         return baseBatch(statements);
       });
-      await expect(programs.publish(programId, TS)).rejects.toThrow(
-        PUBLISH_STALE_DRAFT_MESSAGE,
+      const repoError = await programs.publish(programId, TS).then(
+        () => {
+          throw new Error("expected repository stale signal");
+        },
+        (error: unknown) => error,
+      );
+      expect(repoError).toBeInstanceOf(ProgramRepositoryError);
+      expect((repoError as ProgramRepositoryError).message).toBe(
+        PUBLISH_STALE_DRAFT_SIGNAL,
+      );
+      expect((repoError as ProgramRepositoryError).message).not.toBe(
+        PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
       );
     } finally {
       storage.close();
@@ -249,8 +262,9 @@ describe("program publish DIDI-1189", () => {
         deps,
       );
       expect(response.status).toBe(400);
-      const body = (await response.json()) as { error: string };
+      const body = (await response.json()) as { error: string; message: string };
       expect(body.error).toBe("stale_draft_retry");
+      expect(body.message).toBe("");
       expect(body.error).not.toBe("placeholders_block_publish");
     } finally {
       storage.close();

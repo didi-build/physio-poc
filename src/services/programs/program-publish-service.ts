@@ -27,7 +27,7 @@ import { buildPublicShareLinkUrl } from "../../app-routes.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
-  PUBLISH_STALE_DRAFT_MESSAGE,
+  PUBLISH_STALE_DRAFT_SIGNAL,
   ProgramRepositoryError,
   ProgramsRepository,
   ShareLinksRepository,
@@ -425,11 +425,8 @@ export class ProgramPublishService {
       );
     }
     if (err instanceof ProgramRepositoryError) {
-      if (err.message === PUBLISH_STALE_DRAFT_MESSAGE) {
-        throw new ProgramPublishServiceError(
-          PUBLISH_STALE_DRAFT_MESSAGE,
-          "stale_draft_retry",
-        );
+      if (err.message === PUBLISH_STALE_DRAFT_SIGNAL) {
+        throw new ProgramPublishServiceError("", "stale_draft_retry");
       }
       if (err.message === PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE) {
         throw new ProgramPublishServiceError(
