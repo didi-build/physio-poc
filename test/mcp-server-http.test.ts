@@ -7,6 +7,7 @@ import {
   printParseErrorCode,
   type ParseError,
 } from "jsonc-parser";
+import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { describe, expect, it } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -24,9 +25,66 @@ import {
 } from "../src/mcp-connector/index.js";
 import {
   MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
   toolErrorText,
   withMcpClient,
 } from "./mcp-server-test-utils.js";
+import { handleRequest } from "../src/http/app.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
+import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import {
+  openMigratedDatabase,
+  seedPractitioner,
+} from "./helpers/exercise-sqlite-fixture.js";
+import {
+  publishRoutine,
+  seedApprovedExerciseForBuilder,
+} from "./helpers/from-routine-http-fixture.js";
+import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+
+const MCP_HTTP_TEST_BASE = "https://physio-mcp.test.example";
+
+async function mcpHttpFetchWithOwnerRoutine(routineUuid: string) {
+  const storage = await openMigratedDatabase();
+  const ownerId = testOpaqueEntityId("mcp-http-routine-owner");
+  await seedPractitioner(storage, ownerId, "mcp-http-routine@example.com");
+  await seedApprovedExerciseForBuilder(storage, ownerId);
+  await publishRoutine(storage, ownerId, {
+    routine: routineUuid,
+    draftVersion: `${routineUuid}-draft`,
+    row: `${routineUuid}-row`,
+    name: "HTTP MCP seeded routine",
+  });
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: ownerId,
+      email: "mcp-http-routine@example.com",
+      displayName: "HTTP MCP",
+    },
+  });
+  const deps = {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config: MCP_TEST_CONFIG,
+    auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+  };
+  const cookie = auth.createSessionCookieHeader();
+  const fetch: FetchLike = async (input, init) => {
+    const parsed = new URL(input instanceof URL ? input.href : input);
+    const headers = new Headers(init?.headers);
+    headers.set("cookie", cookie);
+    return handleRequest(
+      new Request(`${MCP_HTTP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+        method: init?.method ?? "GET",
+        headers,
+        body: init?.body ?? undefined,
+      }),
+      deps,
+    );
+  };
+  return fetch;
+}
 
 const goldenTools = JSON.parse(
   readFileSync(
@@ -47,8 +105,6 @@ const ajv = new Ajv({
 addFormats(ajv);
 
 const patientDetailSample = "Contact user@example.com for updates";
-
-const SAMPLE_ROUTINE_UUID = "550e8400-e29b-41d4-a716-446655440000";
 
 function encodedQParamLength(searchLink: string): number {
   const search = new URL(searchLink).search.slice(1);
@@ -158,38 +214,42 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("returns builder_link and manage_url for code, routine, and blank inputs", async () => {
+  it("returns builder_link for blank input and not_supported_v1 for owner-published from_routine_id", async () => {
     const base = MCP_TEST_CONFIG.webAppBaseUrl;
-    await withMcpClient(async (client) => {
-      const byRoutine = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: SAMPLE_ROUTINE_UUID },
-      });
-      const routineBody = byRoutine.structuredContent as Record<string, unknown>;
-      expect(routineBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
-      );
-      expect(routineBody.manage_url).toBe(`${base}/programs/new`);
-      expect(routineBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
+    const routineId = id("mcp-http-builder-routine");
+    const fetch = await mcpHttpFetchWithOwnerRoutine("mcp-http-builder-routine");
+    await withMcpClient(
+      async (client) => {
+        const byRoutine = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: routineId },
+        });
+        expect(byRoutine.isError).toBe(true);
+        expect(toolErrorText(byRoutine)).toBe("not_supported_v1");
+        expect(
+          (byRoutine.structuredContent as { error_code?: string }).error_code,
+        ).toBe("not_supported_v1");
 
-      const blank = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: {},
-      });
-      const blankBody = blank.structuredContent as Record<string, unknown>;
-      expect(blankBody.builder_link).toBe(`${base}/programs/new`);
-      expect(blankBody.manage_url).toBe(`${base}/programs/new`);
+        const blank = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: {},
+        });
+        const blankBody = blank.structuredContent as Record<string, unknown>;
+        expect(blankBody.builder_link).toBe(`${base}/programs/new`);
+        expect(blankBody.manage_url).toBe(`${base}/programs/new`);
 
-      const trimmed = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: `  ${SAMPLE_ROUTINE_UUID}  ` },
-      });
-      const trimmedBody = trimmed.structuredContent as Record<string, unknown>;
-      expect(trimmedBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
-      );
-      expect(trimmedBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
-    });
+        const trimmed = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: `  ${routineId}  ` },
+        });
+        expect(trimmed.isError).toBe(true);
+        expect(toolErrorText(trimmed)).toBe("not_supported_v1");
+        expect((trimmed.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
+        );
+      },
+      { fetch },
+    );
   });
 
   it("caps search_link encoded q at 199 when pre-encoding length is 199, 200, or 201", async () => {
@@ -324,35 +384,38 @@ describe("Physio MCP HTTP validation", () => {
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         arguments: { from_routine_id: generatedId },
       });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as { from_routine_id?: string };
-      expect(body.from_routine_id).toBe(generatedId.toLowerCase());
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toBe("routine_not_found");
+      expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+        "routine_not_found",
+      );
     });
   });
 
   it("accepts uppercase UUID v4 in schema and normalizes via validateOpaqueEntityId", async () => {
-    const upper = "550E8400-E29B-41D4-A716-446655440000";
-    const lower = upper.toLowerCase();
+    const routineId = id("mcp-http-upper-routine");
+    const upper = routineId.toUpperCase();
+    const lower = routineId.toLowerCase();
     expect(isValidOpaqueEntityId(upper)).toBe(true);
     expect(validateOpaqueEntityId(upper, "from_routine_id")).toBe(lower);
     const schemaValidate = ajv.compile(getProgramBuilderLinkInputSchema);
     expect(schemaValidate({ from_routine_id: upper })).toBe(true);
 
-    await withMcpClient(async (client) => {
-      const result = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: upper },
-      });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as {
-        from_routine_id?: string;
-        builder_link?: string;
-      };
-      expect(body.from_routine_id).toBe(lower);
-      expect(body.builder_link).toBe(
-        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${lower}`,
-      );
-    });
+    const fetch = await mcpHttpFetchWithOwnerRoutine("mcp-http-upper-routine");
+    await withMcpClient(
+      async (client) => {
+        const result = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: upper },
+        });
+        expect(result.isError).toBe(true);
+        expect(toolErrorText(result)).toBe("not_supported_v1");
+        expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
+        );
+      },
+      { fetch },
+    );
   });
 
   it("rejects patient-detail patterns in every free-text field", async () => {

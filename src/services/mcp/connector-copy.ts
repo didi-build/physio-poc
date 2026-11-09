@@ -4,6 +4,7 @@
 
 export const MCP_COPY_SEARCHED_EXERCISE_LIBRARY = "Searched exercise library";
 export const MCP_COPY_NO_APPROVED_MATCH = "No approved match";
+export const MCP_COPY_SEARCHED_ROUTINES = "Searched routines";
 export const MCP_COPY_FOUND_PROGRAM_BY_CODE = "Found program by code";
 export const MCP_COPY_NOT_LIVE_YET = "Not live yet";
 export const MCP_COPY_NOTHING_PUBLISHED = "Okay, nothing is published.";
@@ -19,6 +20,10 @@ export function approvedExerciseSearchSummary(matchCount: number): string {
 
 export function foundProgramByCodeSummary(): string {
   return MCP_COPY_FOUND_PROGRAM_BY_CODE;
+}
+
+export function searchedRoutinesSummary(): string {
+  return MCP_COPY_SEARCHED_ROUTINES;
 }
 
 export function programShareSummary(input: {

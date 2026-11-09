@@ -14,6 +14,16 @@ export type SearchApprovedExercisesToolOutputFields = {
   match_count: number;
 };
 
+/** Structured MCP error when `from_routine_id` does not resolve for the owner (missing or cross-owner). */
+export type GetProgramBuilderLinkRoutineNotFoundError = {
+  error_code: "routine_not_found";
+};
+
+/** V1: owner-published routine resolves, but the web app cannot start a program from routine yet (DIDI-853). */
+export type GetProgramBuilderLinkNotSupportedV1Error = {
+  error_code: "not_supported_v1";
+};
+
 /** `get_program_builder_link` success payload when `program_code` resolved to a stored program. */
 export type GetProgramBuilderLinkToolOutputFields = {
   /** Program display title when set; null when the draft has no name. */
