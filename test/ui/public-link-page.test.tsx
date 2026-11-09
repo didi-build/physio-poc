@@ -55,7 +55,13 @@ describe("PublicLinkPage (UI)", () => {
     expect(
       screen.getByRole("button", { name: PUBLIC_LINK_SAVE_AS_PDF }),
     ).toBeInTheDocument();
-    expect(screen.getByText(`${TYPE_LABELS.stretching}. 30s hold`)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: `Heel slide, ${TYPE_LABELS.stretching.toLowerCase()}`,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("30s hold")).toBeInTheDocument();
   });
 
   it("renders the closed state without extra program details", async () => {

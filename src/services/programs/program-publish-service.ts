@@ -207,17 +207,18 @@ export class ProgramPublishService {
     }
 
     const publishedAt = this.now();
+    try {
+      await this.programs.publish(validatedProgramId, publishedAt);
+    } catch (err) {
+      this.mapPublishRepositoryError(err);
+    }
+
     if (validatedLinkExpiry) {
       await this.programs.setLinkExpiry(
         validatedProgramId,
         validatedLinkExpiry,
         new Date(publishedAt),
       );
-    }
-    try {
-      await this.programs.publish(validatedProgramId, publishedAt);
-    } catch (err) {
-      this.mapPublishRepositoryError(err);
     }
 
     let openLink = await this.links.findOpenByProgramId(validatedProgramId);

@@ -254,6 +254,67 @@ describe("CTO privileged review — publish/share-link (DIDI-1011 / DIDI-1104)",
     }
   });
 
+  it("leaves link, expiry setting, and snapshot unchanged when HTTP publish races placeholder insert with expires_in", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-cto-http-race");
+      const programs = new ProgramsRepository(storage);
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "HTTP race",
+      });
+      await seedExerciseRow(storage, programId, practitionerId);
+      await publish.publishProgram(practitionerId, programId, {
+        linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.never },
+      });
+      const before = await snapshotPublishContractState(storage, programId);
+
+      const baseRun = storage.run.bind(storage);
+      let injected = false;
+      vi.spyOn(storage, "run").mockImplementation(async (sql, params) => {
+        if (
+          !injected &&
+          typeof sql === "string" &&
+          sql.includes("published_version = draft_version")
+        ) {
+          injected = true;
+          await seedPlaceholderRow(
+            storage,
+            practitionerId,
+            programId,
+            id("req-http-race"),
+          );
+        }
+        return baseRun(sql, params);
+      });
+
+      const { deps, cookie } = apiDeps(storage, practitionerId);
+      const publishUrl = `${BASE}${programPublishPath(programId)}`;
+      const response = await handleRequest(
+        new Request(
+          publishUrl,
+          mutatingAppApiRequestInit(publishUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ expires_in: SHARE_LINK_EXPIRES_IN.one_week }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+
+      const after = await snapshotPublishContractState(storage, programId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("returns the canonical unavailable body for malformed public token encoding", async () => {
     const storage = await openMigratedDatabase();
     try {

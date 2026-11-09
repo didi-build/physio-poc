@@ -89,10 +89,10 @@ export function PublicLinkPage() {
       <ol className="link-page-rows">
         {view.rows.map((row) => (
           <li key={row.position}>
-            <h2>{row.title}</h2>
-            <p className="pg-muted">
-              {TYPE_LABELS[row.prescription_type]}. {formatExerciseParams(row.params)}
-            </p>
+            <h2>
+              {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
+            </h2>
+            <p className="pg-muted">{formatExerciseParams(row.params)}</p>
             {row.note ? <p>{row.note}</p> : null}
           </li>
         ))}
