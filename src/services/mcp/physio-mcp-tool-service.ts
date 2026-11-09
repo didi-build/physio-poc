@@ -24,7 +24,10 @@ import {
   programShareSummary,
 } from "./connector-copy.js";
 import { stubGetProgramBuilderLink, stubSearchRoutines } from "./stub-tool-handler.js";
-import { PhysioMcpToolInputError } from "./validate-tool-input.js";
+import {
+  PhysioMcpStructuredToolError,
+  PhysioMcpToolInputError,
+} from "./validate-tool-input.js";
 
 export type PhysioMcpToolInvocation = {
   readonly practitionerId: string;
@@ -89,8 +92,10 @@ export class PhysioMcpToolService {
       cursor: typeof input.cursor === "string" ? input.cursor : undefined,
     });
 
+    const matchCount = result.exercises.length;
     const output: Record<string, unknown> = {
-      summary: approvedExerciseSearchSummary(result.exercises.length),
+      summary: approvedExerciseSearchSummary(matchCount),
+      match_count: matchCount,
       share_link: "",
       manage_url: appUrl(this.config, "exercises"),
       exercises: result.exercises.map(mapExerciseForMcp),
@@ -139,13 +144,15 @@ export class PhysioMcpToolService {
     });
 
     return {
-      summary: foundProgramByCodeSummary(view.code, view.name, view.exercise_count),
+      summary: foundProgramByCodeSummary(),
       share_link: "",
       builder_link: builderLink,
       manage_url: appUrl(this.config, "programBuilder", {
         routeParams: { programCode: view.code },
       }),
       program_code: view.code,
+      program_title: view.name,
+      exercise_count: view.exercise_count,
     };
   }
 
@@ -189,21 +196,14 @@ export class PhysioMcpToolService {
         throw new PhysioMcpToolInputError("Program not found");
       }
       if (titleMatches.length > 1) {
-        return {
-          summary: `Multiple programs match "${programTitle}". Provide program_code.`,
-          share_link: "",
-          pdf_url: "",
-          manage_url: "",
-          publish_link: "",
-          manage_link: "",
-          draft: null,
-          published: null,
-          ambiguous_program_matches: titleMatches.map((row) => ({
+        throw new PhysioMcpStructuredToolError({
+          error_code: "ambiguous_title",
+          program_title: programTitle,
+          candidates: titleMatches.map((row) => ({
             program_code: row.code,
-            program_title: row.name ?? "",
-            updated_at: row.draft_updated_at,
+            program_title: row.name,
           })),
-        };
+        });
       }
       programId = titleMatches[0]!.program_id;
       programName = titleMatches[0]!.name;
@@ -244,8 +244,6 @@ export class PhysioMcpToolService {
     const output: Record<string, unknown> = {
       summary: programShareSummary({
         displayState,
-        programCode: connector.program_code,
-        programTitle: programName,
         openShareLink: connector.open_share_link,
       }),
       share_link: shareLink,
@@ -255,11 +253,12 @@ export class PhysioMcpToolService {
       manage_link: manageLink,
       draft: connector.draft,
       published: connector.published,
+      draft_state: displayState,
+      has_newer_draft: displayState === "published_with_draft_changes",
+      share_link_state: connector.share_link_state,
       program_code: connector.program_code,
+      program_title: programName,
     };
-    if (programName) {
-      output.program_title = programName;
-    }
     if (connector.open_share_link && connector.expires_at) {
       output.expires_at = connector.expires_at;
     }

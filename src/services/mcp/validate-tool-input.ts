@@ -27,6 +27,18 @@ export class PhysioMcpToolInputError extends Error {
   }
 }
 
+export class PhysioMcpStructuredToolError extends Error {
+  readonly structured: Record<string, unknown>;
+
+  constructor(structured: Record<string, unknown>) {
+    const message =
+      typeof structured.error_code === "string" ? structured.error_code : "tool_error";
+    super(message);
+    this.name = "PhysioMcpStructuredToolError";
+    this.structured = structured;
+  }
+}
+
 const validators: Record<PhysioMcpToolName, StandaloneValidateFunction> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
   [SEARCH_ROUTINES_TOOL_NAME]: search_routines,

@@ -1,12 +1,16 @@
 import type { JsonSchema } from "./json-schema.js";
 import {
-  ambiguousProgramMatchSchema,
   approvedExerciseSummarySchema,
   builderLinkOutputProperty,
+  draftStateOutputProperty,
   exerciseCategorySchema,
+  exerciseCountOutputProperty,
   expiresAtOutputProperty,
+  hasNewerDraftOutputProperty,
   manageLinkOutputProperty,
   manageUrlOutputProperty,
+  matchCountOutputProperty,
+  nullableProgramTitleProperty,
   nullableProgramVersionRefSchema,
   paginationCursorInputProperty,
   paginationLimitProperty,
@@ -20,6 +24,7 @@ import {
   routineSummarySchema,
   searchLinkOutputProperty,
   shareLinkOutputProperty,
+  shareLinkStateOutputProperty,
   summaryOutputProperty,
 } from "./json-schema.js";
 import { FREE_TEXT_NO_PATIENT_DETAILS, MAX_LENGTH_QUERY } from "./text-limits.js";
@@ -65,11 +70,12 @@ export const searchApprovedExercisesInputSchema: JsonSchema = {
 export const searchApprovedExercisesOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["summary", "share_link", "manage_url", "exercises"],
+  required: ["summary", "share_link", "manage_url", "exercises", "match_count"],
   properties: {
     summary: summaryOutputProperty,
     share_link: shareLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
+    match_count: matchCountOutputProperty,
     exercises: {
       type: "array",
       items: approvedExerciseSummarySchema,
@@ -159,6 +165,8 @@ export const getProgramBuilderLinkOutputSchema: JsonSchema = {
     builder_link: builderLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
     program_code: programCodeProperty,
+    program_title: nullableProgramTitleProperty,
+    exercise_count: exerciseCountOutputProperty,
     from_routine_id: routineIdProperty,
   },
 };
@@ -167,7 +175,7 @@ export const GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME =
   "get_program_share_link_or_pdf" as const;
 
 export const getProgramShareLinkOrPdfDescription =
-  "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Do not pass patient information.";
+  "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at when live, plus share_link_state. When only a draft exists, publish_link opens the publish page and draft_state is draft_only. When both draft and published exist, draft_state is published_with_draft_changes and has_newer_draft is true. manage_link opens the share page for expiry, close link, and delete. Lookup by program_title works only when exactly one program matches; otherwise the tool returns error_code ambiguous_title with candidates. Do not pass patient information.";
 
 export const getProgramShareLinkOrPdfInputSchema: JsonSchema = {
   type: "object",
@@ -190,6 +198,9 @@ export const getProgramShareLinkOrPdfOutputSchema: JsonSchema = {
     "manage_link",
     "draft",
     "published",
+    "draft_state",
+    "has_newer_draft",
+    "share_link_state",
   ],
   properties: {
     summary: summaryOutputProperty,
@@ -201,13 +212,10 @@ export const getProgramShareLinkOrPdfOutputSchema: JsonSchema = {
     expires_at: expiresAtOutputProperty,
     draft: nullableProgramVersionRefSchema,
     published: nullableProgramVersionRefSchema,
+    draft_state: draftStateOutputProperty,
+    has_newer_draft: hasNewerDraftOutputProperty,
+    share_link_state: shareLinkStateOutputProperty,
     program_code: programCodeProperty,
-    program_title: programTitleProperty,
-    ambiguous_program_matches: {
-      type: "array",
-      items: ambiguousProgramMatchSchema,
-      description:
-        "When program_title matches more than one program, list candidates and ask for program_code.",
-    },
+    program_title: nullableProgramTitleProperty,
   },
 };

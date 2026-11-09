@@ -51,9 +51,11 @@ export {
 } from "./tools.js";
 
 export {
+  computeMcpShareLinkState,
   inferGetProgramDisplayState,
   publishedLinkFieldsPresent,
   type GetProgramDisplayState,
+  type McpShareLinkState,
   type ProgramVersionRef,
 } from "./get-program-contract.js";
 

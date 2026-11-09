@@ -84,6 +84,7 @@ function stubSearchApprovedExercises(
   if (query === STUB_SEARCH_NO_MATCH_QUERY) {
     return {
       summary: exampleSummary(`No approved exercises matched "${query}" (not stored).`),
+      match_count: 0,
       share_link: "",
       manage_url: appUrl(config, "exercises"),
       exercises: [],
@@ -93,6 +94,7 @@ function stubSearchApprovedExercises(
 
   return {
     summary: exampleSummary(`Approved exercises matching "${query}" (not stored).`),
+    match_count: 2,
     share_link: "",
     manage_url: appUrl(config, "exercises"),
     exercises: [
@@ -216,7 +218,11 @@ function stubGetProgramShareLinkOrPdf(
       manage_link: manageLink,
       draft,
       published: null,
+      draft_state: state,
+      has_newer_draft: false,
+      share_link_state: "none",
       program_code: programCode,
+      program_title: null,
     };
   }
 
@@ -231,7 +237,11 @@ function stubGetProgramShareLinkOrPdf(
       expires_at: "2027-10-29T12:00:00Z",
       draft: null,
       published,
+      draft_state: state,
+      has_newer_draft: false,
+      share_link_state: "live",
       program_code: programCode,
+      program_title: null,
     };
   }
 
@@ -245,6 +255,10 @@ function stubGetProgramShareLinkOrPdf(
     expires_at: "2027-10-29T12:00:00Z",
     draft,
     published,
+    draft_state: state,
+    has_newer_draft: true,
+    share_link_state: "live",
     program_code: programCode,
+    program_title: null,
   };
 }

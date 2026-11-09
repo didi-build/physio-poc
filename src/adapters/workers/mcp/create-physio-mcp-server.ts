@@ -8,6 +8,7 @@ import {
   invokePhysioMcpTool,
   type PhysioMcpHttpDeps,
 } from "../../../services/mcp/tool-handler.js";
+import { PhysioMcpStructuredToolError } from "../../../services/mcp/validate-tool-input.js";
 import { PhysioMcpWorkersSafeJsonSchemaValidator } from "./workers-safe-json-schema-validator.js";
 
 const workersSafeJsonSchemaValidator = new PhysioMcpWorkersSafeJsonSchemaValidator();
@@ -42,13 +43,19 @@ export function createPhysioMcpServer(
         httpRequest,
         deps,
       );
-      const summary =
-        typeof structured.summary === "string" ? structured.summary : "Tool response.";
+      const summary = typeof structured.summary === "string" ? structured.summary : "";
       return {
         content: [{ type: "text", text: summary }],
         structuredContent: structured,
       };
     } catch (error) {
+      if (error instanceof PhysioMcpStructuredToolError) {
+        return {
+          content: [{ type: "text", text: error.message }],
+          structuredContent: error.structured,
+          isError: true,
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: message }],

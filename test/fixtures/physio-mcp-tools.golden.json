@@ -43,7 +43,7 @@
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["summary", "share_link", "manage_url", "exercises"],
+      "required": ["summary", "share_link", "manage_url", "exercises", "match_count"],
       "properties": {
         "summary": {
           "type": "string",
@@ -75,6 +75,11 @@
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+        },
+        "match_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of approved exercises returned in exercises."
         },
         "exercises": {
           "type": "array",
@@ -321,6 +326,16 @@
           "pattern": "^PRG-[A-Z0-9]+$",
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
+        "program_title": {
+          "type": ["string", "null"],
+          "maxLength": 80,
+          "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
+        },
+        "exercise_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of exercises on the program draft."
+        },
         "from_routine_id": {
           "type": "string",
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
@@ -337,7 +352,7 @@
   },
   {
     "name": "get_program_share_link_or_pdf",
-    "description": "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at. When only a draft exists, the summary states that and publish_link opens the publish page. When both draft and published exist, returns the live share_link and a publish_link for the draft. manage_link opens the share page for expiry, close link, and delete. Lookup by program_code or program_title; title works only when exactly one program matches, otherwise ambiguous_program_matches is returned. Do not pass patient information.",
+    "description": "Read-only program share link and PDF lookup. Provide program_code or program_title. Never publishes. When a published version exists, returns share_link, pdf_url, and expires_at when live, plus share_link_state. When only a draft exists, publish_link opens the publish page and draft_state is draft_only. When both draft and published exist, draft_state is published_with_draft_changes and has_newer_draft is true. manage_link opens the share page for expiry, close link, and delete. Lookup by program_title works only when exactly one program matches; otherwise the tool returns error_code ambiguous_title with candidates. Do not pass patient information.",
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -365,7 +380,10 @@
         "publish_link",
         "manage_link",
         "draft",
-        "published"
+        "published",
+        "draft_state",
+        "has_newer_draft",
+        "share_link_state"
       ],
       "properties": {
         "summary": {
@@ -493,41 +511,29 @@
           ],
           "description": "Null when that side (draft or published) does not exist."
         },
+        "draft_state": {
+          "type": "string",
+          "enum": ["draft_only", "published_only", "published_with_draft_changes"],
+          "description": "Whether the program is draft-only, published, or published with newer draft changes."
+        },
+        "has_newer_draft": {
+          "type": "boolean",
+          "description": "True when a published version exists and the saved draft is newer than what patients see."
+        },
+        "share_link_state": {
+          "type": "string",
+          "enum": ["live", "closed", "expired", "none"],
+          "description": "Whether the program has a live, closed, expired, or no share link."
+        },
         "program_code": {
           "type": "string",
           "pattern": "^PRG-[A-Z0-9]+$",
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": "string",
+          "type": ["string", "null"],
           "maxLength": 80,
-          "description": "Non-identifying program title the practitioner uses to recognise this program later. Do not include patient names, contact details, health card numbers, or dates of birth."
-        },
-        "ambiguous_program_matches": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["program_code", "program_title", "updated_at"],
-            "properties": {
-              "program_code": {
-                "type": "string",
-                "pattern": "^PRG-[A-Z0-9]+$",
-                "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
-              },
-              "program_title": {
-                "type": "string",
-                "maxLength": 80,
-                "description": "Non-identifying program title the practitioner uses to recognise this program later. Do not include patient names, contact details, health card numbers, or dates of birth."
-              },
-              "updated_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "When this program was last updated."
-              }
-            }
-          },
-          "description": "When program_title matches more than one program, list candidates and ask for program_code."
+          "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         }
       }
     },
