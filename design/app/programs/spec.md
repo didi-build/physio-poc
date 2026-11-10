@@ -36,7 +36,9 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Delete | Sheet "Delete this program?": moves to Recently deleted, restorable for 30 days, closes its share link |
 | Share screen | PDF preview made from the link page, Share link, Link page, Download PDF, close link |
 | Close link | "Close this share link?": the program stays in Programs; anyone who opens the old link sees "This link was closed"; "Create a new link" later |
-| Link page | What anyone with the link sees, no sign-in: latest published version, Save as PDF, Print, expiry line |
+| Link page | What anyone with the link sees, no sign-in: latest published version, Save as PDF, Print, each exercise's media carousel, and the expiry line (on screen only; it is not printed, DIDI-1192) |
+| Link page exercise media | Each exercise shows one carousel: slide 1 the start to end transition (6s loop), slide 2 Start, slide 3 End. Phone: title, carousel, dose, notes. 1024 px and up: text left, carousel right. Print and PDF: text, Start, End in three columns, no video and no controls. Load failed: "Images didn't load." with "Try again". No tag, no identifiers. See "Link page exercise media (DIDI-1192)" |
+| Missing images block publish | Any exercise without its start or end image blocks Publish now on "Publish to the live link?" (including Use for a patient) and on "Publish this routine?". Remove is the only action. See "Publish blocked by missing images (DIDI-1192)" |
 | Leave with unsaved edits | Dialog title "Leave without saving?", body "Your latest changes aren't saved yet. If you leave now, you'll lose them.", buttons "Keep editing" (default, focused) and "Leave". Shown only when there are unsaved edits |
 
 ## Key copy
@@ -49,6 +51,8 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 - Publish sheet: "Publish to the live link?", "Same link as before. Your patient sees this version as soon as you publish.", "No link yet. Publishing creates it, ready to copy and send.", "Filled in from the routine. Change it if you like."
 - Toasts: "Published. Your patient sees it on the same link now." / "Published. Your new link is ready to send.", "Deleted {name}. Its share link is closed. Restore it within 30 days.", "Restored {name}. Its link stays closed. Create a new link from Share."
 - Link page: "This page always shows the latest published version of your program."
+- Link page media (DIDI-1192): captions "Start" / "End"; carousel indicators named "Video", "Start", "End"; desktop chevrons "Previous" / "Next" (approved Nov 10, 2026, 12:09 AM ET); loop button "Pause video" / "Play video"; alt "{title}, start position" / "{title}, end position"; load failed "Images didn't load." with "Try again" (accessible name "Try loading images for {title} again", approved Nov 9, 2026, 11:31 AM ET). Dose in three lines from the existing readout phrases. The expiry line is not printed.
+- Missing images block (approved Nov 9, 2026, 11:31 AM ET, DIDI-1192): "Remove exercises without images to publish"; "{n} exercises are missing their start or end image. Remove them from this program, then publish." / "One exercise is missing its start or end image. Remove it from this program, then publish."; "No exercises without images left. You can publish."
 - Programs list empty: "No programs yet"; "Start one from a routine or from scratch. You can find it here later by name or code." No count when the list is empty.
 - Recently deleted empty (after the section intro): "No deleted programs."
 - List count: the noun follows the total ("1 program", "5 programs", "1 of 1 program", "0 of 1 program", "1 of 5 programs", "0 of 5 programs"). Announce count changes politely.
@@ -256,6 +260,207 @@ Reused verbatim, unchanged: "Publish to the live link?", "Publish now", "Not yet
 
 DIDI-1105 (type-mismatch messaging after approval) is separate and unchanged.
 
+## Link page exercise media (DIDI-1192)
+
+Diadem, verbatim:
+- Nov 9, 2026, 11:12 AM ET (CTO chat): "let's start this"
+- Nov 9, 2026, 11:25 AM ET: "Video means the start and end image transition, nothing new"
+- Nov 9, 2026, 11:26 AM ET: "all exercises require the media"
+- Nov 9, 2026, 12:42 PM ET: "let's rework the design. I think in the link we just have 1 carousel. the video is first, they can scroll to the individual images. when it is printed out,pdf, the video is no longer needed so we see both images inline"
+- Nov 10, 2026, 12:05 AM ET: "E6c sentences, but put "3x a week"/"everyday" on its own new line"
+- Nov 10, 2026, 12:08 AM ET: "Yes, approve E7"
+- Nov 10, 2026, 12:09 AM ET: "yes I approve. and one more minor detail. on the print version, "images didn't load" should go on the images column (a merged column 2 and 3)"
+
+The full set of locked quotes (DIDI-594 entries C to G update 4) is under "Locked Product direction" below.
+
+Design: E7, https://designs.magicpath.ai/v1/keen-current-4842 (MagicPath project 470575340046131200, component 470769311091429376, revision 470770451010957312).
+
+**Matches Product direction: yes.** The design follows DIDI-594 G (one carousel, video first, both images inline in print), G update (E1 dots with a play symbol for the video dot), G update 3 (media right after the title, 2 columns on desktop, 3 print columns, no expiry line in print) and G update 4 (E6c sentences, frequency on its own line). "Video" is the existing browser transition between the Start and End images (ExerciseMotion.tsx). Nothing new is generated or stored, in line with the Oct 29, 2026 media direction on DIDI-594 (start and end images with a browser transition, no AI video in V0 and V1).
+
+| Topic | Was (variant D, approved Nov 9, 2026, 11:31 AM ET, superseded 12:42 PM ET) | Is (E7, approved Nov 10, 2026, 12:08 and 12:09 AM ET) |
+| -- | -- | -- |
+| Media on screen | Start and End stills with a "Play video" / "Show images" toggle that swapped in the loop in the same frame | One carousel per exercise: slide 1 the loop, slide 2 Start, slide 3 End. No toggle; "Show images" is not used on this page |
+| Order on phone | Title, dose, note, media, toggle | Title, carousel, dose, notes |
+| 1024 px and up | Two equal columns, text left and media right, in the 42rem page | Two columns, text left and carousel right, in a 64rem page |
+| Dose | One line from `formatExerciseParams` | Three lines with the numbers in bold: reps and hold, then sets and rest, then the frequency |
+| Print and PDF | Text left, Start and End stills right; a failed row printed text only; the expiry line printed | Three columns: text, Start, End. A failed row prints "Images didn't load." across columns 2 and 3. The expiry line is not printed |
+| Load failed on screen | Message and "Try again" under the note | Message and "Try again" in place of the carousel |
+
+### Rule
+
+| Case | Behaviour |
+| -- | -- |
+| Media source | Only the published exercise version's own Start and End images (DIDI-1191). Never stock or default images. `exerciseVisualPlaceholders` is never used on this page |
+| Every row has media | All exercises require the media. There is no no-media state, so "Instructions and images are on the way." (mockup 34, copy inventory :726) is not used on this page. A program cannot publish without media (see "Publish blocked by missing images (DIDI-1192)") |
+| Public page | No tag ("AI video", "AI image" or any replacement) and no clinician, patient or account identifiers. The page shows only what it shows today (Exercise program, program name, intro, Save as PDF, Print, rows and expiry line) plus the row media. Image URLs are public and non-identifying (DIDI-1191) |
+
+### Row layout on screen
+
+Page: `.link-page` column `max-width: 42rem` below 1024 px, unchanged (public-link-page.css :1-5). **Changed:** at `(min-width: 1024px)` the column widens to `max-width: 64rem`, so the carousel has room in the second column. Breakpoint as useMinWidth1024.ts :3. Row box `.link-page-row` and the 1rem row gap are unchanged.
+
+DOM order in every row: `h2` "{title}, {type}" (PublicLinkPage.tsx :103), the carousel, the dose block, then the note (:107). Reading and tab order follow it, so the media comes right after the title at every width (DIDI-594 G update 3).
+
+| Element | Below 1024 px (390 px reference) | 1024 px and up (1280 px reference) |
+| -- | -- | -- |
+| Row structure | One column: title, carousel (`margin-top: 0.5rem`), dose (`margin-top: 0.75rem`), note (`margin-top: 0.75rem`) | Grid `grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr)`, gap 1.5rem. Areas: `"title media" "dose media" "note media"`, with the media spanning all rows and top-aligned. The text column holds the title, dose and note |
+| Title | `h2` 1rem, weight 600, `#0f172a`, unchanged | same |
+| Dose | See "Dose block" | same |
+| Note | 0.875rem, line height 1.625, `#1e293b`. Placeholder in the previews: the long sample note in row 1 ("Slow and controlled. Lie on your back...") is sample data, not copy | same |
+
+### Carousel
+
+One per exercise, full width of its column. Slides in order:
+
+| Slide | Content | Name |
+| -- | -- | -- |
+| 1 | The 6s start to end loop, from ExerciseMotion.tsx and exercise-motion.css unchanged: 4:3 frame `#f1f5f9`, crossfade and drift (`--exercise-motion-loop-duration`, timing.ts :2), progress bar 0.25rem, 2.75rem round white "Pause video" / "Play video" button inset 0.75rem | "Video" |
+| 2 | The Start image, 4:3, `object-fit: cover` | "Start" |
+| 3 | The End image, 4:3, `object-fit: cover` | "End" |
+
+Frame: `border-radius: 0.75rem`, 4:3, background `#f1f5f9` (exercise-motion.css :42-47).
+
+**Swipe and snap ("smooth and snappy").** The track is a horizontal scroll container with `scroll-snap-type: x mandatory`, `overscroll-behavior-x: contain` and a hidden scrollbar. Each slide is `flex: 0 0 100%` with `scroll-snap-align: start` and `scroll-snap-stop: always`, so one swipe moves one slide and it always settles on a slide. Moves from the indicators, the chevrons or the arrow keys call `scrollTo` with `behavior: "smooth"` (the browser's own smooth scroll, no new timing value). Indicator colour changes use the existing `0.15s ease` (shell.css :119-121).
+
+**Indicators.** Under the frame, centred, `margin-top: 0.5rem`, gap 0.25rem: three native buttons, each a 44 px round hit target (2.75rem).
+- Indicator 1 (video slide): the existing `PlayIcon` path from ExerciseMotion.tsx :34-40 (viewBox 0 0 14 14) drawn at 10 px, `fill: currentColor`.
+- Indicators 2 and 3: an 8 px round dot (0.5rem).
+- Current slide: filled teal-700 `#0f766e`. Others: slate-300 `#cbd5e1`. The current dot keeps the same round shape and size; only the fill changes. It never stretches into a pill.
+- Names: "Video", "Start", "End". The current one has `aria-current="true"`.
+- Under the indicators, on slides 2 and 3 only, the visible caption "Start" or "End" (0.75rem, `#64748b`).
+
+**Chevrons (1024 px and up only).** Previous and Next sit inside the frame, vertically centred, inset 0.25rem from each edge.
+- Bare chevron icons (24 px, stroke 2) in slate-500 `#64748b`, hover slate-700 `#334155`. No circle, no background and no shadow, so they are clearly lighter than the Play/Pause button.
+- Each is a native button with a 44 px hit target, named "Previous" / "Next".
+- On slide 1 Previous is hidden and disabled; on slide 3 Next is.
+- Below 1024 px there are no chevrons: swipe and the indicators.
+
+**Focus ring.** Every focusable part of the carousel (the frame, the indicators, the chevrons, the Pause/Play button) uses the existing ring: 2px `#0f766e` with a 2px offset (exercise-motion.css :108-111, :180-181). It is drawn around the 44 px target of whichever control has focus, separate from the current-slide fill. So a focused, non-current dot shows a ring around a grey dot.
+
+### Dose block
+
+Three lines, each a block, made from the existing readout phrases (`paramPhrase`, src/domain/format-exercise-params.ts). Phrases keep `formatExerciseParams`' display order within a line and are joined by ", ". An empty line is left out.
+
+| Line | Fields | Example |
+| -- | -- | -- |
+| 1 | reps, hold_s, ascent_s, descent_s | **15** reps, **2s** hold |
+| 2 | sets, rest_s | **3** sets, **60s** rest between sets |
+| 3 | days_per_week, per_day | **3x** a week / **every day** |
+
+- Type: 1rem, line height 1.375, words slate-600 `#475569`.
+- The number part of each phrase (for example "15", "2s", "3x") is weight 600, slate-900 `#0f172a`, with tabular figures. A phrase with no number ("every day", and the per-day phrases "once a day", "twice a day") is bold as a whole.
+- Bold is visual only; the text reads the same to a screen reader.
+- Diadem wrote "everyday"; the existing string is "every day" and is used verbatim.
+
+### States
+
+| State | When | Screen | Print |
+| -- | -- | -- | -- |
+| Default | Both images loaded, motion allowed | Carousel on slide 1, loop playing | Text, Start, End |
+| Paused | The user pressed "Pause video", or Enter or Space on the frame while slide 1 shows | The loop holds its frame and the round button shows the play icon, named "Play video" | Same as default |
+| Reduced motion | `prefers-reduced-motion: reduce` | Slide 1 shows the Start image still, alt "{title}, start position", with no loop, no progress bar and no Pause/Play button. Moves jump (`behavior: "auto"`), with no colour transition. The three slides and indicators stay | Same as default |
+| Load failed | Either image fails to load (`error` event) | In place of the carousel: a box with a dashed slate-300 border, background slate-50 and radius 0.75rem, containing "Images didn't load." (0.875rem, slate-700) and the link button "Try again" (accessible name "Try loading images for {title} again", 44 px target, teal-800, weight 600). No indicators, no chevrons, no broken image icon | Text in column 1; "Images didn't load." in one cell spanning columns 2 and 3 |
+| Keyboard focus | A carousel control has focus | Focus ring as above | n/a |
+
+There is no no-media state: "all exercises require the media" (Diadem, Nov 9, 2026, 11:26 AM ET).
+
+The loop plays only while slide 1 is the current slide. Leaving slide 1 pauses it. Coming back resumes it unless the user had paused it, in which case it stays paused.
+
+### Keyboard, focus and names
+
+- The frame is `role="group"` named "{title}", with `tabIndex={0}`. With focus on it, Left and Right Arrow move one slide. On slide 1, Enter or Space plays or pauses the loop (as ExerciseMotion.tsx :60-72).
+- Each slide is `role="group"` named "Video", "Start" or "End". Slides that are not current get `aria-hidden="true"` and `inert`, so Tab never reaches a hidden slide's button. Note: the MagicPath prototype names the slides "1 of 3"; that string is not approved and is not used.
+- Tab order: frame, then the Pause/Play button (slide 1 only, when motion is allowed), then Previous and Next (1024 px and up, when shown), then the three indicators.
+- Indicators and chevrons are native buttons. Enter or Space activates them, and focus stays on the pressed control.
+- Pause/Play: native button named "Pause video" while playing and "Play video" while paused (src/ui/copy/a11y.ts :6-7).
+- Alt text: Start image "{title}, start position", End image "{title}, end position", on the loop's layers and on slides 2 and 3 (timing.ts :16-22).
+- "Try again": after a successful retry focus moves to the new carousel frame; if it fails again focus stays on "Try again".
+- No live announcement on slide change: the current indicator's `aria-current` and the slide names are enough.
+
+### Print and Save as PDF (DIDI-1195)
+
+Uses the existing `@media print` block (public-link-page.css :87-103). The header (Exercise program, program name, intro) prints as today. Save as PDF and Print stay hidden (`link-page-no-print`).
+
+| Element | Print |
+| -- | -- |
+| Row | Grid `grid-template-columns: minmax(0, 1fr) 11rem 11rem`, gap 0.75rem, `break-inside: avoid` |
+| Column 1 | Title (15px, weight 600), dose block (13px, the same three lines and bold numbers), note (12px, line height 1.625) |
+| Columns 2 and 3 | Start and End images, 4:3, `object-fit: cover`, radius 0.75rem, with captions "Start" / "End" (0.75rem, `#64748b`, 0.25rem above) |
+| Load failed | Column 1 as above. Columns 2 and 3 merge into one cell (`grid-column: 2 / 4`) with a dashed slate-300 border and radius 0.75rem, min height equal to the image height (8.25rem), with "Images didn't load." (13px, slate-500) centred. No "Try again" |
+| Not printed | The loop, carousel controls, indicators, chevrons, Pause/Play, and the expiry footer |
+
+**Expiry line in print (CTO, Nov 9, 2026; DIDI-594 G update 3).** `This link works until {exp.date}.` and `This link stays open until your physiotherapist closes it.` (copy inventory :728-729) stay on the web page and are removed from print and PDF only. Add `link-page-no-print` to `.link-page-footer` (PublicLinkPage.tsx :112), or hide it in the print block.
+
+**Note for Developer: DIDI-1015 print test.** CTO says the DIDI-1015 print test expects a footer expiry line, so that test needs updating with this change. I could not find a print-specific footer assertion on 92ebb26:
+- `test/ui/public-link-page.test.tsx` asserts the on-screen line "This link stays open until your physiotherapist closes it." (:91, fixture :44 and :205). Those stay valid, because the line stays on screen.
+- The print stylesheet test (:259-266) checks `@media print`, `.link-page-no-print { display: none }`, `.link-page-row { break-inside: avoid }` and no "exercise-motion" in the print CSS. It says nothing about the footer.
+- Confirm with CTO which assertion is meant before changing tests. Keep "exercise-motion" out of the print CSS: the print rules for the images belong in public-link-page.css.
+
+### Notes for Developer (DIDI-1191, DIDI-1195)
+
+- PublicLinkExerciseVideo.tsx (:12-15) holds "Play video", "Show images", "Start" and "End". The carousel replaces the "Play video" / "Show images" toggle on this page. Drop the placeholder fallback (:23-26).
+- Wire `myDefaultsPendingCopySlots` (src/ui/copy/my-defaults-pending-copy.ts) to the approved fragments so "1 set" and "{n} sets" render. Today `paramPhrase` returns "" for sets, so the live line drops them (DIDI-1130 wiring gap).
+- The 64rem desktop width applies to the link page only.
+
+## Publish blocked by missing images (DIDI-1192)
+
+Diadem, Nov 9, 2026, 11:27 AM ET, verbatim (locked on DIDI-594, entry E): "every exercise already gets images but we can add the rule as a backup failsafe"
+
+Diadem, Nov 9, 2026, 11:26 AM ET, verbatim: "all exercises require the media"
+
+Copy approved by Diadem, Nov 9, 2026, 11:31 AM ET, verbatim: "Yes, approve all six strings". Design: https://designs.magicpath.ai/v1/tender-storm-9323 (MagicPath project 470575340046131200, component 470578831170871296, revision 470578831170871297). Unchanged by the E7 rework (DIDI-594 G: "F's six approved strings and CTO's failsafe rulings on DIDI-1193 still stand").
+
+This is a failsafe. Every exercise is expected to have both images, so in normal use this notice never shows.
+
+### Rule (CTO technical rulings, Nov 9, 2026, DIDI-1193)
+
+| Case | Behaviour |
+| -- | -- |
+| Any exercise in the program or routine lacks its start or end image | Publish is blocked. The exercise is never published without its images and never silently left out |
+| Where it applies | Both sheets: the program "Publish to the live link?" sheet (first publish, republish and Use for a patient) and the routine "Publish this routine?" sheet |
+| Who enforces it | The server, on every publish request, whichever sheet sent it |
+| Check when the sheet opens | Advisory UI only: it shows the notice early. The server check when Publish now is pressed is the one that counts. If the server rejects a publish the sheet did not predict, the sheet shows the same notice and Publish now becomes disabled |
+| Placeholders and missing images together | The notices stack: the placeholder notice (DIDI-1186) first, then this one. Publish now stays disabled until both are cleared |
+| Actions | Remove only, the same action as the row's existing "Remove {name}" (ProgramBuilderRowCard.tsx :304, `removeRowAriaLabel` in src/ui/copy/programs.ts :333). No Regenerate |
+| Blocked publish | Writes nothing: the live snapshot and live link stay unchanged, no link is created or updated, and expiry is not applied (DIDI-1189) |
+| All cleared | The heading switches to the check icon line, and Publish now follows every other publish requirement (for example "Name required") |
+
+### Where it shows
+
+The same position and component as the DIDI-1186 notice: directly under the program card in "Publish to the live link?", or under the routine card in "Publish this routine?".
+
+Program sheet, in order:
+1. Heading with the alert icon: "Remove exercises without images to publish".
+2. Body: "{n} exercises are missing their start or end image. Remove them from this program, then publish." For one: "One exercise is missing its start or end image. Remove it from this program, then publish."
+3. One list item per affected exercise: the exercise name and the Remove icon button ("Remove {name}"). No badge and no Review draft, because these exercises are approved.
+4. Republish only: "Not live yet. Your patient still sees the version published {pub.at}."
+
+When the last affected exercise is removed, the heading switches to the check icon (text-teal-700) and "No exercises without images left. You can publish.", and the body and list go away.
+
+Routine sheet ("Publish this routine?"): the heading, the list with "Remove {ex.name}" (routines copy inventory :433) and the cleared line "No exercises without images left. You can publish." show, exactly as on the program sheet. The two body strings say "this program", so they do not show on the routine sheet. See Open items.
+
+### 390 px and 1280 px
+
+Every token is the DIDI-1186 one ("Publish blocked by placeholders (DIDI-1186)", 390 px and 1280 px table), unchanged:
+- Notice container `mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900`.
+- Heading `flex items-start gap-1.5 font-semibold`, icon `mt-0.5 h-4 w-4 shrink-0`.
+- List `mt-2 divide-y divide-amber-200`, rows `flex flex-wrap items-center gap-2 py-2`. Remove is `iconBtn` with a 44 px target.
+- Republish line `mt-2 text-xs text-amber-800`.
+- Disabled Publish now `disabled:cursor-not-allowed disabled:opacity-50`.
+- When both notices show, the second one keeps `mt-3`.
+
+### Accessibility
+
+- The notice is a section with `role="status"` and `aria-labelledby` on its heading, as in DIDI-1186, so it is announced politely after the sheet title.
+- Publish now is `disabled` while any affected exercise remains, with `aria-describedby` pointing at this notice's id. When both notices show, `aria-describedby` lists both ids, placeholders first. Once this list is empty, its id is removed.
+- Program sheet: after a removal the polite live region says "Removed {name} from this program."; when the list empties it also says "No exercises without images left. You can publish."
+- Routine sheet: when the list empties the live region says "No exercises without images left. You can publish.". There is no per-removal read-out until a routine string is approved (see Open items).
+- Focus after Remove: moves to the next row's Remove (or the previous one if it was the last row). When the list empties, focus moves to the notice heading (`tabIndex={-1}`).
+- If the server rejects Publish now: focus moves to the notice heading.
+
+### Open items
+
+- Routine sheet wording. The approved body strings ("Remove them from this program, then publish." / "Remove it from this program, then publish.") and the removal read-out "Removed {name} from this program." name the program, so they don't fit "Publish this routine?". No routine version is approved, and none is added here. The routine sheet shows the heading, list and cleared line only. A routine body or removal read-out needs Diadem's approval.
+
 ## Mockups
 
 Changed in DIDI-1152 (approved Oct 31, 2026): builder reorder, 35 to 37 below. Changed in v12 (the approved v12 previews): 21 to 25. Rendered from the approved revision for the rest (v11 states 01 to 08 and 26, and earlier states unchanged since v10).
@@ -300,6 +505,13 @@ Changed in DIDI-1152 (approved Oct 31, 2026): builder reorder, 35 to 37 below. C
 | 35 builder reorder rest (DIDI-1152) | [phone](mockups/didi-1152-01-reorder-rest-phone.png) | n/a |
 | 36 builder reorder rest annotated (DIDI-1152) | [phone](mockups/didi-1152-02-reorder-rest-annotated-phone.png) | n/a |
 | 37 builder reorder dragging (DIDI-1152) | [phone](mockups/didi-1152-03-reorder-dragging-phone.png) | n/a |
+| 38 link page exercise media (DIDI-1192, E7) | [phone](mockups/didi-1192-01-link-media-phone.png) | [desktop](mockups/didi-1192-02-link-media-desktop.png) |
+| 39 link page print and PDF (DIDI-1192, E7) | [print](mockups/didi-1192-03-link-media-print.png) | n/a |
+| 40 carousel keyboard focus on an indicator (DIDI-1192, E5) | [phone](mockups/didi-1192-04-carousel-focus-phone.png) | n/a |
+| 41 publish blocked by missing images (DIDI-1192) | [phone and desktop](mockups/didi-1192-05-publish-blocked-missing-images.png) | see phone |
+
+
+Mockups 38 to 41 (DIDI-1192): MagicPath E7 https://designs.magicpath.ai/v1/keen-current-4842 (component 470769311091429376, revision 470770451010957312), E5 focus state https://designs.magicpath.ai/v1/peaceful-path-6380 (component 470763380744007680, revision 470763380744007681), failsafe https://designs.magicpath.ai/v1/tender-storm-9323 (component 470578831170871296, revision 470578831170871297), project 470575340046131200. Rows in 38 and 39, top to bottom: default, keyboard focus, paused, reduced motion, load failed. Row 1's long note is a placeholder, not copy.
 
 ## Locked Product direction (verbatim from DIDI-594)
 
@@ -514,6 +726,57 @@ Changed in DIDI-1152 (approved Oct 31, 2026): builder reorder, 35 to 37 below. C
 > | Search | No global search; each page keeps its own search bar, as already designed | Same (4:36 PM proposal withdrawn at 4:37 PM) |
 >
 > Global search removed from the description table, DIDI-852 and DIDI-853. Recorded by CTO.
+
+**DIDI-594 description, "Real exercise media on the public link page" through "G update 4" (LOCKED, Nov 9 and 10, 2026)** (https://linear.app/didi-build/issue/DIDI-594), verbatim quotes:
+
+> **C.** Diadem, Nov 9, 2026, 11:12 AM EST: "let's start this"
+>
+> **D.** Diadem, Nov 9, 2026, 11:25 AM ET: "Video means the start and end image transition, nothing new"; "No media: text only" (SUPERSEDED at 11:26 AM by "all exercises require the media").
+>
+> **E.** Diadem, Nov 9, 2026, 11:27 AM EST: "every exercise already gets images but we can add the rule as a backup failsafe"
+>
+> **F.** Diadem, Nov 9, 2026, 11:31 AM EST. Layout: "go with D but I want the transition between images and videos to be smooth and snappy" (layout SUPERSEDED by G). Copy: "Yes, approve all six strings".
+>
+> **G.** Diadem, Nov 9, 2026, 12:42 PM EST: "let's rework the design. I think in the link we just have 1 carousel. the video is first, they can scroll to the individual images. when it is printed out,pdf, the video is no longer needed so we see both images inline"
+>
+> **G update.** Diadem, Nov 9, 2026, 11:10 PM EST: "e2 for print.
+>
+> for the carousel, I like e1 but for the dot that represents a video, could we use a video symbol ? for example ▶️"
+>
+> **G update 2.** Diadem, Nov 9, 2026, 11:41 PM EST: "- why is the selected icon (when keyboard focus) a line and not a dot?
+>
+> \- the left/right arrows on the desktop feels too similar in visual weight as the play/pause button. can the left/right arrows look different? aka not in a circle with a white background. more subtle
+>
+> \- for the print version, can we actually do the images in 1 column on the left? all the text on the right. especially because the notes/descriptions might be longer"
+>
+> **G update 3.** Diadem, Nov 9, 2026, 11:53 PM EST: "- this looks great
+>
+> \- minor change, for mobile and desktop, can the media come before the set/reps&notes? (still after the title)
+>
+> \- I changed my mind about the print layout. 3 columns; text, first image, second image.
+>
+> \- in the print we have a line in the footer "think link works until xxx" which doesn't make sense in a print or pdf
+>
+> \- the desktop version, I'd like 2 columns; test, carousel
+>
+> \- for all of them, can we display the sets/reps/hold, 3x a week line differently? give me 3 variants. I want it to be glanceable and easy to read"
+>
+> Designer's reading (not Diadem's words): "test" is a typo for "text"; the expiry line (approved Oct 25, 2026, 7:22 PM ET) stays on the web page and is removed from print and PDF only.
+>
+> **G update 4.** Diadem, Nov 10, 2026, 12:05 AM EST: "E6c sentences, but put "3x a week"/"everyday" on its own new line"
+
+> **G update 5.** CTO locked (is/was comment b0a593dc on DIDI-594). Diadem, Nov 10, 2026, 12:08 AM ET: "Yes, approve E7"; 12:09 AM ET: "yes I approve. and one more minor detail. on the print version, "images didn't load" should go on the images column (a merged column 2 and 3)". Together these approve the E7 layout and the strings "Video", "Previous" and "Next". The final E7 design is https://designs.magicpath.ai/v1/keen-current-4842, revision 470770451010957312.
+
+| Topic | Was | Is |
+| -- | -- | -- |
+| Video on the link page | Unclear whether a new video asset | The existing start to end image transition; no new asset (D) |
+| No media | Mockup 34's "Instructions and images are on the way.", then briefly "No media: text only" | No no-media state; every published exercise has both images (11:26 AM) |
+| Publish without media | Unresolved | Failsafe block on both publish sheets, server-enforced (E) |
+| Screen layout | D: stills with a "Play video" toggle, text left and media right from 1024 px (F) | One carousel, video first, then Start, then End (G); E1 dots with a play symbol (G update); media right after the title; 2 columns on desktop (G update 3) |
+| Print and PDF | D: stills beside the text; then E2 side by side (G update); then images stacked left (G update 2) | 3 columns: text, Start, End; no video; no expiry line (G update 3) |
+| Dose line | One line | E6c sentences with the frequency on its own line (G update 4) |
+
+Approvals of the final design (DIDI-1192 comment 98568f51): Diadem, Nov 10, 2026, 12:08 AM ET, "Yes, approve E7"; 12:09 AM ET, "yes I approve. and one more minor detail. on the print version, "images didn't load" should go on the images column (a merged column 2 and 3)".
 
 ## Copy inventory (verbatim from the approved source)
 
@@ -768,7 +1031,36 @@ Every user-facing string in the parts of the approved source that render this fe
 - Removed {name} from this program.
 - No placeholders left. You can publish.
 
+### Approved Nov 9, 2026, 11:31 AM ET (DIDI-1192)
+
+- Images didn't load.
+- Try loading images for {title} again (accessible name)
+- Remove exercises without images to publish
+- {n} exercises are missing their start or end image. Remove them from this program, then publish.
+- One exercise is missing its start or end image. Remove it from this program, then publish.
+- No exercises without images left. You can publish.
+
+### Approved Nov 10, 2026, 12:09 AM ET (DIDI-1192)
+
+- Video (accessible name of the carousel's first indicator and slide)
+- Previous (accessible name)
+- Next (accessible name)
+
+### Reused on the link page (DIDI-1192), unchanged
+
+- Start / End (captions, indicator names and slide names)
+- Pause video / Play video (src/ui/copy/a11y.ts :6-7)
+- {title}, start position / {title}, end position (alt text, timing.ts :16-22)
+- Try again
+- Dose phrases from `paramPhrase` (src/domain/format-exercise-params.ts): "1 rep" / "{n} reps", "{n}s hold", "{n}s down", "{n}s rest between sets", "${n}x a week" (days per week other than 7), "every day" (7 days per week)
+- "1 set" / "{n} sets": approved by Diadem, Nov 6, 2026, 7:44 PM ET (DIDI-1130, comment c10b1de4; design/app/settings-link-expiry/spec.md "Dose readout fragments"). The code slots are still empty on main (src/ui/copy/my-defaults-pending-copy.ts), a wiring gap, not an approval gap.
+- "once a day", "twice a day", "{n} times a day", "{min} to {max} times a day" and "{n}s up": in the same Nov 6 block, but their code slots are still empty on main, pending the DIDI-1130 wiring. They are out of scope for this design and not shown in the mockups. When wired, the per-day phrases go on dose line 3 and "{n}s up" on line 1.
+
+Not printed (DIDI-1192, CTO, Nov 9, 2026): "This link works until {exp.date}." and "This link stays open until your physiotherapist closes it." stay on the web page only. "Show images" and "Instructions and images are on the way." are not used on the link page.
+
 ## Changes
+
+- **Nov 10, 2026**: DIDI-1192. Diadem approved E7: "Yes, approve E7" (12:08 AM ET), and "Video", "Previous" and "Next" with the print detail (12:09 AM ET). The link page shows one carousel per exercise (the start to end loop, then Start, then End) with round dots, a play-triangle dot, a separate focus ring and subtle chevrons from 1024 px. On phone: title, carousel, dose, notes. From 1024 px: text left, carousel right, page 64rem (was 42rem). The dose is three lines with bold numbers, frequency last. Print and PDF: text, Start, End in three columns, "Images didn't load." across the image columns, no video, no controls, no expiry line. Missing start or end images block publish on the program and routine sheets, server-enforced, Remove only (CTO rulings, DIDI-1193; copy approved Nov 9, 11:31 AM ET). Supersedes variant D (Nov 9, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 
 - **Nov 8, 2026**: DIDI-1186. Diadem (1:45 PM ET, locked on DIDI-594): "Block publish until every placeholder is approved or removed." Variant D, "Go with D" (1:55 PM ET); copy, "Yes, approve all of D's wording" (1:56 PM ET). Locked by CTO, comment b196ba23. The Publish sheet lists placeholders with Review draft and Remove; Publish now stays disabled while any remain and still follows every other publish requirement; Review draft never approves; a blocked publish leaves the live snapshot and link unchanged. https://linear.app/didi-build/issue/DIDI-1186, https://linear.app/didi-build/issue/DIDI-594
 - **Nov 7, 2026**: DIDI-1178. Diadem (America/Toronto, locked on DIDI-594): on the Programs list, search and origin filters stay above empty-state messaging during initial loading, zero programs and zero matches, the same pattern as the Exercises page. https://linear.app/didi-build/issue/DIDI-1178
