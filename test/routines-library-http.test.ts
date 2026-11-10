@@ -17,8 +17,11 @@ import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
+  seedExercise,
   seedPractitioner,
   TS,
+  versionInsertBindings,
+  VERSION_INSERT_SQL,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   PractitionerRoutineRowsRepository,
@@ -833,6 +836,260 @@ describe("Routines library HTTP (session routes)", () => {
       await expect(remove.json()).resolves.toMatchObject({
         error: "my_routine_not_found",
       });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects tampered undo with a draft exercise version and leaves saved copy rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-undo-draft-ver");
+      await publishRoutine(storage, author, {
+        routine: "http-undo-draft-ver",
+        draftVersion: "http-undo-draft-ver-draft",
+        row: "http-undo-draft-ver-row",
+        name: "Undo draft ver",
+      });
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      const patch = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: FIXTURE_EXERCISE_ID,
+                  exercise_version_id: FIXTURE_VERSION_ID,
+                  prescription_type: "stretching",
+                  params: { hold_s: 40, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+                },
+              ],
+            }),
+          }),
+        ),
+        deps,
+      );
+      const undoPayload = (await patch.json()) as {
+        undo: {
+          snapshot: {
+            copy: { rows: { exercise_version_id: string }[] } | null;
+          };
+        };
+      };
+      const draftVerId = id("http-copy-undo-draft-ver");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: draftVerId,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "draft",
+        }),
+      );
+      undoPayload.undo.snapshot.copy!.rows[0]!.exercise_version_id = draftVerId;
+      const copy = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      const rowsBefore = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      const undo = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "undo", undo: undoPayload.undo }),
+          }),
+        ),
+        deps,
+      );
+      expect(undo.status).toBe(404);
+      expect(((await undo.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      const rowsAfter = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      expect(rowsAfter).toEqual(rowsBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects tampered undo with mismatched exercise id and leaves saved copy rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-undo-bad-ex");
+      await publishRoutine(storage, author, {
+        routine: "http-undo-bad-ex",
+        draftVersion: "http-undo-bad-ex-draft",
+        row: "http-undo-bad-ex-row",
+        name: "Undo bad ex",
+      });
+      const otherExerciseId = id("http-copy-other-ex");
+      await seedExercise(storage, author, otherExerciseId);
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      const patch = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: FIXTURE_EXERCISE_ID,
+                  exercise_version_id: FIXTURE_VERSION_ID,
+                  prescription_type: "stretching",
+                  params: { hold_s: 35, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+                },
+              ],
+            }),
+          }),
+        ),
+        deps,
+      );
+      const undoPayload = (await patch.json()) as {
+        undo: {
+          snapshot: {
+            copy: {
+              rows: { exercise_id: string; exercise_version_id: string }[];
+            } | null;
+          };
+        };
+      };
+      undoPayload.undo.snapshot.copy!.rows[0]!.exercise_id = otherExerciseId;
+      const copy = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      const rowsBefore = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      const undo = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "undo", undo: undoPayload.undo }),
+          }),
+        ),
+        deps,
+      );
+      expect(undo.status).toBe(404);
+      expect(((await undo.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      const rowsAfter = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      expect(rowsAfter).toEqual(rowsBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects PATCH with an unapproved exercise version and leaves saved copy rows unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA: author } = await seedTwoPractitioners(storage);
+      const routineId = id("http-patch-draft-ver");
+      await publishRoutine(storage, author, {
+        routine: "http-patch-draft-ver",
+        draftVersion: "http-patch-draft-ver-draft",
+        row: "http-patch-draft-ver-row",
+        name: "Patch draft ver",
+      });
+      const draftVerId = id("http-copy-patch-draft-ver");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: draftVerId,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "draft",
+        }),
+      );
+      const { deps, cookie } = appDeps(storage, author, "a@example.com");
+      const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "save" }),
+          }),
+        ),
+        deps,
+      );
+      const copy = await new PractitionerRoutinesRepository(
+        storage,
+      ).findForPractitioner(author, routineId);
+      const rowsBefore = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      const patch = await handleRequest(
+        new Request(
+          myCopyUrl,
+          mutatingAppApiRequestInit(myCopyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: FIXTURE_EXERCISE_ID,
+                  exercise_version_id: draftVerId,
+                  prescription_type: "stretching",
+                  params: { hold_s: 99, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+                },
+              ],
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(patch.status).toBe(404);
+      expect(((await patch.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      const rowsAfter = await new PractitionerRoutineRowsRepository(
+        storage,
+      ).listForCopy(copy!.id);
+      expect(rowsAfter).toEqual(rowsBefore);
     } finally {
       storage.close();
     }
