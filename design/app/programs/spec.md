@@ -390,10 +390,14 @@ Uses the existing `@media print` block (public-link-page.css :87-103). The heade
 
 **Expiry line in print (CTO, Nov 9, 2026; DIDI-594 G update 3).** `This link works until {exp.date}.` and `This link stays open until your physiotherapist closes it.` (copy inventory :728-729) stay on the web page and are removed from print and PDF only. Add `link-page-no-print` to `.link-page-footer` (PublicLinkPage.tsx :112), or hide it in the print block.
 
-**Note for Developer: DIDI-1015 print test.** CTO says the DIDI-1015 print test expects a footer expiry line, so that test needs updating with this change. I could not find a print-specific footer assertion on 92ebb26:
+**Note for Developer: DIDI-1015 print test (resolved per CTO, Nov 10, 2026).** No print-footer expiry assertion exists on main today, so this spec change does not require removing or updating an existing print-footer test. On 92ebb26:
 - `test/ui/public-link-page.test.tsx` asserts the on-screen line "This link stays open until your physiotherapist closes it." (:91, fixture :44 and :205). Those stay valid, because the line stays on screen.
 - The print stylesheet test (:259-266) checks `@media print`, `.link-page-no-print { display: none }`, `.link-page-row { break-inside: avoid }` and no "exercise-motion" in the print CSS. It says nothing about the footer.
-- Confirm with CTO which assertion is meant before changing tests. Keep "exercise-motion" out of the print CSS: the print rules for the images belong in public-link-page.css.
+- Keep "exercise-motion" out of the print CSS: the print rules for the images belong in public-link-page.css.
+
+### Acceptance (DIDI-1191)
+
+A print or PDF test asserts that the expiry line (`This link works until {exp.date}.` or `This link stays open until your physiotherapist closes it.`) is absent in print and still present on the web page. Developer writes this test during the DIDI-1191 build.
 
 ### Notes for Developer (DIDI-1191, DIDI-1195)
 
@@ -436,7 +440,7 @@ Program sheet, in order:
 
 When the last affected exercise is removed, the heading switches to the check icon (text-teal-700) and "No exercises without images left. You can publish.", and the body and list go away.
 
-Routine sheet ("Publish this routine?"): the heading, the list with "Remove {ex.name}" (routines copy inventory :433) and the cleared line "No exercises without images left. You can publish." show, exactly as on the program sheet. The two body strings say "this program", so they do not show on the routine sheet. See Open items.
+Routine sheet ("Publish this routine?"), resolved per CTO (Nov 10, 2026): the heading, the list with "Remove {name}" and the cleared line "No exercises without images left. You can publish." show, exactly as on the program sheet. There is no routine body copy; the approved program body strings are not reworded and no new copy is added. Diadem can ask for more later as a new product call.
 
 ### 390 px and 1280 px
 
@@ -453,13 +457,13 @@ Every token is the DIDI-1186 one ("Publish blocked by placeholders (DIDI-1186)",
 - The notice is a section with `role="status"` and `aria-labelledby` on its heading, as in DIDI-1186, so it is announced politely after the sheet title.
 - Publish now is `disabled` while any affected exercise remains, with `aria-describedby` pointing at this notice's id. When both notices show, `aria-describedby` lists both ids, placeholders first. Once this list is empty, its id is removed.
 - Program sheet: after a removal the polite live region says "Removed {name} from this program."; when the list empties it also says "No exercises without images left. You can publish."
-- Routine sheet: when the list empties the live region says "No exercises without images left. You can publish.". There is no per-removal read-out until a routine string is approved (see Open items).
+- Routine sheet: when the list empties the live region says "No exercises without images left. You can publish.". There is no per-removal read-out on the routine sheet (resolved per CTO, Nov 10, 2026).
 - Focus after Remove: moves to the next row's Remove (or the previous one if it was the last row). When the list empties, focus moves to the notice heading (`tabIndex={-1}`).
 - If the server rejects Publish now: focus moves to the notice heading.
 
 ### Open items
 
-- Routine sheet wording. The approved body strings ("Remove them from this program, then publish." / "Remove it from this program, then publish.") and the removal read-out "Removed {name} from this program." name the program, so they don't fit "Publish this routine?". No routine version is approved, and none is added here. The routine sheet shows the heading, list and cleared line only. A routine body or removal read-out needs Diadem's approval.
+None for DIDI-1192. Resolved per CTO (Nov 10, 2026): DIDI-1015 print-footer (no existing print-footer assertion to change; see Acceptance for DIDI-1191 above). Resolved per CTO (Nov 10, 2026): routine sheet wording (heading, list with "Remove {name}", cleared line only; no routine body; program strings unchanged; no new copy).
 
 ## Mockups
 
