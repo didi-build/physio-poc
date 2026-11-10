@@ -14,6 +14,7 @@ import {
   PractitionerRoutineRowsRepository,
   PractitionerRoutinesRepository,
   RoutinesRepository,
+  ConditionsRepository,
   RoutineVersionsRepository,
   RoutineVersionRowsRepository,
 } from "../src/storage/repositories/routines.js";
@@ -306,6 +307,134 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       expect(draftVersion).not.toBeNull();
       expect(await versionRows.listForVersion(draftVersion!.id)).toHaveLength(0);
 
+      const rowsOnly = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const rowsOnlyId = ((await rowsOnly.json()) as { routine_id: string }).routine_id;
+      const rowsOnlyUrl = `${BASE}${routineAuthoringItemPath(rowsOnlyId)}`;
+      await handleRequest(
+        new Request(
+          rowsOnlyUrl,
+          mutatingAppApiRequestInit(rowsOnlyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ rows: rowPayload() }),
+          }),
+        ),
+        deps,
+      );
+      const cancelRowsOnly = await handleRequest(
+        new Request(
+          rowsOnlyUrl,
+          mutatingAppApiRequestInit(rowsOnlyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(cancelRowsOnly.status).toBe(400);
+      expect(((await cancelRowsOnly.json()) as { error: string }).error).toBe(
+        "draft_not_touchable",
+      );
+      expect(await routines.findById(rowsOnlyId)).not.toBeNull();
+      const rowsOnlyDraft = await versions.findDraftForRoutine(rowsOnlyId);
+      expect(rowsOnlyDraft).not.toBeNull();
+      expect(await versionRows.listForVersion(rowsOnlyDraft!.id)).toHaveLength(1);
+
+      const whoOnly = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const whoOnlyId = ((await whoOnly.json()) as { routine_id: string }).routine_id;
+      const whoOnlyUrl = `${BASE}${routineAuthoringItemPath(whoOnlyId)}`;
+      await handleRequest(
+        new Request(
+          whoOnlyUrl,
+          mutatingAppApiRequestInit(whoOnlyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ who_its_for: "General strengthening" }),
+          }),
+        ),
+        deps,
+      );
+      const cancelWhoOnly = await handleRequest(
+        new Request(
+          whoOnlyUrl,
+          mutatingAppApiRequestInit(whoOnlyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(cancelWhoOnly.status).toBe(400);
+      expect(((await cancelWhoOnly.json()) as { error: string }).error).toBe(
+        "draft_not_touchable",
+      );
+      expect(await routines.findById(whoOnlyId)).not.toBeNull();
+
+      const condOnly = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const condOnlyId = ((await condOnly.json()) as { routine_id: string }).routine_id;
+      const condOnlyUrl = `${BASE}${routineAuthoringItemPath(condOnlyId)}`;
+      const condId = id("auth-touch-cond");
+      await new ConditionsRepository(storage).insert({
+        id: condId,
+        label: "Arthritis",
+      });
+      await handleRequest(
+        new Request(
+          condOnlyUrl,
+          mutatingAppApiRequestInit(condOnlyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ condition_id: condId }),
+          }),
+        ),
+        deps,
+      );
+      const cancelCondOnly = await handleRequest(
+        new Request(
+          condOnlyUrl,
+          mutatingAppApiRequestInit(condOnlyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(cancelCondOnly.status).toBe(400);
+      expect(((await cancelCondOnly.json()) as { error: string }).error).toBe(
+        "draft_not_touchable",
+      );
+      expect(await routines.findById(condOnlyId)).not.toBeNull();
+
       const touched = await handleRequest(
         new Request(
           createUrl,
@@ -477,10 +606,19 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       });
       const before = await snapshot();
 
+      const missingId = id("auth-hide-missing");
+      const missingGet = await handleRequest(
+        new Request(`${BASE}${routineDetailsPath(missingId)}`, {
+          headers: { cookie: otherCookie },
+        }),
+        otherDeps,
+      );
+      expect(missingGet.status).toBe(404);
+      const missingNotFoundBody = await missingGet.text();
+
       const expect404 = async (response: Response) => {
         expect(response.status).toBe(404);
-        const body = (await response.json()) as { error: string };
-        expect(body.error).toBe("routine_not_found");
+        expect(await response.text()).toBe(missingNotFoundBody);
         expect(await snapshot()).toEqual(before);
       };
 
@@ -580,10 +718,43 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       );
       const routineId = ((await created.json()) as { routine_id: string }).routine_id;
       const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              name: "Published for 401 guards",
+              rows: rowPayload(),
+            }),
+          }),
+        ),
+        deps,
+      );
+      await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "publish",
+              name: "Published for 401 guards",
+            }),
+          }),
+        ),
+        deps,
+      );
+      const versionCountBefore = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ?",
+        [routineId],
+      );
       const routineCount = await storage.first<{ c: number }>(
         "SELECT COUNT(*) AS c FROM routines",
       );
       const countBefore = routineCount?.c ?? 0;
+      const versionsBefore = versionCountBefore?.c ?? 0;
 
       const noCookie = (url: string, init: RequestInit) =>
         handleRequest(new Request(url, mutatingAppApiRequestInit(url, init)), deps);
@@ -626,10 +797,39 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       });
       expect(undoNoSession.status).toBe(401);
 
+      const saveCommunityNoSession = await noCookie(itemUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "save_community_version",
+          expected_published_version: 1,
+          name: "Nope v2",
+          rows: rowPayload(40),
+        }),
+      });
+      expect(saveCommunityNoSession.status).toBe(401);
+
+      const restoreNoSession = await noCookie(itemUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "restore_version",
+          restore_from_version_number: 1,
+        }),
+      });
+      expect(restoreNoSession.status).toBe(401);
+
       const countAfter = (
         await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines")
       )?.c;
       expect(countAfter).toBe(countBefore);
+      const versionsAfter = (
+        await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ?",
+          [routineId],
+        )
+      )?.c;
+      expect(versionsAfter).toBe(versionsBefore);
     } finally {
       storage.close();
     }
