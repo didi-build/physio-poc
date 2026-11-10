@@ -15,8 +15,14 @@ import {
   PUBLISH_SHEET_TITLE,
 } from "../../src/ui/copy/program-publish.js";
 import {
+  CREATE_PROGRAM,
   CREATE_PROGRAM_FROM_ROUTINE,
+  EDIT_FOR_EVERYONE,
+  EDIT_MY_COPY,
+  REMOVE_FROM_MY,
+  UPDATE_MY_COPY,
   USE_FOR_PATIENT,
+  VERSION_HISTORY,
 } from "../../src/ui/copy/routines.js";
 import { ensureLayoutHarnessBuilt } from "../helpers/ensure-layout-harness-built.js";
 import { loadInterFontsInPage } from "../helpers/load-inter-fonts-in-page.js";
@@ -58,12 +64,9 @@ const CAPTURES: LayoutCapture[] = [
     fileStem: "didi-1025-routines-05-detail-actions",
     widths: [390, 1280],
     ready: async (page) => {
-      await page.getByRole("button", { name: USE_FOR_PATIENT }).first().waitFor({
+      await page.getByRole("button", { name: USE_FOR_PATIENT }).waitFor({
         state: "visible",
       });
-      await page
-        .getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE })
-        .waitFor({ state: "visible" });
     },
   },
   {
@@ -210,6 +213,100 @@ describe("Program from routine layout (DIDI-1025 mockups)", () => {
 
   afterAll(async () => {
     await closeServer?.();
+  });
+
+  async function countVisibleButtons(
+    page: Page,
+    name: string | RegExp,
+    exact = false,
+  ): Promise<number> {
+    const buttons = page.getByRole("button", { name, exact });
+    const total = await buttons.count();
+    let visible = 0;
+    for (let i = 0; i < total; i++) {
+      if (await buttons.nth(i).isVisible()) {
+        visible += 1;
+      }
+    }
+    return visible;
+  }
+
+  it("routine detail mockup 05: one visible action control per label at 390px", async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await loadInterFontsInPage(page);
+      await page.setViewportSize({ width: 390, height: 900 });
+      await page.goto(`${baseUrl}/?fixture=routines-1025-detail-actions`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.waitForSelector('[data-layout-root="routines-1025-detail-actions"]', {
+        timeout: 60_000,
+      });
+      await page.getByRole("button", { name: USE_FOR_PATIENT }).waitFor({
+        state: "visible",
+      });
+
+      expect(await countVisibleButtons(page, USE_FOR_PATIENT)).toBe(1);
+      expect(await countVisibleButtons(page, CREATE_PROGRAM, true)).toBe(1);
+      expect(await countVisibleButtons(page, CREATE_PROGRAM_FROM_ROUTINE, true)).toBe(
+        0,
+      );
+      expect(
+        await countVisibleButtons(page, new RegExp(`^${UPDATE_MY_COPY}`, "i")),
+      ).toBe(1);
+      expect(await countVisibleButtons(page, EDIT_MY_COPY)).toBe(1);
+      expect(await countVisibleButtons(page, EDIT_FOR_EVERYONE)).toBe(1);
+      expect(await countVisibleButtons(page, VERSION_HISTORY)).toBe(1);
+      expect(await countVisibleButtons(page, REMOVE_FROM_MY)).toBe(1);
+      await page.close();
+    } finally {
+      await browser.close();
+    }
+  });
+
+  it("routine detail mockup 05: two-column sticky aside at 1280px", async () => {
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await loadInterFontsInPage(page);
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(`${baseUrl}/?fixture=routines-1025-detail-actions`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.waitForSelector('[data-layout-root="routines-1025-detail-actions"]', {
+        timeout: 60_000,
+      });
+      await page
+        .getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE })
+        .waitFor({ state: "visible" });
+
+      const layout = page.locator(".rt-detail-layout");
+      const gridTemplate = await layout.evaluate(
+        (el) => getComputedStyle(el).gridTemplateColumns,
+      );
+      expect(gridTemplate).toMatch(/320px/);
+
+      const aside = page.locator(".rt-detail-aside");
+      const main = page.locator(".rt-detail-main");
+      const asideBox = await aside.boundingBox();
+      const mainBox = await main.boundingBox();
+      expect(asideBox).not.toBeNull();
+      expect(mainBox).not.toBeNull();
+      expect(asideBox!.x).toBeGreaterThan(mainBox!.x);
+
+      const position = await aside.evaluate((el) => getComputedStyle(el).position);
+      expect(position).toBe("sticky");
+
+      expect(await countVisibleButtons(page, USE_FOR_PATIENT)).toBe(1);
+      expect(await countVisibleButtons(page, CREATE_PROGRAM_FROM_ROUTINE, true)).toBe(
+        1,
+      );
+      expect(await countVisibleButtons(page, CREATE_PROGRAM, true)).toBe(0);
+      await page.close();
+    } finally {
+      await browser.close();
+    }
   });
 
   it("captures from-routine program flows at 390 and 1280 px", async () => {

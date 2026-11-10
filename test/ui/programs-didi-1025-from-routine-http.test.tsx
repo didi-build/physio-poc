@@ -24,10 +24,6 @@ import {
   PUBLISH_NOW,
   PUBLISH_SHEET_TITLE,
 } from "../../src/ui/copy/program-publish.js";
-import {
-  CREATE_PROGRAM_FROM_ROUTINE,
-  USE_FOR_PATIENT,
-} from "../../src/ui/copy/routines.js";
 import { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { openMigratedDatabase } from "../helpers/exercise-sqlite-fixture.js";
 import {
@@ -86,14 +82,15 @@ async function httpClients() {
   );
   const fetchFn = createRoutinesHttpFetch(deps, cookie);
   const routinesClient = new RoutinesClient({ fetchFn });
-  const programsClient = wrapProgramsClientWithCacheInvalidation(
-    new ProgramsClient({ fetchFn }),
-  );
+  const programsInner = new ProgramsClient({ fetchFn });
+  const createFromRoutineSpy = vi.spyOn(programsInner, "createProgramFromRoutine");
+  const programsClient = wrapProgramsClientWithCacheInvalidation(programsInner);
   return {
     storage,
     routineId,
     routinesClient,
     programsClient,
+    createFromRoutineSpy,
     close: () => storage.close(),
   };
 }
@@ -131,10 +128,9 @@ describe("Program from routine UI (DIDI-1025, integration HTTP)", () => {
           />
         </MemoryRouter>,
       );
-      const useButtons = await screen.findAllByRole("button", {
-        name: USE_FOR_PATIENT,
-      });
-      await userEvent.click(useButtons[0]!);
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-use-for-patient"),
+      );
       expect(
         await screen.findByRole("dialog", { name: PUBLISH_SHEET_TITLE }),
       ).toBeInTheDocument();
@@ -166,10 +162,9 @@ describe("Program from routine UI (DIDI-1025, integration HTTP)", () => {
           />
         </MemoryRouter>,
       );
-      const useButtons = await screen.findAllByRole("button", {
-        name: USE_FOR_PATIENT,
-      });
-      await userEvent.click(useButtons[0]!);
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-use-for-patient"),
+      );
       const dialog = await screen.findByRole("dialog", { name: PUBLISH_SHEET_TITLE });
       const nameField = dialog.querySelector("#pg-publish-name-input");
       expect(nameField).toHaveValue("Knee routine for UI");
@@ -208,7 +203,7 @@ describe("Program from routine UI (DIDI-1025, integration HTTP)", () => {
         </MemoryRouter>,
       );
       await userEvent.click(
-        await screen.findByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE }),
+        await screen.findByTestId("routine-detail-mobile-create-program"),
       );
       expect(
         await screen.findByText(builderOriginBannerTitle("Knee routine for UI", 1)),
@@ -242,6 +237,116 @@ describe("Program from routine UI (DIDI-1025, integration HTTP)", () => {
       expect(
         screen.getByRole("button", { name: FILTER_FROM_SCRATCH }),
       ).toBeInTheDocument();
+    } finally {
+      close();
+    }
+  });
+
+  it("Use for a patient posts source community when there is no My copy", async () => {
+    const { routineId, routinesClient, programsClient, createFromRoutineSpy, close } =
+      await httpClients();
+    try {
+      render(
+        <MemoryRouter initialEntries={[`/routines/${routineId}`]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={programsClient}
+            routinesClient={routinesClient}
+          />
+        </MemoryRouter>,
+      );
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-use-for-patient"),
+      );
+      await waitFor(() => {
+        expect(createFromRoutineSpy).toHaveBeenCalled();
+      });
+      expect(createFromRoutineSpy.mock.calls.at(-1)?.[0].source).toBe("community");
+    } finally {
+      close();
+    }
+  });
+
+  it("Use for a patient posts source my_copy when My copy segment is active", async () => {
+    const { routineId, routinesClient, programsClient, createFromRoutineSpy, close } =
+      await httpClients();
+    try {
+      await routinesClient.saveToMyRoutines(routineId);
+      createFromRoutineSpy.mockClear();
+      render(
+        <MemoryRouter initialEntries={[`/routines/${routineId}`]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={programsClient}
+            routinesClient={routinesClient}
+          />
+        </MemoryRouter>,
+      );
+      await screen.findByTestId("routine-version-segment");
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-use-for-patient"),
+      );
+      await waitFor(() => {
+        expect(createFromRoutineSpy).toHaveBeenCalled();
+      });
+      expect(createFromRoutineSpy.mock.calls.at(-1)?.[0].source).toBe("my_copy");
+    } finally {
+      close();
+    }
+  });
+
+  it("Create program posts source community when only the community view is available", async () => {
+    const { routineId, routinesClient, programsClient, createFromRoutineSpy, close } =
+      await httpClients();
+    try {
+      render(
+        <MemoryRouter initialEntries={[`/routines/${routineId}`]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={programsClient}
+            routinesClient={routinesClient}
+          />
+        </MemoryRouter>,
+      );
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-create-program"),
+      );
+      await waitFor(() => {
+        expect(createFromRoutineSpy).toHaveBeenCalled();
+      });
+      expect(createFromRoutineSpy.mock.calls.at(-1)?.[0].source).toBe("community");
+    } finally {
+      close();
+    }
+  });
+
+  it("Create program posts source my_copy when the version segment is on My copy", async () => {
+    const { routineId, routinesClient, programsClient, createFromRoutineSpy, close } =
+      await httpClients();
+    try {
+      await routinesClient.saveToMyRoutines(routineId);
+      createFromRoutineSpy.mockClear();
+      render(
+        <MemoryRouter initialEntries={[`/routines/${routineId}`]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={programsClient}
+            routinesClient={routinesClient}
+          />
+        </MemoryRouter>,
+      );
+      await screen.findByTestId("routine-version-segment");
+      await userEvent.click(
+        await screen.findByTestId("routine-detail-mobile-create-program"),
+      );
+      await waitFor(() => {
+        expect(createFromRoutineSpy).toHaveBeenCalled();
+      });
+      expect(createFromRoutineSpy.mock.calls.at(-1)?.[0].source).toBe("my_copy");
     } finally {
       close();
     }
