@@ -26,6 +26,8 @@ import {
   openMigratedDatabase,
   seedPractitioner,
   TS,
+  VERSION_INSERT_SQL,
+  versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   publishRoutine,
@@ -948,6 +950,382 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       expect(copyRowAfter).toBe(copyRowBefore);
       expect(progRowAfter).toBe(progRowBefore);
       expect(copy.source_version_number).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects tampered undo with a draft exercise version and leaves the DB unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-undo-bad-ver"),
+        "undo-bad@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDeps(storage, author, "undo-bad@example.com");
+      const createUrl = `${BASE}${ROUTINES_AUTHORING_COLLECTION_PATH}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const routineId = ((await created.json()) as { routine_id: string }).routine_id;
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ name: "Undo guard", rows: rowPayload() }),
+          }),
+        ),
+        deps,
+      );
+      const discard = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "discard_draft" }),
+          }),
+        ),
+        deps,
+      );
+      const undoPayload = (await discard.json()) as {
+        undo: {
+          practitioner_id: string;
+          routine_id: string;
+          snapshot: { rows: { exercise_version_id: string }[] };
+        };
+      };
+      const draftVerId = id("auth-undo-draft-ver");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: draftVerId,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "draft",
+        }),
+      );
+      undoPayload.undo.snapshot.rows[0]!.exercise_version_id = draftVerId;
+      const countBefore = (
+        await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines")
+      )?.c;
+      const undo = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "undo_draft_discard",
+              undo: undoPayload.undo,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undo.status).toBe(404);
+      expect(((await undo.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      expect(
+        (await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines"))?.c,
+      ).toBe(countBefore);
+      expect(await new RoutinesRepository(storage).findById(routineId)).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects tampered undo with mismatched exercise id and leaves the DB unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-undo-bad-ex"),
+        "undo-ex@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const otherExerciseId = id("auth-undo-other-ex");
+      await storage.run(
+        "INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [otherExerciseId, "stretch", author, TS],
+      );
+      const { deps, cookie } = appDeps(storage, author, "undo-ex@example.com");
+      const createUrl = `${BASE}${ROUTINES_AUTHORING_COLLECTION_PATH}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const routineId = ((await created.json()) as { routine_id: string }).routine_id;
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ name: "Mismatch guard", rows: rowPayload() }),
+          }),
+        ),
+        deps,
+      );
+      const discard = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "discard_draft" }),
+          }),
+        ),
+        deps,
+      );
+      const undoPayload = (await discard.json()) as {
+        undo: {
+          snapshot: { rows: { exercise_id: string; exercise_version_id: string }[] };
+        };
+      };
+      undoPayload.undo.snapshot.rows[0]!.exercise_id = otherExerciseId;
+      const countBefore = (
+        await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines")
+      )?.c;
+      const undo = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "undo_draft_discard",
+              undo: undoPayload.undo,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undo.status).toBe(404);
+      expect(((await undo.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      expect(
+        (await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines"))?.c,
+      ).toBe(countBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects undo on a never-existing routine id with GET-identical 404 and no create", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-undo-never"),
+        "undo-never@example.com",
+      );
+      const { deps, cookie } = appDeps(storage, author, "undo-never@example.com");
+      const neverId = id("auth-never-routine");
+      const itemUrl = `${BASE}${routineAuthoringItemPath(neverId)}`;
+      const missingGet = await handleRequest(
+        new Request(`${BASE}${routineDetailsPath(neverId)}`, { headers: { cookie } }),
+        deps,
+      );
+      expect(missingGet.status).toBe(404);
+      const missingBody = await missingGet.text();
+      const countBefore = (
+        await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines")
+      )?.c;
+      const undo = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "undo_draft_discard",
+              undo: {
+                practitioner_id: author,
+                routine_id: neverId,
+                snapshot: {
+                  routine_id: neverId,
+                  draft_version_id: id("auth-never-draft-ver"),
+                  created_at: TS,
+                  draft_updated_at: TS,
+                  body_region_id: BODY_REGION_KNEE,
+                  condition_id: null,
+                  who_its_for: null,
+                  name: "Forged",
+                  rows: [
+                    {
+                      position: 0,
+                      exercise_id: FIXTURE_EXERCISE_ID,
+                      exercise_version_id: FIXTURE_VERSION_ID,
+                      prescription_type: "stretching",
+                      params_json: JSON.stringify({
+                        hold_s: 30,
+                        per_day: { min: 1, max: 2 },
+                        days_per_week: 7,
+                      }),
+                    },
+                  ],
+                },
+              },
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undo.status).toBe(404);
+      expect(await undo.text()).toBe(missingBody);
+      expect(
+        (await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines"))?.c,
+      ).toBe(countBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects publish when a draft row pins an unapproved exercise version", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-pub-bad"),
+        "pub-bad@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const routines = new RoutinesRepository(storage);
+      const rows = new RoutineVersionRowsRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const routineId = id("auth-pub-bad-routine");
+      const draftVerId = id("auth-pub-bad-draft-ver");
+      await routines.createDraft({
+        id: routineId,
+        draftVersionId: draftVerId,
+        createdBy: author,
+        createdAt: TS,
+        bodyRegionId: BODY_REGION_KNEE,
+        name: "Bad publish row",
+      });
+      const unapprovedVer = id("auth-pub-unapproved-ev");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: unapprovedVer,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "draft",
+        }),
+      );
+      await rows.replaceDraftRow({
+        id: id("auth-pub-bad-row"),
+        routineId,
+        authorId: author,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: unapprovedVer,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+        draftUpdatedAt: TS,
+      });
+      const { deps, cookie } = appDeps(storage, author, "pub-bad@example.com");
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      const versionsBefore = await versions.listPublishedVersionsForRoutine(routineId);
+      const publish = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "publish", name: "Bad publish row" }),
+          }),
+        ),
+        deps,
+      );
+      expect(publish.status).toBe(404);
+      expect(((await publish.json()) as { error: string }).error).toBe(
+        "exercise_not_found",
+      );
+      expect(await routines.findById(routineId)).toMatchObject({
+        published_version: null,
+      });
+      expect(await versions.listPublishedVersionsForRoutine(routineId)).toEqual(
+        versionsBefore,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 409 stale_write on save_community_version when expected_published_version is stale", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-stale"),
+        "stale@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const routineId = id("auth-stale-routine");
+      await publishRoutine(storage, author, {
+        routine: "auth-stale-routine",
+        draftVersion: "auth-stale-draft",
+        row: "auth-stale-row",
+        name: "Stale test v1",
+      });
+      const { deps, cookie } = appDeps(storage, author, "stale@example.com");
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      const versionsBefore = (
+        await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ? AND status = 'published'",
+          [routineId],
+        )
+      )?.c;
+      const save = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              action: "save_community_version",
+              expected_published_version: 99,
+              name: "Stale v2",
+              rows: rowPayload(33),
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(save.status).toBe(409);
+      expect(((await save.json()) as { error: string }).error).toBe("stale_write");
+      const versionsAfter = (
+        await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM routine_versions WHERE routine_id = ? AND status = 'published'",
+          [routineId],
+        )
+      )?.c;
+      expect(versionsAfter).toBe(versionsBefore);
     } finally {
       storage.close();
     }

@@ -461,6 +461,72 @@ export class RoutinesRepository {
       ...rowStatements,
     ]);
   }
+
+  async recordDraftDiscard(input: {
+    routineId: string;
+    practitionerId: string;
+    draftVersionId: string;
+    discardedAt: string;
+  }): Promise<void> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Draft version id",
+    );
+    await this.sql.run(
+      `INSERT INTO routine_draft_discards (routine_id, practitioner_id, draft_version_id, discarded_at)
+       VALUES (?, ?, ?, ?)`,
+      [routineId, practitionerId, draftVersionId, input.discardedAt],
+    );
+  }
+
+  async hasDraftDiscardForUndo(input: {
+    routineId: string;
+    practitionerId: string;
+    draftVersionId: string;
+  }): Promise<boolean> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Draft version id",
+    );
+    const row = await this.sql.first<{ routine_id: string }>(
+      `SELECT routine_id FROM routine_draft_discards
+       WHERE routine_id = ? AND practitioner_id = ? AND draft_version_id = ?
+       LIMIT 1`,
+      [routineId, practitionerId, draftVersionId],
+    );
+    return row !== null;
+  }
+
+  async removeDraftDiscard(input: {
+    routineId: string;
+    practitionerId: string;
+    draftVersionId: string;
+  }): Promise<void> {
+    const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const practitionerId = validateOpaqueEntityId(
+      input.practitionerId,
+      "Practitioner id",
+    );
+    const draftVersionId = validateOpaqueEntityId(
+      input.draftVersionId,
+      "Draft version id",
+    );
+    await this.sql.run(
+      `DELETE FROM routine_draft_discards
+       WHERE routine_id = ? AND practitioner_id = ? AND draft_version_id = ?`,
+      [routineId, practitionerId, draftVersionId],
+    );
+  }
 }
 
 export class RoutineVersionsRepository {

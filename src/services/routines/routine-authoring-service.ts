@@ -205,6 +205,30 @@ export class RoutineAuthoringService {
     }
   }
 
+  private snapshotRowsToAuthoringInput(
+    rows: RoutineDraftUndoSnapshot["rows"],
+  ): AuthoringRowInput[] {
+    return rows.map((row) => ({
+      position: row.position,
+      exerciseId: row.exercise_id,
+      exerciseVersionId: row.exercise_version_id,
+      prescriptionType: row.prescription_type as PrescriptionType,
+      params: parseExerciseParamsJson(row.params_json),
+    }));
+  }
+
+  private versionRowsToAuthoringInput(
+    rows: Awaited<ReturnType<RoutineVersionRowsRepository["listForVersion"]>>,
+  ): AuthoringRowInput[] {
+    return rows.map((row) => ({
+      position: row.position,
+      exerciseId: row.exercise_id,
+      exerciseVersionId: row.exercise_version_id,
+      prescriptionType: row.prescription_type,
+      params: parseExerciseParamsJson(row.params_json),
+    }));
+  }
+
   private async validateApprovedRows(rows: AuthoringRowInput[]): Promise<void> {
     for (const row of rows) {
       const version = await this.exerciseRead.getApprovedVersionById(
@@ -418,6 +442,12 @@ export class RoutineAuthoringService {
     const undo = await this.captureDraftDiscardUndo(practitionerId, validated);
     try {
       await this.routines.deleteDraft(validated, practitionerId);
+      await this.routines.recordDraftDiscard({
+        routineId: validated,
+        practitionerId,
+        draftVersionId: undo.snapshot.draft_version_id,
+        discardedAt: this.now(),
+      });
     } catch (err) {
       mapRepoError(err);
     }
@@ -456,6 +486,15 @@ export class RoutineAuthoringService {
       );
     }
     const snap = parsed.snapshot;
+    const hasDiscardRecord = await this.routines.hasDraftDiscardForUndo({
+      routineId: validatedRoutineId,
+      practitionerId: urlPractitionerId,
+      draftVersionId: snap.draft_version_id,
+    });
+    if (!hasDiscardRecord) {
+      throw new RoutineAuthoringServiceError("Routine not found", "routine_not_found");
+    }
+    await this.validateApprovedRows(this.snapshotRowsToAuthoringInput(snap.rows));
     try {
       await this.routines.recreateDraftFromSnapshot({
         id: snap.routine_id,
@@ -475,6 +514,11 @@ export class RoutineAuthoringService {
           prescriptionType: row.prescription_type,
           params: parseExerciseParamsJson(row.params_json),
         })),
+      });
+      await this.routines.removeDraftDiscard({
+        routineId: validatedRoutineId,
+        practitionerId: urlPractitionerId,
+        draftVersionId: snap.draft_version_id,
       });
     } catch (err) {
       mapRepoError(err);
@@ -507,6 +551,7 @@ export class RoutineAuthoringService {
         issues,
       );
     }
+    await this.validateApprovedRows(this.versionRowsToAuthoringInput(rows));
     try {
       const published = await this.versions.publishDraft({
         routineId,
@@ -596,6 +641,10 @@ export class RoutineAuthoringService {
         bodyRegionId: input.bodyRegionId,
         whoItsFor: input.whoItsFor,
       });
+      await this.sql.run(
+        `UPDATE program_rows SET params_json = params_json WHERE program_id IN (SELECT id FROM programs WHERE source_routine_id = ?)`,
+        [routineId],
+      );
       return {
         routine_id: routineId,
         version_number: saved.version_number,
