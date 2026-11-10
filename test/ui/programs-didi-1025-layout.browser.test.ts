@@ -100,6 +100,22 @@ const CAPTURES: LayoutCapture[] = [
     },
   },
   {
+    mockupRef: MOCKUP_REF.programs06,
+    fixture: "programs-1199-pick-routine-preselected",
+    fileStem: "didi-1199-programs-06-pick-routine-preselected",
+    widths: [390, 1280],
+    ready: async (page) => {
+      await page
+        .getByRole("dialog", { name: NEW_PROGRAM_ROUTINE_PICKER_TITLE })
+        .waitFor({
+          state: "visible",
+        });
+      await page
+        .getByRole("button", { name: "Knee osteoarthritis, starter", pressed: true })
+        .waitFor({ state: "visible" });
+    },
+  },
+  {
     mockupRef: MOCKUP_REF.programs07,
     fixture: "programs-1025-builder-from-routine",
     fileStem: "didi-1025-programs-07-builder-from-routine",

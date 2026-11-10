@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import type {
   CommunityRoutineSummary,
   MyRoutineSavedItem,
+  RoutineDetailsResult,
 } from "../../services/routines/types.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
@@ -21,6 +22,9 @@ export type PickRoutineForProgramSheetProps = {
   onClose: () => void;
   onPick: (routineId: string) => void;
   busy?: boolean;
+  preselectedRoutineId?: string;
+  deepLinkRoutineId?: string;
+  deepLinkRead?: "idle" | "pending" | "ok" | "failed";
 };
 
 type PickableRoutine = {
@@ -48,11 +52,42 @@ function mapSaved(item: MyRoutineSavedItem): PickableRoutine {
   };
 }
 
+function mapDetailsToPickable(
+  routineId: string,
+  details: RoutineDetailsResult,
+): PickableRoutine {
+  return {
+    routine_id: routineId,
+    name: details.community.name,
+    version_number: details.community.version_number,
+    exercise_count: details.community.rows.length,
+  };
+}
+
+function deepLinkBlocksCreate(
+  selectedId: string | null,
+  deepLinkRoutineId: string | undefined,
+  deepLinkRead: PickRoutineForProgramSheetProps["deepLinkRead"],
+): boolean {
+  if (
+    !deepLinkRoutineId ||
+    !selectedId ||
+    deepLinkRead === "idle" ||
+    deepLinkRead === "ok"
+  ) {
+    return false;
+  }
+  return selectedId === deepLinkRoutineId;
+}
+
 export function PickRoutineForProgramSheet({
   open,
   onClose,
   onPick,
   busy = false,
+  preselectedRoutineId,
+  deepLinkRoutineId,
+  deepLinkRead = "idle",
 }: PickRoutineForProgramSheetProps) {
   const client = useRoutinesApi();
   const titleId = useId();
@@ -62,14 +97,20 @@ export function PickRoutineForProgramSheet({
   const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
+    if (deepLinkRead === "failed" && selectedId === deepLinkRoutineId) {
+      setSelectedId(null);
+    }
+  }, [deepLinkRead, deepLinkRoutineId, selectedId]);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
     setLoading(true);
     setLoadFailed(false);
-    setSelectedId(null);
+    setSelectedId(preselectedRoutineId ?? null);
     void Promise.all([client.searchCommunity({ limit: 50 }), client.listMyRoutines({})])
-      .then(([community, mine]) => {
+      .then(async ([community, mine]) => {
         const byId = new Map<string, PickableRoutine>();
         for (const item of community.routines) {
           byId.set(item.routine_id, mapCommunity(item));
@@ -77,7 +118,25 @@ export function PickRoutineForProgramSheet({
         for (const item of mine.saved) {
           byId.set(item.routine_id, mapSaved(item));
         }
-        setRoutines([...byId.values()]);
+        if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
+          try {
+            const details = await client.getRoutineDetails(preselectedRoutineId);
+            byId.set(
+              preselectedRoutineId,
+              mapDetailsToPickable(preselectedRoutineId, details),
+            );
+          } catch {
+            /* deep-link validation or list error handled on ProgramsNewPage */
+          }
+        }
+        const loaded = [...byId.values()];
+        setRoutines(loaded);
+        if (
+          preselectedRoutineId &&
+          loaded.some((item) => item.routine_id === preselectedRoutineId)
+        ) {
+          setSelectedId(preselectedRoutineId);
+        }
       })
       .catch(() => {
         setLoadFailed(true);
@@ -86,9 +145,14 @@ export function PickRoutineForProgramSheet({
       .finally(() => {
         setLoading(false);
       });
-  }, [client, open]);
+  }, [client, open, preselectedRoutineId]);
 
   const selected = routines.find((item) => item.routine_id === selectedId) ?? null;
+  const createBlocked = deepLinkBlocksCreate(
+    selectedId,
+    deepLinkRoutineId,
+    deepLinkRead,
+  );
 
   return (
     <ConfirmSheet
@@ -105,7 +169,7 @@ export function PickRoutineForProgramSheet({
           <button
             type="button"
             className="pg-btn pg-btn--primary"
-            disabled={!selected || busy}
+            disabled={!selected || busy || createBlocked}
             onClick={() => {
               if (selected) {
                 onPick(selected.routine_id);

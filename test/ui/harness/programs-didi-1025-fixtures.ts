@@ -108,7 +108,8 @@ export const PROGRAMS_1025_FIXTURE_ROUTES: Record<
   | "programs-1025-publish-from-routine"
   | "programs-1025-list-filters"
   | "programs-1025-new-chooser"
-  | "programs-1025-pick-routine",
+  | "programs-1025-pick-routine"
+  | "programs-1199-pick-routine-preselected",
   {
     initialEntry: string | { pathname: string; state?: unknown };
     scenario?: Programs1025HarnessScenario;
@@ -131,5 +132,8 @@ export const PROGRAMS_1025_FIXTURE_ROUTES: Record<
   },
   "programs-1025-pick-routine": {
     initialEntry: { pathname: "/programs/new", state: { openRoutinePicker: true } },
+  },
+  "programs-1199-pick-routine-preselected": {
+    initialEntry: `/programs/new?from_routine_id=${ROUTINE_1025_ORIGIN.routine_id}`,
   },
 };

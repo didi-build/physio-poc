@@ -1259,63 +1259,6 @@
   display: inline-block;
 }
 
-.pg-publish-sheet-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
-.pg-publish-sheet-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-}
-
-.pg-publish-sheet-name-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 1rem;
-}
-
-.pg-publish-sheet-name-error {
-  margin: 0;
-  color: #b91c1c;
-  font-size: 0.875rem;
-}
-
-.pg-publish-sheet-name-hint {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: #64748b;
-}
-
-.pg-publish-expiry-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.pg-publish-expiry-chip {
-  border-radius: 999px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  padding: 0.35rem 0.65rem;
-  cursor: pointer;
-}
-
-.pg-publish-expiry-chip--active {
-  border-color: #0f766e;
-  background: #ccfbf1;
-}
-
-.pg-publish-expiry-chip--default::after {
-  content: " (default)";
-  font-size: 0.75rem;
-}
-
 .pg-routine-pick-list {
   list-style: none;
   margin: 0;
@@ -1326,6 +1269,10 @@
 }
 
 .pg-routine-pick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
   width: 100%;
   text-align: left;
   border: 1px solid #e2e8f0;
@@ -1333,6 +1280,11 @@
   padding: 0.75rem 1rem;
   background: #fff;
   cursor: pointer;
+}
+
+.pg-routine-pick-name,
+.pg-routine-pick-meta {
+  display: block;
 }
 
 .pg-routine-pick-item--selected {

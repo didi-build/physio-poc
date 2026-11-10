@@ -5,6 +5,7 @@ import {
   fillPhysioAppRoutePattern,
 } from "../../app-routes.js";
 import { useProgramsApi } from "../api/programs-context.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { PickRoutineForProgramSheet } from "./PickRoutineForProgramSheet.js";
@@ -23,11 +24,17 @@ export function ProgramsNewPage() {
     (location.state as { openRoutinePicker?: boolean } | null)?.openRoutinePicker ===
     true;
   const { showToast } = useToast();
+  const sessionReady = usePractitionerSession().status === "ready";
   const initialFromRoutine = searchParams.get(FROM_ROUTINE_ID_QUERY_PARAM)?.trim();
+  const [deepLinkRead, setDeepLinkRead] = useState<
+    "idle" | "pending" | "ok" | "failed"
+  >(() => (initialFromRoutine ? "pending" : "idle"));
   const [open, setOpen] = useState(
     () => !initialFromRoutine && !openRoutinePickerOnMount,
   );
-  const [pickerOpen, setPickerOpen] = useState(openRoutinePickerOnMount);
+  const [pickerOpen, setPickerOpen] = useState(
+    () => Boolean(initialFromRoutine) || openRoutinePickerOnMount,
+  );
   const [createFailed, setCreateFailed] = useState(false);
   const [routineBusy, setRoutineBusy] = useState(false);
 
@@ -75,10 +82,32 @@ export function ProgramsNewPage() {
 
   useEffect(() => {
     if (!initialFromRoutine) {
+      setDeepLinkRead("idle");
       return;
     }
-    createFromPickedRoutine(initialFromRoutine);
-  }, [initialFromRoutine]);
+    if (!sessionReady) {
+      setDeepLinkRead("pending");
+      return;
+    }
+    setDeepLinkRead("pending");
+    let cancelled = false;
+    void routinesClient
+      .getRoutineDetails(initialFromRoutine)
+      .then(() => {
+        if (!cancelled) {
+          setDeepLinkRead("ok");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDeepLinkRead("failed");
+          setCreateFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialFromRoutine, routinesClient, sessionReady]);
 
   return (
     <section className="pg-page ex-page">
@@ -110,6 +139,13 @@ export function ProgramsNewPage() {
       <PickRoutineForProgramSheet
         open={pickerOpen}
         busy={routineBusy}
+        deepLinkRoutineId={initialFromRoutine ?? undefined}
+        deepLinkRead={initialFromRoutine ? deepLinkRead : "idle"}
+        preselectedRoutineId={
+          initialFromRoutine && deepLinkRead !== "failed"
+            ? initialFromRoutine
+            : undefined
+        }
         onClose={() => {
           setPickerOpen(false);
         }}

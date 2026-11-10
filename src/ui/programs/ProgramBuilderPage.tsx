@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import type { ProgramShareConnectorView } from "../../services/programs/program-publish-service.js";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import {
@@ -82,7 +82,6 @@ export function ProgramBuilderPage({
 }: ProgramBuilderPageProps) {
   const client = useProgramsApi();
   const navigate = useNavigate();
-  const location = useLocation();
   const { programCode = "" } = useParams();
   const { showToast } = useToast();
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
@@ -284,14 +283,6 @@ export function ProgramBuilderPage({
   useEffect(() => {
     setPublishOpen(publishSheetOpen);
   }, [publishSheetOpen]);
-
-  useEffect(() => {
-    const state = location.state as { openPublishSheet?: boolean } | null;
-    if (state?.openPublishSheet) {
-      setPublishOpen(true);
-      navigate(location.pathname, { replace: true, state: null });
-    }
-  }, [location.pathname, location.state, navigate]);
 
   const libraryPrompts = useMemo(
     () =>
