@@ -116,8 +116,11 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         id("ui-undo-save-wrong"),
         "undo-save-wrong@example.com",
       );
-      const routineName = (await fixture.client.getRoutineDetails(fixture.routineId))
-        .community.name;
+      const loaded = await fixture.client.getRoutineDetails(fixture.routineId);
+      if (loaded.is_draft) {
+        throw new Error("expected published routine");
+      }
+      const routineName = loaded.community.name;
       const getRoutineDetails = vi.spyOn(fixture.client, "getRoutineDetails");
       const user = userEvent.setup();
       renderDetail(fixture.routineId, fixture.client);
@@ -210,8 +213,11 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         id("ui-undo-remove-wrong"),
         "undo-remove-wrong@example.com",
       );
-      const routineName = (await fixture.client.getRoutineDetails(fixture.routineId))
-        .community.name;
+      const loaded = await fixture.client.getRoutineDetails(fixture.routineId);
+      if (loaded.is_draft) {
+        throw new Error("expected published routine");
+      }
+      const routineName = loaded.community.name;
       const getRoutineDetails = vi.spyOn(fixture.client, "getRoutineDetails");
       const user = userEvent.setup();
       renderDetail(fixture.routineId, fixture.client);
@@ -268,8 +274,11 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         "a@example.com",
       );
       const client = createClientWithUndo401(deps, cookie);
-      const routineName = (await client.getRoutineDetails(fixture.routineId)).community
-        .name;
+      const loadedForRemove = await client.getRoutineDetails(fixture.routineId);
+      if (loadedForRemove.is_draft) {
+        throw new Error("expected published routine");
+      }
+      const routineName = loadedForRemove.community.name;
       const getRoutineDetails = vi.spyOn(client, "getRoutineDetails");
       const user = userEvent.setup();
       renderDetail(fixture.routineId, client);
@@ -308,6 +317,9 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
     const fixture = await openFlaggedRoutineHttpUiFixture("undo-adopt-409");
     try {
       const details = await fixture.client.getRoutineDetails(fixture.routineId);
+      if (details.is_draft) {
+        throw new Error("expected published routine");
+      }
       const version = details.community.version_number;
       const adoptedName = details.community.name;
       const wrong = await seedPractitioner(
@@ -343,6 +355,9 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         expect(getRoutineDetails.mock.calls.length).toBe(callsAfterAdopt);
         expect(screen.queryByTestId("routine-update-banner")).not.toBeInTheDocument();
         const after = await fixture.client.getRoutineDetails(fixture.routineId);
+        if (after.is_draft) {
+          throw new Error("expected published routine");
+        }
         expect(after.my_copy?.source_version_number).toBe(version);
         expect(after.community.name).toBe(adoptedName);
         expect(after.my_copy?.edited).toBe(false);

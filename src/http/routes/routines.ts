@@ -4,12 +4,22 @@ import {
   ProgramBuilderService,
   ProgramBuilderServiceError,
 } from "../../services/programs/index.js";
+import type { PrescriptionType } from "../../domain/exercise-types.js";
+import { PRESCRIPTION_TYPES } from "../../domain/exercise-types.js";
+import type { ExerciseParams } from "../../domain/exercise-params.js";
 import {
+  RoutineAuthoringService,
+  RoutineAuthoringServiceError,
   RoutinesLibraryService,
   RoutinesLibraryServiceError,
+  parseRoutineDraftDiscardUndo,
   parseRoutineMutationUndo,
   type RoutineSearchSort,
 } from "../../services/routines/index.js";
+import {
+  ROUTINES_AUTHORING_COLLECTION_PATH,
+  routineVersionHistoryPath,
+} from "../../routine-authoring-api-paths.js";
 import {
   ROUTINES_COMMUNITY_SEARCH_PATH,
   ROUTINES_MY_ROUTINES_PATH,
@@ -23,14 +33,20 @@ import { requirePractitioner } from "../require-practitioner.js";
 const JSON_HEADERS = { "content-type": "application/json" };
 
 const ROUTINES_ME_PATH =
-  /^\/api\/me\/(?:routines\/community\/search|my-routines(?:\/([^/]+))?|routines(?:\/([^/]+)(?:\/sent-programs)?)?)$/;
+  /^\/api\/me\/(?:routines\/community\/search|my-routines(?:\/([^/]+))?|routines(?:\/([^/]+)(?:\/(?:sent-programs|versions))?)?)$/;
 
 export function isRoutinesLibraryApiPath(pathname: string): boolean {
-  return ROUTINES_ME_PATH.test(pathname);
+  return (
+    pathname === ROUTINES_AUTHORING_COLLECTION_PATH || ROUTINES_ME_PATH.test(pathname)
+  );
 }
 
 function libraryService(deps: AppDependencies): RoutinesLibraryService {
   return new RoutinesLibraryService(deps.sql, deps.config);
+}
+
+function authoringService(deps: AppDependencies): RoutineAuthoringService {
+  return new RoutineAuthoringService(deps.sql);
 }
 
 function programService(deps: AppDependencies): ProgramBuilderService {
@@ -71,6 +87,93 @@ function errorResponse(error: unknown): Response {
     );
   }
   throw error;
+}
+
+function authoringErrorResponse(error: unknown): Response {
+  if (error instanceof RoutineAuthoringServiceError) {
+    const status =
+      error.code === "stale_write"
+        ? 409
+        : error.code === "practitioner_not_found" || error.code === "routine_not_found"
+          ? 404
+          : error.code === "exercise_not_found"
+            ? 404
+            : 400;
+    const body: Record<string, unknown> = {
+      error: error.code,
+      message: error.message,
+    };
+    if (error.code === "publish_validation_failed" && error.validation_issues) {
+      body.validation_issues = error.validation_issues;
+    }
+    return Response.json(body, { status, headers: JSON_HEADERS });
+  }
+  return errorResponse(error);
+}
+
+function parsePrescriptionType(raw: unknown): PrescriptionType | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  return PRESCRIPTION_TYPES.includes(raw as PrescriptionType)
+    ? (raw as PrescriptionType)
+    : null;
+}
+
+function parseAuthoringRows(raw: unknown):
+  | {
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[]
+  | Response {
+  if (!Array.isArray(raw)) {
+    return Response.json(
+      { error: "invalid_input", message: "rows must be an array" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  const parsed: {
+    position: number;
+    exerciseId: string;
+    exerciseVersionId: string;
+    prescriptionType: PrescriptionType;
+    params: ExerciseParams;
+  }[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid row" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    const row = item as Record<string, unknown>;
+    const prescriptionType = parsePrescriptionType(row.prescription_type);
+    if (
+      typeof row.position !== "number" ||
+      typeof row.exercise_id !== "string" ||
+      typeof row.exercise_version_id !== "string" ||
+      !prescriptionType ||
+      !row.params ||
+      typeof row.params !== "object" ||
+      Array.isArray(row.params)
+    ) {
+      return Response.json(
+        { error: "invalid_input", message: "Invalid row" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    parsed.push({
+      position: row.position,
+      exerciseId: row.exercise_id,
+      exerciseVersionId: row.exercise_version_id,
+      prescriptionType,
+      params: row.params as ExerciseParams,
+    });
+  }
+  return parsed;
 }
 
 function parseSort(raw: string | null): RoutineSearchSort | null {
@@ -146,6 +249,44 @@ export async function handleRoutinesRequest(
   const practitionerId = requirePractitioner(options.sessionPractitioner);
   if (practitionerId instanceof Response) {
     return practitionerId;
+  }
+
+  if (path === ROUTINES_AUTHORING_COLLECTION_PATH && request.method === "POST") {
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const rejected = rejectBodyPractitionerId(body);
+    if (rejected) {
+      return rejected;
+    }
+    if (typeof body.body_region_id !== "string" || body.body_region_id.trim() === "") {
+      return Response.json(
+        { error: "invalid_input", message: "body_region_id is required" },
+        { status: 400, headers: JSON_HEADERS },
+      );
+    }
+    try {
+      const result = await authoringService(deps).createDraft({
+        practitionerId,
+        bodyRegionId: body.body_region_id,
+        conditionId:
+          body.condition_id === null || typeof body.condition_id === "string"
+            ? (body.condition_id as string | null | undefined)
+            : undefined,
+        whoItsFor:
+          body.who_its_for === null || typeof body.who_its_for === "string"
+            ? (body.who_its_for as string | null | undefined)
+            : undefined,
+        name:
+          body.name === null || typeof body.name === "string"
+            ? (body.name as string | null | undefined)
+            : undefined,
+      });
+      return Response.json(result, { status: 201, headers: JSON_HEADERS });
+    } catch (error) {
+      return authoringErrorResponse(error);
+    }
   }
 
   if (path === ROUTINES_COMMUNITY_SEARCH_PATH && request.method === "GET") {
@@ -329,15 +470,208 @@ export async function handleRoutinesRequest(
         return errorResponse(error);
       }
     }
-    if (path === routineDetailsPath(routineId) && request.method === "GET") {
+    if (path === routineVersionHistoryPath(routineId) && request.method === "GET") {
       try {
-        const result = await libraryService(deps).getRoutineDetails(
+        const result = await authoringService(deps).listVersionHistory(
           practitionerId,
           routineId,
         );
         return Response.json(result, { headers: JSON_HEADERS });
       } catch (error) {
-        return errorResponse(error);
+        return authoringErrorResponse(error);
+      }
+    }
+    if (path === routineDetailsPath(routineId)) {
+      if (request.method === "GET") {
+        try {
+          const result = await libraryService(deps).getRoutineDetails(
+            practitionerId,
+            routineId,
+          );
+          return Response.json(result, { headers: JSON_HEADERS });
+        } catch (error) {
+          return errorResponse(error);
+        }
+      }
+      if (request.method === "PATCH") {
+        const body = await readJsonObjectBody(request);
+        if (body instanceof Response) {
+          return body;
+        }
+        const rejected = rejectBodyPractitionerId(body);
+        if (rejected) {
+          return rejected;
+        }
+        let rows:
+          | {
+              position: number;
+              exerciseId: string;
+              exerciseVersionId: string;
+              prescriptionType: PrescriptionType;
+              params: ExerciseParams;
+            }[]
+          | undefined;
+        if (body.rows !== undefined) {
+          const parsedRows = parseAuthoringRows(body.rows);
+          if (parsedRows instanceof Response) {
+            return parsedRows;
+          }
+          rows = parsedRows;
+        }
+        try {
+          const result = await authoringService(deps).autosaveDraft({
+            practitionerId,
+            routineId,
+            bodyRegionId:
+              typeof body.body_region_id === "string" ? body.body_region_id : undefined,
+            conditionId:
+              body.condition_id === null || typeof body.condition_id === "string"
+                ? (body.condition_id as string | null | undefined)
+                : undefined,
+            whoItsFor:
+              body.who_its_for === null || typeof body.who_its_for === "string"
+                ? (body.who_its_for as string | null | undefined)
+                : undefined,
+            name:
+              body.name === null || typeof body.name === "string"
+                ? (body.name as string | null | undefined)
+                : undefined,
+            rows,
+          });
+          return Response.json(result, { headers: JSON_HEADERS });
+        } catch (error) {
+          return authoringErrorResponse(error);
+        }
+      }
+      if (request.method === "DELETE") {
+        try {
+          const result = await authoringService(deps).cancelUntouchedDraft(
+            practitionerId,
+            routineId,
+          );
+          return Response.json(result, { headers: JSON_HEADERS });
+        } catch (error) {
+          return authoringErrorResponse(error);
+        }
+      }
+      if (request.method === "POST") {
+        const body = await readJsonObjectBody(request);
+        if (body instanceof Response) {
+          return body;
+        }
+        const action = body.action;
+        const rejected = rejectSpoofedPractitionerIdInBody(body, {
+          allowUndoPayload: action === "undo_draft_discard",
+        });
+        if (rejected) {
+          return rejected;
+        }
+        if (action === "publish") {
+          try {
+            const result = await authoringService(deps).publishDraft({
+              practitionerId,
+              routineId,
+              name: typeof body.name === "string" ? body.name : undefined,
+            });
+            return Response.json(result, { headers: JSON_HEADERS });
+          } catch (error) {
+            return authoringErrorResponse(error);
+          }
+        }
+        if (action === "discard_draft") {
+          try {
+            const result = await authoringService(deps).discardDraft(
+              practitionerId,
+              routineId,
+            );
+            return Response.json(result, { headers: JSON_HEADERS });
+          } catch (error) {
+            return authoringErrorResponse(error);
+          }
+        }
+        if (action === "undo_draft_discard") {
+          try {
+            const undoPayload = parseRoutineDraftDiscardUndo(body.undo);
+            await authoringService(deps).undoDiscardDraft(
+              practitionerId,
+              routineId,
+              undoPayload,
+            );
+            return Response.json({ ok: true }, { headers: JSON_HEADERS });
+          } catch (error) {
+            return authoringErrorResponse(error);
+          }
+        }
+        if (action === "save_community_version") {
+          const parsedRows = parseAuthoringRows(body.rows);
+          if (parsedRows instanceof Response) {
+            return parsedRows;
+          }
+          if (typeof body.name !== "string" || body.name.trim() === "") {
+            return Response.json(
+              { error: "invalid_input", message: "name is required" },
+              { status: 400, headers: JSON_HEADERS },
+            );
+          }
+          if (typeof body.expected_published_version !== "number") {
+            return Response.json(
+              {
+                error: "invalid_input",
+                message: "expected_published_version is required",
+              },
+              { status: 400, headers: JSON_HEADERS },
+            );
+          }
+          try {
+            const result = await authoringService(deps).saveCommunityVersion({
+              practitionerId,
+              routineId,
+              expectedPublishedVersion: body.expected_published_version,
+              name: body.name,
+              changeSummary:
+                body.change_summary === null || typeof body.change_summary === "string"
+                  ? (body.change_summary as string | null | undefined)
+                  : undefined,
+              rows: parsedRows,
+              conditionId:
+                body.condition_id === null || typeof body.condition_id === "string"
+                  ? (body.condition_id as string | null | undefined)
+                  : undefined,
+              bodyRegionId:
+                typeof body.body_region_id === "string"
+                  ? body.body_region_id
+                  : undefined,
+              whoItsFor:
+                body.who_its_for === null || typeof body.who_its_for === "string"
+                  ? (body.who_its_for as string | null | undefined)
+                  : undefined,
+            });
+            return Response.json(result, { headers: JSON_HEADERS });
+          } catch (error) {
+            return authoringErrorResponse(error);
+          }
+        }
+        if (action === "restore_version") {
+          if (typeof body.restore_from_version_number !== "number") {
+            return Response.json(
+              {
+                error: "invalid_input",
+                message: "restore_from_version_number is required",
+              },
+              { status: 400, headers: JSON_HEADERS },
+            );
+          }
+          try {
+            const result = await authoringService(deps).restoreVersion({
+              practitionerId,
+              routineId,
+              restoreFromVersionNumber: body.restore_from_version_number,
+            });
+            return Response.json(result, { headers: JSON_HEADERS });
+          } catch (error) {
+            return authoringErrorResponse(error);
+          }
+        }
       }
     }
   }

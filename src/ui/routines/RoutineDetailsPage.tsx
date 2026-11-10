@@ -80,6 +80,9 @@ function activeRows(
   details: RoutineDetailsResult,
   source: SourceView,
 ): RoutineExerciseRow[] {
+  if (details.is_draft) {
+    return details.draft.rows;
+  }
   if (source === "mine" && details.my_copy) {
     return details.my_copy.rows;
   }
@@ -126,7 +129,9 @@ export function RoutineDetailsPage() {
   };
 
   const showDetailContent = !loading && !loadFailed && details !== null;
-  const name = details?.community.name ?? ROUTINE_DETAIL_HEADING;
+  const name = details?.is_draft
+    ? (details.draft.name ?? ROUTINE_DETAIL_HEADING)
+    : (details?.community.name ?? ROUTINE_DETAIL_HEADING);
 
   const flagged = details?.my_copy?.community_updated ?? false;
   const saved = details?.my_copy != null;
@@ -163,6 +168,15 @@ export function RoutineDetailsPage() {
         </h1>
         {loading ? <ExerciseLibraryBusyState /> : null}
         {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+      </section>
+    );
+  }
+
+  if (details.is_draft) {
+    navigate(fillPhysioAppRoutePattern("routines"));
+    return (
+      <section className="ex-page rt-detail" aria-labelledby="rt-detail-heading">
+        <ExerciseLibraryBusyState />
       </section>
     );
   }

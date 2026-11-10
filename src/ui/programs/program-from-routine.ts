@@ -37,6 +37,9 @@ export async function createProgramFromRoutineWithDetails(
   sourceOverride?: RoutineProgramSource,
 ) {
   const details = await routinesClient.getRoutineDetails(routineId);
+  if (details.is_draft) {
+    throw new Error("Routine is not published");
+  }
   const source =
     sourceOverride ??
     resolveRoutineProgramSource(

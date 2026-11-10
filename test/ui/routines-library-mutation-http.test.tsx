@@ -229,6 +229,9 @@ describe("Routines library mutation failures (HTTP → UI)", () => {
     const fixture = await openFlaggedRoutineHttpUiFixture("adopt-409");
     try {
       const details = await fixture.client.getRoutineDetails(fixture.routineId);
+      if (details.is_draft) {
+        throw new Error("expected published routine");
+      }
       const version = details.community.version_number;
       const wrong = await seedPractitioner(
         fixture.storage,

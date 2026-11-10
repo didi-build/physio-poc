@@ -93,7 +93,10 @@ export function ProgramsNewPage() {
     let cancelled = false;
     void routinesClient
       .getRoutineDetails(initialFromRoutine)
-      .then(() => {
+      .then((details) => {
+        if (details.is_draft) {
+          throw new Error("Routine is not published");
+        }
         if (!cancelled) {
           setDeepLinkRead("ok");
         }

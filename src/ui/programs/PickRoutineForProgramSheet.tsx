@@ -55,7 +55,10 @@ function mapSaved(item: MyRoutineSavedItem): PickableRoutine {
 function mapDetailsToPickable(
   routineId: string,
   details: RoutineDetailsResult,
-): PickableRoutine {
+): PickableRoutine | null {
+  if (details.is_draft) {
+    return null;
+  }
   return {
     routine_id: routineId,
     name: details.community.name,
@@ -121,10 +124,10 @@ export function PickRoutineForProgramSheet({
         if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
           try {
             const details = await client.getRoutineDetails(preselectedRoutineId);
-            byId.set(
-              preselectedRoutineId,
-              mapDetailsToPickable(preselectedRoutineId, details),
-            );
+            const mapped = mapDetailsToPickable(preselectedRoutineId, details);
+            if (mapped) {
+              byId.set(preselectedRoutineId, mapped);
+            }
           } catch {
             /* deep-link validation or list error handled on ProgramsNewPage */
           }

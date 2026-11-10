@@ -365,6 +365,102 @@ export class RoutinesRepository {
       );
     }
   }
+
+  buildDeleteDraftBatchStatements(
+    routineId: string,
+    authorId: string,
+  ): SqlBatchStatement[] {
+    const rid = validateOpaqueEntityId(routineId, "Routine id");
+    const author = validateOpaqueEntityId(authorId, "Author id");
+    return [
+      {
+        sql: `DELETE FROM routine_version_rows WHERE routine_version_id IN (
+          SELECT id FROM routine_versions WHERE routine_id = ?
+        )`,
+        bindings: [rid],
+      },
+      {
+        sql: `DELETE FROM routine_versions WHERE routine_id = ?`,
+        bindings: [rid],
+      },
+      {
+        sql: `DELETE FROM routines WHERE id = ? AND created_by = ? AND published_version IS NULL`,
+        bindings: [rid, author],
+        minRowsAffected: 1,
+      },
+    ];
+  }
+
+  async deleteDraft(routineId: string, authorId: string): Promise<void> {
+    const routine = await this.findById(routineId);
+    if (!routine) {
+      throw new RoutineRepositoryError("Routine not found");
+    }
+    if (routine.created_by !== authorId) {
+      throw new RoutineRepositoryError("Only the author can delete this draft");
+    }
+    if (routine.published_version !== null) {
+      throw new RoutineRepositoryError("Cannot delete a published routine");
+    }
+    await runRoutineWriteBatch(
+      this.sql,
+      this.buildDeleteDraftBatchStatements(routineId, authorId),
+    );
+  }
+
+  async recreateDraftFromSnapshot(input: {
+    id: string;
+    draftVersionId: string;
+    createdBy: string;
+    createdAt: string;
+    draftUpdatedAt: string;
+    bodyRegionId: string;
+    conditionId?: string | null;
+    whoItsFor?: string | null;
+    name?: string | null;
+    rows: {
+      id: string;
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+  }): Promise<void> {
+    const rowRepo = new RoutineVersionRowsRepository(this.sql);
+    const rowStatements = input.rows.map((row) =>
+      rowRepo.buildInsertRowBatchStatement({
+        id: row.id,
+        routineVersionId: input.draftVersionId,
+        position: row.position,
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+        prescriptionType: row.prescriptionType,
+        params: row.params,
+      }),
+    );
+    await runRoutineWriteBatch(this.sql, [
+      ...this.buildCreateDraftBatchStatements({
+        routineId: input.id,
+        draftVersionId: input.draftVersionId,
+        createdBy: input.createdBy,
+        createdAt: input.createdAt,
+        conditionId: input.conditionId ?? null,
+        bodyRegionId: input.bodyRegionId,
+        whoItsFor: input.whoItsFor ?? null,
+        name: input.name ?? null,
+      }),
+      {
+        sql: `UPDATE routines SET draft_updated_at = ? WHERE id = ?`,
+        bindings: [
+          input.draftUpdatedAt,
+          validateOpaqueEntityId(input.id, "Routine id"),
+        ],
+        minRowsAffected: 1,
+      },
+      ...rowStatements,
+    ]);
+  }
 }
 
 export class RoutineVersionsRepository {
@@ -416,6 +512,19 @@ export class RoutineVersionsRepository {
        WHERE routine_id = ? AND status = 'published' AND version_number > ?
        ORDER BY version_number ASC`,
       [routineId, baselineVersionNumber],
+    );
+  }
+
+  async listPublishedVersionsForRoutine(
+    routineId: string,
+  ): Promise<RoutineVersionRecord[]> {
+    return this.sql.all<RoutineVersionRecord>(
+      `SELECT id, routine_id, version_number, status, name, change_summary,
+              restored_from_version_id, created_by, created_at
+       FROM routine_versions
+       WHERE routine_id = ? AND status = 'published'
+       ORDER BY version_number DESC`,
+      [validateOpaqueEntityId(routineId, "Routine id")],
     );
   }
 
@@ -503,6 +612,17 @@ export class RoutineVersionsRepository {
     changeSummary?: string | null;
     restoredFromVersionId?: string | null;
     copyFromVersionId: string;
+    rows?: {
+      id: string;
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+    conditionId?: string | null;
+    bodyRegionId?: string;
+    whoItsFor?: string | null;
   }): Promise<RoutineVersionRecord> {
     const versionId = validateOpaqueEntityId(input.id, "Routine version id");
     const routine = await new RoutinesRepository(this.sql).findById(input.routineId);
@@ -529,25 +649,40 @@ export class RoutineVersionsRepository {
       input.copyFromVersionId,
       "copyFromVersionId",
     );
-    const sourceRows = await new RoutineVersionRowsRepository(this.sql).listForVersion(
-      input.copyFromVersionId,
-    );
-    if (sourceRows.length === 0) {
-      throw new RoutineRepositoryError("Cannot save an empty routine version");
-    }
-
     const rowRepo = new RoutineVersionRowsRepository(this.sql);
-    const rowStatements = sourceRows.map((row) =>
-      rowRepo.buildInsertRowBatchStatement({
-        id: crypto.randomUUID(),
-        routineVersionId: versionId,
-        position: row.position,
-        exerciseId: row.exercise_id,
-        exerciseVersionId: row.exercise_version_id,
-        prescriptionType: row.prescription_type,
-        params: parseExerciseParamsJson(row.params_json),
-      }),
-    );
+    let rowStatements: SqlBatchStatement[];
+    if (input.rows) {
+      if (input.rows.length === 0) {
+        throw new RoutineRepositoryError("Cannot save an empty routine version");
+      }
+      rowStatements = input.rows.map((row) =>
+        rowRepo.buildInsertRowBatchStatement({
+          id: row.id,
+          routineVersionId: versionId,
+          position: row.position,
+          exerciseId: row.exerciseId,
+          exerciseVersionId: row.exerciseVersionId,
+          prescriptionType: row.prescriptionType,
+          params: row.params,
+        }),
+      );
+    } else {
+      const sourceRows = await rowRepo.listForVersion(input.copyFromVersionId);
+      if (sourceRows.length === 0) {
+        throw new RoutineRepositoryError("Cannot save an empty routine version");
+      }
+      rowStatements = sourceRows.map((row) =>
+        rowRepo.buildInsertRowBatchStatement({
+          id: crypto.randomUUID(),
+          routineVersionId: versionId,
+          position: row.position,
+          exerciseId: row.exercise_id,
+          exerciseVersionId: row.exercise_version_id,
+          prescriptionType: row.prescription_type,
+          params: parseExerciseParamsJson(row.params_json),
+        }),
+      );
+    }
     await runRoutineWriteBatch(
       this.sql,
       this.buildSavePublishedVersionBatchStatements({
@@ -561,6 +696,11 @@ export class RoutineVersionsRepository {
         createdBy: input.createdBy,
         createdAt: input.createdAt,
         rowStatements,
+        conditionId:
+          input.conditionId === undefined ? routine.condition_id : input.conditionId,
+        bodyRegionId: input.bodyRegionId ?? routine.body_region_id,
+        whoItsFor:
+          input.whoItsFor === undefined ? routine.who_its_for : input.whoItsFor,
       }),
     );
     const saved = await this.findPublishedVersion(input.routineId, nextVersion);
@@ -581,15 +721,23 @@ export class RoutineVersionsRepository {
     createdBy: string;
     createdAt: string;
     rowStatements: SqlBatchStatement[];
+    conditionId: string | null;
+    bodyRegionId: string;
+    whoItsFor: string | null;
   }): SqlBatchStatement[] {
     const versionId = validateOpaqueEntityId(input.versionId, "Routine version id");
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
     return [
       {
-        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ? WHERE id = ? AND published_version = ?`,
+        sql: `UPDATE routines SET published_version = ?, draft_updated_at = ?,
+            condition_id = ?, body_region_id = ?, who_its_for = ?
+            WHERE id = ? AND published_version = ?`,
         bindings: [
           input.nextVersion,
           input.createdAt,
+          input.conditionId,
+          input.bodyRegionId,
+          input.whoItsFor,
           routineId,
           input.expectedPublishedVersion,
         ],
@@ -743,6 +891,60 @@ export class RoutineVersionRowsRepository {
     await this.sql.run(`UPDATE routines SET draft_updated_at = ? WHERE id = ?`, [
       input.draftUpdatedAt,
       input.routineId,
+    ]);
+  }
+
+  async replaceAllDraftRows(input: {
+    routineId: string;
+    authorId: string;
+    draftUpdatedAt: string;
+    rows: {
+      id: string;
+      position: number;
+      exerciseId: string;
+      exerciseVersionId: string;
+      prescriptionType: PrescriptionType;
+      params: ExerciseParams;
+    }[];
+  }): Promise<void> {
+    const routine = await new RoutinesRepository(this.sql).findById(input.routineId);
+    if (!routine) {
+      throw new RoutineRepositoryError("Routine not found");
+    }
+    if (routine.created_by !== input.authorId) {
+      throw new RoutineRepositoryError("Only the author can edit draft rows");
+    }
+    if (routine.published_version !== null) {
+      throw new RoutineRepositoryError("Use published version saves for live routines");
+    }
+    const draft = await new RoutineVersionsRepository(this.sql).findDraftForRoutine(
+      input.routineId,
+    );
+    if (!draft) {
+      throw new RoutineRepositoryError("Draft version not found");
+    }
+    const rowStatements = input.rows.map((row) =>
+      this.buildInsertRowBatchStatement({
+        id: row.id,
+        routineVersionId: draft.id,
+        position: row.position,
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+        prescriptionType: row.prescriptionType,
+        params: row.params,
+      }),
+    );
+    await runRoutineWriteBatch(this.sql, [
+      {
+        sql: `DELETE FROM routine_version_rows WHERE routine_version_id = ?`,
+        bindings: [draft.id],
+      },
+      ...rowStatements,
+      {
+        sql: `UPDATE routines SET draft_updated_at = ? WHERE id = ?`,
+        bindings: [input.draftUpdatedAt, input.routineId],
+        minRowsAffected: 1,
+      },
     ]);
   }
 }

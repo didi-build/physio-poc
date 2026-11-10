@@ -427,6 +427,9 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
 
       const service = new RoutinesLibraryService(storage, MCP_TEST_CONFIG);
       const details = await service.getRoutineDetails(author, routineId);
+      if (details.is_draft) {
+        throw new Error("expected published routine");
+      }
       expect(details.community.usage_count).toBeGreaterThanOrEqual(1);
       expect(details.sent_program_count).toBe(1);
       expect(details.sent_program_codes.length).toBe(1);

@@ -893,6 +893,9 @@ describe.each(STORAGE_CASES.filter((c) => c.label !== "InMemorySqlStorage"))(
           createdBy: author,
           createdAt: TS,
           rowStatements: [],
+          conditionId: null,
+          bodyRegionId: BODY_REGION_KNEE,
+          whoItsFor: null,
         });
         expect(batch[0]).toEqual(template[0]);
         expect(batch[1]).toEqual(template[1]);
@@ -1027,6 +1030,9 @@ describe("batch statement guard contracts (builder)", () => {
       createdBy: author,
       createdAt: TS,
       rowStatements: [],
+      conditionId: null,
+      bodyRegionId: BODY_REGION_KNEE,
+      whoItsFor: null,
     });
     expect(batch[0]?.minRowsAffected).toBe(1);
     expect(batch[0]?.sql).toContain("published_version = ?");
