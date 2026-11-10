@@ -10,6 +10,17 @@ export function isExpiredShareLinkRevive(
   return shareView?.share_link_state === "expired";
 }
 
+/** Copy, link page, PDF, and URL row need a URL; expired revive often has an empty share_link until republish. */
+export function shareScreenLinkUrlAvailable(
+  shareView: ProgramShareConnectorView,
+  shareUrl: string,
+): boolean {
+  if (shareUrl.trim().length > 0) {
+    return true;
+  }
+  return !isExpiredShareLinkRevive(shareView);
+}
+
 /** Closed / new-link UI — not an expired revive the server treats as same link. */
 export function isGenuinelyClosedShareLink(
   shareView: ProgramShareConnectorView | null | undefined,

@@ -42,6 +42,7 @@ import { openShareLinkPageForPrint } from "./program-share-download.js";
 import {
   isExpiredShareLinkRevive,
   isGenuinelyClosedShareLink,
+  shareScreenLinkUrlAvailable,
 } from "./share-link-ui.js";
 import { ProgramsApiError } from "../api/programs-client.js";
 import { publishApiUserMessage } from "./publish-api-user-message.js";
@@ -211,6 +212,8 @@ export function ProgramSharePage() {
     ? shareView.program_name
     : UNTITLED_PROGRAM;
 
+  const linkUrlReady = shareScreenLinkUrlAvailable(shareView, shareUrl);
+
   const linkPanelProps = {
     shareView,
     closed: Boolean(closed),
@@ -255,10 +258,8 @@ export function ProgramSharePage() {
                   programCode={shareView.program_code}
                   programTitle={programTitle}
                 />
-              ) : (
-                <p className="pg-share-preview-empty">
-                  {expiredRevive ? "" : SHARE_LINK_CLOSED_LINE}
-                </p>
+              ) : expiredRevive ? null : (
+                <p className="pg-share-preview-empty">{SHARE_LINK_CLOSED_LINE}</p>
               )}
             </div>
             <p className="pg-share-preview-caption">{PDF_PREVIEW_CAPTION}</p>
@@ -286,7 +287,7 @@ export function ProgramSharePage() {
             >
               {SHARE_CREATE_NEW_LINK}
             </button>
-          ) : (
+          ) : linkUrlReady ? (
             <>
               <button
                 type="button"
@@ -305,6 +306,16 @@ export function ProgramSharePage() {
                 {PHONE_SHARE}
               </button>
             </>
+          ) : (
+            <button
+              type="button"
+              className="pg-btn pg-btn--primary pg-publish-phone-bar-btn"
+              onClick={() => {
+                setMobileSheetOpen(true);
+              }}
+            >
+              {PHONE_SHARE}
+            </button>
           )}
         </div>
       ) : null}

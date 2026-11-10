@@ -30,10 +30,14 @@ import {
   shareExpiresOnLine,
 } from "../copy/program-publish.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
-import { isGenuinelyClosedShareLink } from "./share-link-ui.js";
+import {
+  isGenuinelyClosedShareLink,
+  shareScreenLinkUrlAvailable,
+} from "./share-link-ui.js";
 
 type ShareActionsProps = {
   shareView: ProgramShareConnectorView;
+  linkUrlReady: boolean;
   onCopy: () => void;
   onLinkPage: () => void;
   onDownloadPdf: () => void;
@@ -44,6 +48,7 @@ type ShareActionsProps = {
 
 function ShareActions({
   shareView,
+  linkUrlReady,
   onCopy,
   onLinkPage,
   onDownloadPdf,
@@ -105,9 +110,13 @@ function ShareActions({
       showDesktop: true,
     },
   ];
+  const visibleRows = linkUrlReady
+    ? rows
+    : rows.filter((row) => row.label === SHARE_CLOSE_LINK);
+
   return (
     <ul className={`pg-share-actions${inSheet ? " pg-share-actions--sheet" : ""}`}>
-      {rows.map((row) =>
+      {visibleRows.map((row) =>
         row.showDesktop || inSheet ? (
           <li key={row.label}>
             <button
@@ -165,6 +174,7 @@ export function ProgramShareLinkPanel({
   const panelClass = inSheet
     ? "pg-share-link-panel pg-share-link-panel--sheet"
     : "pg-share-aside";
+  const linkUrlReady = shareScreenLinkUrlAvailable(shareView, shareUrl);
 
   return (
     <aside
@@ -190,24 +200,28 @@ export function ProgramShareLinkPanel({
         </>
       ) : (
         <>
-          <div
-            className={`pg-share-link-row${inSheet ? " pg-share-link-row--sheet" : ""}`}
-          >
-            <span className="pg-share-link-url">{shareUrl}</span>
-            {inSheet ? null : (
-              <button
-                type="button"
-                className="pg-btn pg-btn--secondary"
-                onClick={() => {
-                  void onCopy();
-                }}
+          {linkUrlReady ? (
+            <>
+              <div
+                className={`pg-share-link-row${inSheet ? " pg-share-link-row--sheet" : ""}`}
               >
-                {PUBLISH_COPY_LINK}
-              </button>
-            )}
-          </div>
-          <p className="pg-share-helper">{SHARE_HELPER_VIEW}</p>
-          <p className="pg-share-helper">{SHARE_HELPER_PUBLISHED}</p>
+                <span className="pg-share-link-url">{shareUrl}</span>
+                {inSheet ? null : (
+                  <button
+                    type="button"
+                    className="pg-btn pg-btn--secondary"
+                    onClick={() => {
+                      void onCopy();
+                    }}
+                  >
+                    {PUBLISH_COPY_LINK}
+                  </button>
+                )}
+              </div>
+              <p className="pg-share-helper">{SHARE_HELPER_VIEW}</p>
+              <p className="pg-share-helper">{SHARE_HELPER_PUBLISHED}</p>
+            </>
+          ) : null}
           <div className="pg-share-expiry-block">
             <div className="pg-share-expiry-head">
               <h3>{LINK_EXPIRES_HEADING}</h3>
@@ -265,6 +279,7 @@ export function ProgramShareLinkPanel({
           <ShareActions
             inSheet={inSheet}
             shareView={shareView}
+            linkUrlReady={linkUrlReady}
             onCopy={onCopy}
             onLinkPage={onLinkPage}
             onDownloadPdf={onDownloadPdf}

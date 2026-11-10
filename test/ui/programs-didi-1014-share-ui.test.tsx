@@ -150,7 +150,7 @@ describe("Program share screen (DIDI-1014)", () => {
     expect(within(dialog).getByText(SHARE_HELPER_PUBLISHED)).toBeInTheDocument();
   });
 
-  it("does not show the closed-link row for an expired but never-closed link", async () => {
+  it("hides url chrome but keeps expiry and close link for expired GET with empty share_link", async () => {
     const client = {
       getProgramByCode: vi.fn().mockResolvedValue(program),
       getShareLink: vi.fn().mockResolvedValue(
@@ -166,6 +166,11 @@ describe("Program share screen (DIDI-1014)", () => {
     await screen.findByRole("heading", { name: LINK_EXPIRES_HEADING });
     expect(screen.queryByText(SHARE_LINK_CLOSED_LINE)).toBeNull();
     expect(screen.queryByRole("button", { name: /Create a new link/i })).toBeNull();
+    expect(document.querySelector(".pg-share-link-row")).toBeNull();
+    expect(screen.queryByRole("button", { name: PUBLISH_COPY_LINK })).toBeNull();
+    expect(screen.queryByRole("button", { name: SHARE_SEE_LINK_PAGE })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Download PDF/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Close link/ })).toBeInTheDocument();
   });
 
   it("hides expiry and share actions when the link is closed", async () => {
