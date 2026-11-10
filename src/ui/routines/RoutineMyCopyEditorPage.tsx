@@ -63,7 +63,12 @@ export function RoutineMyCopyEditorPage() {
     );
   }
 
-  const showContent = !loading && !loadFailed && details?.my_copy;
+  const showContent =
+    !loading &&
+    !loadFailed &&
+    details !== null &&
+    !details.is_draft &&
+    details.my_copy !== null;
 
   if (!showContent) {
     return (
@@ -72,7 +77,7 @@ export function RoutineMyCopyEditorPage() {
           {BACK_ROUTINES}
         </Link>
         <h1 id="rt-my-copy-heading" className="ex-page-title">
-          {details?.community.name ?? "Routine"}
+          {details && !details.is_draft ? details.community.name : "Routine"}
         </h1>
         {loading ? <ExerciseLibraryBusyState /> : null}
         {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
@@ -108,10 +113,10 @@ export function RoutineMyCopyEditorPage() {
         to={fillPhysioAppRoutePattern("routineDetail", { routineId })}
         className="ex-back-link"
       >
-        {details.community.name}
+        {details!.community.name}
       </Link>
       <h1 id="rt-my-copy-heading" className="ex-page-title">
-        {details.community.name}
+        {details!.community.name}
       </h1>
       <p className="ex-page-intro">{MY_COPY_EDITOR_INTRO}</p>
 

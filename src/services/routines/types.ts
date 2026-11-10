@@ -90,11 +90,19 @@ export type RoutineCommunityChangeList =
       baseline_available: false;
     };
 
-export type RoutineDetailsResult = {
+type RoutineDetailsShared = {
   routine_id: string;
   body_region_label: string;
   condition_label: string | null;
   who_its_for: string | null;
+  sent_program_count: number;
+  sent_program_codes: string[];
+  conditions_available: boolean;
+};
+
+export type RoutineDetailsPublished = RoutineDetailsShared & {
+  is_draft: false;
+  draft: null;
   community: {
     routine_version_id: string;
     version_number: number;
@@ -111,12 +119,25 @@ export type RoutineDetailsResult = {
     community_updated: boolean;
     rows: RoutineExerciseRow[];
   } | null;
-  sent_program_count: number;
-  sent_program_codes: string[];
-  conditions_available: boolean;
   personal_changes: RoutinePersonalChanges | null;
   community_change_list: RoutineCommunityChangeList | null;
 };
+
+export type RoutineDetailsDraft = RoutineDetailsShared & {
+  is_draft: true;
+  draft: {
+    routine_version_id: string;
+    name: string | null;
+    draft_updated_at: string;
+    rows: RoutineExerciseRow[];
+  };
+  community: null;
+  my_copy: null;
+  personal_changes: null;
+  community_change_list: null;
+};
+
+export type RoutineDetailsResult = RoutineDetailsPublished | RoutineDetailsDraft;
 
 export type RoutineUndoRowSnapshot = {
   position: number;
@@ -145,6 +166,45 @@ export type RoutineMutationUndo = {
   practitioner_id: string;
   routine_id: string;
   snapshot: RoutineUndoSnapshot;
+};
+
+export type RoutineDraftUndoSnapshot = {
+  routine_id: string;
+  draft_version_id: string;
+  created_at: string;
+  draft_updated_at: string;
+  body_region_id: string;
+  condition_id: string | null;
+  who_its_for: string | null;
+  name: string | null;
+  rows: RoutineUndoRowSnapshot[];
+};
+
+export type RoutineDraftDiscardUndo = {
+  practitioner_id: string;
+  routine_id: string;
+  snapshot: RoutineDraftUndoSnapshot;
+};
+
+export type PublishValidationIssue = "missing_name" | "missing_exercises";
+
+export type RoutineVersionHistoryItem = {
+  routine_version_id: string;
+  version_number: number;
+  name: string;
+  change_summary: string | null;
+  restored_from_version_number: number | null;
+  created_by: string;
+  created_at: string;
+  exercise_count: number;
+  is_live: boolean;
+  sent_program_count: number;
+};
+
+export type RoutineVersionHistoryResult = {
+  routine_id: string;
+  live_version_number: number;
+  versions: RoutineVersionHistoryItem[];
 };
 
 export type McpRoutineSearchSummary = {

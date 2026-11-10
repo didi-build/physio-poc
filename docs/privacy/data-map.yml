@@ -477,6 +477,29 @@ d1_tables:
       draft_updated_at:
         whose: operational
 
+  routine_draft_discards:
+    defaults:
+      storage: D1
+      processors: [Cloudflare]
+      retention: until undo_draft_discard consumes the row or equivalent cleanup
+      who_can_see: owner_only
+      source: migrations/0008_routine_draft_discards.sql
+      verified: true
+      notes: Tombstone authorizing undo_draft_discard only after discard_draft; no patient data.
+    columns:
+      routine_id:
+        whose: operational
+      practitioner_id:
+        whose: practitioner
+        data: Author practitioner id
+        purpose: restrict undo to discarding author
+        processors: [Cloudflare]
+        retention: until row deleted
+      draft_version_id:
+        whose: operational
+      discarded_at:
+        whose: operational
+
   routine_versions:
     defaults:
       storage: D1

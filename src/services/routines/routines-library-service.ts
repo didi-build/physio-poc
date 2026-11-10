@@ -561,18 +561,45 @@ export class RoutinesLibraryService {
     if (!routine) {
       throw new RoutinesLibraryServiceError("Routine not found", "routine_not_found");
     }
+    const conditionsAvailable = await this.conditionsAvailable();
+
     if (routine.published_version === null) {
-      const draftOnly = routine.created_by === practitionerId;
-      if (!draftOnly) {
+      if (routine.created_by !== practitionerId) {
         throw new RoutinesLibraryServiceError("Routine not found", "routine_not_found");
       }
-      throw new RoutinesLibraryServiceError(
-        "Routine is not published",
-        "routine_not_published",
-      );
+      const draft = await this.versions.findDraftForRoutine(validatedRoutineId);
+      if (!draft) {
+        throw new RoutinesLibraryServiceError("Routine not found", "routine_not_found");
+      }
+      const draftRows = await this.buildCommunityRows(draft.id);
+      const bodyRegionLabel = await this.bodyRegionLabel(routine.body_region_id);
+      let conditionLabel: string | null = null;
+      if (conditionsAvailable && routine.condition_id) {
+        const cond = await this.conditions.listAll();
+        conditionLabel =
+          cond.find((row) => row.id === routine.condition_id)?.label ?? null;
+      }
+      return {
+        routine_id: validatedRoutineId,
+        is_draft: true,
+        body_region_label: bodyRegionLabel,
+        condition_label: conditionLabel,
+        who_its_for: routine.who_its_for,
+        draft: {
+          routine_version_id: draft.id,
+          name: draft.name,
+          draft_updated_at: routine.draft_updated_at,
+          rows: draftRows,
+        },
+        community: null,
+        my_copy: null,
+        sent_program_count: 0,
+        sent_program_codes: [],
+        conditions_available: conditionsAvailable,
+        personal_changes: null,
+        community_change_list: null,
+      };
     }
-
-    const conditionsAvailable = await this.conditionsAvailable();
     const head = await this.libraryRead.getPublishedHead(validatedRoutineId);
     if (!head) {
       throw new RoutinesLibraryServiceError("Routine not found", "routine_not_found");
@@ -651,9 +678,11 @@ export class RoutinesLibraryService {
 
     return {
       routine_id: validatedRoutineId,
+      is_draft: false,
       body_region_label: head.body_region_label,
       condition_label: conditionsAvailable ? head.condition_label : null,
       who_its_for: routine.who_its_for,
+      draft: null,
       community: {
         routine_version_id: head.routine_version_id,
         version_number: head.version_number,

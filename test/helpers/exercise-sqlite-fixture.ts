@@ -13,6 +13,7 @@ import {
   MIGRATION_0003_ID,
   MIGRATION_0005_ID,
   MIGRATION_0007_ID,
+  MIGRATION_0008_ID,
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
@@ -36,6 +37,10 @@ export const MIGRATION_0007_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0007_sql_batch_min_rows_guard.sql"),
   "utf8",
 );
+export const MIGRATION_0008_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0008_routine_draft_discards.sql"),
+  "utf8",
+);
 
 /** @deprecated use MIGRATION_0001_SQL */
 export const MIGRATION_SQL = MIGRATION_0001_SQL;
@@ -53,6 +58,7 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+  await applyMigration(storage, MIGRATION_0008_ID, MIGRATION_0008_SQL);
   return storage;
 }
 
