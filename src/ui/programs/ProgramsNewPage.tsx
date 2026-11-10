@@ -5,6 +5,7 @@ import {
   fillPhysioAppRoutePattern,
 } from "../../app-routes.js";
 import { useProgramsApi } from "../api/programs-context.js";
+import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { PickRoutineForProgramSheet } from "./PickRoutineForProgramSheet.js";
@@ -23,11 +24,14 @@ export function ProgramsNewPage() {
     (location.state as { openRoutinePicker?: boolean } | null)?.openRoutinePicker ===
     true;
   const { showToast } = useToast();
+  const { practitionerId, sessionIdentityReady } = useCurrentPractitionerIdentity();
   const initialFromRoutine = searchParams.get(FROM_ROUTINE_ID_QUERY_PARAM)?.trim();
   const [open, setOpen] = useState(
     () => !initialFromRoutine && !openRoutinePickerOnMount,
   );
-  const [pickerOpen, setPickerOpen] = useState(openRoutinePickerOnMount);
+  const [pickerOpen, setPickerOpen] = useState(
+    () => Boolean(initialFromRoutine) || openRoutinePickerOnMount,
+  );
   const [createFailed, setCreateFailed] = useState(false);
   const [routineBusy, setRoutineBusy] = useState(false);
 
@@ -74,11 +78,26 @@ export function ProgramsNewPage() {
   };
 
   useEffect(() => {
-    if (!initialFromRoutine) {
+    if (!initialFromRoutine || !sessionIdentityReady) {
       return;
     }
-    createFromPickedRoutine(initialFromRoutine);
-  }, [initialFromRoutine]);
+    let cancelled = false;
+    void routinesClient
+      .getRoutineDetails(initialFromRoutine)
+      .then((details) => {
+        if (details.community.created_by !== practitionerId) {
+          throw new Error("routine_not_found");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCreateFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialFromRoutine, practitionerId, routinesClient, sessionIdentityReady]);
 
   return (
     <section className="pg-page ex-page">
@@ -110,6 +129,7 @@ export function ProgramsNewPage() {
       <PickRoutineForProgramSheet
         open={pickerOpen}
         busy={routineBusy}
+        preselectedRoutineId={initialFromRoutine ?? undefined}
         onClose={() => {
           setPickerOpen(false);
         }}

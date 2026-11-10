@@ -21,6 +21,7 @@ export type PickRoutineForProgramSheetProps = {
   onClose: () => void;
   onPick: (routineId: string) => void;
   busy?: boolean;
+  preselectedRoutineId?: string;
 };
 
 type PickableRoutine = {
@@ -53,6 +54,7 @@ export function PickRoutineForProgramSheet({
   onClose,
   onPick,
   busy = false,
+  preselectedRoutineId,
 }: PickRoutineForProgramSheetProps) {
   const client = useRoutinesApi();
   const titleId = useId();
@@ -67,7 +69,7 @@ export function PickRoutineForProgramSheet({
     }
     setLoading(true);
     setLoadFailed(false);
-    setSelectedId(null);
+    setSelectedId(preselectedRoutineId ?? null);
     void Promise.all([client.searchCommunity({ limit: 50 }), client.listMyRoutines({})])
       .then(([community, mine]) => {
         const byId = new Map<string, PickableRoutine>();
@@ -77,7 +79,14 @@ export function PickRoutineForProgramSheet({
         for (const item of mine.saved) {
           byId.set(item.routine_id, mapSaved(item));
         }
-        setRoutines([...byId.values()]);
+        const loaded = [...byId.values()];
+        setRoutines(loaded);
+        if (
+          preselectedRoutineId &&
+          loaded.some((item) => item.routine_id === preselectedRoutineId)
+        ) {
+          setSelectedId(preselectedRoutineId);
+        }
       })
       .catch(() => {
         setLoadFailed(true);
@@ -86,7 +95,7 @@ export function PickRoutineForProgramSheet({
       .finally(() => {
         setLoading(false);
       });
-  }, [client, open]);
+  }, [client, open, preselectedRoutineId]);
 
   const selected = routines.find((item) => item.routine_id === selectedId) ?? null;
 

@@ -170,6 +170,7 @@ export type HarnessFixtureId =
   | "programs-1025-list-filters"
   | "programs-1025-new-chooser"
   | "programs-1025-pick-routine"
+  | "programs-1199-pick-routine-preselected"
   | "routines-1025-detail-actions"
   | "app-wide-cache-nav";
 
@@ -852,6 +853,87 @@ export function harnessFixture(
             flagged_count: 0,
             conditions_available: true,
             condition_options: ["Osteoarthritis"],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    }
+    case "programs-1199-pick-routine-preselected": {
+      const route = PROGRAMS_1025_FIXTURE_ROUTES[
+        "programs-1199-pick-routine-preselected"
+      ].initialEntry as string;
+      return {
+        initialEntries: [route],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "rt-knee-oa",
+                routine_version_id: "rv-knee-3",
+                name: "Knee osteoarthritis, starter",
+                version_number: 3,
+                body_region_label: "Knee",
+                condition_label: "Osteoarthritis",
+                exercise_count: 4,
+                usage_count: 12,
+                added_by_you: false,
+                in_my_routines: true,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: true,
+            condition_options: ["Osteoarthritis"],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [
+              {
+                routine_id: "rt-knee-oa",
+                name: "Knee osteoarthritis, starter",
+                saved_copy_version: 2,
+                community_version: 3,
+                edited: true,
+                saved_at: "2026-10-20T12:00:00.000Z",
+                last_used_at: "2026-10-24T12:00:00.000Z",
+                community_updated: false,
+                body_region_label: "Knee",
+                condition_label: "Osteoarthritis",
+                exercise_count: 4,
+              },
+            ],
+            flagged_count: 0,
+            conditions_available: true,
+            condition_options: ["Osteoarthritis"],
+          }),
+          getRoutineDetails: async () => ({
+            routine_id: "rt-knee-oa",
+            body_region_label: "Knee",
+            community: {
+              routine_version_id: "rv-knee-3",
+              name: "Knee osteoarthritis, starter",
+              version_number: 3,
+              rows: [],
+            },
+            my_copy: null,
+            sent_program_count: 0,
+            sent_program_codes: [],
+            conditions_available: true,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 0,
+              your_change_positions: [],
+            },
+            community_change_list: null,
           }),
         } as unknown as RoutinesClient,
       };
