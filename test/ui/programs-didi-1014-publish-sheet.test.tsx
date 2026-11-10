@@ -72,7 +72,7 @@ const shareView: ProgramShareConnectorView = {
   link_expires_in: null,
   link_expires_on: null,
   practitioner_default_expires_in: "1_year",
-  publish_change_lines: ["1 exercise"],
+  publish_change_lines: [],
   published_at: null,
 };
 
@@ -111,10 +111,9 @@ describe("Publish sheet (DIDI-1014)", () => {
     const publishButton = within(dialog).getByRole("button", { name: PUBLISH_NOW });
     expect(publishButton).toBeDisabled();
     expect(within(dialog).getByText(EXPIRY_APPLIES_NEW_LINK)).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: /1 year/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      within(dialog).getByRole("button", { name: /1 year \(default\)/ }),
+    ).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(within(dialog).getByLabelText(/Program name/), "Knee rehab");
     expect(publishButton).not.toBeDisabled();
   });

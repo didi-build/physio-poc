@@ -93,7 +93,7 @@ function stubProgramsClient(): ProgramsClient {
       link_expires_in: null,
       link_expires_on: null,
       practitioner_default_expires_in: "1_year",
-      publish_change_lines: ["0 exercises"],
+      publish_change_lines: [],
       published_at: null,
     }),
   } as unknown as ProgramsClient;

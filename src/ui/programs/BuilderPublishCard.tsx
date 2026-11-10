@@ -26,7 +26,6 @@ export type BuilderPublishCardProps = {
   primaryDisabled?: boolean;
   primaryLabel: string;
   pendingChanges: boolean;
-  changeCount: number;
   expiryLine: string | null;
   showLinkSettings: boolean;
   onPrimary: () => void;
@@ -73,7 +72,6 @@ export function BuilderPublishCard({
   primaryDisabled = false,
   primaryLabel,
   pendingChanges,
-  changeCount,
   expiryLine,
   showLinkSettings,
   onPrimary,
@@ -85,7 +83,6 @@ export function BuilderPublishCard({
     shareLinkStatus,
     publishedAt: publishedAt ?? null,
     pendingChanges,
-    changeCount,
   });
   const saveLabel =
     saveUiState === "saving"

@@ -1,40 +1,12 @@
 import type { PublishedProgramSnapshot } from "../../domain/program-types.js";
-import { formatExerciseParams } from "../../domain/format-exercise-params.js";
-import type {
-  ProgramBuilderRow,
-  ProgramBuilderView,
-  ProgramRoutineOriginView,
-} from "./types.js";
-
-function firstPublishSummaryLine(
-  exerciseCount: number,
-  routineOrigin: ProgramRoutineOriginView | null,
-): string {
-  const base = exerciseCount === 1 ? "1 exercise" : `${exerciseCount} exercises`;
-  if (!routineOrigin) {
-    return base;
-  }
-  return `${base}, made from ${routineOrigin.routine_name}, version ${routineOrigin.routine_version_number}`;
-}
-
-export const PUBLISH_CHANGE_TITLE_CHANGED = "Title changed";
-export const PUBLISH_CHANGE_REORDERED = "Exercises reordered";
-export const PUBLISH_CHANGE_NO_CHANGES = "No changes";
-
-export function addedExerciseChangeLine(name: string): string {
-  return `Added ${name}`;
-}
-
-export function removedExerciseChangeLine(name: string): string {
-  return `Removed ${name}`;
-}
-
-export function updatedExerciseChangeLine(
-  name: string,
-  params: ProgramBuilderRow["params"],
-): string {
-  return `${name}: ${formatExerciseParams(params)}`;
-}
+import {
+  PUBLISH_CHANGE_AFTER_SENDING,
+  PUBLISH_CHANGE_REORDERED,
+  PUBLISH_CHANGE_TITLE_CHANGED,
+  publishChangeAddedExercise,
+  publishChangeRemovedExercise,
+} from "../../copy/program-publish-messages.js";
+import type { ProgramBuilderRow, ProgramBuilderView } from "./types.js";
 
 function rowSignature(row: {
   exercise_id: string | null;
@@ -60,10 +32,12 @@ export function computeProgramPublishChangeLines(input: {
 }): string[] {
   const { program, publishedSnapshot } = input;
   if (!publishedSnapshot) {
-    return [firstPublishSummaryLine(program.exercise_count, program.routine_origin)];
+    return [];
   }
 
   const lines: string[] = [];
+  let contentChanged = false;
+
   const publishedName = publishedSnapshot.name.trim();
   const draftName = (program.name ?? "").trim();
   if (publishedName !== draftName) {
@@ -87,14 +61,14 @@ export function computeProgramPublishChangeLines(input: {
   for (const row of draftRows) {
     const key = row.exercise_id ?? row.exercise_request_id ?? `pos:${row.position}`;
     if (!publishedByExercise.has(key)) {
-      lines.push(addedExerciseChangeLine(row.text_snapshot.title));
+      lines.push(publishChangeAddedExercise(row.text_snapshot.title));
     }
   }
 
   for (const [index, row] of publishedRows.entries()) {
     const key = row.exerciseId ?? row.exerciseRequestId ?? `pos:${index}`;
     if (!draftByExercise.has(key)) {
-      lines.push(removedExerciseChangeLine(row.textSnapshot.title));
+      lines.push(publishChangeRemovedExercise(row.textSnapshot.title));
     }
   }
 
@@ -118,7 +92,7 @@ export function computeProgramPublishChangeLines(input: {
       note: published.note,
     });
     if (draftSig !== publishedSig) {
-      lines.push(updatedExerciseChangeLine(row.text_snapshot.title, row.params));
+      contentChanged = true;
     }
   }
 
@@ -138,9 +112,10 @@ export function computeProgramPublishChangeLines(input: {
     lines.push(PUBLISH_CHANGE_REORDERED);
   }
 
-  if (lines.length === 0) {
-    lines.push(PUBLISH_CHANGE_NO_CHANGES);
+  if (contentChanged) {
+    lines.push(PUBLISH_CHANGE_AFTER_SENDING);
   }
+
   return lines;
 }
 

@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeProgramPublishChangeLines,
-  PUBLISH_CHANGE_TITLE_CHANGED,
-} from "../src/services/programs/program-publish-changes.js";
+import { PUBLISH_CHANGE_TITLE_CHANGED } from "../src/copy/program-publish-messages.js";
+import { computeProgramPublishChangeLines } from "../src/services/programs/program-publish-changes.js";
 import type { ProgramBuilderView } from "../src/services/programs/types.js";
 import type { PublishedProgramSnapshot } from "../src/domain/program-types.js";
 
@@ -44,13 +42,13 @@ const baseProgram: ProgramBuilderView = {
 };
 
 describe("computeProgramPublishChangeLines (unit)", () => {
-  it("returns a first-publish summary when no snapshot exists", () => {
+  it("returns nothing on first publish when no snapshot exists", () => {
     expect(
       computeProgramPublishChangeLines({
         program: baseProgram,
         publishedSnapshot: null,
       }),
-    ).toEqual(["1 exercise"]);
+    ).toEqual([]);
   });
 
   it("detects a title change against the published snapshot", () => {

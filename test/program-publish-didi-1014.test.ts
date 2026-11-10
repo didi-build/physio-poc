@@ -108,7 +108,7 @@ describe("Program publish UI backing API (DIDI-1014)", () => {
         share_link: string;
       };
       expect(body.practitioner_default_expires_in).toBe("1_year");
-      expect(body.publish_change_lines.length).toBeGreaterThan(0);
+      expect(body.publish_change_lines).toEqual([]);
       expect(body.share_link).toMatch(/\/l\//);
     } finally {
       storage.close();

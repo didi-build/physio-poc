@@ -59,7 +59,6 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
           publishAllowed={false}
           primaryLabel="Share link"
           pendingChanges={false}
-          changeCount={0}
           expiryLine={null}
           showLinkSettings
           onPrimary={() => {}}
@@ -89,7 +88,6 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         publishAllowed={false}
         primaryLabel="Publish"
         pendingChanges={false}
-        changeCount={0}
         expiryLine={null}
         showLinkSettings={false}
         onPrimary={() => {}}

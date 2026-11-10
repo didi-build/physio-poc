@@ -49,7 +49,6 @@ import {
   PUBLISHED_SAME_LINK_TOAST,
   SHARE_LINK_BUTTON,
 } from "../copy/program-publish.js";
-import { PUBLISH_CHANGE_NO_CHANGES } from "../../services/programs/program-publish-changes.js";
 import { PublishSheet } from "./PublishSheet.js";
 import { AddExerciseSheet } from "./AddExerciseSheet.js";
 import { AutoSaveStatus } from "./AutoSaveStatus.js";
@@ -573,11 +572,6 @@ export function ProgramBuilderPage({
   const publishMode =
     pendingChanges || displayProgram.auto_save_status.kind === "not_published_yet";
   const primaryLabel = publishMode ? PUBLISH : SHARE_LINK_BUTTON;
-  const changeLines =
-    shareView?.publish_change_lines?.filter(
-      (line) => line !== PUBLISH_CHANGE_NO_CHANGES,
-    ) ?? [];
-  const changeCount = changeLines.length;
   const openPublish = () => {
     navigate(
       fillPhysioAppRoutePattern("programPublish", {
@@ -1014,7 +1008,6 @@ export function ProgramBuilderPage({
           primaryDisabled={displayProgram.rows.length === 0}
           primaryLabel={primaryLabel}
           pendingChanges={pendingChanges}
-          changeCount={changeCount}
           expiryLine={shareView?.share_link_status === "closed" ? "Link closed" : null}
           showLinkSettings={displayProgram.share_link_status !== "none"}
           onPrimary={onPublishPrimary}

@@ -11,8 +11,6 @@ export const PUBLISH_SHEET_TITLE = "Publish to the live link?";
 export const PUBLISH_NOW = "Publish now";
 export const PUBLISH_NOT_YET = "Not yet";
 export const PUBLISH_FIRST_PUBLISH_HEADING = "First publish";
-export const PUBLISH_NO_CHANGES = "No changes";
-
 export function publishChangesSinceHeading(publishedAt: string): string {
   return `Changes since ${formatProgramPublishedAt(publishedAt)}`;
 }
@@ -180,20 +178,6 @@ export function linkNowExpiresToast(dateLabel: string): string {
 export function programCardMeta(code: string, exerciseCount: number): string {
   const countLabel = exerciseCount === 1 ? "1 exercise" : `${exerciseCount} exercises`;
   return `${code} · ${countLabel}`;
-}
-
-export function firstPublishExerciseSummary(
-  exerciseCount: number,
-  routineOrigin: {
-    routine_name: string;
-    routine_version_number: number;
-  } | null,
-): string {
-  const base = exerciseCount === 1 ? "1 exercise" : `${exerciseCount} exercises`;
-  if (!routineOrigin) {
-    return base;
-  }
-  return `${base}, made from ${routineOrigin.routine_name}, version ${routineOrigin.routine_version_number}`;
 }
 
 export function expiryChoiceLabel(expiresIn: ShareLinkExpiresIn): string {
