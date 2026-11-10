@@ -61,10 +61,16 @@ export class RoutineLibraryReadRepository {
       bodyRegionLabel?: string;
       conditionId?: string;
       includeConditionInTextSearch: boolean;
+      createdBy?: string;
     },
     bindings: SqlValue[],
   ): string {
     const whereParts: string[] = [];
+
+    if (input.createdBy) {
+      whereParts.push("r.created_by = ?");
+      bindings.push(input.createdBy);
+    }
 
     const trimmedQuery = input.query?.trim();
     if (trimmedQuery) {
@@ -106,6 +112,7 @@ export class RoutineLibraryReadRepository {
     bodyRegionLabel?: string;
     conditionId?: string;
     includeConditionInTextSearch: boolean;
+    createdBy?: string;
     sort: RoutineSearchSort;
     limit: number;
     offset: number;
@@ -144,6 +151,7 @@ export class RoutineLibraryReadRepository {
     bodyRegionLabel?: string;
     conditionId?: string;
     includeConditionInTextSearch: boolean;
+    createdBy?: string;
   }): Promise<number> {
     const bindings: SqlValue[] = [];
     const whereSql = this.buildPublishedSearchWhere(input, bindings);

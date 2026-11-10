@@ -12,7 +12,7 @@ import { workerCimdMetadataFetch } from "./worker-cimd-metadata-fetch.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
 import { createWorkerAssetsUiStaticPort } from "./worker-assets-ui-static-port.js";
 
-/** Production Better Auth wiring (dynamic import from the Worker entry only). */
+/** Production Better Auth wiring (dynamic import from create-app-dependencies). */
 export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDependencies {
   if (!env.PHYSIO_DB) {
     throw new Error("PHYSIO_DB binding is required for production Worker auth");
@@ -35,7 +35,7 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     objects: new InMemoryObjectStorage(),
     config,
     auth: authBundle.auth,
-    mcp: createPhysioMcpHttpHandler(config),
+    mcp: createPhysioMcpHttpHandler({ config, sql }),
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
     guardedAppWithoutSession: "redirect",
     uiStatic,

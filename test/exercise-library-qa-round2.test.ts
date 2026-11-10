@@ -9,7 +9,10 @@ import {
   ExerciseLibraryService,
   parseExerciseMutationUndo,
 } from "../src/services/exercise-library/exercise-library-service.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import {
   openMigratedDatabase,
   seedExercise,
@@ -25,7 +28,6 @@ import { PractitionerExercisesRepository } from "../src/storage/repositories/exe
 import { TypeDefaultsRepository } from "../src/storage/repositories/type-defaults.js";
 import { addProgramExerciseRow } from "./helpers/exercise-library-program-usage-fixture.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 
 async function seedApproved(
@@ -85,7 +87,7 @@ function apiDeps(
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
-    mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     auth,
     sessionCookie: auth.createSessionCookieHeader(),
   };

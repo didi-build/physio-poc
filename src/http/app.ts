@@ -16,6 +16,8 @@ import { handleExerciseLibraryRequest } from "./routes/exercise-library.js";
 import { handleExerciseRequestsHttpRequest } from "./routes/exercise-requests.js";
 import { handleMyDefaultsRequest } from "./routes/my-defaults.js";
 import { handleProgramBuilderRequest } from "./routes/program-builder.js";
+import { handleProgramPublishRequest } from "./routes/program-publish.js";
+import { handlePublicShareLinkRequest } from "./routes/public-share-link.js";
 import {
   handlePractitionerSessionRequest,
   PRACTITIONER_SESSION_JSON_HEADERS,
@@ -25,6 +27,7 @@ import { handleRoutinesRequest } from "./routes/routines.js";
 import { rejectQueryPractitionerId } from "./reject-query-practitioner-id.js";
 import { handleHealthRequest } from "./routes/health.js";
 import { noopUiStaticPort, type UiStaticPort } from "./ui-static-port.js";
+import { attachMcpPractitionerId } from "../services/mcp/mcp-request-context.js";
 
 export type McpHttpHandler = (request: Request) => Promise<Response>;
 
@@ -155,18 +158,22 @@ export async function handleRequest(
     if (!practitioner) {
       return jsonUnauthorized();
     }
-    return deps.mcp(request);
+    return deps.mcp(attachMcpPractitionerId(request, practitioner.practitionerId));
   }
 
   if (pathname.startsWith("/api/")) {
-    return guardAndRun(request, deps, sessionGuardOptions, async () => {
+    const publicShareLink = await handlePublicShareLinkRequest(request, deps);
+    if (publicShareLink) {
+      return publicShareLink;
+    }
+    return guardAndRun(request, deps, sessionGuardOptions, async (context) => {
       if (pathname.startsWith("/api/me/")) {
         const queryRejected = rejectQueryPractitionerId(url);
         if (queryRejected) {
           return queryRejected;
         }
       }
-      const sessionPractitioner = await deps.auth.getPractitioner(request);
+      const sessionPractitioner = context?.sessionPractitioner ?? null;
       const practitionerSessionResponse = await handlePractitionerSessionRequest(
         request,
         deps,
@@ -180,6 +187,12 @@ export async function handleRequest(
         if (csrfRejection) {
           return csrfRejection;
         }
+      }
+      const programPublishResponse = await handleProgramPublishRequest(request, deps, {
+        sessionPractitioner,
+      });
+      if (programPublishResponse) {
+        return programPublishResponse;
       }
       const programBuilderResponse = await handleProgramBuilderRequest(request, deps, {
         sessionPractitioner,
@@ -259,7 +272,7 @@ async function guardAndRun(
   request: Request,
   deps: AppDependencies,
   sessionGuardOptions: { extraSessionPublicPath?: (pathname: string) => boolean },
-  next: () => Promise<Response>,
+  next: (context?: AppRouteHandlerContext) => Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (!requiresPractitionerSession(url.pathname, request.method, sessionGuardOptions)) {
@@ -278,7 +291,7 @@ async function guardAndRun(
     }
     return unauthenticatedAppResponse(request, deps, url.pathname, url.search);
   }
-  return next();
+  return next({ sessionPractitioner: practitioner });
 }
 
 function unauthenticatedAppResponse(

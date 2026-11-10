@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest, MCP_PATH, type AppDependencies } from "../src/http/app.js";
@@ -9,6 +10,10 @@ import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
+import {
+  openMigratedDatabase,
+  seedPractitioner,
+} from "./helpers/exercise-sqlite-fixture.js";
 
 export const MCP_TEST_CONFIG = resolveTestPhysioServerConfig(
   PHYSIO_TEST_BETTER_AUTH_SECRET,
@@ -25,20 +30,61 @@ const MCP_TEST_PRACTITIONER = {
   displayName: "Kojo",
 } as const;
 
+let migratedMcpTestDepsPromise: Promise<AppDependencies> | null = null;
+
+export function createTestPhysioMcpHttpHandler(
+  sql: SqlStoragePort,
+  config = MCP_TEST_CONFIG,
+): ReturnType<typeof createPhysioMcpHttpHandler> {
+  return createPhysioMcpHttpHandler({ config, sql });
+}
+
 export function createTestAppDependencies(config = MCP_TEST_CONFIG): AppDependencies {
+  const sql = new InMemorySqlStorage();
   return {
-    sql: new InMemorySqlStorage(),
+    sql,
     objects: new InMemoryObjectStorage(),
     config,
     auth: new FakeAuthPort({ practitioner: MCP_TEST_PRACTITIONER }),
-    mcp: createPhysioMcpHttpHandler(config),
+    mcp: createTestPhysioMcpHttpHandler(sql, config),
   };
 }
 
+export async function createMigratedMcpTestAppDependencies(
+  config = MCP_TEST_CONFIG,
+): Promise<AppDependencies> {
+  const storage = await openMigratedDatabase();
+  await seedPractitioner(
+    storage,
+    MCP_TEST_PRACTITIONER.practitionerId,
+    MCP_TEST_PRACTITIONER.email,
+  );
+  return {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config,
+    auth: new FakeAuthPort({ practitioner: MCP_TEST_PRACTITIONER }),
+    mcp: createTestPhysioMcpHttpHandler(storage, config),
+  };
+}
+
+async function ensureMigratedMcpTestDeps(
+  config = MCP_TEST_CONFIG,
+): Promise<AppDependencies> {
+  if (!migratedMcpTestDepsPromise) {
+    migratedMcpTestDepsPromise = createMigratedMcpTestAppDependencies(config);
+  }
+  return migratedMcpTestDepsPromise;
+}
+
 export function createHandleRequestFetch(config = MCP_TEST_CONFIG): FetchLike {
-  const deps = createTestAppDependencies(config);
-  const sessionCookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+  const depsPromise = ensureMigratedMcpTestDeps(config);
+  let sessionCookie: string | null = null;
   return async (input, init) => {
+    const deps = await depsPromise;
+    if (!sessionCookie) {
+      sessionCookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+    }
     const parsed = new URL(input instanceof URL ? input.href : input);
     const localUrl = `${MCP_TEST_BASE}${parsed.pathname}${parsed.search}`;
     const headers = new Headers(init?.headers);

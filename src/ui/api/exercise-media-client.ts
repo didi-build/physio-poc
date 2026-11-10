@@ -1,3 +1,4 @@
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
 import {
@@ -42,10 +43,11 @@ export class ExerciseMediaClient {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
-  getRegenerationQuota(): Promise<RegenerationQuota> {
-    return this.fetchFn(EXERCISE_MEDIA_REGENERATION_QUOTA_PATH, { method: "GET" }).then(
-      (response) => readJson<RegenerationQuota>(response),
-    );
+  getRegenerationQuota(options?: ReadRequestOptions): Promise<RegenerationQuota> {
+    return this.fetchFn(
+      EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
+      readGetInit(options),
+    ).then((response) => readJson<RegenerationQuota>(response));
   }
 
   regenerateDraftMedia(input: {

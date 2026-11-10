@@ -10,6 +10,7 @@ import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { PractitionersRepository } from "../../storage/repositories/exercise-data.js";
 import {
   RoutineLibraryReadRepository,
+  type PublishedRoutineSearchRow,
   type RoutineSearchSort,
 } from "../../storage/repositories/routine-library-read.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
@@ -353,6 +354,69 @@ export class RoutinesLibraryService {
       routines: mcpRoutines,
       next_cursor: result.next_cursor,
     };
+  }
+
+  async searchOwnerPublishedRoutinesForMcp(input: {
+    practitionerId: string;
+    query: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<SearchRoutinesMcpResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const limit = Math.min(
+      MAX_SEARCH_LIMIT,
+      Math.max(1, input.limit ?? DEFAULT_SEARCH_LIMIT),
+    );
+    const offset = input.cursor ? decodeCursor(input.cursor) : 0;
+    const conditionsAvailable = await this.conditionsAvailable();
+
+    const totalCount = await this.libraryRead.countPublishedSearch({
+      query: input.query,
+      includeConditionInTextSearch: conditionsAvailable,
+      createdBy: input.practitionerId,
+    });
+
+    const rows = await this.libraryRead.searchPublished({
+      query: input.query,
+      includeConditionInTextSearch: conditionsAvailable,
+      createdBy: input.practitionerId,
+      sort: "a_to_z",
+      limit: limit + 1,
+      offset,
+    });
+
+    const page = rows.slice(0, limit);
+    const nextOffset = offset + page.length;
+    const next_cursor =
+      rows.length > limit && nextOffset < totalCount ? encodeCursor(nextOffset) : null;
+
+    const mcpRoutines: McpRoutineSearchSummary[] = page.map((row) => ({
+      routine_id: row.routine_id,
+      routine_name: row.name,
+      routine_version: row.version_number,
+      exercise_count: row.exercise_count,
+      source: "community",
+    }));
+    return {
+      summary: "",
+      share_link: "",
+      manage_url: buildPhysioAppUrl(this.config.webAppBaseUrl, "routines"),
+      routines: mcpRoutines,
+      next_cursor,
+    };
+  }
+
+  async findOwnerPublishedRoutineHead(
+    practitionerId: string,
+    routineId: string,
+  ): Promise<PublishedRoutineSearchRow | null> {
+    await this.requirePractitioner(practitionerId);
+    const validatedRoutineId = validateOpaqueEntityId(routineId, "Routine id");
+    const head = await this.libraryRead.getPublishedHead(validatedRoutineId);
+    if (!head || head.created_by !== practitionerId) {
+      return null;
+    }
+    return head;
   }
 
   async listMyRoutines(input: {

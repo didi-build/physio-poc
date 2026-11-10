@@ -4,13 +4,19 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { PHYSIO_MCP_TOOLS } from "../../../mcp-connector/index.js";
-import type { PhysioServerConfig } from "../../../http/config.js";
-import { invokePhysioMcpStubTool } from "../../../services/mcp/stub-tool-handler.js";
+import {
+  invokePhysioMcpTool,
+  type PhysioMcpHttpDeps,
+} from "../../../services/mcp/tool-handler.js";
+import { PhysioMcpStructuredToolError } from "../../../services/mcp/validate-tool-input.js";
 import { PhysioMcpWorkersSafeJsonSchemaValidator } from "./workers-safe-json-schema-validator.js";
 
 const workersSafeJsonSchemaValidator = new PhysioMcpWorkersSafeJsonSchemaValidator();
 
-export function createPhysioMcpServer(config: PhysioServerConfig): Server {
+export function createPhysioMcpServer(
+  deps: PhysioMcpHttpDeps,
+  httpRequest: Request,
+): Server {
   const server = new Server(
     { name: "physio-poc", version: "0.0.0" },
     {
@@ -31,20 +37,25 @@ export function createPhysioMcpServer(config: PhysioServerConfig): Server {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      const structured = await invokePhysioMcpStubTool(
+      const structured = await invokePhysioMcpTool(
         request.params.name,
         request.params.arguments ?? {},
-        config,
+        httpRequest,
+        deps,
       );
-      const summary =
-        typeof structured.summary === "string"
-          ? structured.summary
-          : "Example response returned.";
+      const summary = typeof structured.summary === "string" ? structured.summary : "";
       return {
         content: [{ type: "text", text: summary }],
         structuredContent: structured,
       };
     } catch (error) {
+      if (error instanceof PhysioMcpStructuredToolError) {
+        return {
+          content: [{ type: "text", text: error.message }],
+          structuredContent: error.structured,
+          isError: true,
+        };
+      }
       const message = error instanceof Error ? error.message : String(error);
       return {
         content: [{ type: "text", text: message }],

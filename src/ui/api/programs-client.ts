@@ -7,10 +7,17 @@ import type {
   ProgramSearchResult,
 } from "../../services/programs/types.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
+import type {
+  ProgramPublishResult,
+  ProgramShareConnectorView,
+} from "../../services/programs/program-publish-service.js";
+import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
   PROGRAMS_API_BASE,
   programPath,
+  programPublishPath,
+  programShareLinkPath,
   programRestorePath,
   programRowDuplicatePath,
   programRowLibraryUpdateApplyPath,
@@ -44,10 +51,26 @@ function withJsonContentType(init: RequestInit): RequestInit {
   return { ...init, headers };
 }
 
+export class ProgramsApiError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProgramsApiError";
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message ?? `Request failed (${response.status})`);
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+    };
+    throw new ProgramsApiError(
+      body.error ?? "request_failed",
+      body.message ?? `Request failed (${response.status})`,
+    );
   }
   return (await response.json()) as T;
 }
@@ -278,6 +301,62 @@ export class ProgramsClient {
         body: "{}",
       }),
     ).then((response) => readJson<ProgramMutationResult>(response));
+  }
+
+  getShareLink(
+    programId: string,
+    options?: ReadRequestOptions,
+  ): Promise<ProgramShareConnectorView> {
+    return this.fetchFn(programShareLinkPath(programId), readGetInit(options)).then(
+      (response) => readJson<ProgramShareConnectorView>(response),
+    );
+  }
+
+  publishProgram(
+    programId: string,
+    input: {
+      expires_in?: ShareLinkExpiresIn;
+      custom_expires_on?: string | null;
+    } = {},
+  ): Promise<ProgramPublishResult> {
+    return this.fetchFn(
+      programPublishPath(programId),
+      withJsonContentType({
+        method: "POST",
+        body: JSON.stringify({
+          ...(input.expires_in ? { expires_in: input.expires_in } : {}),
+          ...(input.custom_expires_on !== undefined
+            ? { custom_expires_on: input.custom_expires_on }
+            : {}),
+        }),
+      }),
+    ).then((response) => readJson<ProgramPublishResult>(response));
+  }
+
+  setShareLinkExpiry(
+    programId: string,
+    input: {
+      expires_in: ShareLinkExpiresIn;
+      custom_expires_on?: string | null;
+    },
+  ): Promise<ProgramShareConnectorView> {
+    return this.fetchFn(
+      programShareLinkPath(programId),
+      withJsonContentType({
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    ).then((response) => readJson<ProgramShareConnectorView>(response));
+  }
+
+  closeShareLink(programId: string): Promise<ProgramShareConnectorView> {
+    return this.fetchFn(
+      programShareLinkPath(programId),
+      withJsonContentType({
+        method: "DELETE",
+        body: "{}",
+      }),
+    ).then((response) => readJson<ProgramShareConnectorView>(response));
   }
 }
 

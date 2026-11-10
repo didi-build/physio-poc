@@ -7,6 +7,7 @@ import {
   printParseErrorCode,
   type ParseError,
 } from "jsonc-parser";
+import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { describe, expect, it } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
@@ -16,7 +17,6 @@ import {
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  buildStubPublicShareLink,
   buildWebAppExerciseSearchUrl,
   getPhysioMcpTool,
   getProgramBuilderLinkInputSchema,
@@ -24,15 +24,67 @@ import {
   validateOpaqueEntityId,
 } from "../src/mcp-connector/index.js";
 import {
-  STUB_DRAFT_ONLY_PROGRAM_CODE,
-  STUB_PUBLISHED_ONLY_PROGRAM_CODE,
-  STUB_SEARCH_NO_MATCH_QUERY,
-} from "../src/services/mcp/stub-tool-handler.js";
-import {
   MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
   toolErrorText,
   withMcpClient,
 } from "./mcp-server-test-utils.js";
+import { handleRequest } from "../src/http/app.js";
+import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
+import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import {
+  openMigratedDatabase,
+  seedPractitioner,
+} from "./helpers/exercise-sqlite-fixture.js";
+import {
+  publishRoutine,
+  seedApprovedExerciseForBuilder,
+} from "./helpers/from-routine-http-fixture.js";
+import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+
+const MCP_HTTP_TEST_BASE = "https://physio-mcp.test.example";
+
+async function mcpHttpFetchWithOwnerRoutine(routineUuid: string) {
+  const storage = await openMigratedDatabase();
+  const ownerId = testOpaqueEntityId("mcp-http-routine-owner");
+  await seedPractitioner(storage, ownerId, "mcp-http-routine@example.com");
+  await seedApprovedExerciseForBuilder(storage, ownerId);
+  await publishRoutine(storage, ownerId, {
+    routine: routineUuid,
+    draftVersion: `${routineUuid}-draft`,
+    row: `${routineUuid}-row`,
+    name: "HTTP MCP seeded routine",
+  });
+  const auth = new FakeAuthPort({
+    practitioner: {
+      practitionerId: ownerId,
+      email: "mcp-http-routine@example.com",
+      displayName: "HTTP MCP",
+    },
+  });
+  const deps = {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config: MCP_TEST_CONFIG,
+    auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+  };
+  const cookie = auth.createSessionCookieHeader();
+  const fetch: FetchLike = async (input, init) => {
+    const parsed = new URL(input instanceof URL ? input.href : input);
+    const headers = new Headers(init?.headers);
+    headers.set("cookie", cookie);
+    return handleRequest(
+      new Request(`${MCP_HTTP_TEST_BASE}${parsed.pathname}${parsed.search}`, {
+        method: init?.method ?? "GET",
+        headers,
+        body: init?.body ?? undefined,
+      }),
+      deps,
+    );
+  };
+  return fetch;
+}
 
 const goldenTools = JSON.parse(
   readFileSync(
@@ -54,8 +106,6 @@ addFormats(ajv);
 
 const patientDetailSample = "Contact user@example.com for updates";
 
-const SAMPLE_ROUTINE_UUID = "550e8400-e29b-41d4-a716-446655440000";
-
 function encodedQParamLength(searchLink: string): number {
   const search = new URL(searchLink).search.slice(1);
   const prefix = "q=";
@@ -65,9 +115,12 @@ function encodedQParamLength(searchLink: string): number {
 const minimalArgsByTool: Record<string, Record<string, unknown>> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: { query: "calf stretch" },
   [SEARCH_ROUTINES_TOOL_NAME]: { query: "knee mobility" },
-  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: { program_code: "PRG-STUB01" },
-  [GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME]: { program_code: "PRG-STUB01" },
+  [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: {},
 };
+
+const TOOLS_FOR_OUTPUT_SCHEMA_SMOKE = PHYSIO_MCP_TOOL_NAMES.filter(
+  (name) => name !== GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+);
 
 function parseWranglerJsonc(text: string): Record<string, unknown> {
   const errors: ParseError[] = [];
@@ -123,7 +176,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
 
   it("returns example structured content for each tool", async () => {
     await withMcpClient(async (client) => {
-      for (const name of PHYSIO_MCP_TOOL_NAMES) {
+      for (const name of TOOLS_FOR_OUTPUT_SCHEMA_SMOKE) {
         const result = await client.callTool({
           name,
           arguments: minimalArgsByTool[name],
@@ -131,7 +184,8 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
         expect(result.isError, name).not.toBe(true);
         expect(result.structuredContent, name).toBeTruthy();
         const summary = (result.structuredContent as { summary?: string }).summary;
-        expect(String(summary), name).toMatch(/^Example response:/);
+        expect(typeof summary, name).toBe("string");
+        expect(String(summary).length, name).toBeGreaterThan(0);
 
         const tool = getPhysioMcpTool(name);
         expect(tool).toBeDefined();
@@ -141,11 +195,12 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("returns empty search results with search_link for the fixed no-match query", async () => {
+  it("returns empty search results with search_link when nothing matches", async () => {
+    const noMatch = "zzzz-mcp-http-no-approved-match";
     await withMcpClient(async (client) => {
       const result = await client.callTool({
         name: SEARCH_APPROVED_EXERCISES_TOOL_NAME,
-        arguments: { query: STUB_SEARCH_NO_MATCH_QUERY },
+        arguments: { query: noMatch },
       });
       expect(result.isError).not.toBe(true);
       const body = result.structuredContent as {
@@ -154,69 +209,47 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
       };
       expect(body.exercises).toEqual([]);
       expect(body.search_link).toBe(
-        buildWebAppExerciseSearchUrl(
-          MCP_TEST_CONFIG.webAppBaseUrl,
-          STUB_SEARCH_NO_MATCH_QUERY,
-        ),
+        buildWebAppExerciseSearchUrl(MCP_TEST_CONFIG.webAppBaseUrl, noMatch),
       );
     });
   });
 
-  it("returns builder_link and manage_url for code, routine, and blank inputs", async () => {
+  it("returns builder_link for blank input and not_supported_v1 for owner-published from_routine_id", async () => {
     const base = MCP_TEST_CONFIG.webAppBaseUrl;
-    await withMcpClient(async (client) => {
-      const byCode = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { program_code: "PRG-STUB01" },
-      });
-      expect(byCode.isError).not.toBe(true);
-      const codeBody = byCode.structuredContent as Record<string, unknown>;
-      expect(codeBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
-      expect(codeBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
-      expect(codeBody.program_code).toBe("PRG-STUB01");
-      expect(codeBody.from_routine_id).toBeUndefined();
+    const routineId = id("mcp-http-builder-routine");
+    const fetch = await mcpHttpFetchWithOwnerRoutine("mcp-http-builder-routine");
+    await withMcpClient(
+      async (client) => {
+        const byRoutine = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: routineId },
+        });
+        expect(byRoutine.isError).toBe(true);
+        expect(toolErrorText(byRoutine)).toBe("not_supported_v1");
+        expect(
+          (byRoutine.structuredContent as { error_code?: string }).error_code,
+        ).toBe("not_supported_v1");
 
-      const byRoutine = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: SAMPLE_ROUTINE_UUID },
-      });
-      const routineBody = byRoutine.structuredContent as Record<string, unknown>;
-      expect(routineBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
-      );
-      expect(routineBody.manage_url).toBe(`${base}/programs/new`);
-      expect(routineBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
+        const blank = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: {},
+        });
+        const blankBody = blank.structuredContent as Record<string, unknown>;
+        expect(blankBody.builder_link).toBe(`${base}/programs/new`);
+        expect(blankBody.manage_url).toBe(`${base}/programs/new`);
 
-      const blank = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: {},
-      });
-      const blankBody = blank.structuredContent as Record<string, unknown>;
-      expect(blankBody.builder_link).toBe(`${base}/programs/new`);
-      expect(blankBody.manage_url).toBe(`${base}/programs/new`);
-
-      const both = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: {
-          program_code: "PRG-STUB01",
-          from_routine_id: SAMPLE_ROUTINE_UUID,
-        },
-      });
-      const bothBody = both.structuredContent as Record<string, unknown>;
-      expect(bothBody.builder_link).toBe(`${base}/programs/PRG-STUB01`);
-      expect(bothBody.program_code).toBe("PRG-STUB01");
-      expect(bothBody.from_routine_id).toBeUndefined();
-
-      const trimmed = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: `  ${SAMPLE_ROUTINE_UUID}  ` },
-      });
-      const trimmedBody = trimmed.structuredContent as Record<string, unknown>;
-      expect(trimmedBody.builder_link).toBe(
-        `${base}/programs/new?from_routine_id=${SAMPLE_ROUTINE_UUID}`,
-      );
-      expect(trimmedBody.from_routine_id).toBe(SAMPLE_ROUTINE_UUID);
-    });
+        const trimmed = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: `  ${routineId}  ` },
+        });
+        expect(trimmed.isError).toBe(true);
+        expect(toolErrorText(trimmed)).toBe("not_supported_v1");
+        expect((trimmed.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
+        );
+      },
+      { fetch },
+    );
   });
 
   it("caps search_link encoded q at 199 when pre-encoding length is 199, 200, or 201", async () => {
@@ -251,78 +284,6 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
       });
       const link201 = (at201.structuredContent as { search_link?: string }).search_link;
       expect(encodedQParamLength(link201!)).toBe(199);
-    });
-  });
-
-  it("returns share_link, pdf_url, publish_link, and manage_link for each stub share state", async () => {
-    const base = MCP_TEST_CONFIG.webAppBaseUrl;
-    const shareUrl = buildStubPublicShareLink(base);
-    const pdfUrl = `${shareUrl}.pdf`;
-
-    await withMcpClient(async (client) => {
-      const draftOnly = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_DRAFT_ONLY_PROGRAM_CODE },
-      });
-      const draftBody = draftOnly.structuredContent as Record<string, unknown>;
-      expect(draftBody.share_link).toBe("");
-      expect(draftBody.pdf_url).toBe("");
-      expect(draftBody.publish_link).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/publish`,
-      );
-      expect(draftBody.manage_link).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/share`,
-      );
-      expect(draftBody.manage_url).toBe(
-        `${base}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}`,
-      );
-
-      const publishedOnly = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_PUBLISHED_ONLY_PROGRAM_CODE },
-      });
-      const pubBody = publishedOnly.structuredContent as Record<string, unknown>;
-      expect(pubBody.share_link).toBe(shareUrl);
-      expect(pubBody.pdf_url).toBe(pdfUrl);
-      expect(pubBody.publish_link).toBe("");
-      expect(pubBody.manage_link).toBe(
-        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}/share`,
-      );
-      expect(pubBody.manage_url).toBe(
-        `${base}/programs/${STUB_PUBLISHED_ONLY_PROGRAM_CODE}`,
-      );
-      expect(pubBody.draft).toBeNull();
-
-      const draftAndPublished = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: "PRG-STUB01" },
-      });
-      const bothBody = draftAndPublished.structuredContent as Record<string, unknown>;
-      expect(bothBody.share_link).toBe(shareUrl);
-      expect(bothBody.pdf_url).toBe(pdfUrl);
-      expect(bothBody.publish_link).toBe(`${base}/programs/PRG-STUB01/publish`);
-      expect(bothBody.manage_link).toBe(`${base}/programs/PRG-STUB01/share`);
-      expect(bothBody.manage_url).toBe(`${base}/programs/PRG-STUB01`);
-      expect(bothBody.draft).not.toBeNull();
-      expect(bothBody.published).not.toBeNull();
-    });
-  });
-
-  it("returns publish_link for draft-only get_program_share_link_or_pdf stub", async () => {
-    await withMcpClient(async (client) => {
-      const result = await client.callTool({
-        name: GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-        arguments: { program_code: STUB_DRAFT_ONLY_PROGRAM_CODE },
-      });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as {
-        publish_link?: string;
-        share_link?: string;
-      };
-      expect(body.share_link).toBe("");
-      expect(body.publish_link).toBe(
-        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/${STUB_DRAFT_ONLY_PROGRAM_CODE}/publish`,
-      );
     });
   });
 });
@@ -423,35 +384,38 @@ describe("Physio MCP HTTP validation", () => {
         name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
         arguments: { from_routine_id: generatedId },
       });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as { from_routine_id?: string };
-      expect(body.from_routine_id).toBe(generatedId.toLowerCase());
+      expect(result.isError).toBe(true);
+      expect(toolErrorText(result)).toBe("routine_not_found");
+      expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+        "routine_not_found",
+      );
     });
   });
 
   it("accepts uppercase UUID v4 in schema and normalizes via validateOpaqueEntityId", async () => {
-    const upper = "550E8400-E29B-41D4-A716-446655440000";
-    const lower = upper.toLowerCase();
+    const routineId = id("mcp-http-upper-routine");
+    const upper = routineId.toUpperCase();
+    const lower = routineId.toLowerCase();
     expect(isValidOpaqueEntityId(upper)).toBe(true);
     expect(validateOpaqueEntityId(upper, "from_routine_id")).toBe(lower);
     const schemaValidate = ajv.compile(getProgramBuilderLinkInputSchema);
     expect(schemaValidate({ from_routine_id: upper })).toBe(true);
 
-    await withMcpClient(async (client) => {
-      const result = await client.callTool({
-        name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
-        arguments: { from_routine_id: upper },
-      });
-      expect(result.isError).not.toBe(true);
-      const body = result.structuredContent as {
-        from_routine_id?: string;
-        builder_link?: string;
-      };
-      expect(body.from_routine_id).toBe(lower);
-      expect(body.builder_link).toBe(
-        `${MCP_TEST_CONFIG.webAppBaseUrl}/programs/new?from_routine_id=${lower}`,
-      );
-    });
+    const fetch = await mcpHttpFetchWithOwnerRoutine("mcp-http-upper-routine");
+    await withMcpClient(
+      async (client) => {
+        const result = await client.callTool({
+          name: GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
+          arguments: { from_routine_id: upper },
+        });
+        expect(result.isError).toBe(true);
+        expect(toolErrorText(result)).toBe("not_supported_v1");
+        expect((result.structuredContent as { error_code?: string }).error_code).toBe(
+          "not_supported_v1",
+        );
+      },
+      { fetch },
+    );
   });
 
   it("rejects patient-detail patterns in every free-text field", async () => {

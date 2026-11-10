@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,12 +14,16 @@ import {
   FILTER_FROM_ROUTINE,
   FILTER_FROM_SCRATCH,
   NEW_PROGRAM_FROM_ROUTINE,
-  PUBLISH_NOT_YET,
-  PUBLISH_NOW,
-  PUBLISH_SHEET_TITLE,
   VIEW_ROUTINE,
   builderOriginBannerTitle,
 } from "../../src/ui/copy/programs.js";
+import {
+  PUBLISHED_NEW_LINK_TOAST,
+  PUBLISH_FIRST_PUBLISH_HEADING,
+  PUBLISH_NOT_YET,
+  PUBLISH_NOW,
+  PUBLISH_SHEET_TITLE,
+} from "../../src/ui/copy/program-publish.js";
 import {
   CREATE_PROGRAM_FROM_ROUTINE,
   USE_FOR_PATIENT,
@@ -148,6 +152,47 @@ describe("Program from routine UI (DIDI-1025, integration HTTP)", () => {
       close();
     }
   });
+
+  it("Use for a patient prefills the routine name and Publish now uses the publish API", async () => {
+    const { routineId, routinesClient, programsClient, close } = await httpClients();
+    try {
+      render(
+        <MemoryRouter initialEntries={[`/routines/${routineId}`]}>
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={programsClient}
+            routinesClient={routinesClient}
+          />
+        </MemoryRouter>,
+      );
+      const useButtons = await screen.findAllByRole("button", {
+        name: USE_FOR_PATIENT,
+      });
+      await userEvent.click(useButtons[0]!);
+      const dialog = await screen.findByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+      const nameField = dialog.querySelector("#pg-publish-name-input");
+      expect(nameField).toHaveValue("Knee routine for UI");
+      await waitFor(() => {
+        expect(
+          within(dialog).getByRole("heading", {
+            level: 3,
+            name: PUBLISH_FIRST_PUBLISH_HEADING,
+          }),
+        ).toBeInTheDocument();
+      });
+      const publishNow = within(dialog).getByRole("button", { name: PUBLISH_NOW });
+      await waitFor(() => {
+        expect(publishNow).toBeEnabled();
+      });
+      await userEvent.click(publishNow);
+      await waitFor(() => {
+        expect(screen.getByText(PUBLISHED_NEW_LINK_TOAST)).toBeInTheDocument();
+      });
+    } finally {
+      close();
+    }
+  }, 20_000);
 
   it("Create program from routine shows origin banner with View routine", async () => {
     const { routineId, routinesClient, programsClient, close } = await httpClients();

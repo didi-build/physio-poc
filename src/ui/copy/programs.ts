@@ -231,25 +231,6 @@ export function builderOriginBannerTitle(name: string, version: number): string 
   return `From routine: ${name}, version ${version}`;
 }
 
-export const PUBLISH_SHEET_TITLE = "Publish to the live link?";
-export const PUBLISH_NOT_YET = "Not yet";
-export const PUBLISH_NOW = "Publish now";
-export const PROGRAM_NAME_REQUIRED_SUFFIX = "(required)";
-export const NAME_REQUIRED_ERROR =
-  "Add a program name to publish. Use something you will recognise, not the patient's name.";
-export const FILLED_FROM_ROUTINE_HINT =
-  "Filled in from the routine. Change it if you like.";
-export const FIRST_PUBLISH = "First publish";
-export const SHARE_LINK_SECTION = "Share link";
-export const NO_LINK_YET_PUBLISH =
-  "No link yet. Publishing creates it, ready to copy and send.";
-export const LINK_EXPIRES_SECTION = "Link expires";
-export const THIS_PROGRAM_ONLY = "This program only";
-
-export function keptAsDraftToast(code: string): string {
-  return `Kept as a draft. Find it in Programs by name or code ${code}.`;
-}
-
 export function programCreatedFromRoutineToast(name: string): string {
   return `Program created from ${name}. Tweak it, then publish.`;
 }

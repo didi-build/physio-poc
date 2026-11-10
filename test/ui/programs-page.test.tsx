@@ -72,6 +72,25 @@ function stubLibraryClient(): ExerciseLibraryClient {
   } as unknown as ExerciseLibraryClient;
 }
 
+const BUILDER_ROW: ProgramBuilderView["rows"][number] = {
+  id: "row-1",
+  position: 0,
+  kind: "exercise",
+  exercise_id: "ex-1",
+  exercise_version_id: "v1",
+  exercise_request_id: null,
+  pinned_version_number: 1,
+  prescription_type: "concentric",
+  params: { reps: 10, per_day: 2 },
+  params_source: "global_defaults",
+  resolved_params: { reps: 10, per_day: 2 },
+  resolved_params_source: "global_defaults",
+  text_snapshot: { title: "Heel raise" },
+  note: null,
+  library_update: null,
+  exercise_version_choices: [{ exercise_version_id: "v1", version_number: 1 }],
+};
+
 const LIST_ITEM: ProgramListItem = {
   program_id: "prog-1",
   code: "PRG-TEST",
@@ -95,9 +114,9 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     draft_updated_at: "2026-10-24T12:00:00.000Z",
     auto_save_status: { kind: "not_published_yet" },
     draft_saved_at: "2026-10-24T12:00:00.000Z",
-    exercise_count: 0,
+    exercise_count: 1,
     library_updates_to_review: 0,
-    rows: [],
+    rows: [BUILDER_ROW],
     open_share_link: false,
     share_link_status: "none",
     last_sent_at: null,
@@ -160,6 +179,23 @@ function stubProgramsClient(overrides: Partial<ProgramsClient> = {}): ProgramsCl
     applyLibraryUpdate: vi.fn(),
     keepLibraryUpdate: vi.fn(),
     addPlaceholderRow: vi.fn(),
+    getShareLink: vi.fn().mockResolvedValue({
+      display_state: "draft_only",
+      share_link: "",
+      share_link_status: "none",
+      share_link_state: "none",
+      expires_at: null,
+      open_share_link: false,
+      draft: { version: 1, updated_at: "2026-10-24T12:00:00.000Z" },
+      published: null,
+      program_code: "PRG-TEST",
+      program_name: null,
+      link_expires_in: null,
+      link_expires_on: null,
+      practitioner_default_expires_in: "1_year",
+      publish_change_lines: [],
+      published_at: null,
+    }),
   };
   const merged = { ...base, ...overrides } as ProgramsClient;
   if (overrides.getProgram && !overrides.getProgramByCode) {

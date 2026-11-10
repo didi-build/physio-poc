@@ -15,6 +15,7 @@ export type BetterAuthRuntime = {
     baseURL: string;
     secret: string;
     internalAdapter: unknown;
+    checkSchema?: () => Promise<void>;
   }>;
 };
 

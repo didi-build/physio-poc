@@ -21,7 +21,7 @@ import { assertProductionMcpStubImportGraph } from "../scripts/lib/mcp-stub-impo
 
 const REPO_ROOT = process.cwd();
 
-describe("MCP stub handler (placeholder-only until DIDI-1043)", () => {
+describe("MCP stub handler (placeholder helpers)", () => {
   it("pins the four model-facing placeholder summaries for builder and share tools", () => {
     expect(STUB_GET_PROGRAM_BUILDER_LINK_SUMMARY).toBe(
       "Example response: Placeholder builder link; no stored program data.",
@@ -104,7 +104,17 @@ describe("MCP stub handler (placeholder-only until DIDI-1043)", () => {
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
       .sort();
-    expect(entries).toEqual(["stub-tool-handler.ts", "validate-tool-input.ts"].sort());
+    expect(entries).toEqual(
+      [
+        "connector-copy.ts",
+        "mcp-request-context.ts",
+        "physio-mcp-tool-service.ts",
+        "resolve-mcp-practitioner.ts",
+        "stub-tool-handler.ts",
+        "tool-handler.ts",
+        "validate-tool-input.ts",
+      ].sort(),
+    );
     expect(readdirSync(join(mcpDir, "generated")).sort()).toContain(
       "input-validators.js",
     );

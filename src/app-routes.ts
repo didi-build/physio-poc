@@ -119,6 +119,8 @@ export const PHYSIO_APP_SPA_ROUTE_NAMES = [
   "programs",
   "programNew",
   "programBuilder",
+  "programPublish",
+  "programShare",
   "requests",
   "requestConflict",
   "requestReview",
@@ -188,6 +190,15 @@ export function physioAppExerciseSearchPath(rawQuery: string): string {
 
 export function buildStubPublicShareLink(webAppBaseUrl: string): string {
   return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${PHYSIO_APP_ROUTE_PATTERNS.stubPublicShareLink}`;
+}
+
+export function buildPublicShareLinkPath(token: string): string {
+  const trimmed = token.trim();
+  return `/l/${encodeURIComponent(trimmed)}`;
+}
+
+export function buildPublicShareLinkUrl(webAppBaseUrl: string, token: string): string {
+  return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${buildPublicShareLinkPath(token)}`;
 }
 
 export function buildWebAppRoutineSearchUrl(

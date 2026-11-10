@@ -8,13 +8,15 @@ import {
   sortedHeaderEntries,
 } from "./helpers/invalid-input-query-guard.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   openMigratedDatabase,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
@@ -45,7 +47,7 @@ describe("invalid_input query guard canonical response", () => {
         sql: storage,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         auth,
       };
       const response = await handleRequest(

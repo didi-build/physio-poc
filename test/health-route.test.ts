@@ -14,12 +14,13 @@ function testDeps() {
   const config = resolveTestPhysioServerConfig(PHYSIO_TEST_BETTER_AUTH_SECRET, {
     fakeGoogleProvider: false,
   });
+  const sql = new InMemorySqlStorage();
   return {
-    sql: new InMemorySqlStorage(),
+    sql,
     objects: new InMemoryObjectStorage(),
     config,
     auth: new FakeAuthPort({ practitioner: null }),
-    mcp: createPhysioMcpHttpHandler(config),
+    mcp: createPhysioMcpHttpHandler({ config, sql }),
   };
 }
 

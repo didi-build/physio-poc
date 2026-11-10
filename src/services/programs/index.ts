@@ -7,6 +7,14 @@ export {
   detectLibraryUpdate,
   linkApprovedPlaceholders,
 } from "./program-builder-service.js";
+export {
+  ProgramPublishService,
+  ProgramPublishServiceError,
+  parseShareLinkExpiryBody,
+  type ProgramPublishResult,
+  type ProgramShareConnectorView,
+  type PublicShareLinkView,
+} from "./program-publish-service.js";
 export { validateExerciseParamsForPrescriptionType } from "../../domain/exercise-params.js";
 export type {
   ProgramAutoSaveStatus,

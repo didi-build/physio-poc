@@ -38,10 +38,15 @@ export function ProgramsNewPage() {
   };
 
   const goToBuilder = (programCode: string, openPublishSheet: boolean) => {
-    navigate(fillPhysioAppRoutePattern("programBuilder", { programCode }), {
-      replace: true,
-      state: openPublishSheet ? { openPublishSheet: true } : undefined,
-    });
+    navigate(
+      fillPhysioAppRoutePattern(
+        openPublishSheet ? "programPublish" : "programBuilder",
+        {
+          programCode,
+        },
+      ),
+      { replace: true },
+    );
   };
 
   const createFromPickedRoutine = (

@@ -2,7 +2,15 @@ import type { ExerciseLibraryClient } from "../../../src/ui/api/exercise-library
 import { DEV_PRACTITIONER_ID } from "../../../src/ui/api/exercise-library-client.js";
 import type { ExerciseMediaClient } from "../../../src/ui/api/exercise-media-client.js";
 import type { ExerciseRequestsClient } from "../../../src/ui/api/exercise-requests-client.js";
+import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../../src/domain/global-type-defaults-seed.js";
+import { PRESCRIPTION_TYPES } from "../../../src/domain/exercise-types.js";
+import { SHARE_LINK_EXPIRES_IN } from "../../../src/mcp-connector/share-link-expiry.js";
+import type { MyDefaultsClient } from "../../../src/ui/api/my-defaults-client.js";
 import type { ProgramsClient } from "../../../src/ui/api/programs-client.js";
+import {
+  programsClientFor1014Harness,
+  PROGRAMS_1014_FIXTURE_ROUTES,
+} from "./programs-didi-1014-fixtures.js";
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
@@ -93,6 +101,32 @@ const programsListItem = {
   routine_origin: null,
 };
 
+export function baseMyDefaultsClient(): MyDefaultsClient {
+  return {
+    getPage: async () => ({
+      share_link_expiry: {
+        global: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
+        practitioner: null,
+        effective: { expiresIn: SHARE_LINK_EXPIRES_IN.one_year, customExpiresOn: null },
+      },
+      exercise_types: PRESCRIPTION_TYPES.map((type) => ({
+        type,
+        global_params: GLOBAL_TYPE_DEFAULTS_SEED[type],
+        practitioner_params: null,
+      })),
+    }),
+    updateShareLinkExpiry: async () => {
+      throw new Error("harness: updateShareLinkExpiry not stubbed");
+    },
+    upsertTypeDefault: async () => {
+      throw new Error("harness: upsertTypeDefault not stubbed");
+    },
+    resetTypeDefault: async () => {
+      throw new Error("harness: resetTypeDefault not stubbed");
+    },
+  } as unknown as MyDefaultsClient;
+}
+
 function baseProgramsClient(): ProgramsClient {
   return {
     listPrograms: async () => ({ items: [], matched_code: null }),
@@ -118,7 +152,15 @@ export type HarnessFixtureId =
   | "routines-detail-load-failed"
   | "programs-empty"
   | "programs-no-match"
-  | "programs-populated";
+  | "programs-populated"
+  | "programs-1014-publish-first"
+  | "programs-1014-publish-name-required"
+  | "programs-1014-publish-republish"
+  | "programs-1014-publish-placeholders"
+  | "programs-1014-builder-sticky"
+  | "programs-1014-share-open"
+  | "programs-1014-share-closed"
+  | "app-wide-cache-nav";
 
 function baseRoutinesClient(): RoutinesClient {
   return {
@@ -146,6 +188,7 @@ export type HarnessFixture = {
   requests: ExerciseRequestsClient;
   media: ExerciseMediaClient;
   routines: RoutinesClient;
+  myDefaults?: MyDefaultsClient;
 };
 
 export function harnessFixture(
@@ -713,6 +756,60 @@ export function harnessFixture(
         media,
         routines: baseRoutinesClient(),
       };
+    case "programs-1014-publish-first":
+    case "programs-1014-publish-name-required":
+    case "programs-1014-publish-republish":
+    case "programs-1014-publish-placeholders":
+    case "programs-1014-builder-sticky":
+    case "programs-1014-share-open":
+    case "programs-1014-share-closed":
+      return programs1014HarnessFixture(id);
+    case "app-wide-cache-nav":
+      return {
+        initialEntries: ["/exercises"],
+        library: {
+          ...baseLibraryClient(),
+          listMyExercises: async () => ({
+            list_state: "ok" as const,
+            sections: {
+              new_from_requests: [],
+              pinned: [],
+              recently_used_and_saved: [
+                {
+                  exercise_id: "ex-nav-1",
+                  exercise_name: "Heel slide",
+                  category: "Stretching" as const,
+                  body_regions: ["Lower leg"],
+                  saved_at: "2026-10-30T12:00:00.000Z",
+                  section: "recently_used_and_saved" as const,
+                },
+              ],
+            },
+          }),
+        } as unknown as ExerciseLibraryClient,
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 1 }),
+          listInProgress: async () => ({
+            in_progress_count: 1,
+            requests: [
+              {
+                request_id: "req-nav-1",
+                requested_name: "Nav draft",
+                exercise_note: null,
+                status: "drafting" as const,
+                requested_by: DEV_PRACTITIONER_ID,
+                requested_by_email: "kojo@example.com",
+                exercise_id: "ex-nav-1",
+                draft_title: "Nav draft",
+                updated_at: "2026-10-30T12:00:00.000Z",
+              },
+            ],
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: baseRoutinesClient(),
+        myDefaults: baseMyDefaultsClient(),
+      };
     default: {
       const never: never = id;
       throw new Error(`Unknown fixture ${never}`);
@@ -720,7 +817,40 @@ export function harnessFixture(
   }
 }
 
+function programs1014HarnessFixture(
+  id:
+    | "programs-1014-publish-first"
+    | "programs-1014-publish-name-required"
+    | "programs-1014-publish-republish"
+    | "programs-1014-publish-placeholders"
+    | "programs-1014-builder-sticky"
+    | "programs-1014-share-open"
+    | "programs-1014-share-closed",
+): HarnessFixture {
+  const route = PROGRAMS_1014_FIXTURE_ROUTES[id];
+  return {
+    initialEntries: [route.initialEntry],
+    library: baseLibraryClient(),
+    requests: {
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      listInProgress: async () => ({
+        requests: [],
+        in_progress_count: 0,
+      }),
+    } as unknown as ExerciseRequestsClient,
+    media: {} as ExerciseMediaClient,
+    routines: baseRoutinesClient(),
+  };
+}
+
 export function programsClientForHarness(fixtureId?: HarnessFixtureId): ProgramsClient {
+  if (fixtureId && fixtureId in PROGRAMS_1014_FIXTURE_ROUTES) {
+    const scenario =
+      PROGRAMS_1014_FIXTURE_ROUTES[
+        fixtureId as keyof typeof PROGRAMS_1014_FIXTURE_ROUTES
+      ].scenario;
+    return programsClientFor1014Harness(scenario);
+  }
   if (fixtureId === "programs-no-match") {
     return {
       listPrograms: async (q?: string) => {
@@ -732,7 +862,7 @@ export function programsClientForHarness(fixtureId?: HarnessFixtureId): Programs
       listDeletedPrograms: async () => ({ items: [] }),
     } as unknown as ProgramsClient;
   }
-  if (fixtureId === "programs-populated") {
+  if (fixtureId === "programs-populated" || fixtureId === "app-wide-cache-nav") {
     return {
       listPrograms: async () => ({ items: [programsListItem], matched_code: null }),
       listDeletedPrograms: async () => ({ items: [] }),

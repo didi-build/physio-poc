@@ -5,7 +5,6 @@ import {
   handleExerciseMediaRequest,
   exerciseMediaHttpRouteCases,
 } from "../src/http/routes/exercise-media.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   FIXTURE_VERSION_ID,
@@ -21,7 +20,10 @@ import {
   exerciseMediaTestDeps,
 } from "./helpers/exercise-media-http.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
@@ -837,7 +839,7 @@ describe("Exercise media practitioner auth (integration)", () => {
             displayName: "Coach",
           },
         }),
-        mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         extraRouteHandlers: exerciseMediaExtraRouteHandlers(),
       };
 

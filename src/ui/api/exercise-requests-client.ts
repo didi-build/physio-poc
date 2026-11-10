@@ -7,6 +7,7 @@ import {
   exerciseRequestsInProgressCountPath,
   exerciseRequestsInProgressPath,
 } from "../../exercise-requests-api-paths.js";
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import type {
   ApproveExerciseRequestResult,
   DraftFieldPatch,
@@ -54,23 +55,29 @@ export class ExerciseRequestsClient {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
-  listSimilar(query: string): Promise<SimilarExercisesResult> {
+  listSimilar(
+    query: string,
+    options?: ReadRequestOptions,
+  ): Promise<SimilarExercisesResult> {
     const path = `${EXERCISE_REQUESTS_API_BASE}/similar?q=${encodeURIComponent(query)}`;
-    return this.fetchFn(path, { method: "GET" }).then((response) =>
+    return this.fetchFn(path, readGetInit(options)).then((response) =>
       readJson<SimilarExercisesResult>(response),
     );
   }
 
-  listInProgress(): Promise<InProgressRequestsResult> {
-    return this.fetchFn(exerciseRequestsInProgressPath(), { method: "GET" }).then(
+  listInProgress(options?: ReadRequestOptions): Promise<InProgressRequestsResult> {
+    return this.fetchFn(exerciseRequestsInProgressPath(), readGetInit(options)).then(
       (response) => readJson<InProgressRequestsResult>(response),
     );
   }
 
-  getInProgressCount(): Promise<{ in_progress_count: number }> {
-    return this.fetchFn(exerciseRequestsInProgressCountPath(), { method: "GET" }).then(
-      (response) => readJson<{ in_progress_count: number }>(response),
-    );
+  getInProgressCount(
+    options?: ReadRequestOptions,
+  ): Promise<{ in_progress_count: number }> {
+    return this.fetchFn(
+      exerciseRequestsInProgressCountPath(),
+      readGetInit(options),
+    ).then((response) => readJson<{ in_progress_count: number }>(response));
   }
 
   submitRequest(input: {
@@ -91,8 +98,11 @@ export class ExerciseRequestsClient {
     ).then((response) => readJson<SubmitExerciseRequestResult>(response));
   }
 
-  getRequest(requestId: string): Promise<ExerciseRequestDraftView> {
-    return this.fetchFn(exerciseRequestPath(requestId), { method: "GET" }).then(
+  getRequest(
+    requestId: string,
+    options?: ReadRequestOptions,
+  ): Promise<ExerciseRequestDraftView> {
+    return this.fetchFn(exerciseRequestPath(requestId), readGetInit(options)).then(
       (response) => readJson<ExerciseRequestDraftView>(response),
     );
   }

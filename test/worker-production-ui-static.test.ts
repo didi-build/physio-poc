@@ -55,7 +55,24 @@ describe("Worker production UI static (DIDI-1169)", () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("javascript");
+    expect(response.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
     await expect(response.text()).resolves.toBe("console.log('stub-asset');");
+  });
+
+  it("GET / serves index.html with cache-control no-cache", async () => {
+    const env = await productionEnvWithAssets();
+    const response = await worker.fetch(new Request(`${WORKER_BASE}/`), env);
+    expect(response.status).toBe(302);
+    const shell = await worker.fetch(new Request(`${WORKER_BASE}/programs`), env);
+    expect(shell.status).toBe(302);
+    const signedInShell = await worker.fetch(
+      new Request(`${WORKER_BASE}/sign-in`),
+      env,
+    );
+    expect(signedInShell.status).toBe(200);
+    expect(signedInShell.headers.get("cache-control")).toBe("no-cache");
   });
 
   it("GET /api/unknown still returns JSON not_found", async () => {

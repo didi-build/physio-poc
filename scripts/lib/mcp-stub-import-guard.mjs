@@ -13,11 +13,19 @@ export const MCP_STUB_IMPORT_GUARD_ENTRY_PATHS = [
 export const MCP_STUB_IMPORT_GUARD_EXTRA_ROOTS = ["src/app-routes.ts"];
 
 /**
- * @param {string} repoRelativePath
+ * @param {string | undefined} importer repo-relative module doing the import
+ * @param {string} imported repo-relative resolved target
  * @returns {boolean}
  */
-export function isForbiddenMcpStubDependency(repoRelativePath) {
-  const normalized = repoRelativePath.split(sep).join("/");
+export function isForbiddenMcpImport(importer, imported) {
+  const normalized = imported.split(sep).join("/");
+  const importerPath = importer?.split(sep).join("/") ?? "";
+  if (normalized.startsWith("src/storage/ports/")) {
+    if (importerPath.startsWith("src/services/mcp/")) {
+      return false;
+    }
+    return true;
+  }
   if (normalized.startsWith("src/storage/")) {
     return true;
   }
@@ -25,9 +33,17 @@ export function isForbiddenMcpStubDependency(repoRelativePath) {
     normalized.startsWith("src/services/") &&
     !normalized.startsWith("src/services/mcp/")
   ) {
+    if (importerPath.startsWith("src/services/mcp/")) {
+      return false;
+    }
     return true;
   }
   return false;
+}
+
+/** @deprecated Use isForbiddenMcpImport */
+export function isForbiddenMcpStubDependency(repoRelativePath) {
+  return isForbiddenMcpImport(undefined, repoRelativePath);
 }
 
 function scriptKindForPath(path) {
@@ -245,7 +261,7 @@ export function scanMcpStubImportGraph(options) {
     seen.add(modulePath);
     visited.push(modulePath);
 
-    if (isForbiddenMcpStubDependency(modulePath)) {
+    if (isForbiddenMcpImport(undefined, modulePath)) {
       continue;
     }
 
@@ -279,7 +295,7 @@ export function scanMcpStubImportGraph(options) {
       if (!resolved) {
         continue;
       }
-      if (isForbiddenMcpStubDependency(resolved)) {
+      if (isForbiddenMcpImport(modulePath, resolved)) {
         violations.push({
           module: resolved,
           importedFrom: modulePath,

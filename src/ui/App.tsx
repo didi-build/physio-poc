@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRoutes } from "react-router-dom";
 import type { ExerciseLibraryClient } from "./api/exercise-library-client.js";
 import { ExerciseLibraryApiProvider } from "./api/exercise-library-context.js";
@@ -20,6 +20,8 @@ import { RequestConflictPage } from "./exercise-requests/RequestConflictPage.js"
 import { RequestsAndDraftsPage } from "./exercise-requests/RequestsAndDraftsPage.js";
 import { MyDefaultsPage } from "./my-defaults/MyDefaultsPage.js";
 import { ProgramBuilderPage } from "./programs/ProgramBuilderPage.js";
+import { ProgramPublishPage } from "./programs/ProgramPublishPage.js";
+import { ProgramSharePage } from "./programs/ProgramSharePage.js";
 import { ProgramsListPage } from "./programs/ProgramsListPage.js";
 import { ProgramsNewPage } from "./programs/ProgramsNewPage.js";
 import {
@@ -54,36 +56,22 @@ export type PhysioAppProps = {
 
 function ExerciseSearchRoute() {
   const { refreshInProgressCount } = useExerciseRequestsRefresh();
-  return (
-    <ExerciseLibraryPage
-      initialTab="all"
-      onRequestsChanged={() => {
-        void refreshInProgressCount();
-      }}
-    />
-  );
+  const onRequestsChanged = useCallback(() => {
+    void refreshInProgressCount({ force: true });
+  }, [refreshInProgressCount]);
+  return <ExerciseLibraryPage initialTab="all" onRequestsChanged={onRequestsChanged} />;
 }
 
 function RequestsListRoute() {
-  const { refreshInProgressCount } = useExerciseRequestsRefresh();
-  return (
-    <RequestsAndDraftsPage
-      onRequestsChanged={() => {
-        void refreshInProgressCount();
-      }}
-    />
-  );
+  return <RequestsAndDraftsPage />;
 }
 
 function DraftReviewRoute() {
   const { refreshInProgressCount } = useExerciseRequestsRefresh();
-  return (
-    <DraftReviewPage
-      onRequestsChanged={() => {
-        void refreshInProgressCount();
-      }}
-    />
-  );
+  const onRequestsChanged = useCallback(() => {
+    void refreshInProgressCount({ force: true });
+  }, [refreshInProgressCount]);
+  return <DraftReviewPage onRequestsChanged={onRequestsChanged} />;
 }
 
 export function createPhysioAppRouteElements(
@@ -102,6 +90,8 @@ export function createPhysioAppRouteElements(
     programs: <ProgramsListPage />,
     programNew: <ProgramsNewPage />,
     programBuilder: <ProgramBuilderPage />,
+    programPublish: <ProgramPublishPage />,
+    programShare: <ProgramSharePage />,
     requests: requestsListRoute,
     requestConflict: <RequestConflictPage />,
     requestReview: draftReviewRoute,
@@ -135,6 +125,9 @@ export function PhysioApp({
   const [requestsReviewCount, setRequestsReviewCount] = useState(
     requestsReviewCountProp ?? 0,
   );
+  const onRequestsCount = useCallback((count: number) => {
+    setRequestsReviewCount(count);
+  }, []);
 
   return (
     <ExerciseLibraryApiProvider client={exerciseLibraryClient}>
@@ -145,11 +138,7 @@ export function PhysioApp({
               <RoutinesApiProvider client={routinesClient}>
                 <PractitionerSessionProvider client={practitionerSessionClient}>
                   <SessionReadCacheProvider>
-                    <ExerciseRequestsRefreshProvider
-                      onCount={(count) => {
-                        setRequestsReviewCount(count);
-                      }}
-                    >
+                    <ExerciseRequestsRefreshProvider onCount={onRequestsCount}>
                       <PhysioAppRoutes requestsReviewCount={requestsReviewCount} />
                     </ExerciseRequestsRefreshProvider>
                   </SessionReadCacheProvider>

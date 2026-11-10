@@ -265,12 +265,10 @@ export function RoutineDetailsPage() {
           showToast({ message: programCreatedFromRoutineToast(community.name) });
         }
         navigate(
-          fillPhysioAppRoutePattern("programBuilder", {
-            programCode: result.program.code,
-          }),
-          {
-            state: openPublishSheet ? { openPublishSheet: true } : undefined,
-          },
+          fillPhysioAppRoutePattern(
+            openPublishSheet ? "programPublish" : "programBuilder",
+            { programCode: result.program.code },
+          ),
         );
       })
       .catch(() => {

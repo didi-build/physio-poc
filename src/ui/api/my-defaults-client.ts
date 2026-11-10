@@ -1,3 +1,4 @@
+import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
@@ -46,8 +47,8 @@ export class MyDefaultsClient {
     this.fetchFn = options.fetchFn ?? globalThis.fetch.bind(globalThis);
   }
 
-  getPage(): Promise<MyDefaultsPageView> {
-    return this.fetchFn(MY_DEFAULTS_API_BASE, { method: "GET" }).then((response) =>
+  getPage(options?: ReadRequestOptions): Promise<MyDefaultsPageView> {
+    return this.fetchFn(MY_DEFAULTS_API_BASE, readGetInit(options)).then((response) =>
       readJson<MyDefaultsPageView>(response),
     );
   }

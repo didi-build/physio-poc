@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
-import { createPhysioMcpHttpHandler } from "../src/adapters/workers/mcp/handle-mcp-http-request.js";
 import { handleRequest } from "../src/http/app.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { InMemorySqlStorage } from "../src/storage/adapters/memory/in-memory-sql-storage.js";
@@ -16,7 +15,10 @@ import {
   sortedHeaderEntries,
 } from "./helpers/invalid-input-query-guard.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
-import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  MCP_TEST_CONFIG,
+  createTestPhysioMcpHttpHandler,
+} from "./mcp-server-test-utils.js";
 import { TS, seedPractitioner } from "./helpers/exercise-sqlite-fixture.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
@@ -55,7 +57,7 @@ describe("Program duplicate id over HTTP with Worker in-memory SqlStoragePort", 
       sql: storage,
       objects: new InMemoryObjectStorage(),
       config: MCP_TEST_CONFIG,
-      mcp: createPhysioMcpHttpHandler(MCP_TEST_CONFIG),
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     };
 
     const cookieA = authA.createSessionCookieHeader();

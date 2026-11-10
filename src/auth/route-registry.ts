@@ -47,6 +47,11 @@ const HANDLE_REQUEST_ROUTE_SAMPLES: readonly HandleRequestRouteSample[] = [
     method: "GET",
   },
   { branchId: "guarded-api", samplePath: "/api/me/programs", method: "GET" },
+  {
+    branchId: "guarded-api",
+    samplePath: "/api/public/share-links/demo-token",
+    method: "GET",
+  },
   { branchId: "app-shell", samplePath: "/sign-in", method: "GET" },
   { branchId: "app-shell", samplePath: "/l/demo-code", method: "GET" },
   { branchId: "app-shell", samplePath: "/favicon.ico", method: "GET" },

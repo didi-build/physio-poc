@@ -11,7 +11,7 @@ describe("MCP tools in-process (FakeAuthPort smoke)", () => {
       });
       expect(result.isError).not.toBe(true);
       expect((result.structuredContent as { summary?: string }).summary).toMatch(
-        /^Example response:/,
+        /Searched exercise library|No approved match/,
       );
     });
   });

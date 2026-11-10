@@ -845,6 +845,7 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
       const practitionerId = await seedPractitioner(storage);
       await seedApprovedExerciseForBuilder(storage, practitionerId);
       const programs = new ProgramsRepository(storage);
+      const rows = new ProgramRowsRepository(storage);
       await seedOpenExerciseRequest(
         storage,
         practitionerId,
@@ -861,8 +862,19 @@ describe("ProgramBuilderService (integration, SQLite)", () => {
         prescriptionType: "stretching",
       });
       await markExerciseRequestApproved(storage, id("req-pub"), FIXTURE_EXERCISE_ID);
-      await programs.publish(id("prog-pub-ph"), TS);
       await linkApprovedPlaceholders(storage, id("req-pub"), FIXTURE_VERSION_ID, clock);
+      await programs.publish(id("prog-pub-ph"), TS);
+      await rows.replaceRow({
+        id: id("row-pub-ph"),
+        programId: id("prog-pub-ph"),
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 45 },
+        textSnapshot: { title: "Pending squat updated" },
+        draftUpdatedAt: clock(),
+      });
       const view = await service.getProgram(practitionerId, id("prog-pub-ph"));
       expect(view.auto_save_status).toEqual({ kind: "unpublished_changes" });
       const record = await programs.findById(id("prog-pub-ph"));
@@ -2009,13 +2021,11 @@ describe("ProgramBuilderService getProgram is read-only", () => {
         exerciseRequestId: id("req-ro"),
         prescriptionType: "stretching",
       });
-      await markExerciseRequestApproved(storage, id("req-ro"), FIXTURE_EXERCISE_ID);
-      await programs.publish(id("prog-ro"), TS);
       const before = await snapshotProgramDbState(storage, id("prog-ro"));
       expect(before.rows[0]?.exercise_request_id).toBe(id("req-ro"));
       const view = await service.getProgram(practitionerId, id("prog-ro"));
       const after = await snapshotProgramDbState(storage, id("prog-ro"));
-      expect(view.auto_save_status.kind).toBe("published");
+      expect(view.auto_save_status.kind).toBe("not_published_yet");
       expectDbStateUnchanged(before, after);
     } finally {
       storage.close();
