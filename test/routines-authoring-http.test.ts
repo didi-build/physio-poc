@@ -15,6 +15,7 @@ import {
   PractitionerRoutinesRepository,
   RoutinesRepository,
   RoutineVersionsRepository,
+  RoutineVersionRowsRepository,
 } from "../src/storage/repositories/routines.js";
 import { ProgramRowsRepository } from "../src/storage/repositories/programs.js";
 import { ProgramBuilderService } from "../src/services/programs/index.js";
@@ -259,6 +260,52 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       expect(cancelled.status).toBe(200);
       expect(await new RoutinesRepository(storage).findById(untouchedId)).toBeNull();
 
+      const touchedOnly = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const touchedOnlyId = ((await touchedOnly.json()) as { routine_id: string })
+        .routine_id;
+      const touchedOnlyUrl = `${BASE}${routineAuthoringItemPath(touchedOnlyId)}`;
+      await handleRequest(
+        new Request(
+          touchedOnlyUrl,
+          mutatingAppApiRequestInit(touchedOnlyUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ name: "Touched for cancel" }),
+          }),
+        ),
+        deps,
+      );
+      const cancelTouched = await handleRequest(
+        new Request(
+          touchedOnlyUrl,
+          mutatingAppApiRequestInit(touchedOnlyUrl, {
+            method: "DELETE",
+            headers: { cookie },
+          }),
+        ),
+        deps,
+      );
+      expect(cancelTouched.status).toBe(400);
+      const cancelTouchedBody = (await cancelTouched.json()) as { error: string };
+      expect(cancelTouchedBody.error).toBe("draft_not_touchable");
+      const routines = new RoutinesRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const versionRows = new RoutineVersionRowsRepository(storage);
+      expect(await routines.findById(touchedOnlyId)).not.toBeNull();
+      const draftVersion = await versions.findDraftForRoutine(touchedOnlyId);
+      expect(draftVersion).not.toBeNull();
+      expect(await versionRows.listForVersion(draftVersion!.id)).toHaveLength(0);
+
       const touched = await handleRequest(
         new Request(
           createUrl,
@@ -313,6 +360,276 @@ describe("Routine authoring HTTP (DIDI-1021)", () => {
       );
       expect(undo.status).toBe(200);
       expect(await new RoutinesRepository(storage).findById(touchedId)).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("hides empty author drafts from non-author publish validation", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-empty-a"),
+        "empty-a@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("auth-empty-b"),
+        "empty-b@example.com",
+      );
+      const { deps, cookie } = appDeps(storage, author, "empty-a@example.com");
+      const { deps: otherDeps, cookie: otherCookie } = appDeps(
+        storage,
+        other,
+        "empty-b@example.com",
+      );
+      const createUrl = `${BASE}${ROUTINES_AUTHORING_COLLECTION_PATH}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const routineId = ((await created.json()) as { routine_id: string }).routine_id;
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      const publish = await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "POST",
+            headers: { cookie: otherCookie, "content-type": "application/json" },
+            body: JSON.stringify({ action: "publish" }),
+          }),
+        ),
+        otherDeps,
+      );
+      expect(publish.status).toBe(404);
+      const body = (await publish.json()) as { error: string };
+      expect(body.error).toBe("routine_not_found");
+      expect(await new RoutinesRepository(storage).findById(routineId)).not.toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 404 routine_not_found for non-authors on every draft mutation", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-hide-a"),
+        "hide-a@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("auth-hide-b"),
+        "hide-b@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDeps(storage, author, "hide-a@example.com");
+      const { deps: otherDeps, cookie: otherCookie } = appDeps(
+        storage,
+        other,
+        "hide-b@example.com",
+      );
+      const createUrl = `${BASE}${ROUTINES_AUTHORING_COLLECTION_PATH}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const routineId = ((await created.json()) as { routine_id: string }).routine_id;
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      await handleRequest(
+        new Request(
+          itemUrl,
+          mutatingAppApiRequestInit(itemUrl, {
+            method: "PATCH",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ name: "Secret draft", rows: rowPayload() }),
+          }),
+        ),
+        deps,
+      );
+      const routines = new RoutinesRepository(storage);
+      const versions = new RoutineVersionsRepository(storage);
+      const versionRows = new RoutineVersionRowsRepository(storage);
+      const snapshot = async () => ({
+        routine: await routines.findById(routineId),
+        draft: await versions.findDraftForRoutine(routineId),
+        rowCount: (
+          await versionRows.listForVersion(
+            (await versions.findDraftForRoutine(routineId))!.id,
+          )
+        ).length,
+      });
+      const before = await snapshot();
+
+      const expect404 = async (response: Response) => {
+        expect(response.status).toBe(404);
+        const body = (await response.json()) as { error: string };
+        expect(body.error).toBe("routine_not_found");
+        expect(await snapshot()).toEqual(before);
+      };
+
+      await expect404(
+        await handleRequest(
+          new Request(
+            itemUrl,
+            mutatingAppApiRequestInit(itemUrl, {
+              method: "PATCH",
+              headers: { cookie: otherCookie, "content-type": "application/json" },
+              body: JSON.stringify({ name: "Stolen" }),
+            }),
+          ),
+          otherDeps,
+        ),
+      );
+      await expect404(
+        await handleRequest(
+          new Request(
+            itemUrl,
+            mutatingAppApiRequestInit(itemUrl, {
+              method: "POST",
+              headers: { cookie: otherCookie, "content-type": "application/json" },
+              body: JSON.stringify({ action: "publish", name: "Stolen" }),
+            }),
+          ),
+          otherDeps,
+        ),
+      );
+      await expect404(
+        await handleRequest(
+          new Request(
+            itemUrl,
+            mutatingAppApiRequestInit(itemUrl, {
+              method: "POST",
+              headers: { cookie: otherCookie, "content-type": "application/json" },
+              body: JSON.stringify({ action: "discard_draft" }),
+            }),
+          ),
+          otherDeps,
+        ),
+      );
+      await expect404(
+        await handleRequest(
+          new Request(
+            itemUrl,
+            mutatingAppApiRequestInit(itemUrl, {
+              method: "DELETE",
+              headers: { cookie: otherCookie },
+            }),
+          ),
+          otherDeps,
+        ),
+      );
+      await expect404(
+        await handleRequest(
+          new Request(
+            itemUrl,
+            mutatingAppApiRequestInit(itemUrl, {
+              method: "POST",
+              headers: { cookie: otherCookie, "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "undo_draft_discard",
+                undo: { practitioner_id: other, routine_id: routineId },
+              }),
+            }),
+          ),
+          otherDeps,
+        ),
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 401 without a session on every authoring mutation", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("auth-401"),
+        "auth401@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDeps(storage, author, "auth401@example.com");
+      const createUrl = `${BASE}${ROUTINES_AUTHORING_COLLECTION_PATH}`;
+      const created = await handleRequest(
+        new Request(
+          createUrl,
+          mutatingAppApiRequestInit(createUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+          }),
+        ),
+        deps,
+      );
+      const routineId = ((await created.json()) as { routine_id: string }).routine_id;
+      const itemUrl = `${BASE}${routineAuthoringItemPath(routineId)}`;
+      const routineCount = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM routines",
+      );
+      const countBefore = routineCount?.c ?? 0;
+
+      const noCookie = (url: string, init: RequestInit) =>
+        handleRequest(new Request(url, mutatingAppApiRequestInit(url, init)), deps);
+
+      const createNoSession = await noCookie(createUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body_region_id: BODY_REGION_KNEE }),
+      });
+      expect(createNoSession.status).toBe(401);
+
+      const patchNoSession = await noCookie(itemUrl, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Nope" }),
+      });
+      expect(patchNoSession.status).toBe(401);
+
+      const deleteNoSession = await noCookie(itemUrl, { method: "DELETE" });
+      expect(deleteNoSession.status).toBe(401);
+
+      const publishNoSession = await noCookie(itemUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "publish" }),
+      });
+      expect(publishNoSession.status).toBe(401);
+
+      const discardNoSession = await noCookie(itemUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "discard_draft" }),
+      });
+      expect(discardNoSession.status).toBe(401);
+
+      const undoNoSession = await noCookie(itemUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "undo_draft_discard", undo: {} }),
+      });
+      expect(undoNoSession.status).toBe(401);
+
+      const countAfter = (
+        await storage.first<{ c: number }>("SELECT COUNT(*) AS c FROM routines")
+      )?.c;
+      expect(countAfter).toBe(countBefore);
     } finally {
       storage.close();
     }

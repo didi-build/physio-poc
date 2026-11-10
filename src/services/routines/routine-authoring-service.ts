@@ -7,6 +7,7 @@ import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { ExerciseLibraryReadRepository } from "../../storage/repositories/exercise-library-read.js";
 import { PractitionersRepository } from "../../storage/repositories/exercise-data.js";
 import {
+  type RoutineRecord,
   RoutineRepositoryError,
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
@@ -33,7 +34,6 @@ export class RoutineAuthoringServiceError extends Error {
       | "invalid_input"
       | "publish_validation_failed"
       | "routine_not_published"
-      | "not_author"
       | "draft_not_touchable"
       | "undo_mismatch"
       | "stale_write"
@@ -65,7 +65,7 @@ function mapRepoError(err: unknown): never {
       throw new RoutineAuthoringServiceError(err.message, "routine_not_published");
     }
     if (err.message.includes("Only the author")) {
-      throw new RoutineAuthoringServiceError(err.message, "not_author");
+      throw new RoutineAuthoringServiceError("Routine not found", "routine_not_found");
     }
     throw new RoutineAuthoringServiceError(err.message, "invalid_input");
   }
@@ -233,6 +233,26 @@ export class RoutineAuthoringService {
     return issues;
   }
 
+  private async requireAuthorVisibleDraft(
+    practitionerId: string,
+    routineId: string,
+  ): Promise<RoutineRecord> {
+    const routine = await this.routines.findVisibleToPractitioner(
+      routineId,
+      practitionerId,
+    );
+    if (!routine) {
+      throw new RoutineAuthoringServiceError("Routine not found", "routine_not_found");
+    }
+    if (routine.published_version !== null) {
+      throw new RoutineAuthoringServiceError(
+        "Routine is not a draft",
+        "routine_not_published",
+      );
+    }
+    return routine;
+  }
+
   async isDraftUntouched(routineId: string): Promise<boolean> {
     const routine = await this.routines.findById(routineId);
     if (!routine || routine.published_version !== null) {
@@ -297,16 +317,7 @@ export class RoutineAuthoringService {
   }): Promise<{ routine_id: string; draft_updated_at: string }> {
     await this.requirePractitioner(input.practitionerId);
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
-    const routine = await this.routines.findById(routineId);
-    if (!routine) {
-      throw new RoutineAuthoringServiceError("Routine not found", "routine_not_found");
-    }
-    if (routine.published_version !== null) {
-      throw new RoutineAuthoringServiceError(
-        "Routine is not a draft",
-        "routine_not_published",
-      );
-    }
+    await this.requireAuthorVisibleDraft(input.practitionerId, routineId);
     const draftUpdatedAt = this.now();
     try {
       await this.routines.updateDraftMetadata({
@@ -346,6 +357,7 @@ export class RoutineAuthoringService {
   ): Promise<{ ok: true }> {
     await this.requirePractitioner(practitionerId);
     const validated = validateOpaqueEntityId(routineId, "Routine id");
+    await this.requireAuthorVisibleDraft(practitionerId, validated);
     if (!(await this.isDraftUntouched(validated))) {
       throw new RoutineAuthoringServiceError(
         "Draft is not untouched",
@@ -402,6 +414,7 @@ export class RoutineAuthoringService {
   ): Promise<{ undo: RoutineDraftDiscardUndo }> {
     await this.requirePractitioner(practitionerId);
     const validated = validateOpaqueEntityId(routineId, "Routine id");
+    await this.requireAuthorVisibleDraft(practitionerId, validated);
     const undo = await this.captureDraftDiscardUndo(practitionerId, validated);
     try {
       await this.routines.deleteDraft(validated, practitionerId);
@@ -414,8 +427,24 @@ export class RoutineAuthoringService {
   async undoDiscardDraft(
     urlPractitionerId: string,
     urlRoutineId: string,
-    payload: RoutineDraftDiscardUndo,
+    payload: unknown,
   ): Promise<void> {
+    await this.requirePractitioner(urlPractitionerId);
+    const validatedRoutineId = validateOpaqueEntityId(urlRoutineId, "Routine id");
+    const existing = await this.routines.findById(validatedRoutineId);
+    if (existing) {
+      const visible = await this.routines.findVisibleToPractitioner(
+        validatedRoutineId,
+        urlPractitionerId,
+      );
+      if (!visible) {
+        throw new RoutineAuthoringServiceError(
+          "Routine not found",
+          "routine_not_found",
+        );
+      }
+      throw new RoutineAuthoringServiceError("Routine already exists", "invalid_input");
+    }
     const parsed = parseRoutineDraftDiscardUndo(payload);
     if (
       parsed.practitioner_id !== urlPractitionerId ||
@@ -425,11 +454,6 @@ export class RoutineAuthoringService {
         "Undo snapshot does not match URL",
         "undo_mismatch",
       );
-    }
-    await this.requirePractitioner(urlPractitionerId);
-    const existing = await this.routines.findById(urlRoutineId);
-    if (existing) {
-      throw new RoutineAuthoringServiceError("Routine already exists", "invalid_input");
     }
     const snap = parsed.snapshot;
     try {
@@ -468,9 +492,13 @@ export class RoutineAuthoringService {
   }> {
     await this.requirePractitioner(input.practitionerId);
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    await this.requireAuthorVisibleDraft(input.practitionerId, routineId);
     const draft = await this.versions.findDraftForRoutine(routineId);
-    const name = input.name ?? draft?.name ?? null;
-    const rows = draft ? await this.versionRows.listForVersion(draft.id) : [];
+    if (!draft) {
+      throw new RoutineAuthoringServiceError("Routine not found", "routine_not_found");
+    }
+    const name = input.name ?? draft.name ?? null;
+    const rows = await this.versionRows.listForVersion(draft.id);
     const issues = this.publishValidationIssues(name, rows.length);
     if (issues.length > 0) {
       throw new RoutineAuthoringServiceError(

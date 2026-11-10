@@ -12,7 +12,6 @@ import {
   RoutineAuthoringServiceError,
   RoutinesLibraryService,
   RoutinesLibraryServiceError,
-  parseRoutineDraftDiscardUndo,
   parseRoutineMutationUndo,
   type RoutineSearchSort,
 } from "../../services/routines/index.js";
@@ -591,11 +590,10 @@ export async function handleRoutinesRequest(
         }
         if (action === "undo_draft_discard") {
           try {
-            const undoPayload = parseRoutineDraftDiscardUndo(body.undo);
             await authoringService(deps).undoDiscardDraft(
               practitionerId,
               routineId,
-              undoPayload,
+              body.undo,
             );
             return Response.json({ ok: true }, { headers: JSON_HEADERS });
           } catch (error) {
