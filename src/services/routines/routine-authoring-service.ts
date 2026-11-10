@@ -641,10 +641,6 @@ export class RoutineAuthoringService {
         bodyRegionId: input.bodyRegionId,
         whoItsFor: input.whoItsFor,
       });
-      await this.sql.run(
-        `UPDATE program_rows SET params_json = params_json WHERE program_id IN (SELECT id FROM programs WHERE source_routine_id = ?)`,
-        [routineId],
-      );
       return {
         routine_id: routineId,
         version_number: saved.version_number,
