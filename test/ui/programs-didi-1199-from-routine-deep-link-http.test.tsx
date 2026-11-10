@@ -78,12 +78,13 @@ async function programCount(
 async function seedDraftOnly(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   author: string,
+  seeds: { routine: string; draftVersion: string; row: string },
 ): Promise<string> {
   const routines = new RoutinesRepository(storage);
   const rows = new RoutineVersionRowsRepository(storage);
-  const routineId = id("ui-1199-draft-routine");
-  const draftVersionId = id("ui-1199-draft-ver");
-  const rowId = id("ui-1199-draft-row");
+  const routineId = id(seeds.routine);
+  const draftVersionId = id(seeds.draftVersion);
+  const rowId = id(seeds.row);
   await routines.createDraft({
     id: routineId,
     draftVersionId,
@@ -274,40 +275,17 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199, integration HTTP)"
     }
   });
 
-  it("shows the error slot for a missing routine id without any write", async () => {
-    const {
-      storage,
-      practitionerA,
-      routinesClient,
-      programsClient,
-      createFromRoutineSpy,
-      close,
-    } = await httpClients();
-    try {
-      const missingId = id("ui-1199-missing-routine");
-      const countBefore = await programCount(storage, practitionerA);
-      render(deepLinkApp(missingId, programsClient, routinesClient));
-      await waitFor(() => {
-        expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
-      });
-      expect(createFromRoutineSpy).not.toHaveBeenCalled();
-      expect(await programCount(storage, practitionerA)).toBe(countBefore);
-    } finally {
-      close();
-    }
-  });
-
-  it("shows the error slot for a cross-owner routine id without any write", async () => {
+  it("preselects and creates from another author published community routine on tap", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
       await publishRoutine(storage, practitionerB, {
-        routine: "ui-1199-foreign",
-        draftVersion: "ui-1199-foreign-draft",
-        row: "ui-1199-foreign-row",
-        name: "Foreign routine",
+        routine: "ui-1199-foreign-pub",
+        draftVersion: "ui-1199-foreign-pub-draft",
+        row: "ui-1199-foreign-pub-row",
+        name: "Foreign published routine",
       });
-      const foreignId = id("ui-1199-foreign");
+      const foreignId = id("ui-1199-foreign-pub");
       const { deps, cookie } = appDepsForRoutinesHttpUi(
         storage,
         practitionerA,
@@ -321,8 +299,134 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199, integration HTTP)"
       const countBefore = await programCount(storage, practitionerA);
 
       render(deepLinkApp(foreignId, programsClient, routinesClient));
+      const dialog = await screen.findByRole("dialog", {
+        name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+      });
+      await waitFor(() => {
+        expect(
+          within(dialog).getByText("Foreign published routine").closest("button"),
+        ).toHaveAttribute("aria-pressed", "true");
+      });
+      expect(createFromRoutineSpy).not.toHaveBeenCalled();
+      const createBtn = within(dialog).getByRole("button", {
+        name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+      });
+      await waitFor(() => {
+        expect(createBtn).toBeEnabled();
+      });
+      await userEvent.click(createBtn);
+      await waitFor(() => {
+        expect(createFromRoutineSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(await programCount(storage, practitionerA)).toBe(countBefore + 1);
+      expect(
+        await screen.findByText(
+          builderOriginBannerTitle("Foreign published routine", 1),
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("preselects a deep-linked routine that is missing from the first search page", async () => {
+    const { routineId, routinesClient, programsClient, createFromRoutineSpy, close } =
+      await httpClients();
+    try {
+      vi.spyOn(routinesClient, "searchCommunity").mockResolvedValue({
+        routines: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+        conditions_available: false,
+        condition_options: [],
+      });
+
+      render(deepLinkApp(routineId, programsClient, routinesClient));
+      const dialog = await screen.findByRole("dialog", {
+        name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+      });
+      await waitFor(() => {
+        expect(within(dialog).getByText("Knee routine for UI")).toBeInTheDocument();
+        expect(
+          within(dialog).getByText("Knee routine for UI").closest("button"),
+        ).toHaveAttribute("aria-pressed", "true");
+      });
+      expect(createFromRoutineSpy).not.toHaveBeenCalled();
+      const createBtn = within(dialog).getByRole("button", {
+        name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+      });
+      await waitFor(() => {
+        expect(createBtn).toBeEnabled();
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("shows the error slot for a missing routine id without any write", async () => {
+    const {
+      storage,
+      practitionerA,
+      routinesClient,
+      programsClient,
+      createFromRoutineSpy,
+      close,
+    } = await httpClients();
+    try {
+      const missingId = id("ui-1199-missing-routine");
+      const countBefore = await programCount(storage, practitionerA);
+      render(deepLinkApp(missingId, programsClient, routinesClient));
+      const dialog = await screen.findByRole("dialog", {
+        name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+      });
       await waitFor(() => {
         expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+        expect(
+          within(dialog).getByRole("button", {
+            name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+          }),
+        ).toBeDisabled();
+      });
+      expect(createFromRoutineSpy).not.toHaveBeenCalled();
+      expect(await programCount(storage, practitionerA)).toBe(countBefore);
+    } finally {
+      close();
+    }
+  });
+
+  it("shows the error slot for another practitioner draft-only routine id without any write", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const foreignDraftId = await seedDraftOnly(storage, practitionerB, {
+        routine: "ui-1199-foreign-draft-routine",
+        draftVersion: "ui-1199-foreign-draft-ver",
+        row: "ui-1199-foreign-draft-row",
+      });
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        practitionerA,
+        "a@example.com",
+      );
+      const fetchFn = createRoutinesHttpFetch(deps, cookie);
+      const routinesClient = new RoutinesClient({ fetchFn });
+      const programsInner = new ProgramsClient({ fetchFn });
+      const createFromRoutineSpy = vi.spyOn(programsInner, "createProgramFromRoutine");
+      const programsClient = wrapProgramsClientWithCacheInvalidation(programsInner);
+      const countBefore = await programCount(storage, practitionerA);
+
+      render(deepLinkApp(foreignDraftId, programsClient, routinesClient));
+      const dialog = await screen.findByRole("dialog", {
+        name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+      });
+      await waitFor(() => {
+        expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+        expect(
+          within(dialog).getByRole("button", {
+            name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+          }),
+        ).toBeDisabled();
       });
       expect(createFromRoutineSpy).not.toHaveBeenCalled();
       expect(await programCount(storage, practitionerA)).toBe(countBefore);
@@ -335,7 +439,11 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199, integration HTTP)"
     const storage = await openMigratedDatabase();
     try {
       const { practitionerA } = await seedTwoPractitioners(storage);
-      const draftId = await seedDraftOnly(storage, practitionerA);
+      const draftId = await seedDraftOnly(storage, practitionerA, {
+        routine: "ui-1199-draft-routine",
+        draftVersion: "ui-1199-draft-ver",
+        row: "ui-1199-draft-row",
+      });
       const { deps, cookie } = appDepsForRoutinesHttpUi(
         storage,
         practitionerA,
@@ -349,8 +457,16 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199, integration HTTP)"
       const countBefore = await programCount(storage, practitionerA);
 
       render(deepLinkApp(draftId, programsClient, routinesClient));
+      const dialog = await screen.findByRole("dialog", {
+        name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+      });
       await waitFor(() => {
         expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+        expect(
+          within(dialog).getByRole("button", {
+            name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+          }),
+        ).toBeDisabled();
       });
       expect(createFromRoutineSpy).not.toHaveBeenCalled();
       expect(await programCount(storage, practitionerA)).toBe(countBefore);

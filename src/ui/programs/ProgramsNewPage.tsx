@@ -5,7 +5,7 @@ import {
   fillPhysioAppRoutePattern,
 } from "../../app-routes.js";
 import { useProgramsApi } from "../api/programs-context.js";
-import { useCurrentPractitionerIdentity } from "../api/practitioner-session-context.js";
+import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { PickRoutineForProgramSheet } from "./PickRoutineForProgramSheet.js";
@@ -24,8 +24,11 @@ export function ProgramsNewPage() {
     (location.state as { openRoutinePicker?: boolean } | null)?.openRoutinePicker ===
     true;
   const { showToast } = useToast();
-  const { practitionerId, sessionIdentityReady } = useCurrentPractitionerIdentity();
+  const sessionReady = usePractitionerSession().status === "ready";
   const initialFromRoutine = searchParams.get(FROM_ROUTINE_ID_QUERY_PARAM)?.trim();
+  const [deepLinkRead, setDeepLinkRead] = useState<
+    "idle" | "pending" | "ok" | "failed"
+  >(() => (initialFromRoutine ? "pending" : "idle"));
   const [open, setOpen] = useState(
     () => !initialFromRoutine && !openRoutinePickerOnMount,
   );
@@ -78,26 +81,33 @@ export function ProgramsNewPage() {
   };
 
   useEffect(() => {
-    if (!initialFromRoutine || !sessionIdentityReady) {
+    if (!initialFromRoutine) {
+      setDeepLinkRead("idle");
       return;
     }
+    if (!sessionReady) {
+      setDeepLinkRead("pending");
+      return;
+    }
+    setDeepLinkRead("pending");
     let cancelled = false;
     void routinesClient
       .getRoutineDetails(initialFromRoutine)
-      .then((details) => {
-        if (details.community.created_by !== practitionerId) {
-          throw new Error("routine_not_found");
+      .then(() => {
+        if (!cancelled) {
+          setDeepLinkRead("ok");
         }
       })
       .catch(() => {
         if (!cancelled) {
+          setDeepLinkRead("failed");
           setCreateFailed(true);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [initialFromRoutine, practitionerId, routinesClient, sessionIdentityReady]);
+  }, [initialFromRoutine, routinesClient, sessionReady]);
 
   return (
     <section className="pg-page ex-page">
@@ -129,7 +139,13 @@ export function ProgramsNewPage() {
       <PickRoutineForProgramSheet
         open={pickerOpen}
         busy={routineBusy}
-        preselectedRoutineId={initialFromRoutine ?? undefined}
+        deepLinkRoutineId={initialFromRoutine ?? undefined}
+        deepLinkRead={initialFromRoutine ? deepLinkRead : "idle"}
+        preselectedRoutineId={
+          initialFromRoutine && deepLinkRead !== "failed"
+            ? initialFromRoutine
+            : undefined
+        }
         onClose={() => {
           setPickerOpen(false);
         }}
