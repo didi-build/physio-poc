@@ -71,15 +71,15 @@ function errorResponse(error: unknown): Response {
     const status =
       error.code === "stale_write"
         ? 409
-        : error.code === "practitioner_not_found" || error.code === "routine_not_found"
+        : error.code === "practitioner_not_found" ||
+            error.code === "routine_not_found" ||
+            error.code === "my_routine_not_found" ||
+            error.code === "routine_not_published" ||
+            error.code === "exercise_not_found"
           ? 404
-          : error.code === "my_routine_not_found"
-            ? 404
-            : error.code === "routine_not_published"
-              ? 404
-              : error.code === "undo_mismatch"
-                ? 400
-                : 400;
+          : error.code === "undo_mismatch"
+            ? 400
+            : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },

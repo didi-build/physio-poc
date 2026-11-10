@@ -36,6 +36,7 @@ import {
   savedBaselineVersionIsAvailable,
   type RoutineRowComparable,
 } from "./routine-personal-change-projection.js";
+import { findUnapprovedRoutineRow } from "./validate-approved-rows.js";
 import type {
   CommunityRoutineSummary,
   McpRoutineSearchSummary,
@@ -65,7 +66,8 @@ export class RoutinesLibraryServiceError extends Error {
       | "invalid_input"
       | "undo_mismatch"
       | "routine_not_published"
-      | "stale_write",
+      | "stale_write"
+      | "exercise_not_found",
   ) {
     super(message);
     this.name = "RoutinesLibraryServiceError";
@@ -858,6 +860,12 @@ export class RoutinesLibraryService {
         "my_routine_not_found",
       );
     }
+    await this.validateApprovedRows(
+      input.rows.map((row) => ({
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+      })),
+    );
     const undo = await this.captureUndoSnapshot(
       input.practitionerId,
       validatedRoutineId,
@@ -920,6 +928,13 @@ export class RoutinesLibraryService {
         "invalid_input",
       );
     }
+
+    await this.validateApprovedRows(
+      snap.copy.rows.map((row) => ({
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+      })),
+    );
 
     try {
       await this.myCopies.restoreSavedCopyFromSnapshot({
@@ -984,6 +999,15 @@ export class RoutinesLibraryService {
         params_json: row.params_json,
       }),
     );
+  }
+
+  private async validateApprovedRows(
+    rows: { exerciseId: string; exerciseVersionId: string }[],
+  ): Promise<void> {
+    const unapproved = await findUnapprovedRoutineRow(this.exerciseRead, rows);
+    if (unapproved) {
+      throw new RoutinesLibraryServiceError("Exercise not found", "exercise_not_found");
+    }
   }
 
   private async mapRowsWithTitles<
