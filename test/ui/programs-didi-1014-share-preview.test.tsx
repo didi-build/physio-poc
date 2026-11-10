@@ -46,9 +46,11 @@ describe("Program share PDF preview (DIDI-1014)", () => {
     const list = screen.getByRole("list");
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Heel slide, stretching: 30s hold");
+    expect(items[0]).toHaveTextContent("Heel slide, stretching");
+    expect(items[0]).toHaveTextContent("30s hold");
     expect(items[0]).toHaveTextContent("Slow and controlled");
     expect(items[0]?.textContent).not.toMatch(/1\. 1\./);
-    expect(items[1]).toHaveTextContent("Quad set, isometric: 10s hold");
+    expect(items[1]).toHaveTextContent("Quad set, isometric");
+    expect(items[1]).toHaveTextContent("10s hold");
   });
 });

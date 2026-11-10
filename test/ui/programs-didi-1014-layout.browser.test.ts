@@ -2,8 +2,12 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PUBLISH_SHEET_TITLE } from "../../src/ui/copy/program-publish.js";
-import { CLOSE_LINK_SHEET_TITLE } from "../../src/ui/copy/program-publish.js";
+import {
+  CLOSE_LINK_SHEET_TITLE,
+  LINK_EXPIRES_HEADING,
+  PHONE_SHARE,
+  PUBLISH_SHEET_TITLE,
+} from "../../src/ui/copy/program-publish.js";
 import { ensureLayoutHarnessBuilt } from "../helpers/ensure-layout-harness-built.js";
 import { loadInterFontsInPage } from "../helpers/load-inter-fonts-in-page.js";
 import { startStaticFileServer } from "../helpers/static-file-server.js";
@@ -23,6 +27,9 @@ type LayoutCapture = {
   ready?: (page: Page) => Promise<void>;
 };
 
+const HARNESS_THUMB =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 const PUBLIC_PREVIEW = {
   availability: "open" as const,
   program_name: "Knee osteoarthritis, starter",
@@ -35,6 +42,8 @@ const PUBLIC_PREVIEW = {
       prescription_type: "stretching",
       params: { hold_s: 30 },
       note: "Slow and controlled",
+      media_start_url: HARNESS_THUMB,
+      media_end_url: HARNESS_THUMB,
     },
     {
       position: 1,
@@ -116,6 +125,31 @@ const CAPTURES: LayoutCapture[] = [
       await page.getByRole("heading", { level: 1, name: "Share program" }).waitFor({
         state: "visible",
       });
+      const width = page.viewportSize()?.width ?? 1280;
+      if (width < 1024) {
+        await page.getByRole("button", { name: PHONE_SHARE }).waitFor({
+          state: "visible",
+        });
+        expect(await page.locator(".pg-share-aside-slot").isVisible()).toBe(false);
+      } else {
+        await page.getByRole("button", { name: /Download PDF/ }).waitFor({
+          state: "visible",
+        });
+      }
+    },
+  },
+  {
+    mockup: "31",
+    fixture: "programs-1014-share-open",
+    fileStem: "didi-1014-mockup-31-share-link-sheet",
+    widths: [390],
+    prepare: async (page) => {
+      await page.getByRole("button", { name: PHONE_SHARE }).click();
+    },
+    ready: async (page) => {
+      await page.getByRole("heading", { name: LINK_EXPIRES_HEADING }).waitFor({
+        state: "visible",
+      });
       await page.getByRole("button", { name: /Download PDF/ }).waitFor({
         state: "visible",
       });
@@ -141,6 +175,13 @@ const CAPTURES: LayoutCapture[] = [
     fileStem: "didi-1014-mockup-32-close-link-confirm",
     widths: [390, 1280],
     prepare: async (page) => {
+      const width = page.viewportSize()?.width ?? 1280;
+      if (width < 1024) {
+        await page.getByRole("button", { name: PHONE_SHARE }).click();
+        await page.getByRole("dialog", { name: "Share program" }).waitFor({
+          state: "visible",
+        });
+      }
       await page.getByRole("button", { name: /Close link/ }).click();
       await page.getByRole("dialog", { name: CLOSE_LINK_SHEET_TITLE }).waitFor({
         state: "visible",

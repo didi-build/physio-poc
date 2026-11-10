@@ -277,10 +277,35 @@
   gap: 1.5rem;
 }
 
+.pg-share-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.pg-share-aside-slot {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .pg-share-aside-slot {
+    display: block;
+  }
+}
+
+.pg-share-closed-line--phone-main {
+  margin: 0;
+}
+
 @media (min-width: 1024px) {
   .pg-share-layout {
     grid-template-columns: 1fr min(380px, 100%);
   }
+}
+
+.pg-share-link-panel--sheet .pg-share-aside-title {
+  margin-top: 0;
 }
 
 .pg-share-actions {
@@ -350,12 +375,21 @@
 
 .pg-share-preview-head {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.75rem 0.875rem;
   border-radius: 0.75rem;
   background: #fff;
   border: 1px solid #e2e8f0;
+}
+
+.pg-share-preview-head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
 .pg-share-preview-kicker {
@@ -368,6 +402,7 @@
 }
 
 .pg-share-preview-program-name {
+  margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
   line-height: 1.3;
@@ -375,15 +410,18 @@
 }
 
 .pg-share-preview-meta {
+  margin: 0;
+  flex-shrink: 0;
   font-size: 0.8125rem;
   color: #64748b;
   line-height: 1.4;
+  text-align: right;
 }
 
 .pg-share-preview-rows {
   margin: 0.75rem 0 0;
-  padding: 0.75rem;
-  list-style: none;
+  padding: 0.75rem 0.75rem 0.75rem 1.5rem;
+  list-style: decimal;
   display: grid;
   gap: 0.75rem;
   background: #fff;
@@ -392,10 +430,6 @@
 }
 
 .pg-share-preview-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.625rem;
-  align-items: start;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -403,6 +437,13 @@
 .pg-share-preview-row:last-child {
   padding-bottom: 0;
   border-bottom: 0;
+}
+
+.pg-share-preview-row-inner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.625rem;
+  align-items: start;
 }
 
 .pg-share-preview-row-media {
@@ -425,11 +466,19 @@
   background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
 }
 
-.pg-share-preview-row-line {
+.pg-share-preview-row-title {
   margin: 0;
-  font-size: 0.8125rem;
-  line-height: 1.45;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
   color: #0f172a;
+}
+
+.pg-share-preview-row-dose {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #64748b;
 }
 
 .pg-share-preview-row-note {

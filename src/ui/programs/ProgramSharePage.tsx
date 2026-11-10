@@ -17,42 +17,21 @@ import {
   CLOSE_LINK_CONFIRM,
   CLOSE_LINK_KEEP_PROGRAM,
   CLOSE_LINK_SHEET_TITLE,
-  LINK_EXPIRES_HEADING,
-  LINK_EXPIRES_PROGRAM_ONLY,
   PDF_PREVIEW_ARIA,
   PDF_PREVIEW_CAPTION,
   PHONE_LINK_PAGE,
   PHONE_SHARE,
-  SHARE_CHANGE_IN_DEFAULTS_LINK,
-  SHARE_CHANGE_IN_DEFAULTS_PREFIX,
-  SHARE_CLOSE_LINK,
-  SHARE_CLOSE_LINK_HINT,
   SHARE_CLOSED_SUBTITLE,
   SHARE_CREATE_NEW_LINK,
-  SHARE_DOWNLOAD_PDF,
-  SHARE_DOWNLOAD_PDF_HINT,
-  SHARE_HELPER_PUBLISHED,
-  SHARE_HELPER_VIEW,
   SHARE_LINK_CLOSED_LINE,
-  SHARE_LINK_SECTION,
-  SHARE_NEVER_CALLOUT_BODY,
-  SHARE_NEVER_CALLOUT_TITLE,
   SHARE_PROGRAM_TITLE,
-  SHARE_REUSE_CALLOUT,
-  SHARE_REUSE_CALLOUT_BODY,
-  SHARE_SEE_LINK_PAGE,
-  SHARE_SEE_LINK_PAGE_HINT,
-  SHARE_SET_TO_NEVER,
   closeLinkBodyBeforeDate,
-  expiryChoiceLabel,
   linkNowExpiresToast,
   LINK_SET_NEVER_TOAST,
-  shareExpiresOnLine,
-  PUBLISH_COPY_LINK,
   PUBLISH_LINK_COPIED,
 } from "../copy/program-publish.js";
 import { UNTITLED_PROGRAM } from "../copy/programs.js";
-import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
+import { ProgramShareLinkPanel } from "./ProgramShareLinkPanel.js";
 import { ProgramSharePdfPreview } from "./ProgramSharePdfPreview.js";
 import {
   ProgramsBuilderBusyState,
@@ -69,99 +48,6 @@ function extractTokenFromShareUrl(shareLink: string): string | null {
   } catch {
     return null;
   }
-}
-
-function ShareActions({
-  shareView,
-  onCopy,
-  onLinkPage,
-  onDownloadPdf,
-  onCloseSheet,
-  onCloseLink,
-  inSheet,
-}: {
-  shareView: ProgramShareConnectorView;
-  onCopy: () => void;
-  onLinkPage: () => void;
-  onDownloadPdf: () => void;
-  onCloseSheet: () => void;
-  onCloseLink: () => void;
-  inSheet?: boolean;
-}) {
-  const closed = shareView.share_link_status === "closed";
-  if (closed) {
-    return null;
-  }
-  const rows = [
-    {
-      label: PUBLISH_COPY_LINK,
-      hint: "",
-      onClick: () => {
-        void onCopy();
-        if (inSheet) {
-          onCloseSheet();
-        }
-      },
-      className: "",
-      showDesktop: false,
-    },
-    {
-      label: SHARE_SEE_LINK_PAGE,
-      hint: SHARE_SEE_LINK_PAGE_HINT,
-      onClick: () => {
-        onLinkPage();
-        if (inSheet) {
-          onCloseSheet();
-        }
-      },
-      className: "",
-      showDesktop: true,
-    },
-    {
-      label: SHARE_DOWNLOAD_PDF,
-      hint: SHARE_DOWNLOAD_PDF_HINT,
-      onClick: () => {
-        onDownloadPdf();
-        if (inSheet) {
-          onCloseSheet();
-        }
-      },
-      className: "",
-      showDesktop: true,
-    },
-    {
-      label: SHARE_CLOSE_LINK,
-      hint: SHARE_CLOSE_LINK_HINT,
-      onClick: () => {
-        if (inSheet) {
-          onCloseSheet();
-        }
-        onCloseLink();
-      },
-      className: "pg-share-action--danger",
-      showDesktop: true,
-    },
-  ];
-  return (
-    <ul className={`pg-share-actions${inSheet ? " pg-share-actions--sheet" : ""}`}>
-      {rows.map((row) =>
-        row.showDesktop || inSheet ? (
-          <li key={row.label}>
-            <button
-              type="button"
-              className={`pg-share-action${row.className ? ` ${row.className}` : ""}`}
-              onClick={row.onClick}
-            >
-              <span className="pg-share-action-label">{row.label}</span>
-              {row.hint ? (
-                <span className="pg-share-action-hint">{row.hint}</span>
-              ) : null}
-            </button>
-          </li>
-        ) : null,
-      )}
-    </ul>
-  );
 }
 
 export function ProgramSharePage() {
@@ -276,6 +162,10 @@ export function ProgramSharePage() {
     setPreview(null);
   };
 
+  const goToPublish = () => {
+    navigate(fillPhysioAppRoutePattern("programPublish", { programCode }));
+  };
+
   if (!sessionReady || (!shareView && !loadFailed)) {
     return (
       <section className="pg-share" aria-busy>
@@ -296,6 +186,23 @@ export function ProgramSharePage() {
     ? shareView.program_name
     : UNTITLED_PROGRAM;
 
+  const linkPanelProps = {
+    shareView,
+    closed: Boolean(closed),
+    shareUrl,
+    expiry,
+    customDate,
+    expiryDateLabel,
+    onCopy,
+    onLinkPage: openLinkPage,
+    onDownloadPdf,
+    onCloseLink: () => {
+      setCloseOpen(true);
+    },
+    onExpiryChange,
+    onCreateLink: goToPublish,
+  };
+
   return (
     <section className="pg-share" aria-labelledby="pg-share-title">
       <Link
@@ -307,127 +214,39 @@ export function ProgramSharePage() {
       <h1 id="pg-share-title" className="pg-share-title">
         {SHARE_PROGRAM_TITLE}
       </h1>
-      <p className="pg-share-helper">{SHARE_HELPER_VIEW}</p>
-      <p className="pg-share-helper">{SHARE_HELPER_PUBLISHED}</p>
 
       <div className="pg-share-layout">
-        <div className="pg-share-preview-wrap">
-          <div className="pg-share-preview" aria-label={PDF_PREVIEW_ARIA}>
-            {preview ? (
-              <ProgramSharePdfPreview
-                preview={preview}
-                programCode={shareView.program_code}
-                programTitle={programTitle}
-              />
-            ) : (
-              <p className="pg-share-preview-empty">{SHARE_LINK_CLOSED_LINE}</p>
-            )}
+        <div className="pg-share-main-column">
+          {!isDesktop && closed ? (
+            <p className="pg-share-closed-line pg-share-closed-line--phone-main">
+              {SHARE_LINK_CLOSED_LINE}
+            </p>
+          ) : null}
+          <div className="pg-share-preview-wrap">
+            <div className="pg-share-preview" aria-label={PDF_PREVIEW_ARIA}>
+              {preview ? (
+                <ProgramSharePdfPreview
+                  preview={preview}
+                  programCode={shareView.program_code}
+                  programTitle={programTitle}
+                />
+              ) : (
+                <p className="pg-share-preview-empty">{SHARE_LINK_CLOSED_LINE}</p>
+              )}
+            </div>
+            <p className="pg-share-preview-caption">{PDF_PREVIEW_CAPTION}</p>
           </div>
-          <p className="pg-share-preview-caption">{PDF_PREVIEW_CAPTION}</p>
         </div>
 
-        <aside className="pg-share-aside">
-          <h2 className="pg-share-aside-title">{SHARE_LINK_SECTION}</h2>
-          {closed ? (
-            <>
-              <p className="pg-share-closed-line">{SHARE_LINK_CLOSED_LINE}</p>
-              <button
-                type="button"
-                className="pg-btn pg-btn--primary pg-share-create-link"
-                onClick={() => {
-                  navigate(
-                    fillPhysioAppRoutePattern("programPublish", { programCode }),
-                  );
-                }}
-              >
-                {SHARE_CREATE_NEW_LINK}
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="pg-share-link-row">
-                <span className="pg-share-link-url">{shareUrl}</span>
-                <button
-                  type="button"
-                  className="pg-btn pg-btn--secondary"
-                  onClick={() => {
-                    void onCopy();
-                  }}
-                >
-                  {PUBLISH_COPY_LINK}
-                </button>
-              </div>
-              <ShareActions
-                shareView={shareView}
-                onCopy={onCopy}
-                onLinkPage={openLinkPage}
-                onDownloadPdf={onDownloadPdf}
-                onCloseSheet={() => {}}
-                onCloseLink={() => {
-                  setCloseOpen(true);
-                }}
-              />
-              <div className="pg-share-expiry-block">
-                <div className="pg-share-expiry-head">
-                  <h3>{LINK_EXPIRES_HEADING}</h3>
-                  <span>{LINK_EXPIRES_PROGRAM_ONLY}</span>
-                </div>
-                <ProgramLinkExpiryField
-                  value={expiry}
-                  customDate={customDate}
-                  defaultChoice={SHARE_LINK_EXPIRES_IN.one_year}
-                  onChange={(next) => {
-                    void onExpiryChange(next, customDate);
-                  }}
-                  onCustomDateChange={(nextCustom) => {
-                    void onExpiryChange(SHARE_LINK_EXPIRES_IN.custom_date, nextCustom);
-                  }}
-                />
-                {expiry === SHARE_LINK_EXPIRES_IN.never ? (
-                  <p className="pg-share-never-callout">
-                    <strong>{SHARE_NEVER_CALLOUT_TITLE}</strong>{" "}
-                    {SHARE_NEVER_CALLOUT_BODY}
-                  </p>
-                ) : expiryDateLabel ? (
-                  <p className="pg-share-expires-on">
-                    {shareExpiresOnLine(
-                      expiryDateLabel,
-                      expiry !== SHARE_LINK_EXPIRES_IN.custom_date
-                        ? expiryChoiceLabel(expiry)
-                        : undefined,
-                    )}
-                  </p>
-                ) : null}
-                {expiry !== SHARE_LINK_EXPIRES_IN.never ? (
-                  <div className="pg-share-set-never">
-                    <p>
-                      <strong>{SHARE_REUSE_CALLOUT}</strong> {SHARE_REUSE_CALLOUT_BODY}
-                    </p>
-                    <button
-                      type="button"
-                      className="pg-btn pg-btn--secondary"
-                      onClick={() => {
-                        void onExpiryChange(SHARE_LINK_EXPIRES_IN.never, "");
-                      }}
-                    >
-                      {SHARE_SET_TO_NEVER}
-                    </button>
-                  </div>
-                ) : null}
-                <Link
-                  className="pg-link-btn"
-                  to={fillPhysioAppRoutePattern("defaults")}
-                >
-                  {SHARE_CHANGE_IN_DEFAULTS_PREFIX}{" "}
-                  {expiryChoiceLabel(
-                    shareView.practitioner_default_expires_in,
-                  ).toLowerCase()}
-                  . {SHARE_CHANGE_IN_DEFAULTS_LINK}
-                </Link>
-              </div>
-            </>
-          )}
-        </aside>
+        {isDesktop || !closed ? (
+          <div className="pg-share-aside-slot">
+            <ProgramShareLinkPanel
+              {...linkPanelProps}
+              surface="aside"
+              onCloseSheet={() => {}}
+            />
+          </div>
+        ) : null}
       </div>
 
       {!isDesktop ? (
@@ -436,9 +255,7 @@ export function ProgramSharePage() {
             <button
               type="button"
               className="pg-btn pg-btn--primary pg-publish-phone-bar-btn"
-              onClick={() => {
-                navigate(fillPhysioAppRoutePattern("programPublish", { programCode }));
-              }}
+              onClick={goToPublish}
             >
               {SHARE_CREATE_NEW_LINK}
             </button>
@@ -486,18 +303,11 @@ export function ProgramSharePage() {
             </button>
           }
         >
-          <ShareActions
-            inSheet
-            shareView={shareView}
-            onCopy={onCopy}
-            onLinkPage={openLinkPage}
-            onDownloadPdf={onDownloadPdf}
+          <ProgramShareLinkPanel
+            {...linkPanelProps}
+            surface="sheet"
             onCloseSheet={() => {
               setMobileSheetOpen(false);
-            }}
-            onCloseLink={() => {
-              setMobileSheetOpen(false);
-              setCloseOpen(true);
             }}
           />
         </ConfirmSheet>

@@ -6,13 +6,22 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const useMinWidth1024Mock = vi.hoisted(() => vi.fn(() => true));
+
+vi.mock("../../src/ui/hooks/useMinWidth1024.js", () => ({
+  useMinWidth1024: () => useMinWidth1024Mock(),
+}));
 import {
   CLOSE_LINK_CONFIRM,
   CLOSE_LINK_SHEET_TITLE,
   LINK_EXPIRES_HEADING,
   PUBLISH_COPY_LINK,
+  SHARE_HELPER_PUBLISHED,
+  SHARE_HELPER_VIEW,
   SHARE_LINK_CLOSED_LINE,
   SHARE_SEE_LINK_PAGE,
+  PHONE_SHARE,
 } from "../../src/ui/copy/program-publish.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
@@ -23,12 +32,12 @@ import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { ProgramSharePage } from "../../src/ui/programs/ProgramSharePage.js";
 import { stubPractitionerSessionClient } from "./fake-practitioner-session-fixture.js";
 import { setPractitionerSessionClientForTests } from "../../src/ui/api/practitioner-session-client.js";
-import * as useMinWidth from "../../src/ui/hooks/useMinWidth1024.js";
 
 afterEach(() => {
   cleanup();
   setPractitionerSessionClientForTests(null);
-  vi.restoreAllMocks();
+  useMinWidth1024Mock.mockReset();
+  useMinWidth1024Mock.mockReturnValue(true);
 });
 
 const program: ProgramBuilderView = {
@@ -75,8 +84,8 @@ function openShareView(
   };
 }
 
-function renderShare(client: ProgramsClient) {
-  vi.spyOn(useMinWidth, "useMinWidth1024").mockReturnValue(true);
+function renderShare(client: ProgramsClient, desktop = true) {
+  useMinWidth1024Mock.mockReturnValue(desktop);
   setPractitionerSessionClientForTests(stubPractitionerSessionClient());
   global.fetch = vi.fn().mockResolvedValue({
     ok: true,
@@ -107,6 +116,40 @@ function renderShare(client: ProgramsClient) {
 }
 
 describe("Program share screen (DIDI-1014)", () => {
+  it("shows share helpers in the desktop link card, not under the page title", async () => {
+    const client = {
+      getProgramByCode: vi.fn().mockResolvedValue(program),
+      getShareLink: vi.fn().mockResolvedValue(openShareView()),
+    } as unknown as ProgramsClient;
+    renderShare(client, true);
+    await screen.findByRole("button", { name: /Download PDF/ });
+    const aside = document.querySelector(".pg-share-aside-slot .pg-share-aside");
+    expect(aside).toBeTruthy();
+    expect(
+      within(aside as HTMLElement).getByText(SHARE_HELPER_VIEW),
+    ).toBeInTheDocument();
+    expect(
+      within(aside as HTMLElement).getByText(SHARE_HELPER_PUBLISHED),
+    ).toBeInTheDocument();
+    const mainColumn = document.querySelector(".pg-share-main-column");
+    expect(mainColumn?.querySelector(".pg-share-helper") ?? null).toBeNull();
+  });
+
+  it("keeps link helpers in the phone Share sheet, not on the main page", async () => {
+    const client = {
+      getProgramByCode: vi.fn().mockResolvedValue(program),
+      getShareLink: vi.fn().mockResolvedValue(openShareView()),
+    } as unknown as ProgramsClient;
+    renderShare(client, false);
+    await screen.findByRole("button", { name: PHONE_SHARE });
+    const mainColumn = document.querySelector(".pg-share-main-column");
+    expect(mainColumn?.querySelector(".pg-share-helper") ?? null).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: PHONE_SHARE }));
+    const dialog = screen.getByRole("dialog", { name: "Share program" });
+    expect(within(dialog).getByText(SHARE_HELPER_VIEW)).toBeInTheDocument();
+    expect(within(dialog).getByText(SHARE_HELPER_PUBLISHED)).toBeInTheDocument();
+  });
+
   it("hides expiry and share actions when the link is closed", async () => {
     const client = {
       getProgramByCode: vi.fn().mockResolvedValue(program),
