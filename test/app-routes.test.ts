@@ -14,7 +14,6 @@ import {
   encodedExerciseSearchQueryLength,
   fillPhysioAppRoutePattern,
   physioAppExerciseSearchPath,
-  physioAppSpaRoutePath,
   type ConnectorPhysioAppRouteName,
   type PhysioAppSpaRouteName,
 } from "../src/app-routes.js";
@@ -87,9 +86,6 @@ describe("shared Physio app route table", () => {
       const leaf = leafMatch(pathname);
       if (spaNames.has(routeName)) {
         expect(leaf.route.id, routeName).toBe(routeName);
-      } else if (routeName === "programPublish" || routeName === "programShare") {
-        expect(leaf.route.id, routeName).toBeUndefined();
-        expect(leaf.route.path).toBe(physioAppSpaRoutePath(routeName));
       } else {
         expect(leaf.route.id, routeName).toBe("programBuilder");
       }
@@ -98,9 +94,9 @@ describe("shared Physio app route table", () => {
     expect(blankNew.route.id).toBe("programNew" satisfies PhysioAppSpaRouteName);
   });
 
-  it("keeps publish and share out of the named SPA route id list while still matching paths", () => {
-    expect(PHYSIO_APP_SPA_ROUTE_NAMES).not.toContain("programPublish");
-    expect(PHYSIO_APP_SPA_ROUTE_NAMES).not.toContain("programShare");
+  it("includes publish and share in the named SPA route id list", () => {
+    expect(PHYSIO_APP_SPA_ROUTE_NAMES).toContain("programPublish");
+    expect(PHYSIO_APP_SPA_ROUTE_NAMES).toContain("programShare");
     const publishPath = new URL(
       buildPhysioAppUrl(BASE, "programPublish", {
         routeParams: { programCode: SAMPLE_PROGRAM_CODE },

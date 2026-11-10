@@ -10,8 +10,12 @@ const LOCK_DIR = join(DIST_DIR, ".layout-harness-build-lock");
 const HARNESS_INPUTS = [
   join(process.cwd(), "vite.layout-harness.config.ts"),
   join(process.cwd(), "src/ui/styles/exercise-library.css"),
+  join(process.cwd(), "src/ui/styles/programs.css"),
+  join(process.cwd(), "src/ui/programs/ProgramSharePdfPreview.tsx"),
+  join(process.cwd(), "src/ui/programs/ProgramShareLinkPanel.tsx"),
   join(process.cwd(), "src/ui/routines/RoutinesPage.tsx"),
   join(process.cwd(), "test/ui/harness/fixtures.ts"),
+  join(process.cwd(), "test/ui/harness/programs-didi-1014-fixtures.ts"),
 ];
 
 function harnessArtifactStale(): boolean {

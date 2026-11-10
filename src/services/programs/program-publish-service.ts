@@ -44,6 +44,7 @@ import {
   ProgramBuilderService,
   computeShareLinkStatus,
 } from "./program-builder-service.js";
+import { computeProgramPublishChangeLines } from "./program-publish-changes.js";
 import type { ProgramBuilderView, ShareLinkStatus } from "./types.js";
 import type { GetProgramDisplayState } from "../../mcp-connector/get-program-contract.js";
 import type { PublishedProgramSnapshot } from "../../domain/program-types.js";
@@ -86,6 +87,12 @@ export type ProgramShareConnectorView = {
   draft: ProgramVersionRef | null;
   published: ProgramVersionRef | null;
   program_code: string;
+  program_name: string | null;
+  link_expires_in: ShareLinkExpiresIn | null;
+  link_expires_on: string | null;
+  practitioner_default_expires_in: ShareLinkExpiresIn;
+  publish_change_lines: string[];
+  published_at: string | null;
 };
 
 export type PublicShareLinkOpenRow = {
@@ -371,6 +378,21 @@ export class ProgramPublishService {
       openLink && shareLinkStatus === "open"
         ? buildPublicShareLinkUrl(this.webAppBaseUrl, openLink.token)
         : "";
+    const practitionerDefault = (
+      await this.links.resolveDefaultExpiryForProgram(
+        practitionerId,
+        new Date(this.now()),
+      )
+    ).expiresIn;
+    const programView = await this.builder.getProgram(
+      practitionerId,
+      validatedProgramId,
+    );
+    const publishedSnapshot = this.programs.getPublishedSnapshot(program);
+    const publishChangeLines = computeProgramPublishChangeLines({
+      program: programView,
+      publishedSnapshot,
+    });
     return {
       display_state: inferGetProgramDisplayState(draft, published),
       share_link: shareLink,
@@ -385,6 +407,12 @@ export class ProgramPublishService {
       draft,
       published,
       program_code: program.code,
+      program_name: program.name,
+      link_expires_in: program.link_expires_in,
+      link_expires_on: program.link_expires_on,
+      practitioner_default_expires_in: practitionerDefault,
+      publish_change_lines: publishChangeLines,
+      published_at: program.published_at,
     };
   }
 

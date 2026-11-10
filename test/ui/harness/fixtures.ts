@@ -7,6 +7,10 @@ import { PRESCRIPTION_TYPES } from "../../../src/domain/exercise-types.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../../src/mcp-connector/share-link-expiry.js";
 import type { MyDefaultsClient } from "../../../src/ui/api/my-defaults-client.js";
 import type { ProgramsClient } from "../../../src/ui/api/programs-client.js";
+import {
+  programsClientFor1014Harness,
+  PROGRAMS_1014_FIXTURE_ROUTES,
+} from "./programs-didi-1014-fixtures.js";
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
@@ -149,6 +153,13 @@ export type HarnessFixtureId =
   | "programs-empty"
   | "programs-no-match"
   | "programs-populated"
+  | "programs-1014-publish-first"
+  | "programs-1014-publish-name-required"
+  | "programs-1014-publish-republish"
+  | "programs-1014-publish-placeholders"
+  | "programs-1014-builder-sticky"
+  | "programs-1014-share-open"
+  | "programs-1014-share-closed"
   | "app-wide-cache-nav";
 
 function baseRoutinesClient(): RoutinesClient {
@@ -745,6 +756,14 @@ export function harnessFixture(
         media,
         routines: baseRoutinesClient(),
       };
+    case "programs-1014-publish-first":
+    case "programs-1014-publish-name-required":
+    case "programs-1014-publish-republish":
+    case "programs-1014-publish-placeholders":
+    case "programs-1014-builder-sticky":
+    case "programs-1014-share-open":
+    case "programs-1014-share-closed":
+      return programs1014HarnessFixture(id);
     case "app-wide-cache-nav":
       return {
         initialEntries: ["/exercises"],
@@ -798,7 +817,40 @@ export function harnessFixture(
   }
 }
 
+function programs1014HarnessFixture(
+  id:
+    | "programs-1014-publish-first"
+    | "programs-1014-publish-name-required"
+    | "programs-1014-publish-republish"
+    | "programs-1014-publish-placeholders"
+    | "programs-1014-builder-sticky"
+    | "programs-1014-share-open"
+    | "programs-1014-share-closed",
+): HarnessFixture {
+  const route = PROGRAMS_1014_FIXTURE_ROUTES[id];
+  return {
+    initialEntries: [route.initialEntry],
+    library: baseLibraryClient(),
+    requests: {
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      listInProgress: async () => ({
+        requests: [],
+        in_progress_count: 0,
+      }),
+    } as unknown as ExerciseRequestsClient,
+    media: {} as ExerciseMediaClient,
+    routines: baseRoutinesClient(),
+  };
+}
+
 export function programsClientForHarness(fixtureId?: HarnessFixtureId): ProgramsClient {
+  if (fixtureId && fixtureId in PROGRAMS_1014_FIXTURE_ROUTES) {
+    const scenario =
+      PROGRAMS_1014_FIXTURE_ROUTES[
+        fixtureId as keyof typeof PROGRAMS_1014_FIXTURE_ROUTES
+      ].scenario;
+    return programsClientFor1014Harness(scenario);
+  }
   if (fixtureId === "programs-no-match") {
     return {
       listPrograms: async (q?: string) => {
