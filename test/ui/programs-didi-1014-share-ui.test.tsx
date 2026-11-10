@@ -10,6 +10,7 @@ import {
   CLOSE_LINK_CONFIRM,
   CLOSE_LINK_SHEET_TITLE,
   LINK_EXPIRES_HEADING,
+  PUBLISH_COPY_LINK,
   SHARE_LINK_CLOSED_LINE,
   SHARE_SEE_LINK_PAGE,
 } from "../../src/ui/copy/program-publish.js";
@@ -123,6 +124,8 @@ describe("Program share screen (DIDI-1014)", () => {
     expect(screen.queryByRole("heading", { name: LINK_EXPIRES_HEADING })).toBeNull();
     expect(screen.queryByRole("button", { name: /Download PDF/ })).toBeNull();
     expect(screen.queryByRole("button", { name: SHARE_SEE_LINK_PAGE })).toBeNull();
+    expect(document.querySelector(".pg-share-link-row")).toBeNull();
+    expect(screen.queryByRole("button", { name: PUBLISH_COPY_LINK })).toBeNull();
   });
 
   it("opens the link page and calls print for Download PDF", async () => {

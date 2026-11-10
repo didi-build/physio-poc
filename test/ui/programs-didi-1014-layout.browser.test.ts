@@ -27,9 +27,22 @@ const PUBLIC_PREVIEW = {
   availability: "open" as const,
   program_name: "Knee osteoarthritis, starter",
   published_at: "2026-10-24T18:10:00.000Z",
+  expiry_line: "Never expires.",
   rows: [
-    { position: 0, title: "Heel slide", params: { hold_s: 30 } },
-    { position: 1, title: "Quad set", params: { hold_s: 30 } },
+    {
+      position: 0,
+      title: "Heel slide",
+      prescription_type: "stretching",
+      params: { hold_s: 30 },
+      note: "Slow and controlled",
+    },
+    {
+      position: 1,
+      title: "Quad set",
+      prescription_type: "isometric",
+      params: { hold_s: 10 },
+      note: null,
+    },
   ],
 };
 

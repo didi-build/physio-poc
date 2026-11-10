@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
-import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { formatShareLinkExpiryDisplayDate } from "../../copy/programs-share.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
@@ -22,8 +21,6 @@ import {
   LINK_EXPIRES_PROGRAM_ONLY,
   PDF_PREVIEW_ARIA,
   PDF_PREVIEW_CAPTION,
-  PDF_PREVIEW_EXERCISE_PROGRAM,
-  PDF_PREVIEW_FOOTER,
   PHONE_LINK_PAGE,
   PHONE_SHARE,
   SHARE_CHANGE_IN_DEFAULTS_LINK,
@@ -54,8 +51,9 @@ import {
   PUBLISH_COPY_LINK,
   PUBLISH_LINK_COPIED,
 } from "../copy/program-publish.js";
-import { formatProgramPublishedAt, UNTITLED_PROGRAM } from "../copy/programs.js";
+import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
+import { ProgramSharePdfPreview } from "./ProgramSharePdfPreview.js";
 import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
@@ -316,32 +314,11 @@ export function ProgramSharePage() {
         <div className="pg-share-preview-wrap">
           <div className="pg-share-preview" aria-label={PDF_PREVIEW_ARIA}>
             {preview ? (
-              <>
-                <div className="pg-share-preview-head">
-                  <span className="pg-share-preview-kicker">
-                    {PDF_PREVIEW_EXERCISE_PROGRAM}
-                  </span>
-                  <strong>{preview.program_name || programTitle}</strong>
-                  <span className="pg-share-preview-meta">
-                    {shareView.program_code}
-                    <br />
-                    {formatProgramPublishedAt(preview.published_at)}
-                  </span>
-                </div>
-                <ol className="pg-share-preview-rows">
-                  {preview.rows.map((row, index) => (
-                    <li key={`${row.position}-${row.title}`}>
-                      <span className="pg-share-preview-row-title">
-                        {index + 1}. {row.title}
-                      </span>
-                      <span className="pg-share-preview-row-dose">
-                        {formatExerciseParams(row.params)}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-                <p className="pg-share-preview-foot">{PDF_PREVIEW_FOOTER}</p>
-              </>
+              <ProgramSharePdfPreview
+                preview={preview}
+                programCode={shareView.program_code}
+                programTitle={programTitle}
+              />
             ) : (
               <p className="pg-share-preview-empty">{SHARE_LINK_CLOSED_LINE}</p>
             )}

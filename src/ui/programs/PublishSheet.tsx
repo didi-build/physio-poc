@@ -302,6 +302,8 @@ export function PublishSheet({
       )}
       {noOpenLink ? (
         <p className="pg-publish-link-footnote">{PUBLISH_NEW_LINK_HELPER}</p>
+      ) : shareUrl ? (
+        <p className="pg-publish-link-footnote">{PUBLISH_SAME_LINK_HELPER}</p>
       ) : null}
       {copyHint ? (
         <p className="pg-publish-copy-hint" aria-live="polite">

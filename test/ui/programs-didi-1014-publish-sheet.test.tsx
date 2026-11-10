@@ -11,6 +11,7 @@ import { PublishSheet } from "../../src/ui/programs/PublishSheet.js";
 import {
   EXPIRY_APPLIES_NEW_LINK,
   PUBLISH_NOW,
+  PUBLISH_SAME_LINK_HELPER,
   PUBLISH_SHEET_TITLE,
 } from "../../src/ui/copy/program-publish.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
@@ -100,7 +101,54 @@ function PublishSheetHarness() {
   );
 }
 
+const republishProgram: ProgramBuilderView = {
+  ...program,
+  name: "Knee rehab",
+  auto_save_status: { kind: "unpublished_changes" },
+  open_share_link: true,
+  share_link_status: "open",
+};
+
+const republishShareView: ProgramShareConnectorView = {
+  ...shareView,
+  display_state: "published_with_draft_changes",
+  share_link: "https://physio.test.example/l/open",
+  share_link_status: "open",
+  share_link_state: "live",
+  open_share_link: true,
+  published_at: "2026-10-20T12:00:00.000Z",
+  publish_change_lines: ["Title changed"],
+};
+
 describe("Publish sheet (DIDI-1014)", () => {
+  it("shows the same-link helper when republishing with an open link", () => {
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={republishProgram}
+          shareView={republishShareView}
+          client={
+            {
+              publishProgram: vi.fn(),
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    expect(within(dialog).getByText(PUBLISH_SAME_LINK_HELPER)).toBeInTheDocument();
+  });
+
   it("keeps Publish now disabled until a program name is provided", async () => {
     render(
       <MemoryRouter>
