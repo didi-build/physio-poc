@@ -39,7 +39,10 @@ export async function createProgramFromRoutineWithDetails(
   const details = await routinesClient.getRoutineDetails(routineId);
   const source =
     sourceOverride ??
-    (details.my_copy !== null ? ("my_copy" as const) : ("community" as const));
+    resolveRoutineProgramSource(
+      details.my_copy !== null,
+      details.my_copy !== null ? "mine" : "community",
+    );
   const rowCount =
     source === "my_copy" && details.my_copy
       ? details.my_copy.rows.length
