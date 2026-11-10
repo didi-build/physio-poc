@@ -141,6 +141,16 @@
   width: 100%;
 }
 
+.pg-share-phone-bar {
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+.pg-share-phone-half {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (min-width: 1024px) {
   .pg-builder {
     padding-bottom: 0;
@@ -304,8 +314,18 @@
   }
 }
 
+.pg-share-link-row--sheet .pg-share-link-url {
+  width: 100%;
+}
+
 .pg-share-link-panel--sheet .pg-share-aside-title {
-  margin-top: 0;
+  display: none;
+}
+
+.shell-sheet-panel:has(.pg-share-link-panel--sheet) .shell-sheet-body {
+  min-height: 0;
+  max-height: min(52vh, 24rem);
+  overflow-y: auto;
 }
 
 .pg-share-actions {
@@ -420,8 +440,8 @@
 
 .pg-share-preview-rows {
   margin: 0.75rem 0 0;
-  padding: 0.75rem 0.75rem 0.75rem 1.5rem;
-  list-style: decimal;
+  padding: 0.75rem;
+  list-style: none;
   display: grid;
   gap: 0.75rem;
   background: #fff;
@@ -432,6 +452,16 @@
 .pg-share-preview-row {
   padding-bottom: 0.75rem;
   border-bottom: 1px solid #f1f5f9;
+}
+
+.pg-share-preview-row-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+
+.pg-share-preview-row-entry {
+  padding-left: 0.125rem;
 }
 
 .pg-share-preview-row:last-child {

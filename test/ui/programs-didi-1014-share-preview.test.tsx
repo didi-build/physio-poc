@@ -35,22 +35,34 @@ const preview: PublicShareLinkOpenView = {
 };
 
 describe("Program share PDF preview (DIDI-1014)", () => {
-  it("lists exercises once without duplicate row numbers", () => {
-    render(
+  it("lists exercises once with media before the numbered title and dose", () => {
+    const { container } = render(
       <ProgramSharePdfPreview
         preview={preview}
         programCode="PRG-6T2P"
         programTitle="Knee rehab, week 1"
       />,
     );
-    const list = screen.getByRole("list");
-    const items = within(list).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent("Heel slide, stretching");
-    expect(items[0]).toHaveTextContent("30s hold");
-    expect(items[0]).toHaveTextContent("Slow and controlled");
-    expect(items[0]?.textContent).not.toMatch(/1\. 1\./);
-    expect(items[1]).toHaveTextContent("Quad set, isometric");
-    expect(items[1]).toHaveTextContent("10s hold");
+    const rows = container.querySelectorAll(".pg-share-preview-row");
+    expect(rows).toHaveLength(2);
+
+    const firstInner = rows[0]?.querySelector(".pg-share-preview-row-inner");
+    expect(firstInner?.children[0]).toHaveClass("pg-share-preview-row-media");
+    expect(firstInner?.children[1]).toHaveClass("pg-share-preview-row-body");
+
+    const firstList = rows[0]?.querySelector(".pg-share-preview-row-list");
+    expect(firstList).toBeTruthy();
+    const firstEntry = within(firstList as HTMLElement).getByRole("listitem");
+    expect(firstEntry).toHaveTextContent("Heel slide, stretching");
+    expect(firstEntry).toHaveTextContent("30s hold");
+    expect(firstEntry).toHaveTextContent("Slow and controlled");
+    expect(firstEntry.textContent).not.toMatch(/1\. 1\./);
+
+    const secondList = rows[1]?.querySelector(".pg-share-preview-row-list");
+    const secondEntry = within(secondList as HTMLElement).getByRole("listitem");
+    expect(secondEntry).toHaveTextContent("Quad set, isometric");
+    expect(secondEntry).toHaveTextContent("10s hold");
+
+    expect(screen.queryByText(/1\. 1\./)).toBeNull();
   });
 });

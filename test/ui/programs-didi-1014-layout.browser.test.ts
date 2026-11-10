@@ -23,6 +23,7 @@ type LayoutCapture = {
   fixture: HarnessFixtureId;
   fileStem: string;
   widths: readonly (390 | 1280)[];
+  screenshot?: "viewport" | "sheet-panel";
   prepare?: (page: Page) => Promise<void>;
   ready?: (page: Page) => Promise<void>;
 };
@@ -143,6 +144,7 @@ const CAPTURES: LayoutCapture[] = [
     fixture: "programs-1014-share-open",
     fileStem: "didi-1014-mockup-31-share-link-sheet",
     widths: [390],
+    screenshot: "sheet-panel",
     prepare: async (page) => {
       await page.getByRole("button", { name: PHONE_SHARE }).click();
     },
@@ -150,7 +152,27 @@ const CAPTURES: LayoutCapture[] = [
       await page.getByRole("heading", { name: LINK_EXPIRES_HEADING }).waitFor({
         state: "visible",
       });
+    },
+  },
+  {
+    mockup: "31 actions",
+    fixture: "programs-1014-share-open",
+    fileStem: "didi-1014-mockup-31-share-link-sheet-actions",
+    widths: [390],
+    screenshot: "sheet-panel",
+    prepare: async (page) => {
+      await page.getByRole("button", { name: PHONE_SHARE }).click();
+      const body = page.locator(".shell-sheet-body");
+      await body.waitFor({ state: "visible" });
+      await body.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+    },
+    ready: async (page) => {
       await page.getByRole("button", { name: /Download PDF/ }).waitFor({
+        state: "visible",
+      });
+      await page.getByRole("button", { name: /Close link/ }).waitFor({
         state: "visible",
       });
     },
@@ -230,7 +252,11 @@ async function captureFixture(
     }
     const suffix = width === 390 ? "390" : "1280";
     const path = join(ARTIFACTS_DIR, `${capture.fileStem}-${suffix}.png`);
-    await page.screenshot({ path, fullPage: true });
+    if (capture.screenshot === "sheet-panel") {
+      await page.locator(".shell-sheet-panel").screenshot({ path });
+    } else {
+      await page.screenshot({ path, fullPage: true });
+    }
     expect(path).toBeTruthy();
   } finally {
     await page.close();

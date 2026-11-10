@@ -45,7 +45,7 @@ export function ProgramSharePdfPreview({
           {formatProgramPublishedAt(preview.published_at)}
         </p>
       </div>
-      <ol className="pg-share-preview-rows">
+      <ul className="pg-share-preview-rows">
         {preview.rows.map((row) => {
           const media = row as typeof row & PreviewRowMedia;
           const dose = formatExerciseParams(row.params);
@@ -58,19 +58,25 @@ export function ProgramSharePdfPreview({
                   <PreviewThumb url={media.media_end_url} />
                 </div>
                 <div className="pg-share-preview-row-body">
-                  <p className="pg-share-preview-row-title">
-                    {row.title}, {typeLabel}
-                  </p>
-                  {dose ? <p className="pg-share-preview-row-dose">{dose}</p> : null}
-                  {row.note ? (
-                    <p className="pg-share-preview-row-note">{row.note}</p>
-                  ) : null}
+                  <ol className="pg-share-preview-row-list" aria-label={`${row.title}`}>
+                    <li className="pg-share-preview-row-entry">
+                      <p className="pg-share-preview-row-title">
+                        {row.title}, {typeLabel}
+                      </p>
+                      {dose ? (
+                        <p className="pg-share-preview-row-dose">{dose}</p>
+                      ) : null}
+                      {row.note ? (
+                        <p className="pg-share-preview-row-note">{row.note}</p>
+                      ) : null}
+                    </li>
+                  </ol>
                 </div>
               </div>
             </li>
           );
         })}
-      </ol>
+      </ul>
       <p className="pg-share-preview-foot">{PDF_PREVIEW_FOOTER}</p>
     </>
   );

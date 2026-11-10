@@ -171,9 +171,11 @@ export function ProgramShareLinkPanel({
       role={inSheet ? undefined : "complementary"}
       aria-labelledby={inSheet ? undefined : sectionTitleId}
     >
-      <h2 id={sectionTitleId} className="pg-share-aside-title">
-        {SHARE_LINK_SECTION}
-      </h2>
+      {inSheet ? null : (
+        <h2 id={sectionTitleId} className="pg-share-aside-title">
+          {SHARE_LINK_SECTION}
+        </h2>
+      )}
       {closed ? (
         <>
           <p className="pg-share-closed-line">{SHARE_LINK_CLOSED_LINE}</p>
@@ -187,17 +189,21 @@ export function ProgramShareLinkPanel({
         </>
       ) : (
         <>
-          <div className="pg-share-link-row">
+          <div
+            className={`pg-share-link-row${inSheet ? " pg-share-link-row--sheet" : ""}`}
+          >
             <span className="pg-share-link-url">{shareUrl}</span>
-            <button
-              type="button"
-              className="pg-btn pg-btn--secondary"
-              onClick={() => {
-                void onCopy();
-              }}
-            >
-              {PUBLISH_COPY_LINK}
-            </button>
+            {inSheet ? null : (
+              <button
+                type="button"
+                className="pg-btn pg-btn--secondary"
+                onClick={() => {
+                  void onCopy();
+                }}
+              >
+                {PUBLISH_COPY_LINK}
+              </button>
+            )}
           </div>
           <p className="pg-share-helper">{SHARE_HELPER_VIEW}</p>
           <p className="pg-share-helper">{SHARE_HELPER_PUBLISHED}</p>
