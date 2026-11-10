@@ -11,6 +11,11 @@ import {
   programsClientFor1014Harness,
   PROGRAMS_1014_FIXTURE_ROUTES,
 } from "./programs-didi-1014-fixtures.js";
+import {
+  PROGRAMS_1025_FIXTURE_ROUTES,
+  programsClientFor1025Harness,
+  type Programs1025HarnessScenario,
+} from "./programs-didi-1025-fixtures.js";
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
@@ -160,6 +165,12 @@ export type HarnessFixtureId =
   | "programs-1014-builder-sticky"
   | "programs-1014-share-open"
   | "programs-1014-share-closed"
+  | "programs-1025-builder-from-routine"
+  | "programs-1025-publish-from-routine"
+  | "programs-1025-list-filters"
+  | "programs-1025-new-chooser"
+  | "programs-1025-pick-routine"
+  | "routines-1025-detail-actions"
   | "app-wide-cache-nav";
 
 function baseRoutinesClient(): RoutinesClient {
@@ -764,6 +775,154 @@ export function harnessFixture(
     case "programs-1014-share-open":
     case "programs-1014-share-closed":
       return programs1014HarnessFixture(id);
+    case "programs-1025-builder-from-routine":
+    case "programs-1025-publish-from-routine":
+    case "programs-1025-list-filters":
+      return programs1025HarnessFixture(id);
+    case "programs-1025-new-chooser":
+      return {
+        initialEntries: [
+          PROGRAMS_1025_FIXTURE_ROUTES["programs-1025-new-chooser"]
+            .initialEntry as string,
+        ],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: baseRoutinesClient(),
+      };
+    case "programs-1025-pick-routine": {
+      const pickRoute = PROGRAMS_1025_FIXTURE_ROUTES["programs-1025-pick-routine"]
+        .initialEntry as { pathname: string; state?: unknown };
+      return {
+        initialEntries: [pickRoute],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          searchCommunity: async () => ({
+            routines: [
+              {
+                routine_id: "rt-knee-oa",
+                routine_version_id: "rv-knee-3",
+                name: "Knee osteoarthritis, starter",
+                version_number: 3,
+                body_region_label: "Knee",
+                condition_label: "Osteoarthritis",
+                exercise_count: 4,
+                usage_count: 12,
+                added_by_you: false,
+                in_my_routines: true,
+              },
+            ],
+            next_cursor: null,
+            search_link: null,
+            total_count: 1,
+            conditions_available: true,
+            condition_options: ["Osteoarthritis"],
+          }),
+          listMyRoutines: async () => ({
+            drafts: [],
+            saved: [
+              {
+                routine_id: "rt-knee-oa",
+                name: "Knee osteoarthritis, starter",
+                saved_copy_version: 2,
+                community_version: 3,
+                edited: true,
+                saved_at: "2026-10-20T12:00:00.000Z",
+                last_used_at: "2026-10-24T12:00:00.000Z",
+                community_updated: false,
+                body_region_label: "Knee",
+                condition_label: "Osteoarthritis",
+                exercise_count: 4,
+              },
+            ],
+            flagged_count: 0,
+            conditions_available: true,
+            condition_options: ["Osteoarthritis"],
+          }),
+        } as unknown as RoutinesClient,
+      };
+    }
+    case "routines-1025-detail-actions":
+      return {
+        initialEntries: ["/routines/rt-knee-oa"],
+        library: baseLibraryClient(),
+        requests: {
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: {
+          getRoutineDetails: async () => ({
+            routine_id: "rt-knee-oa",
+            body_region_label: "Knee",
+            condition_label: "Osteoarthritis",
+            who_its_for: "Early rehab",
+            community: {
+              routine_version_id: "rv-knee-3",
+              version_number: 3,
+              name: "Knee osteoarthritis, starter",
+              updated_at: "2026-10-25T12:00:00.000Z",
+              created_by: "p-other",
+              usage_count: 12,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            my_copy: {
+              practitioner_routine_id: "pr-1",
+              source_version_number: 2,
+              edited: true,
+              community_updated: false,
+              rows: [
+                {
+                  position: 0,
+                  exercise_id: "ex-1",
+                  exercise_version_id: "ver-1",
+                  exercise_name: "Heel slide",
+                  prescription_type: "stretching",
+                  params: { hold_s: 30, per_day: { min: 2, max: 3 }, days_per_week: 7 },
+                },
+              ],
+            },
+            sent_program_count: 1,
+            sent_program_codes: ["7K3Q"],
+            conditions_available: true,
+            personal_changes: {
+              baseline_available: true,
+              change_count: 1,
+              your_change_positions: [0],
+            },
+            community_change_list: {
+              baseline_available: true,
+              entries: [],
+            },
+          }),
+        } as unknown as RoutinesClient,
+      };
     case "app-wide-cache-nav":
       return {
         initialEntries: ["/exercises"],
@@ -817,6 +976,29 @@ export function harnessFixture(
   }
 }
 
+function programs1025HarnessFixture(
+  id:
+    | "programs-1025-builder-from-routine"
+    | "programs-1025-publish-from-routine"
+    | "programs-1025-list-filters",
+): HarnessFixture {
+  const route = PROGRAMS_1025_FIXTURE_ROUTES[id];
+  const initialEntry = route.initialEntry;
+  return {
+    initialEntries: [typeof initialEntry === "string" ? initialEntry : initialEntry],
+    library: baseLibraryClient(),
+    requests: {
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      listInProgress: async () => ({
+        requests: [],
+        in_progress_count: 0,
+      }),
+    } as unknown as ExerciseRequestsClient,
+    media: {} as ExerciseMediaClient,
+    routines: baseRoutinesClient(),
+  };
+}
+
 function programs1014HarnessFixture(
   id:
     | "programs-1014-publish-first"
@@ -844,6 +1026,17 @@ function programs1014HarnessFixture(
 }
 
 export function programsClientForHarness(fixtureId?: HarnessFixtureId): ProgramsClient {
+  if (fixtureId && fixtureId in PROGRAMS_1025_FIXTURE_ROUTES) {
+    const route =
+      PROGRAMS_1025_FIXTURE_ROUTES[
+        fixtureId as keyof typeof PROGRAMS_1025_FIXTURE_ROUTES
+      ];
+    if (route.scenario) {
+      return programsClientFor1025Harness(
+        route.scenario as Programs1025HarnessScenario,
+      );
+    }
+  }
   if (fixtureId && fixtureId in PROGRAMS_1014_FIXTURE_ROUTES) {
     const scenario =
       PROGRAMS_1014_FIXTURE_ROUTES[

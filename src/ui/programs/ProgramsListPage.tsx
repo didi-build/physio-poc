@@ -328,6 +328,12 @@ export function ProgramsListPage() {
             navigate(fillPhysioAppRoutePattern("programs"), { replace: true });
           }
         }}
+        onFromRoutine={() => {
+          setNewSheetOpen(false);
+          navigate(fillPhysioAppRoutePattern("programNew"), {
+            state: { openRoutinePicker: true },
+          });
+        }}
         onFromScratch={createFromScratch}
       />
     </section>

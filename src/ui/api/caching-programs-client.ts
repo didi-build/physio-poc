@@ -24,6 +24,12 @@ export function wrapProgramsClientWithCacheInvalidation(
     getProgram: (programId, options) => inner.getProgram(programId, options),
     createProgram: (input) =>
       withProgramsListInvalidation(() => inner.createProgram(input)),
+    createProgramFromRoutine: (input) =>
+      inner.createProgramFromRoutine(input).then((result) => {
+        invalidateAfterProgramBuilderMutation(result.program.code);
+        invalidateAfterProgramsListMutation();
+        return result;
+      }),
     updateProgramName: (programId, name) =>
       inner.updateProgramName(programId, name).then((result) => {
         invalidateAfterProgramBuilderMutation(result.program.code);
@@ -77,6 +83,23 @@ export function wrapProgramsClientWithCacheInvalidation(
       inner.keepLibraryUpdate(programId, rowId).then((result) => {
         invalidateAfterProgramBuilderMutation(result.program.code);
         return result;
+      }),
+    getShareLink: (programId, options) => inner.getShareLink(programId, options),
+    publishProgram: (programId, input) =>
+      inner.publishProgram(programId, input).then((result) => {
+        invalidateAfterProgramBuilderMutation(result.program.code);
+        invalidateAfterProgramsListMutation();
+        return result;
+      }),
+    setShareLinkExpiry: (programId, input) =>
+      inner.setShareLinkExpiry(programId, input).then((view) => {
+        invalidateAfterProgramBuilderMutation(view.program_code);
+        return view;
+      }),
+    closeShareLink: (programId) =>
+      inner.closeShareLink(programId).then((view) => {
+        invalidateAfterProgramBuilderMutation(view.program_code);
+        return view;
       }),
   } as ProgramsClient;
 }

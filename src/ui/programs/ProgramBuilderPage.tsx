@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import type { ProgramShareConnectorView } from "../../services/programs/program-publish-service.js";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import {
@@ -63,6 +63,7 @@ import {
 } from "./ProgramsStates.js";
 import { useProgramAutoSave } from "./use-program-auto-save.js";
 import { useProgramLeaveGuard } from "./program-leave-guard.js";
+import { ProgramBuilderOriginBanner } from "./ProgramBuilderOriginBanner.js";
 
 function noteDraftsFromProgram(program: ProgramBuilderView): Record<string, string> {
   const drafts: Record<string, string> = {};
@@ -81,6 +82,7 @@ export function ProgramBuilderPage({
 }: ProgramBuilderPageProps) {
   const client = useProgramsApi();
   const navigate = useNavigate();
+  const location = useLocation();
   const { programCode = "" } = useParams();
   const { showToast } = useToast();
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
@@ -282,6 +284,14 @@ export function ProgramBuilderPage({
   useEffect(() => {
     setPublishOpen(publishSheetOpen);
   }, [publishSheetOpen]);
+
+  useEffect(() => {
+    const state = location.state as { openPublishSheet?: boolean } | null;
+    if (state?.openPublishSheet) {
+      setPublishOpen(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const libraryPrompts = useMemo(
     () =>
@@ -622,6 +632,10 @@ export function ProgramBuilderPage({
         />
       </label>
       <p className="pg-name-help">{builderNameHelpText(displayProgram.code)}</p>
+
+      {displayProgram.routine_origin ? (
+        <ProgramBuilderOriginBanner origin={displayProgram.routine_origin} />
+      ) : null}
 
       <div className="pg-builder-layout">
         <div className="pg-builder-main">

@@ -11,6 +11,7 @@ import {
   usePractitionerSession,
 } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
+import { useProgramsApi } from "../api/programs-context.js";
 import { routineDetailKey } from "../api/navigation-read-cache-keys.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
@@ -53,6 +54,11 @@ import {
   myCopySegmentLabel,
   useVersionN,
 } from "../copy/routines.js";
+import { programCreatedFromRoutineToast } from "../copy/programs.js";
+import {
+  createProgramFromRoutineAtApi,
+  resolveRoutineProgramSource,
+} from "../programs/program-from-routine.js";
 import { ROUTINE_DETAIL_HEADING } from "../copy/routines.js";
 import {
   ExerciseLibraryBusyState,
@@ -83,10 +89,12 @@ function activeRows(
 export function RoutineDetailsPage() {
   const { routineId = "" } = useParams();
   const client = useRoutinesApi();
+  const programsClient = useProgramsApi();
   const practitioner = useCurrentPractitionerIdentity();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [mutationFailed, setMutationFailed] = useState(false);
+  const [routineProgramBusy, setRoutineProgramBusy] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -240,6 +248,37 @@ export function RoutineDetailsPage() {
       });
   };
 
+  const startProgramFromRoutine = (openPublishSheet: boolean) => {
+    if (!details) {
+      return;
+    }
+    const apiSource = resolveRoutineProgramSource(saved, source);
+    setMutationFailed(false);
+    setRoutineProgramBusy(true);
+    void createProgramFromRoutineAtApi(programsClient, {
+      routineId,
+      source: apiSource,
+      rowCount: rows.length,
+    })
+      .then((result) => {
+        if (!openPublishSheet) {
+          showToast({ message: programCreatedFromRoutineToast(community.name) });
+        }
+        navigate(
+          fillPhysioAppRoutePattern(
+            openPublishSheet ? "programPublish" : "programBuilder",
+            { programCode: result.program.code },
+          ),
+        );
+      })
+      .catch(() => {
+        setMutationFailed(true);
+      })
+      .finally(() => {
+        setRoutineProgramBusy(false);
+      });
+  };
+
   const onKeep = () => {
     setMutationFailed(false);
     void client
@@ -264,6 +303,75 @@ export function RoutineDetailsPage() {
         setMutationFailed(true);
       });
   };
+
+  const detailMoreActions = (
+    <div className="rt-detail-more">
+      {!saved ? (
+        <button type="button" className="ex-secondary-btn" onClick={onSave}>
+          {SAVE_TO_MY_ROUTINES}
+        </button>
+      ) : null}
+      {saved && behind && !flagged && myCopy ? (
+        <button type="button" className="ex-secondary-btn" onClick={onAdopt}>
+          {UPDATE_MY_COPY} {community.version_number}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="ex-secondary-btn"
+        onClick={() => {
+          if (saved) {
+            navigate(fillPhysioAppRoutePattern("routineMyCopy", { routineId }));
+          } else {
+            onSave();
+          }
+        }}
+      >
+        {saved ? EDIT_MY_COPY : MAKE_MY_OWN_COPY}
+      </button>
+      <button type="button" className="ex-secondary-btn" disabled>
+        {EDIT_FOR_EVERYONE}
+      </button>
+      <button type="button" className="ex-secondary-btn" disabled>
+        {VERSION_HISTORY}
+      </button>
+      {saved ? (
+        <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+          {REMOVE_FROM_MY}
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const asideUseRoutine = (
+    <div className="rt-detail-aside-primary">
+      <h2>{USE_THIS_ROUTINE}</h2>
+      <button
+        type="button"
+        className="ex-primary-btn"
+        data-testid="routine-detail-aside-use-for-patient"
+        disabled={routineProgramBusy}
+        onClick={() => {
+          startProgramFromRoutine(true);
+        }}
+      >
+        {USE_FOR_PATIENT}
+      </button>
+      <p className="rt-action-hint">{USE_FOR_PATIENT_HINT}</p>
+      <button
+        type="button"
+        className="ex-secondary-btn"
+        data-testid="routine-detail-aside-create-program"
+        disabled={routineProgramBusy}
+        onClick={() => {
+          startProgramFromRoutine(false);
+        }}
+      >
+        {CREATE_PROGRAM_FROM_ROUTINE}
+      </button>
+      <p className="rt-action-hint">{CREATE_PROGRAM_HINT}</p>
+    </div>
+  );
 
   return (
     <section className="ex-page rt-detail" aria-labelledby="rt-detail-heading">
@@ -361,151 +469,137 @@ export function RoutineDetailsPage() {
         </div>
       ) : null}
 
-      {saved && myCopy ? (
-        <div className="rt-segment" data-testid="routine-version-segment">
-          <div className="ex-sort-row" role="radiogroup" aria-label="Version to use">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={source === "mine"}
-              className={`ex-sort-option${source === "mine" ? " ex-sort-option--active" : ""}`}
-              onClick={() => {
-                setSource("mine");
-              }}
-            >
-              {myCopySegmentLabel(
-                myCopy.source_version_number,
-                (personalChanges?.baseline_available && editCount > 0) ?? false,
-              )}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={source === "community"}
-              className={`ex-sort-option${source === "community" ? " ex-sort-option--active" : ""}`}
-              onClick={() => {
-                setSource("community");
-              }}
-            >
-              {communitySegmentLabel(community.version_number)}
-            </button>
-          </div>
-          <p className="rt-segment-hint">
-            {source === "mine"
-              ? myCopyFrozenLine(
-                  myCopy.source_version_number,
-                  (personalChanges?.baseline_available && editCount > 0) ?? false,
-                  editCount,
-                )
-              : COMMUNITY_LIVE_LINE}{" "}
-            {SEGMENT_HINT}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="rt-exercises-panel">
-        <div className="rt-exercises-header">
-          <h2>{EXERCISES_HEADING}</h2>
-          <span>{rows.length} total</span>
-        </div>
-        <ol className="rt-exercise-list">
-          {rows.map((row) => (
-            <li key={`${row.exercise_id}-${row.position}`} className="rt-exercise-row">
-              <span className="rt-exercise-pos">{row.position + 1}</span>
-              <div className="rt-exercise-thumb" aria-hidden />
-              <div className="rt-exercise-body">
-                <div className="rt-exercise-name">{row.exercise_name}</div>
-                <span className="rt-type-chip">
-                  {TYPE_LABELS[row.prescription_type]}
-                </span>
-                <p className="rt-exercise-dose">{formatExerciseParams(row.params)}</p>
-                {source === "mine" && yourChangePositions.has(row.position) ? (
-                  <span className="rt-your-change">{YOUR_CHANGE}</span>
-                ) : null}
+      <div className="rt-detail-layout">
+        <div className="rt-detail-main">
+          {saved && myCopy ? (
+            <div className="rt-segment" data-testid="routine-version-segment">
+              <div
+                className="ex-sort-row"
+                role="radiogroup"
+                aria-label="Version to use"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={source === "mine"}
+                  className={`ex-sort-option${source === "mine" ? " ex-sort-option--active" : ""}`}
+                  onClick={() => {
+                    setSource("mine");
+                  }}
+                >
+                  {myCopySegmentLabel(
+                    myCopy.source_version_number,
+                    (personalChanges?.baseline_available && editCount > 0) ?? false,
+                  )}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={source === "community"}
+                  className={`ex-sort-option${source === "community" ? " ex-sort-option--active" : ""}`}
+                  onClick={() => {
+                    setSource("community");
+                  }}
+                >
+                  {communitySegmentLabel(community.version_number)}
+                </button>
               </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <p className="rt-detail-note">{ROUTINE_PAGE_NOTE}</p>
-
-      {details.sent_program_count > 0 ? (
-        <div className="rt-sent-panel">
-          <h2>{sentRoutineTimes(details.sent_program_count)}</h2>
-          <ul className="rt-sent-codes">
-            {details.sent_program_codes.map((code) => (
-              <li key={code}>
-                <span className="rt-program-code">{code}</span>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            className="ex-link-btn"
-            onClick={() => {
-              navigate(fillPhysioAppRoutePattern("programs"));
-            }}
-          >
-            {SEE_THEM_IN_PROGRAMS}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="rt-detail-aside">
-        <h2>{USE_THIS_ROUTINE}</h2>
-        <button type="button" className="ex-primary-btn" disabled>
-          {USE_FOR_PATIENT}
-        </button>
-        <p className="rt-action-hint">{USE_FOR_PATIENT_HINT}</p>
-        <button type="button" className="ex-secondary-btn" disabled>
-          {CREATE_PROGRAM_FROM_ROUTINE}
-        </button>
-        <p className="rt-action-hint">{CREATE_PROGRAM_HINT}</p>
-
-        <div className="rt-detail-more">
-          {!saved ? (
-            <button type="button" className="ex-secondary-btn" onClick={onSave}>
-              {SAVE_TO_MY_ROUTINES}
-            </button>
+              <p className="rt-segment-hint">
+                {source === "mine"
+                  ? myCopyFrozenLine(
+                      myCopy.source_version_number,
+                      (personalChanges?.baseline_available && editCount > 0) ?? false,
+                      editCount,
+                    )
+                  : COMMUNITY_LIVE_LINE}{" "}
+                {SEGMENT_HINT}
+              </p>
+            </div>
           ) : null}
-          {saved && behind && !flagged && myCopy ? (
-            <button type="button" className="ex-secondary-btn" onClick={onAdopt}>
-              {UPDATE_MY_COPY} {community.version_number}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="ex-secondary-btn"
-            onClick={() => {
-              if (saved) {
-                navigate(fillPhysioAppRoutePattern("routineMyCopy", { routineId }));
-              } else {
-                onSave();
-              }
-            }}
-          >
-            {saved ? EDIT_MY_COPY : MAKE_MY_OWN_COPY}
-          </button>
-          <button type="button" className="ex-secondary-btn" disabled>
-            {EDIT_FOR_EVERYONE}
-          </button>
-          <button type="button" className="ex-secondary-btn" disabled>
-            {VERSION_HISTORY}
-          </button>
-          {saved ? (
-            <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
-              {REMOVE_FROM_MY}
-            </button>
+
+          <div className="rt-exercises-panel">
+            <div className="rt-exercises-header">
+              <h2>{EXERCISES_HEADING}</h2>
+              <span>{rows.length} total</span>
+            </div>
+            <ol className="rt-exercise-list">
+              {rows.map((row) => (
+                <li
+                  key={`${row.exercise_id}-${row.position}`}
+                  className="rt-exercise-row"
+                >
+                  <span className="rt-exercise-pos">{row.position + 1}</span>
+                  <div className="rt-exercise-thumb" aria-hidden />
+                  <div className="rt-exercise-body">
+                    <div className="rt-exercise-name">{row.exercise_name}</div>
+                    <span className="rt-type-chip">
+                      {TYPE_LABELS[row.prescription_type]}
+                    </span>
+                    <p className="rt-exercise-dose">
+                      {formatExerciseParams(row.params)}
+                    </p>
+                    {source === "mine" && yourChangePositions.has(row.position) ? (
+                      <span className="rt-your-change">{YOUR_CHANGE}</span>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <p className="rt-detail-note">{ROUTINE_PAGE_NOTE}</p>
+
+          {details.sent_program_count > 0 ? (
+            <div className="rt-sent-panel">
+              <h2>{sentRoutineTimes(details.sent_program_count)}</h2>
+              <ul className="rt-sent-codes">
+                {details.sent_program_codes.map((code) => (
+                  <li key={code}>
+                    <span className="rt-program-code">{code}</span>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="ex-link-btn"
+                onClick={() => {
+                  navigate(fillPhysioAppRoutePattern("programs"));
+                }}
+              >
+                {SEE_THEM_IN_PROGRAMS}
+              </button>
+            </div>
           ) : null}
         </div>
+
+        <aside className="rt-detail-aside" aria-label={USE_THIS_ROUTINE}>
+          {asideUseRoutine}
+        </aside>
+
+        <div className="rt-detail-main-more">{detailMoreActions}</div>
       </div>
 
       <div className="rt-mobile-actions">
-        <button type="button" className="ex-secondary-btn" disabled>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          data-testid="routine-detail-mobile-create-program"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(false);
+          }}
+        >
           {CREATE_PROGRAM}
         </button>
-        <button type="button" className="ex-primary-btn" disabled>
+        <button
+          type="button"
+          className="ex-primary-btn"
+          data-testid="routine-detail-mobile-use-for-patient"
+          disabled={routineProgramBusy}
+          onClick={() => {
+            startProgramFromRoutine(true);
+          }}
+        >
           {USE_FOR_PATIENT}
         </button>
       </div>

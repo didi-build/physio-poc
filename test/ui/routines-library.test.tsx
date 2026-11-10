@@ -438,7 +438,7 @@ describe("Routines library UI (DIDI-1022)", () => {
     expect(multilineSummary).toHaveTextContent("Adjusted dose");
     expect(
       screen.getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE }),
-    ).toBeDisabled();
+    ).not.toBeDisabled();
     await user.click(screen.getByRole("button", { name: useVersionN(3) }));
     expect(await screen.findByText(toastAdoptedVersion(3))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: TOAST_UNDO }));

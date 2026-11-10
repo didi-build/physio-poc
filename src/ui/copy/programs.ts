@@ -217,6 +217,23 @@ export const NEW_PROGRAM_ROUTINE_BLURB =
   "Pick a ready-made routine for a common condition, then tweak it for this patient.";
 export const NEW_PROGRAM_SCRATCH_BLURB =
   "An empty program for a patient who doesn't fit a routine. Add exercises one by one.";
+export const NEW_PROGRAM_ROUTINE_PICKER_TITLE = "New program from a routine";
+export const NEW_PROGRAM_ROUTINE_PICKER_BODY =
+  "Pick a routine, then tap Create program from routine. You can tweak everything after.";
+export const CREATE_PROGRAM_FROM_ROUTINE_ACTION = "Create program from routine";
+
+export const BUILD_PROGRAM = "Build program";
+export const ORIGIN_BANNER_NOTE =
+  "A separate copy. Edits here change only this program, and later edits to the routine never change it.";
+export const VIEW_ROUTINE = "View routine";
+
+export function builderOriginBannerTitle(name: string, version: number): string {
+  return `From routine: ${name}, version ${version}`;
+}
+
+export function programCreatedFromRoutineToast(name: string): string {
+  return `Program created from ${name}. Tweak it, then publish.`;
+}
 
 export const ADD_EXERCISE_SHEET_INTRO = "Your exercises first, then the full library";
 export const MY_EXERCISES = "My exercises";
