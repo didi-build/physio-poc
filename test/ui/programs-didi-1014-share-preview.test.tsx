@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PublicShareLinkOpenView } from "../../src/services/programs/program-publish-service.js";
 import { ProgramSharePdfPreview } from "../../src/ui/programs/ProgramSharePdfPreview.js";
@@ -49,20 +49,13 @@ describe("Program share PDF preview (DIDI-1014)", () => {
     const firstInner = rows[0]?.querySelector(".pg-share-preview-row-inner");
     expect(firstInner?.children[0]).toHaveClass("pg-share-preview-row-media");
     expect(firstInner?.children[1]).toHaveClass("pg-share-preview-row-body");
+    expect(container.querySelector(".pg-share-preview-row-list")).toBeNull();
 
-    const firstList = rows[0]?.querySelector(".pg-share-preview-row-list");
-    expect(firstList).toBeTruthy();
-    const firstEntry = within(firstList as HTMLElement).getByRole("listitem");
-    expect(firstEntry).toHaveTextContent("Heel slide, stretching");
-    expect(firstEntry).toHaveTextContent("30s hold");
-    expect(firstEntry).toHaveTextContent("Slow and controlled");
-    expect(firstEntry.textContent).not.toMatch(/1\. 1\./);
-
-    const secondList = rows[1]?.querySelector(".pg-share-preview-row-list");
-    const secondEntry = within(secondList as HTMLElement).getByRole("listitem");
-    expect(secondEntry).toHaveTextContent("Quad set, isometric");
-    expect(secondEntry).toHaveTextContent("10s hold");
-
+    expect(screen.getByText("1. Heel slide, stretching")).toBeInTheDocument();
+    expect(screen.getByText("2. Quad set, isometric")).toBeInTheDocument();
+    expect(screen.getByText("30s hold")).toBeInTheDocument();
+    expect(screen.getByText("10s hold")).toBeInTheDocument();
+    expect(screen.getByText("Slow and controlled")).toBeInTheDocument();
     expect(screen.queryByText(/1\. 1\./)).toBeNull();
   });
 });

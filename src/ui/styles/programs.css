@@ -454,16 +454,6 @@
   border-bottom: 1px solid #f1f5f9;
 }
 
-.pg-share-preview-row-list {
-  margin: 0;
-  padding-left: 1.25rem;
-  list-style: decimal;
-}
-
-.pg-share-preview-row-entry {
-  padding-left: 0.125rem;
-}
-
 .pg-share-preview-row:last-child {
   padding-bottom: 0;
   border-bottom: 0;
