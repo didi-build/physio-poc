@@ -6,7 +6,7 @@ import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.j
 import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../../copy/programs-share.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import { ProgramsApiError, type ProgramsClient } from "../api/programs-client.js";
-import { PROGRAM_PUBLISH_ERROR_MESSAGE } from "../copy/programs-states.js";
+import { publishApiUserMessage } from "./publish-api-user-message.js";
 import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
 import { PublishPlaceholderNotice } from "./PublishPlaceholderNotice.js";
@@ -86,6 +86,7 @@ export function PublishSheet({
   const [publishBusy, setPublishBusy] = useState(false);
   const [copyHint, setCopyHint] = useState("");
   const [placeholderNoticeCleared, setPlaceholderNoticeCleared] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   const placeholders = useMemo(
     () => program.rows.filter((row) => row.kind === "placeholder"),
@@ -111,6 +112,7 @@ export function PublishSheet({
     setCustomDate(shareView?.link_expires_on ?? "");
     setCopyHint("");
     setPlaceholderNoticeCleared(false);
+    setPublishError(null);
   }, [open, shareView]);
 
   const expiryHelper = noOpenLink ? EXPIRY_APPLIES_NEW_LINK : EXPIRY_APPLIES_RIGHT_AWAY;
@@ -146,6 +148,7 @@ export function PublishSheet({
       return;
     }
     setPublishBusy(true);
+    setPublishError(null);
     try {
       if (trimmedName !== (program.name ?? "")) {
         const updated = await client.updateProgramName(program.program_id, trimmedName);
@@ -167,13 +170,11 @@ export function PublishSheet({
         newLink: !hadOpenLink,
       });
     } catch (error) {
-      if (
-        error instanceof ProgramsApiError &&
-        error.code !== "name_required" &&
-        error.code !== "placeholders_block_publish" &&
-        PROGRAM_PUBLISH_ERROR_MESSAGE
-      ) {
-        // Designer-owned copy slot when defined.
+      if (error instanceof ProgramsApiError) {
+        const message = publishApiUserMessage(error);
+        if (message) {
+          setPublishError(message);
+        }
       }
     } finally {
       setPublishBusy(false);
@@ -190,6 +191,11 @@ export function PublishSheet({
       onClose={onClose}
       footer={
         <div className="pg-publish-sheet-footer">
+          {publishError ? (
+            <p className="pg-publish-error" role="alert">
+              {publishError}
+            </p>
+          ) : null}
           <button type="button" className="pg-btn pg-btn--secondary" onClick={onNotYet}>
             {PUBLISH_NOT_YET}
           </button>

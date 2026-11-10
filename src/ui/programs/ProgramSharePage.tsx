@@ -61,6 +61,7 @@ import {
   ProgramsBuilderErrorSlot,
 } from "./ProgramsStates.js";
 import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
+import { openShareLinkPageForPrint } from "./program-share-download.js";
 
 function extractTokenFromShareUrl(shareLink: string): string | null {
   try {
@@ -263,13 +264,7 @@ export function ProgramSharePage() {
   };
 
   const onDownloadPdf = () => {
-    if (!shareUrl) {
-      return;
-    }
-    const opened = window.open(shareUrl, "_blank", "noopener,noreferrer");
-    opened?.addEventListener("load", () => {
-      opened.print();
-    });
+    openShareLinkPageForPrint(shareUrl);
   };
 
   const confirmClose = async () => {
