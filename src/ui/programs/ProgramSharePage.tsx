@@ -39,6 +39,12 @@ import {
 } from "./ProgramsStates.js";
 import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
 import { openShareLinkPageForPrint } from "./program-share-download.js";
+import {
+  isExpiredShareLinkRevive,
+  isGenuinelyClosedShareLink,
+} from "./share-link-ui.js";
+import { ProgramsApiError } from "../api/programs-client.js";
+import { publishApiUserMessage } from "./publish-api-user-message.js";
 
 function extractTokenFromShareUrl(shareLink: string): string | null {
   try {
@@ -98,7 +104,8 @@ export function ProgramSharePage() {
     });
   }, [load, sessionReady]);
 
-  const closed = shareView?.share_link_status === "closed";
+  const closed = isGenuinelyClosedShareLink(shareView);
+  const expiredRevive = isExpiredShareLinkRevive(shareView);
   const shareUrl = shareView?.share_link ?? "";
 
   const expiryDateLabel = useMemo(() => {
@@ -112,23 +119,32 @@ export function ProgramSharePage() {
     if (!shareView) {
       return;
     }
-    const program = await client.getProgramByCode(programCode);
-    const result = await client.setShareLinkExpiry(program.program_id, {
-      expires_in: next,
-      custom_expires_on:
-        next === SHARE_LINK_EXPIRES_IN.custom_date ? nextCustom || null : null,
-    });
-    setShareView(result);
-    setExpiry(next);
-    setCustomDate(nextCustom);
-    if (next === SHARE_LINK_EXPIRES_IN.never) {
-      showToast({ message: LINK_SET_NEVER_TOAST });
-    } else if (result.expires_at) {
-      showToast({
-        message: linkNowExpiresToast(
-          formatShareLinkExpiryDisplayDate(result.expires_at),
-        ),
+    try {
+      const program = await client.getProgramByCode(programCode);
+      const result = await client.setShareLinkExpiry(program.program_id, {
+        expires_in: next,
+        custom_expires_on:
+          next === SHARE_LINK_EXPIRES_IN.custom_date ? nextCustom || null : null,
       });
+      setShareView(result);
+      setExpiry(next);
+      setCustomDate(nextCustom);
+      if (next === SHARE_LINK_EXPIRES_IN.never) {
+        showToast({ message: LINK_SET_NEVER_TOAST });
+      } else if (result.expires_at) {
+        showToast({
+          message: linkNowExpiresToast(
+            formatShareLinkExpiryDisplayDate(result.expires_at),
+          ),
+        });
+      }
+    } catch (error) {
+      if (error instanceof ProgramsApiError) {
+        const message = publishApiUserMessage(error);
+        if (message) {
+          showToast({ message });
+        }
+      }
     }
   };
 
@@ -155,11 +171,20 @@ export function ProgramSharePage() {
     if (!shareView) {
       return;
     }
-    const program = await client.getProgramByCode(programCode);
-    const result = await client.closeShareLink(program.program_id);
-    setShareView(result);
-    setCloseOpen(false);
-    setPreview(null);
+    try {
+      const program = await client.getProgramByCode(programCode);
+      const result = await client.closeShareLink(program.program_id);
+      setShareView(result);
+      setCloseOpen(false);
+      setPreview(null);
+    } catch (error) {
+      if (error instanceof ProgramsApiError) {
+        const message = publishApiUserMessage(error);
+        if (message) {
+          showToast({ message });
+        }
+      }
+    }
   };
 
   const goToPublish = () => {
@@ -231,7 +256,9 @@ export function ProgramSharePage() {
                   programTitle={programTitle}
                 />
               ) : (
-                <p className="pg-share-preview-empty">{SHARE_LINK_CLOSED_LINE}</p>
+                <p className="pg-share-preview-empty">
+                  {expiredRevive ? "" : SHARE_LINK_CLOSED_LINE}
+                </p>
               )}
             </div>
             <p className="pg-share-preview-caption">{PDF_PREVIEW_CAPTION}</p>

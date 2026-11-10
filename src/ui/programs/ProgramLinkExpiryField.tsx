@@ -23,6 +23,7 @@ export type ProgramLinkExpiryFieldProps = {
   customDate: string;
   defaultChoice?: ShareLinkExpiresIn;
   disabled?: boolean;
+  customDateInvalid?: boolean;
   onChange: (expiresIn: ShareLinkExpiresIn) => void;
   onCustomDateChange: (value: string) => void;
 };
@@ -32,6 +33,7 @@ export function ProgramLinkExpiryField({
   customDate,
   defaultChoice = SHARE_LINK_EXPIRES_IN.one_year,
   disabled = false,
+  customDateInvalid = false,
   onChange,
   onCustomDateChange,
 }: ProgramLinkExpiryFieldProps) {
@@ -78,6 +80,7 @@ export function ProgramLinkExpiryField({
             min={minDate}
             value={customDate}
             disabled={disabled}
+            aria-invalid={customDateInvalid || undefined}
             onChange={(event) => {
               onCustomDateChange(event.target.value);
             }}

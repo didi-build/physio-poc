@@ -12,8 +12,10 @@ import {
   PUBLISHED_NEW_LINK_TOAST,
   PUBLISHED_SAME_LINK_TOAST,
   PUBLISH_FIRST_PUBLISH_HEADING,
+  PUBLISH_NEW_LINK_HELPER,
   PUBLISH_NOW,
   PUBLISH_NOT_YET,
+  PUBLISH_SAME_LINK_HELPER,
   PUBLISH_SHEET_TITLE,
 } from "../../src/ui/copy/program-publish.js";
 import { ToastProvider, useToast } from "../../src/ui/components/Toast.js";
@@ -150,12 +152,14 @@ function ToastCapture({
   program: ProgramBuilderView;
   shareView: ProgramShareConnectorView | null;
   client: ProgramsClient;
+  showNameField?: boolean;
   onPublished: PublishSheetProps["onPublished"];
 }) {
   const { showToast } = useToast();
   return (
     <SheetHarness
       {...props}
+      showNameField={props.showNameField}
       onPublished={(payload) => {
         onPublished(payload);
         showToast({
@@ -329,8 +333,8 @@ describe("Publish sheet acceptance (DIDI-1014)", () => {
     expect(await screen.findByText(PUBLISHED_NEW_LINK_TOAST)).toBeInTheDocument();
   });
 
-  it("revives an expired but still-open link on the same URL", async () => {
-    const url = "https://physio.test.example/l/expired-open";
+  it("revives an expired but never-closed link on the same URL", async () => {
+    const url = "https://physio.test.example/l/expired-revive";
     const publishProgram = vi.fn().mockResolvedValue({
       program: baseProgram({
         name: "Knee rehab",
@@ -346,31 +350,39 @@ describe("Publish sheet acceptance (DIDI-1014)", () => {
     const client = { publishProgram } as unknown as ProgramsClient;
     render(
       <MemoryRouter>
-        <SheetHarness
-          program={baseProgram({
-            name: "Knee rehab",
-            auto_save_status: { kind: "unpublished_changes" },
-            open_share_link: true,
-            share_link_status: "open",
-          })}
-          shareView={baseShareView({
-            share_link: url,
-            share_link_status: "open",
-            share_link_state: "expired",
-            open_share_link: true,
-            published_at: "2026-10-20T12:00:00.000Z",
-          })}
-          client={client}
-          showNameField={false}
-          onPublished={({ newLink, shareLink }) => {
-            expect(newLink).toBe(false);
-            expect(shareLink).toBe(url);
-          }}
-        />
+        <ToastProvider>
+          <ToastCapture
+            program={baseProgram({
+              name: "Knee rehab",
+              auto_save_status: { kind: "unpublished_changes" },
+              open_share_link: false,
+              share_link_status: "closed",
+            })}
+            shareView={baseShareView({
+              display_state: "published_with_draft_changes",
+              share_link: "",
+              share_link_status: "closed",
+              share_link_state: "expired",
+              open_share_link: false,
+              published_at: "2026-10-20T12:00:00.000Z",
+              publish_change_lines: ["Title changed"],
+            })}
+            client={client}
+            showNameField={false}
+            onPublished={({ newLink, shareLink }) => {
+              expect(newLink).toBe(false);
+              expect(shareLink).toBe(url);
+            }}
+          />
+        </ToastProvider>
       </MemoryRouter>,
     );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    expect(within(dialog).getByText(PUBLISH_SAME_LINK_HELPER)).toBeInTheDocument();
+    expect(within(dialog).queryByText(PUBLISH_NEW_LINK_HELPER)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: PUBLISH_NOW }));
     expect(publishProgram).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(PUBLISHED_SAME_LINK_TOAST)).toBeInTheDocument();
   });
 
   it("disables publish when placeholder rows block variant D", async () => {

@@ -30,6 +30,7 @@ import {
   shareExpiresOnLine,
 } from "../copy/program-publish.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
+import { isGenuinelyClosedShareLink } from "./share-link-ui.js";
 
 type ShareActionsProps = {
   shareView: ProgramShareConnectorView;
@@ -50,7 +51,7 @@ function ShareActions({
   onCloseLink,
   inSheet,
 }: ShareActionsProps) {
-  const closed = shareView.share_link_status === "closed";
+  const closed = isGenuinelyClosedShareLink(shareView);
   if (closed) {
     return null;
   }

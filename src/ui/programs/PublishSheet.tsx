@@ -11,6 +11,13 @@ import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
 import { PublishPlaceholderNotice } from "./PublishPlaceholderNotice.js";
 import {
+  customExpiresOnIsBeforeEarliestPickable,
+  initialPublishExpiryChoice,
+  isExpiredShareLinkRevive,
+  isSameLinkPublish,
+  savedCustomExpiryIsStale,
+} from "./share-link-ui.js";
+import {
   EXPIRY_APPLIES_NEW_LINK,
   EXPIRY_APPLIES_RIGHT_AWAY,
   LINK_EXPIRES_HEADING,
@@ -52,16 +59,6 @@ export type PublishSheetProps = {
   onRemovePlaceholder: (rowId: string) => void;
 };
 
-function initialExpiryChoice(
-  shareView: ProgramShareConnectorView | null,
-): ShareLinkExpiresIn {
-  return (
-    shareView?.link_expires_in ??
-    shareView?.practitioner_default_expires_in ??
-    SHARE_LINK_EXPIRES_IN.one_year
-  );
-}
-
 export function PublishSheet({
   open,
   program,
@@ -80,9 +77,10 @@ export function PublishSheet({
   const nameHelpId = useId();
   const placeholderNoticeId = useId();
   const [expiry, setExpiry] = useState<ShareLinkExpiresIn>(
-    initialExpiryChoice(shareView),
+    initialPublishExpiryChoice(shareView),
   );
   const [customDate, setCustomDate] = useState(shareView?.link_expires_on ?? "");
+  const [expiryTouched, setExpiryTouched] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
   const [copyHint, setCopyHint] = useState("");
   const [placeholderNoticeCleared, setPlaceholderNoticeCleared] = useState(false);
@@ -94,34 +92,52 @@ export function PublishSheet({
   );
 
   const isFirstPublish = program.auto_save_status.kind === "not_published_yet";
-  const noOpenLink =
-    !shareView?.open_share_link || shareView.share_link_status !== "open";
+  const expiredRevive = isExpiredShareLinkRevive(shareView);
+  const sameLinkPublish = isSameLinkPublish(shareView);
+  const newOrClosedLink = !sameLinkPublish;
   const shareUrl = shareView?.share_link ?? "";
 
   const trimmedName = nameDraft.trim();
   const nameInvalid = trimmedName.length === 0;
   const placeholdersBlock = placeholders.length > 0;
+  const staleSavedCustom = savedCustomExpiryIsStale(shareView);
+  const customExpiryPickInvalid =
+    expiry === SHARE_LINK_EXPIRES_IN.custom_date &&
+    customExpiresOnIsBeforeEarliestPickable(customDate);
+  const closedPathStaleCustom =
+    newOrClosedLink &&
+    staleSavedCustom &&
+    expiry === SHARE_LINK_EXPIRES_IN.custom_date &&
+    customDate.trim() === (shareView?.link_expires_on ?? "").trim();
   const publishDisabled =
-    publishBusy || nameInvalid || placeholdersBlock || program.rows.length === 0;
+    publishBusy ||
+    nameInvalid ||
+    placeholdersBlock ||
+    program.rows.length === 0 ||
+    customExpiryPickInvalid ||
+    closedPathStaleCustom;
 
   useEffect(() => {
     if (!open) {
       return;
     }
-    setExpiry(initialExpiryChoice(shareView));
+    setExpiry(initialPublishExpiryChoice(shareView));
     setCustomDate(shareView?.link_expires_on ?? "");
+    setExpiryTouched(false);
     setCopyHint("");
     setPlaceholderNoticeCleared(false);
     setPublishError(null);
   }, [open, shareView]);
 
-  const expiryHelper = noOpenLink ? EXPIRY_APPLIES_NEW_LINK : EXPIRY_APPLIES_RIGHT_AWAY;
+  const expiryHelper = newOrClosedLink
+    ? EXPIRY_APPLIES_NEW_LINK
+    : EXPIRY_APPLIES_RIGHT_AWAY;
 
-  const shareLinkHelper = noOpenLink
-    ? isFirstPublish
+  const shareLinkHelper = sameLinkPublish
+    ? PUBLISH_SAME_LINK_HELPER
+    : isFirstPublish
       ? PUBLISH_NO_LINK_FIRST
-      : PUBLISH_NO_OPEN_LINK
-    : PUBLISH_SAME_LINK_HELPER;
+      : PUBLISH_NO_OPEN_LINK;
 
   const changeHeading = isFirstPublish
     ? PUBLISH_FIRST_PUBLISH_HEADING
@@ -154,10 +170,10 @@ export function PublishSheet({
         const updated = await client.updateProgramName(program.program_id, trimmedName);
         onProgramUpdated(updated.program);
       }
-      const hadOpenLink =
-        shareView?.open_share_link && shareView.share_link_status === "open";
-      const body =
-        expiry === SHARE_LINK_EXPIRES_IN.custom_date
+      const omitExpiryForRevive = expiredRevive && staleSavedCustom && !expiryTouched;
+      const body = omitExpiryForRevive
+        ? {}
+        : expiry === SHARE_LINK_EXPIRES_IN.custom_date
           ? {
               expires_in: expiry,
               custom_expires_on: customDate.trim() || null,
@@ -167,7 +183,7 @@ export function PublishSheet({
       onPublished({
         program: result.program,
         shareLink: result.share_link,
-        newLink: !hadOpenLink,
+        newLink: !sameLinkPublish,
       });
     } catch (error) {
       if (error instanceof ProgramsApiError) {
@@ -284,7 +300,7 @@ export function PublishSheet({
       </ul>
 
       <h3 className="pg-publish-section-heading">{PUBLISH_SHARE_LINK_HEADING}</h3>
-      {noOpenLink || !shareUrl ? (
+      {newOrClosedLink || !shareUrl ? (
         <p className="pg-publish-no-link">{shareLinkHelper}</p>
       ) : (
         <div className="pg-publish-link-row">
@@ -300,7 +316,7 @@ export function PublishSheet({
           </button>
         </div>
       )}
-      {noOpenLink ? (
+      {newOrClosedLink ? (
         <p className="pg-publish-link-footnote">{PUBLISH_NEW_LINK_HELPER}</p>
       ) : shareUrl ? (
         <p className="pg-publish-link-footnote">{PUBLISH_SAME_LINK_HELPER}</p>
@@ -320,8 +336,18 @@ export function PublishSheet({
           value={expiry}
           customDate={customDate}
           defaultChoice={SHARE_LINK_EXPIRES_IN.one_year}
-          onChange={setExpiry}
-          onCustomDateChange={setCustomDate}
+          customDateInvalid={
+            expiry === SHARE_LINK_EXPIRES_IN.custom_date &&
+            (customExpiryPickInvalid || closedPathStaleCustom)
+          }
+          onChange={(next) => {
+            setExpiryTouched(true);
+            setExpiry(next);
+          }}
+          onCustomDateChange={(nextCustom) => {
+            setExpiryTouched(true);
+            setCustomDate(nextCustom);
+          }}
         />
         <p className="pg-publish-expiry-helper">{expiryHelper}</p>
       </div>

@@ -150,6 +150,24 @@ describe("Program share screen (DIDI-1014)", () => {
     expect(within(dialog).getByText(SHARE_HELPER_PUBLISHED)).toBeInTheDocument();
   });
 
+  it("does not show the closed-link row for an expired but never-closed link", async () => {
+    const client = {
+      getProgramByCode: vi.fn().mockResolvedValue(program),
+      getShareLink: vi.fn().mockResolvedValue(
+        openShareView({
+          share_link: "",
+          share_link_status: "closed",
+          share_link_state: "expired",
+          open_share_link: false,
+        }),
+      ),
+    } as unknown as ProgramsClient;
+    renderShare(client);
+    await screen.findByRole("heading", { name: LINK_EXPIRES_HEADING });
+    expect(screen.queryByText(SHARE_LINK_CLOSED_LINE)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Create a new link/i })).toBeNull();
+  });
+
   it("hides expiry and share actions when the link is closed", async () => {
     const client = {
       getProgramByCode: vi.fn().mockResolvedValue(program),

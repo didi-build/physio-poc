@@ -10,10 +10,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublishSheet } from "../../src/ui/programs/PublishSheet.js";
 import {
   EXPIRY_APPLIES_NEW_LINK,
+  EXPIRY_APPLIES_RIGHT_AWAY,
+  PUBLISH_NEW_LINK_HELPER,
   PUBLISH_NOW,
   PUBLISH_SAME_LINK_HELPER,
   PUBLISH_SHEET_TITLE,
 } from "../../src/ui/copy/program-publish.js";
+import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
@@ -164,5 +167,133 @@ describe("Publish sheet (DIDI-1014)", () => {
     ).toHaveAttribute("aria-pressed", "true");
     await userEvent.type(within(dialog).getByLabelText(/Program name/), "Knee rehab");
     expect(publishButton).not.toBeDisabled();
+  });
+
+  it("treats expired never-closed GET shape as same-link revive, not new-link", () => {
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={{
+            ...republishProgram,
+            open_share_link: false,
+            share_link_status: "closed",
+          }}
+          shareView={{
+            ...republishShareView,
+            share_link: "",
+            share_link_status: "closed",
+            share_link_state: "expired",
+            open_share_link: false,
+          }}
+          client={
+            {
+              publishProgram: vi.fn(),
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    expect(within(dialog).getByText(PUBLISH_SAME_LINK_HELPER)).toBeInTheDocument();
+    expect(within(dialog).queryByText(PUBLISH_NEW_LINK_HELPER)).toBeNull();
+    expect(within(dialog).getByText(EXPIRY_APPLIES_RIGHT_AWAY)).toBeInTheDocument();
+  });
+
+  it("omits expires_in when reviving with a saved past custom date unchanged", async () => {
+    const publishProgram = vi.fn().mockResolvedValue({
+      program: republishProgram,
+      share_link: "https://physio.test.example/l/revived",
+    });
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={{
+            ...republishProgram,
+            open_share_link: false,
+            share_link_status: "closed",
+          }}
+          shareView={{
+            ...republishShareView,
+            share_link: "",
+            share_link_status: "closed",
+            share_link_state: "expired",
+            open_share_link: false,
+            link_expires_in: SHARE_LINK_EXPIRES_IN.custom_date,
+            link_expires_on: "2020-01-01",
+            practitioner_default_expires_in: "1_week",
+          }}
+          client={
+            {
+              publishProgram,
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    await userEvent.click(within(dialog).getByRole("button", { name: PUBLISH_NOW }));
+    expect(publishProgram).toHaveBeenCalledWith("p1", {});
+  });
+
+  it("disables publish and marks the date aria-invalid for a saved past custom on a closed link", async () => {
+    const publishProgram = vi.fn();
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={republishProgram}
+          shareView={{
+            ...republishShareView,
+            share_link: "",
+            share_link_status: "closed",
+            share_link_state: "closed",
+            open_share_link: false,
+            link_expires_in: SHARE_LINK_EXPIRES_IN.custom_date,
+            link_expires_on: "2020-01-01",
+          }}
+          client={
+            {
+              publishProgram,
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    const publishButton = within(dialog).getByRole("button", { name: PUBLISH_NOW });
+    expect(publishButton).toBeDisabled();
+    const dateInput = within(dialog).getByLabelText(/Link stops working on/i);
+    expect(dateInput).toHaveAttribute("aria-invalid", "true");
+    await userEvent.click(publishButton);
+    expect(publishProgram).not.toHaveBeenCalled();
   });
 });
