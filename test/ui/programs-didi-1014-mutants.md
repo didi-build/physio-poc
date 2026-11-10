@@ -1,0 +1,14 @@
+# DIDI-1014 publish/share mutants
+
+Baseline (clean tree, full `npm run test`): **Test Files 226 passed (226)**; **Tests 2300 passed | 4 skipped (2304)**.
+
+| ID  | Mutant                                                                                   | Killed?  | Full suite (files)             | Full suite (tests)                          | Failing test tail                                                                                                                                  |
+| --- | ---------------------------------------------------------------------------------------- | -------- | ------------------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | `PublishSheet.tsx`: drop `nameInvalid` from `publishDisabled`                            | Killed   | 225 passed, **1 failed** (226) | 2299 passed, **1 failed**, 4 skipped (2304) | `programs-didi-1014-publish-sheet.test.tsx` > keeps Publish now disabled until a program name is provided — `expect(publishButton).toBeDisabled()` |
+| M2  | `PublishSheet.tsx`: `initialExpiryChoice` always returns `30_days`                       | Killed   | 225 passed, **1 failed** (226) | 2299 passed, **1 failed**, 4 skipped (2304) | `programs-didi-1014-publish-sheet.test.tsx` > … — `getByRole("button", { name: /1 year/ })` `aria-pressed` "true"                                  |
+| M3  | `PublishSheet.tsx`: swap `EXPIRY_APPLIES_NEW_LINK` / `EXPIRY_APPLIES_RIGHT_AWAY` helpers | Killed   | 225 passed, **1 failed** (226) | 2299 passed, **1 failed**, 4 skipped (2304) | `programs-didi-1014-publish-sheet.test.tsx` > … — `getByText(EXPIRY_APPLIES_NEW_LINK)`                                                             |
+| M4  | `ProgramSharePage.tsx`: `onDownloadPdf` no-op (remove `window.open`)                     | Survived | 226 passed (226)               | 2300 passed, 4 skipped (2304)               | —                                                                                                                                                  |
+| M5  | `ProgramSharePage.tsx`: render expiry block when `share_link_status === "closed"`        | Survived | 226 passed (226)               | 2300 passed, 4 skipped (2304)               | —                                                                                                                                                  |
+| M6  | `ProgramLinkExpiryField.tsx`: `defaultChoice` always `30_days`                           | Killed   | 225 passed, **1 failed** (226) | 2299 passed, **1 failed**, 4 skipped (2304) | `programs-didi-1014-publish-sheet.test.tsx` > … — `1 year` default chip `aria-pressed`                                                             |
+
+All mutants reverted after measurement.

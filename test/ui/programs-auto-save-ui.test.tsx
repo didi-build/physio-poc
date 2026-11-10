@@ -53,13 +53,21 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         <BuilderPublishCard
           autoSaveStatus={{ kind: "published", published_at: publishedAt }}
           publishedAt={publishedAt}
+          shareLinkStatus="open"
           saveUiState="saved"
           failureAlertShown={false}
           publishAllowed={false}
+          primaryLabel="Share link"
+          pendingChanges={false}
+          changeCount={0}
+          expiryLine={null}
+          showLinkSettings
+          onPrimary={() => {}}
+          onLinkSettings={() => {}}
           onTryAgain={() => {}}
         />,
       );
-      expect(screen.getByText("Published Oct 24, 11:10 AM")).toBeInTheDocument();
+      expect(screen.getByText(/Everything is live/)).toBeInTheDocument();
       const card = container.querySelector(".pg-publish-card");
       expect(card).not.toHaveAttribute("aria-label", NOT_PUBLISHED_YET);
     } finally {
@@ -75,9 +83,17 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
     render(
       <BuilderPublishCard
         autoSaveStatus={{ kind: "not_published_yet" }}
+        shareLinkStatus="none"
         saveUiState="failed"
         failureAlertShown
         publishAllowed={false}
+        primaryLabel="Publish"
+        pendingChanges={false}
+        changeCount={0}
+        expiryLine={null}
+        showLinkSettings={false}
+        onPrimary={() => {}}
+        onLinkSettings={() => {}}
         onTryAgain={vi.fn()}
       />,
     );
