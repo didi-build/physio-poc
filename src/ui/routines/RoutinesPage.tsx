@@ -24,6 +24,7 @@ import {
   MY_ROUTINES_EMPTY_HEADING,
   MY_ROUTINES_EMPTY_HELPER,
   MY_ROUTINES_INTRO,
+  NEW_ROUTINE,
   ROUTINES_PAGE_TITLE,
   ROUTINES_TAB_ALL,
   ROUTINES_TAB_MY,
@@ -201,6 +202,16 @@ export function RoutinesPage() {
       <h1 id="routines-heading" className="ex-page-title">
         {ROUTINES_PAGE_TITLE}
       </h1>
+      <button
+        type="button"
+        className="ex-primary-btn rt-new-routine-btn"
+        data-testid="routines-new"
+        onClick={() => {
+          navigate(fillPhysioAppRoutePattern("routineNew"));
+        }}
+      >
+        + {NEW_ROUTINE}
+      </button>
 
       <div className="ex-tabs" role="tablist" aria-label={ROUTINES_PAGE_TITLE}>
         <button

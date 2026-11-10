@@ -1,8 +1,18 @@
+import type { ExerciseParams } from "../../domain/exercise-params.js";
+import type { PrescriptionType } from "../../domain/exercise-types.js";
+import {
+  ROUTINES_AUTHORING_COLLECTION_PATH,
+  routineAuthoringItemPath,
+  routineVersionHistoryPath,
+} from "../../routine-authoring-api-paths.js";
 import type {
   MyRoutinesListResult,
+  PublishValidationIssue,
   RoutineDetailsResult,
+  RoutineDraftDiscardUndo,
   RoutineMutationUndo,
   RoutineSearchSort,
+  RoutineVersionHistoryResult,
   SearchCommunityRoutinesResult,
 } from "../../services/routines/types.js";
 import type { RoutineExerciseRow } from "../../services/routines/types.js";
@@ -13,6 +23,33 @@ import {
   routineDetailsPath,
   routineMyCopyPath,
 } from "../../routine-library-api-paths.js";
+
+export type RoutineAuthoringRowInput = {
+  position: number;
+  exercise_id: string;
+  exercise_version_id: string;
+  prescription_type: PrescriptionType;
+  params: ExerciseParams;
+};
+
+export type RoutineDraftAutosaveInput = {
+  body_region_id?: string;
+  condition_id?: string | null;
+  who_its_for?: string | null;
+  name?: string | null;
+  rows?: RoutineAuthoringRowInput[];
+};
+
+export class RoutinesAuthoringError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly validationIssues?: PublishValidationIssue[],
+  ) {
+    super(message);
+    this.name = "RoutinesAuthoringError";
+  }
+}
 
 export type FetchFn = (
   input: RequestInfo | URL,
@@ -40,10 +77,37 @@ export type MyRoutinesListParams = {
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+      validation_issues?: PublishValidationIssue[];
+    };
+    if (body.error === "publish_validation_failed") {
+      throw new RoutinesAuthoringError(
+        body.message ?? "Publish validation failed",
+        body.error,
+        body.validation_issues,
+      );
+    }
+    if (body.error) {
+      throw new RoutinesAuthoringError(
+        body.message ?? `Request failed (${response.status})`,
+        body.error,
+      );
+    }
     throw new Error(body.message ?? `Request failed (${response.status})`);
   }
   return (await response.json()) as T;
+}
+
+function mapRoutineRowsForApi(rows: RoutineExerciseRow[]): RoutineAuthoringRowInput[] {
+  return rows.map((row) => ({
+    position: row.position,
+    exercise_id: row.exercise_id,
+    exercise_version_id: row.exercise_version_id,
+    prescription_type: row.prescription_type,
+    params: row.params,
+  }));
 }
 
 function buildSearchUrl(
@@ -157,15 +221,165 @@ export class RoutinesClient {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        rows: rows.map((row) => ({
-          position: row.position,
-          exercise_id: row.exercise_id,
-          exercise_version_id: row.exercise_version_id,
-          prescription_type: row.prescription_type,
-          params: row.params,
-        })),
+        rows: mapRoutineRowsForApi(rows),
       }),
     }).then((response) => readJson<{ undo: RoutineMutationUndo }>(response));
+  }
+
+  createRoutineDraft(input: {
+    body_region_id: string;
+    condition_id?: string | null;
+    who_its_for?: string | null;
+    name?: string | null;
+  }): Promise<{
+    routine_id: string;
+    draft_version_id: string;
+    draft_updated_at: string;
+  }> {
+    return this.fetchFn(ROUTINES_AUTHORING_COLLECTION_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then((response) =>
+      readJson<{
+        routine_id: string;
+        draft_version_id: string;
+        draft_updated_at: string;
+      }>(response),
+    );
+  }
+
+  autosaveRoutineDraft(
+    routineId: string,
+    patch: RoutineDraftAutosaveInput,
+  ): Promise<{ routine_id: string; draft_updated_at: string }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then((response) =>
+      readJson<{ routine_id: string; draft_updated_at: string }>(response),
+    );
+  }
+
+  cancelUntouchedRoutineDraft(routineId: string): Promise<{ ok: true }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "DELETE",
+    }).then((response) => readJson<{ ok: true }>(response));
+  }
+
+  publishRoutineDraft(
+    routineId: string,
+    input: { name?: string } = {},
+  ): Promise<{
+    routine_id: string;
+    version_number: number;
+    routine_version_id: string;
+  }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "publish", ...input }),
+    }).then((response) =>
+      readJson<{
+        routine_id: string;
+        version_number: number;
+        routine_version_id: string;
+      }>(response),
+    );
+  }
+
+  discardRoutineDraft(routineId: string): Promise<{ undo: RoutineDraftDiscardUndo }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "discard_draft" }),
+    }).then((response) => readJson<{ undo: RoutineDraftDiscardUndo }>(response));
+  }
+
+  undoRoutineDraftDiscard(
+    routineId: string,
+    undo: RoutineDraftDiscardUndo,
+  ): Promise<{ ok: true }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "undo_draft_discard", undo }),
+    }).then((response) => readJson<{ ok: true }>(response));
+  }
+
+  saveRoutineCommunityVersion(
+    routineId: string,
+    input: {
+      expected_published_version: number;
+      name: string;
+      change_summary?: string | null;
+      rows: RoutineExerciseRow[];
+      condition_id?: string | null;
+      body_region_id?: string;
+      who_its_for?: string | null;
+    },
+  ): Promise<{
+    routine_id: string;
+    version_number: number;
+    routine_version_id: string;
+  }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "save_community_version",
+        expected_published_version: input.expected_published_version,
+        name: input.name,
+        change_summary: input.change_summary,
+        rows: mapRoutineRowsForApi(input.rows),
+        condition_id: input.condition_id,
+        body_region_id: input.body_region_id,
+        who_its_for: input.who_its_for,
+      }),
+    }).then((response) =>
+      readJson<{
+        routine_id: string;
+        version_number: number;
+        routine_version_id: string;
+      }>(response),
+    );
+  }
+
+  restoreRoutineVersion(
+    routineId: string,
+    restoreFromVersionNumber: number,
+  ): Promise<{
+    routine_id: string;
+    restored_from_version_number: number;
+    version_number: number;
+    routine_version_id: string;
+  }> {
+    return this.fetchFn(routineAuthoringItemPath(routineId), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "restore_version",
+        restore_from_version_number: restoreFromVersionNumber,
+      }),
+    }).then((response) =>
+      readJson<{
+        routine_id: string;
+        restored_from_version_number: number;
+        version_number: number;
+        routine_version_id: string;
+      }>(response),
+    );
+  }
+
+  getRoutineVersionHistory(
+    routineId: string,
+    options?: ReadRequestOptions,
+  ): Promise<RoutineVersionHistoryResult> {
+    return this.fetchFn(
+      routineVersionHistoryPath(routineId),
+      readGetInit(options),
+    ).then((response) => readJson<RoutineVersionHistoryResult>(response));
   }
 }
 

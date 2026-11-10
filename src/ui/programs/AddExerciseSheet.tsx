@@ -45,12 +45,16 @@ export type AddExerciseSheetProps = {
   open: boolean;
   onClose: () => void;
   onPickExercise: (exerciseId: string, exerciseName: string) => void;
+  title?: string;
+  subtitle?: string;
 };
 
 export function AddExerciseSheet({
   open,
   onClose,
   onPickExercise,
+  title = ADD_EXERCISE,
+  subtitle = ADD_EXERCISE_SHEET_INTRO,
 }: AddExerciseSheetProps) {
   const library = useExerciseLibraryApi();
   const [tab, setTab] = useState<"mine" | "all">("mine");
@@ -104,10 +108,10 @@ export function AddExerciseSheet({
   return (
     <ConfirmSheet
       open={open}
-      title={ADD_EXERCISE}
+      title={title}
       titleId="pg-add-exercise-title"
       onClose={onClose}
-      subtitle={ADD_EXERCISE_SHEET_INTRO}
+      subtitle={subtitle}
       footer={
         <button type="button" className="pg-btn pg-btn--secondary" onClick={onClose}>
           {CANCEL}

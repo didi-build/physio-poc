@@ -39,7 +39,11 @@ import { SessionReadCacheProvider } from "./api/session-read-cache-context.js";
 import type { RoutinesClient } from "./api/routines-client.js";
 import { RoutinesApiProvider } from "./api/routines-context.js";
 import { RoutineDetailsPage } from "./routines/RoutineDetailsPage.js";
+import { RoutineDraftEditorPage } from "./routines/RoutineDraftEditorPage.js";
+import { RoutineEditForEveryonePage } from "./routines/RoutineEditForEveryonePage.js";
 import { RoutineMyCopyEditorPage } from "./routines/RoutineMyCopyEditorPage.js";
+import { RoutineNewPage } from "./routines/RoutineNewPage.js";
+import { RoutineVersionHistoryPage } from "./routines/RoutineVersionHistoryPage.js";
 import { RoutinesPage } from "./routines/RoutinesPage.js";
 import { useExerciseRequestsRefresh } from "./api/exercise-requests-refresh-context.js";
 
@@ -84,7 +88,11 @@ export function createPhysioAppRouteElements(
     exerciseDetail: <ExerciseDetailsPage />,
     exerciseMyCopy: <MyCopyEditorPage />,
     routines: <RoutinesPage />,
+    routineNew: <RoutineNewPage />,
     routineDetail: <RoutineDetailsPage />,
+    routineDraftEdit: <RoutineDraftEditorPage />,
+    routineEditForEveryone: <RoutineEditForEveryonePage />,
+    routineVersionHistory: <RoutineVersionHistoryPage />,
     routineMyCopy: <RoutineMyCopyEditorPage />,
     defaults: <MyDefaultsPage />,
     programs: <ProgramsListPage />,
