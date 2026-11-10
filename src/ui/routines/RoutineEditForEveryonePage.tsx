@@ -31,8 +31,6 @@ import {
   ExerciseLibraryBusyState,
   ExerciseLibraryDetailErrorSlot,
 } from "../exercise-library/ExerciseLibraryStates.js";
-import { bodyRegionIdFromLabel } from "./routine-body-region-ids.js";
-import { conditionIdFromLabel } from "./routine-draft-untouched.js";
 import { RoutineAuthoringExerciseList } from "./RoutineAuthoringExerciseList.js";
 
 function rowsEqual(a: RoutineExerciseRow[], b: RoutineExerciseRow[]): boolean {
@@ -118,11 +116,8 @@ export function RoutineEditForEveryonePage() {
   }
 
   const liveVersion = details.community.version_number;
-  const bodyRegionId = bodyRegionIdFromLabel(details.body_region_label) ?? undefined;
-  const conditionId = conditionIdFromLabel(
-    details.condition_label,
-    details.condition_options,
-  );
+  const bodyRegionId = details.body_region_id;
+  const conditionId = details.condition_id;
 
   const onSave = () => {
     if (!dirty) {

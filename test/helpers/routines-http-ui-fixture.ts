@@ -11,6 +11,11 @@ import { id } from "./opaque-test-ids.js";
 import type { AppDependencies } from "../../src/http/app.js";
 import { RoutineVersionsRepository } from "../../src/storage/repositories/routines.js";
 import { RoutinesLibraryService } from "../../src/services/routines/index.js";
+import { ME_BODY_REGIONS_PATH } from "../../src/me-session-api-paths.js";
+import {
+  ROUTINES_MY_ROUTINES_PATH,
+  routineDetailsPath,
+} from "../../src/routine-library-api-paths.js";
 import { RoutinesClient, type FetchFn } from "../../src/ui/api/routines-client.js";
 import { openMigratedDatabase, TS } from "./exercise-sqlite-fixture.js";
 import { parseExerciseParamsJson } from "../../src/domain/exercise-params.js";
@@ -57,34 +62,92 @@ export function appDepsForRoutinesHttpUi(
   };
 }
 
+function pathnameFromFetchInput(input: RequestInfo | URL): string {
+  const raw =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? `${input.pathname}${input.search}`
+        : input.url;
+  return raw.startsWith("http") ? new URL(raw).pathname + new URL(raw).search : raw;
+}
+
+/** Stubs planned body-region list + `body_region_id` on details until the privileged API lands. */
 export function createRoutinesHttpFetch(
   deps: AppDependencies,
   cookie: string,
-  options: { authMutations?: boolean } = {},
+  options: { authMutations?: boolean; stubPlannedBodyRegionApi?: boolean } = {},
 ): FetchFn {
   const authMutations = options.authMutations ?? true;
+  const stubPlannedBodyRegionApi = options.stubPlannedBodyRegionApi ?? false;
   return async (input, init) => {
-    const raw =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? `${input.pathname}${input.search}`
-          : input.url;
-    const path = raw.startsWith("http")
-      ? new URL(raw).pathname + new URL(raw).search
-      : raw;
-    const url = `${ROUTINES_HTTP_UI_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+    const path = pathnameFromFetchInput(input);
+    const pathOnly = path.split("?")[0] ?? path;
     const method = (init?.method ?? "GET").toUpperCase();
+
+    if (
+      stubPlannedBodyRegionApi &&
+      method === "GET" &&
+      pathOnly === ME_BODY_REGIONS_PATH
+    ) {
+      const rows = await deps.sql.all<{ id: string; label: string }>(
+        "SELECT id, label FROM body_regions ORDER BY label ASC",
+        [],
+      );
+      return Response.json(rows);
+    }
+
+    const url = `${ROUTINES_HTTP_UI_BASE}${path.startsWith("/") ? path : `/${path}`}`;
     const headers = new Headers(init?.headers);
     const isMutation = method === "POST" || method === "PATCH" || method === "DELETE";
     const attachCookie = authMutations || !isMutation;
     if (attachCookie && !headers.has("cookie")) {
       headers.set("cookie", cookie);
     }
-    return handleRequest(
+    const response = await handleRequest(
       new Request(url, mutatingAppApiRequestInit(url, { ...init, method, headers })),
       deps,
     );
+
+    if (
+      stubPlannedBodyRegionApi &&
+      method === "GET" &&
+      pathOnly.startsWith("/api/me/routines/") &&
+      !pathOnly.endsWith("/versions") &&
+      pathOnly !== ROUTINES_MY_ROUTINES_PATH &&
+      !pathOnly.includes("/community/")
+    ) {
+      const suffix = pathOnly.slice("/api/me/routines/".length);
+      if (suffix.length > 0 && !suffix.includes("/")) {
+        const routineId = decodeURIComponent(suffix);
+        const expectedDetailsPath = routineDetailsPath(routineId);
+        if (pathOnly === expectedDetailsPath) {
+          const rows = await deps.sql.all<{
+            body_region_id: string;
+            condition_id: string | null;
+          }>("SELECT body_region_id, condition_id FROM routines WHERE id = ? LIMIT 1", [
+            routineId,
+          ]);
+          const row = rows[0];
+          if (row?.body_region_id) {
+            const json = (await response.clone().json()) as Record<string, unknown>;
+            return Response.json(
+              {
+                ...json,
+                body_region_id: row.body_region_id,
+                condition_id: row.condition_id,
+              },
+              {
+                status: response.status,
+                headers: response.headers,
+              },
+            );
+          }
+        }
+      }
+    }
+
+    return response;
   };
 }
 

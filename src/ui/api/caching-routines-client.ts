@@ -24,6 +24,7 @@ export function wrapRoutinesClientWithCacheInvalidation(
     listMyRoutines: (params, options) => inner.listMyRoutines(params, options),
     getRoutineDetails: (routineId, options) =>
       inner.getRoutineDetails(routineId, options),
+    listMeBodyRegions: (options) => inner.listMeBodyRegions(options),
     saveToMyRoutines: (routineId: string) =>
       withRoutineInvalidation(routineId, () => inner.saveToMyRoutines(routineId)),
     removeFromMyRoutines: (routineId: string) =>

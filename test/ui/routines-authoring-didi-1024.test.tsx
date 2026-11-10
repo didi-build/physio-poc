@@ -118,7 +118,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "ui1024@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       renderApp("/routines/new", client);
       await waitFor(
@@ -154,7 +156,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "pub@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -203,8 +207,11 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "disc@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
+      const undoSpy = vi.spyOn(client, "undoRoutineDraftDiscard");
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
       await client.autosaveRoutineDraft(routineId, { name: "Discard me" });
@@ -216,7 +223,16 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
+      await waitFor(async () => {
+        const list = await client.listMyRoutines();
+        expect(list.drafts.some((draft) => draft.routine_id === routineId)).toBe(false);
+      });
       await userEvent.click(screen.getByRole("button", { name: TOAST_UNDO }));
+      expect(undoSpy).toHaveBeenCalledTimes(1);
+      await waitFor(async () => {
+        const list = await client.listMyRoutines();
+        expect(list.drafts.some((draft) => draft.routine_id === routineId)).toBe(true);
+      });
       await waitFor(() => {
         expect(screen.getByText(DRAFT_DETAIL_VISIBILITY)).toBeTruthy();
       });
@@ -235,7 +251,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "val@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       renderApp(`/routines/${created.routine_id}/edit`, client);
@@ -266,7 +284,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "efe@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -315,7 +335,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "hist@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -375,7 +397,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "link@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie),
+        fetchFn: createRoutinesHttpFetch(deps, cookie, {
+          stubPlannedBodyRegionApi: true,
+        }),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       renderApp(`/routines/${created.routine_id}`, client);

@@ -1,11 +1,13 @@
 import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
+import { ME_BODY_REGIONS_PATH } from "../../me-session-api-paths.js";
 import {
   ROUTINES_AUTHORING_COLLECTION_PATH,
   routineAuthoringItemPath,
   routineVersionHistoryPath,
 } from "../../routine-authoring-api-paths.js";
 import type {
+  MeBodyRegionOption,
   MyRoutinesListResult,
   PublishValidationIssue,
   RoutineDetailsResult,
@@ -167,6 +169,12 @@ export class RoutinesClient {
   ): Promise<RoutineDetailsResult> {
     return this.fetchFn(routineDetailsPath(routineId), readGetInit(options)).then(
       (response) => readJson<RoutineDetailsResult>(response),
+    );
+  }
+
+  listMeBodyRegions(options?: ReadRequestOptions): Promise<MeBodyRegionOption[]> {
+    return this.fetchFn(ME_BODY_REGIONS_PATH, readGetInit(options)).then((response) =>
+      readJson<MeBodyRegionOption[]>(response),
     );
   }
 

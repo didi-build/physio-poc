@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import { useRoutinesApi } from "../api/routines-context.js";
-import { DEFAULT_ROUTINE_BODY_REGION_ID } from "./routine-body-region-ids.js";
-import { ExerciseLibraryBusyState } from "../exercise-library/ExerciseLibraryStates.js";
+import {
+  ExerciseLibraryBusyState,
+  ExerciseLibraryDetailErrorSlot,
+} from "../exercise-library/ExerciseLibraryStates.js";
 
 export function RoutineNewPage() {
   const client = useRoutinesApi();
@@ -13,7 +15,14 @@ export function RoutineNewPage() {
   useEffect(() => {
     let cancelled = false;
     void client
-      .createRoutineDraft({ body_region_id: DEFAULT_ROUTINE_BODY_REGION_ID })
+      .listMeBodyRegions()
+      .then((regions) => {
+        const first = regions[0];
+        if (!first) {
+          throw new Error("No body regions");
+        }
+        return client.createRoutineDraft({ body_region_id: first.id });
+      })
       .then((result) => {
         if (cancelled) {
           return;
@@ -36,7 +45,11 @@ export function RoutineNewPage() {
   }, [client, navigate]);
 
   if (failed) {
-    return null;
+    return (
+      <section className="ex-page rt-authoring">
+        <ExerciseLibraryDetailErrorSlot />
+      </section>
+    );
   }
 
   return (

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
   PublishValidationIssue,
+  MeBodyRegionOption,
   RoutineConditionOption,
   RoutineDetailsDraft,
   RoutineExerciseRow,
@@ -51,15 +52,8 @@ import { RoutineAuthoringExerciseList } from "./RoutineAuthoringExerciseList.js"
 import { RoutineAutoSaveStatus } from "./RoutineAutoSaveStatus.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
-import {
-  bodyRegionIdFromLabel,
-  DEFAULT_ROUTINE_BODY_REGION_ID,
-  routineBodyRegionPillsForAuthoring,
-} from "./routine-body-region-ids.js";
-import {
-  conditionIdFromLabel,
-  isClientDraftUntouched,
-} from "./routine-draft-untouched.js";
+import { capitalizeBodyRegionLabel } from "./body-region-display.js";
+import { isClientDraftUntouched } from "./routine-draft-untouched.js";
 import { buildRoutineRowFromExerciseDetails } from "./routine-row-utils.js";
 
 type DraftEditorSnapshot = RoutineDetailsDraft & {
@@ -86,7 +80,8 @@ export function RoutineDraftEditorPage() {
   const [name, setName] = useState("");
   const [whoItsFor, setWhoItsFor] = useState("");
   const [conditionId, setConditionId] = useState<string | null>(null);
-  const [bodyRegionId, setBodyRegionId] = useState(DEFAULT_ROUTINE_BODY_REGION_ID);
+  const [bodyRegionId, setBodyRegionId] = useState<string | null>(null);
+  const [bodyRegionOptions, setBodyRegionOptions] = useState<MeBodyRegionOption[]>([]);
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -130,18 +125,29 @@ export function RoutineDraftEditorPage() {
   const draftDetails = details;
 
   useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+    let cancelled = false;
+    void client.listMeBodyRegions().then((regions) => {
+      if (!cancelled) {
+        setBodyRegionOptions(regions);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, sessionReady]);
+
+  useEffect(() => {
     if (!draftDetails || hydratedRef.current) {
       return;
     }
     setName(draftDetails.draft.name ?? "");
     setWhoItsFor(draftDetails.who_its_for ?? "");
-    const options = draftDetails.condition_options;
-    if (draftDetails.condition_label) {
-      setConditionId(conditionIdFromLabel(draftDetails.condition_label, options));
-    }
-    const regionId = bodyRegionIdFromLabel(draftDetails.body_region_label);
-    if (regionId) {
-      setBodyRegionId(regionId);
+    setConditionId(draftDetails.condition_id ?? null);
+    if (draftDetails.body_region_id) {
+      setBodyRegionId(draftDetails.body_region_id);
     }
     setRows(draftDetails.draft.rows);
     hydratedRef.current = true;
@@ -152,6 +158,9 @@ export function RoutineDraftEditorPage() {
   const conditionOptions = draftDetails?.condition_options ?? [];
 
   const persistPatch = useCallback(async () => {
+    if (!bodyRegionId) {
+      return;
+    }
     await client.autosaveRoutineDraft(routineId, {
       name: name.trim().length > 0 ? name.trim() : null,
       who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
@@ -175,6 +184,9 @@ export function RoutineDraftEditorPage() {
 
   const onRowsChange = (next: RoutineExerciseRow[]) => {
     setRows(next);
+    if (!bodyRegionId) {
+      return;
+    }
     autoSave.scheduleDebouncedSave("rows", async () => {
       await client.autosaveRoutineDraft(routineId, {
         name: name.trim().length > 0 ? name.trim() : null,
@@ -193,6 +205,9 @@ export function RoutineDraftEditorPage() {
       const nextRow = buildRoutineRowFromExerciseDetails(exerciseDetails, rows.length);
       const next = [...rows, nextRow];
       setRows(next);
+      if (!bodyRegionId) {
+        return;
+      }
       void autoSave.runSave("add-exercise", async () => {
         await client.autosaveRoutineDraft(routineId, {
           name: name.trim().length > 0 ? name.trim() : null,
@@ -267,7 +282,13 @@ export function RoutineDraftEditorPage() {
     );
   }
 
-  const regionPills = routineBodyRegionPillsForAuthoring();
+  if (!bodyRegionId || bodyRegionOptions.length === 0) {
+    return (
+      <section className="ex-page rt-authoring" aria-busy>
+        <ExerciseLibraryBusyState />
+      </section>
+    );
+  }
 
   return (
     <section className="ex-page rt-authoring" aria-labelledby="rt-authoring-title">
@@ -311,23 +332,15 @@ export function RoutineDraftEditorPage() {
               <span className="ex-sample-pill">{CONDITION_SAMPLE_LIST}</span>
             </div>
             <div className="ex-pill-row" role="group">
-              <button
-                type="button"
-                className={`ex-pill${conditionId === null ? " ex-pill--active" : ""}`}
-                onClick={() => {
-                  setConditionId(null);
-                  scheduleSave();
-                }}
-              >
-                —
-              </button>
               {conditionOptions.map((option) => (
                 <button
                   key={option.condition_id}
                   type="button"
                   className={`ex-pill${conditionId === option.condition_id ? " ex-pill--active" : ""}`}
                   onClick={() => {
-                    setConditionId(option.condition_id);
+                    const next =
+                      conditionId === option.condition_id ? null : option.condition_id;
+                    setConditionId(next);
                     scheduleSave();
                   }}
                 >
@@ -348,21 +361,17 @@ export function RoutineDraftEditorPage() {
             role="group"
             aria-labelledby="rt-body-region-label"
           >
-            {regionPills.map((pill) => (
+            {bodyRegionOptions.map((option) => (
               <button
-                key={pill.label}
+                key={option.id}
                 type="button"
-                disabled={pill.bodyRegionId === null}
-                className={`ex-pill${pill.bodyRegionId === bodyRegionId ? " ex-pill--active" : ""}`}
+                className={`ex-pill${option.id === bodyRegionId ? " ex-pill--active" : ""}`}
                 onClick={() => {
-                  if (!pill.bodyRegionId) {
-                    return;
-                  }
-                  setBodyRegionId(pill.bodyRegionId);
+                  setBodyRegionId(option.id);
                   scheduleSave();
                 }}
               >
-                {pill.label}
+                {capitalizeBodyRegionLabel(option.label)}
               </button>
             ))}
           </div>
