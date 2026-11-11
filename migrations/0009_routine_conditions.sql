@@ -16,6 +16,19 @@ ALTER TABLE conditions ADD COLUMN created_by_practitioner_id TEXT REFERENCES pra
 ALTER TABLE conditions ADD COLUMN label_normalized TEXT;
 
 -- Matches normalizeConditionLabelKey (see condition-label-normalize-sql.ts).
+-- Non-ASCII fail-closed: temporary-table CHECK guard before UPDATE (case folding not mirrored).
+CREATE TABLE _didi_1217_label_non_ascii_guard (
+  offending_count INTEGER NOT NULL CHECK (offending_count = 0)
+);
+
+INSERT INTO _didi_1217_label_non_ascii_guard (offending_count)
+SELECT COUNT(*)
+FROM conditions
+WHERE label IS NOT NULL
+  AND replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(label, char(9), ' '), char(10), ' '), char(11), ' '), char(12), ' '), char(13), ' '), char(32), ' '), char(160), ' '), char(5760), ' '), char(8192), ' '), char(8193), ' '), char(8194), ' '), char(8195), ' '), char(8196), ' '), char(8197), ' '), char(8198), ' '), char(8199), ' '), char(8200), ' '), char(8201), ' '), char(8202), ' '), char(8232), ' '), char(8233), ' '), char(8239), ' '), char(8287), ' '), char(12288), ' '), char(65279), ' ') GLOB '*[^ -~]*';
+
+DROP TABLE _didi_1217_label_non_ascii_guard;
+
 UPDATE conditions
 SET label_normalized = replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(lower(trim(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(label, char(9), ' '), char(10), ' '), char(11), ' '), char(12), ' '), char(13), ' '), char(32), ' '), char(160), ' '), char(5760), ' '), char(8192), ' '), char(8193), ' '), char(8194), ' '), char(8195), ' '), char(8196), ' '), char(8197), ' '), char(8198), ' '), char(8199), ' '), char(8200), ' '), char(8201), ' '), char(8202), ' '), char(8232), ' '), char(8233), ' '), char(8239), ' '), char(8287), ' '), char(12288), ' '), char(65279), ' '))), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' ')
 WHERE label IS NOT NULL

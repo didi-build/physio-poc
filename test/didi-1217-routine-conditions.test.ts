@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { normalizeConditionLabelKey } from "../src/domain/exercise-free-text.js";
 import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
 import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
-import { buildConditionLabelNormalizedBackfillUpdateSql } from "../src/storage/migrations/condition-label-normalize-sql.js";
+import { buildConditionLabelNormalizationMigrationDmlSql } from "../src/storage/migrations/condition-label-normalize-sql.js";
 import {
   applyMigration,
   MIGRATION_0001_ID,
@@ -61,16 +61,18 @@ function normalizeSqlWhitespace(sql: string): string {
   return sql.replace(/\s+/g, " ").trim();
 }
 
-function labelNormalizedUpdateFromMigrationFile(): string {
+function labelNormalizationDmlFromMigrationFile(): string {
   const migrationSql = readFileSync(
     join(REPO_ROOT, "migrations/0009_routine_conditions.sql"),
     "utf8",
   );
   const match = migrationSql.match(
-    /UPDATE conditions[\s\S]*?WHERE label IS NOT NULL\s+AND label_normalized IS NULL;/,
+    /CREATE TABLE _didi_1217_label_non_ascii_guard[\s\S]*?WHERE label IS NOT NULL\s+AND label_normalized IS NULL;/,
   );
   if (!match) {
-    throw new Error("0009 migration is missing label_normalized backfill UPDATE");
+    throw new Error(
+      "0009 migration is missing label normalization DML (guard + UPDATE)",
+    );
   }
   return match[0];
 }
@@ -151,9 +153,9 @@ describe("0009 routine conditions migration (integration)", () => {
     expect(MIGRATION_0009_SQL).not.toMatch(/\bCOMMIT\b/);
   });
 
-  it("ships canonical label_normalized backfill UPDATE matching the adapter", () => {
-    const fromFile = labelNormalizedUpdateFromMigrationFile();
-    const canonical = `${buildConditionLabelNormalizedBackfillUpdateSql()};`;
+  it("ships canonical label normalization DML (non-ASCII guard + UPDATE)", () => {
+    const fromFile = labelNormalizationDmlFromMigrationFile();
+    const canonical = buildConditionLabelNormalizationMigrationDmlSql();
     expect(normalizeSqlWhitespace(fromFile)).toBe(normalizeSqlWhitespace(canonical));
   });
 
@@ -369,6 +371,56 @@ describe("0009 routine conditions migration (integration)", () => {
     }
   });
 
+  it("fails 0009 when a label contains non-ASCII letters after whitespace mapping", async () => {
+    const storage = await openThroughMigration0008();
+    try {
+      await storage.run(
+        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+        [id("cond-unicode"), "ÉPAULE"],
+      );
+      await expect(
+        applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL),
+      ).rejects.toThrow();
+      const index = await storage.first<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
+      );
+      expect(index).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding)", async () => {
+    const storage = await openThroughMigration0008();
+    try {
+      await storage.run(
+        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+        [id("cond-ascii-a"), "Knee pain"],
+      );
+      await storage.run(
+        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+        [id("cond-ascii-b"), "\u00A0Shoulder pain\u00A0"],
+      );
+      await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+      const index = await storage.first<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
+      );
+      expect(index?.name).toBe("idx_conditions_label_normalized");
+      const knee = await storage.first<{ label_normalized: string }>(
+        "SELECT label_normalized FROM conditions WHERE id = ?",
+        [id("cond-ascii-a")],
+      );
+      const shoulder = await storage.first<{ label_normalized: string }>(
+        "SELECT label_normalized FROM conditions WHERE id = ?",
+        [id("cond-ascii-b")],
+      );
+      expect(knee?.label_normalized).toBe("knee pain");
+      expect(shoulder?.label_normalized).toBe("shoulder pain");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("fails 0009 when NBSP label collides with ASCII-spaced Low back after normalisation", async () => {
     const storage = await openThroughMigration0008();
     try {
@@ -531,6 +583,40 @@ describe("routine_conditions repository (integration, SQLite + D1 fake)", () => 
           /FOREIGN KEY constraint failed/i,
         );
         expect(await join.listConditionIdsForRoutine(routineId)).toEqual([condId]);
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    },
+  );
+});
+
+describe("conditions label_normalized (integration)", () => {
+  const storageCases: {
+    label: string;
+    open: () => Promise<SqlStoragePort & { close?: () => void }>;
+  }[] = [
+    { label: "BetterSqliteStorage", open: () => openMigratedDatabase() },
+    { label: "D1SqlStorage fake", open: () => openD1MigratedStorage() },
+  ];
+
+  it.each(storageCases)(
+    "rejects NBSP-wrapped duplicate after ASCII insert on $label",
+    async ({ open }) => {
+      const storage = await open();
+      try {
+        await seedPractitioner(storage);
+        const conditions = new ConditionsRepository(storage);
+        await conditions.insert({ id: id("cond-repo-low"), label: "Low back" });
+        await expectSqliteError(
+          () =>
+            conditions.insert({
+              id: id("cond-repo-nbsp"),
+              label: "\u00A0Low\u00A0back",
+            }),
+          /UNIQUE constraint failed: conditions\.label_normalized/i,
+        );
       } finally {
         if ("close" in storage && typeof storage.close === "function") {
           storage.close();
