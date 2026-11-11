@@ -8,13 +8,12 @@ BASELINE_SHA="$(git rev-parse --short HEAD)"
 echo "baseline_sha=$BASELINE_SHA" >>"$OUT"
 
 FILES=(
+  src/routine-similarity-config.ts
   src/storage/repositories/routine-similarity-read.ts
   src/services/routines/routine-similarity-service.ts
   src/services/routines/routine-similarity-score.ts
   src/http/routes/routines.ts
 )
-
-TEST_TARGET="test/didi-1225-routine-similar-http.test.ts"
 
 restore() {
   git checkout -- "${FILES[@]}"
@@ -25,7 +24,7 @@ record() {
   echo "=== $id ===" >>"$OUT"
   git diff --stat "${FILES[@]}" >>"$OUT" || true
   git diff "${FILES[@]}" >>"$OUT" || true
-  npm run test -- "$TEST_TARGET" 2>&1 | rg "^ FAIL |Test Files|Tests  " >>"$OUT" || true
+  npm run test 2>&1 | rg "^ FAIL |Test Files|Tests  " >>"$OUT" || true
   restore
   if git diff --quiet -- "${FILES[@]}"; then
     echo "clean: yes" >>"$OUT"
@@ -171,5 +170,20 @@ record M11
 sed -i 's/if (similarity.aiSimilarityEnabled)/if (false \&\& similarity.aiSimilarityEnabled)/' \
   src/services/routines/routine-similarity-service.ts
 record M12
+
+# M13 drop unit-interval upper bound (threshold / bonus)
+sed -i 's/!Number.isFinite(value) || value < 0 || value > 1/!Number.isFinite(value) || value < 0/' \
+  src/routine-similarity-config.ts
+record M13
+
+# M14 drop unit-interval lower bound
+sed -i 's/!Number.isFinite(value) || value < 0 || value > 1/!Number.isFinite(value) || value > 1/' \
+  src/routine-similarity-config.ts
+record M14
+
+# M15 drop max-results range and integer validation
+sed -i 's/!Number.isFinite(value) || !Number.isInteger(value) || value < 1 || value > 20/!Number.isFinite(value)/' \
+  src/routine-similarity-config.ts
+record M15
 
 echo "Wrote $OUT"

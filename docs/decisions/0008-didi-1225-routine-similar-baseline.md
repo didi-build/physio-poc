@@ -23,7 +23,11 @@ Ship a **read-only** session endpoint `POST /api/me/routines/similar` that:
 
 5. Returns up to **5** matches (`PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS`), sorted by **score descending**, then **routine_id** ascending. Each match includes `score`, `exercise_jaccard`, `condition_match`, `shared_exercise_ids`, and `shared_condition_ids`, plus the active `threshold` and `condition_match_bonus`.
 
-6. **Defaults (server constants we expect to tune after Kojo’s demo):** threshold **0.5**, condition bonus **0.1**, max results **5**. They remain **configurable** via `PhysioServerConfig` and the `PHYSIO_ROUTINE_SIMILAR_*` env vars so ops and tests can override without code changes.
+6. **Defaults (server constants we expect to tune after Kojo’s demo):** threshold **0.5**, condition bonus **0.1**, max results **5**. They remain **configurable** via `PhysioServerConfig` and the `PHYSIO_ROUTINE_SIMILAR_*` env vars so ops and tests can override without code changes. **Env validation (invalid → default for that field):**
+   - `PHYSIO_ROUTINE_SIMILAR_THRESHOLD`: finite number in **[0, 1]** (inclusive).
+   - `PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS`: finite number in **[0, 1]** (inclusive).
+   - `PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS`: integer in **[1, 20]** (inclusive).
+   - Empty, NaN, out-of-range, or non-integer max-results values fall back to the default for that setting.
 
 7. **`PHYSIO_ROUTINE_SIMILAR_AI_ENABLED`:** when true, the endpoint returns **400** with code `ai_similarity_not_implemented` (no outbound calls until a later slice).
 

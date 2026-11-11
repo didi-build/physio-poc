@@ -22,30 +22,26 @@ export type RoutineSimilarityEnvInput = {
   PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
 };
 
-function parsePositiveNumber(
-  raw: string | undefined,
-  fallback: number,
-  label: string,
-): number {
+function parseUnitIntervalEnv(raw: string | undefined, fallback: number): number {
   const trimmed = raw?.trim();
   if (!trimmed) {
     return fallback;
   }
   const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`${label} must be a non-negative number.`);
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    return fallback;
   }
   return value;
 }
 
-function parsePositiveInt(
-  raw: string | undefined,
-  fallback: number,
-  label: string,
-): number {
-  const value = parsePositiveNumber(raw, fallback, label);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`${label} must be a positive integer.`);
+function parseMaxResultsEnv(raw: string | undefined, fallback: number): number {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1 || value > 20) {
+    return fallback;
   }
   return value;
 }
@@ -62,20 +58,17 @@ export function resolveRoutineSimilarityConfig(
   env: RoutineSimilarityEnvInput = {},
   overrides: Partial<RoutineSimilarityConfig> = {},
 ): RoutineSimilarityConfig {
-  const threshold = parsePositiveNumber(
+  const threshold = parseUnitIntervalEnv(
     env.PHYSIO_ROUTINE_SIMILAR_THRESHOLD,
     DEFAULT_ROUTINE_SIMILAR_THRESHOLD,
-    "PHYSIO_ROUTINE_SIMILAR_THRESHOLD",
   );
-  const conditionMatchBonus = parsePositiveNumber(
+  const conditionMatchBonus = parseUnitIntervalEnv(
     env.PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS,
     DEFAULT_ROUTINE_SIMILAR_CONDITION_BONUS,
-    "PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS",
   );
-  const maxResults = parsePositiveInt(
+  const maxResults = parseMaxResultsEnv(
     env.PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS,
     DEFAULT_ROUTINE_SIMILAR_MAX_RESULTS,
-    "PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS",
   );
   const aiSimilarityEnabled = parseAiFlag(env.PHYSIO_ROUTINE_SIMILAR_AI_ENABLED);
 
