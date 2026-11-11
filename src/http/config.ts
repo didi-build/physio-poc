@@ -1,4 +1,9 @@
 import { parseAllowedGoogleEmails } from "../auth/allowed-emails.js";
+import {
+  resolveRoutineSimilarityConfig,
+  type RoutineSimilarityConfig,
+  type RoutineSimilarityEnvInput,
+} from "../routine-similarity-config.js";
 
 export type PhysioAuthConfig = {
   readonly betterAuthSecret: string;
@@ -16,7 +21,10 @@ export type PhysioAuthConfig = {
 export type PhysioServerConfig = {
   readonly webAppBaseUrl: string;
   readonly auth: PhysioAuthConfig;
+  readonly routineSimilarity: RoutineSimilarityConfig;
 };
+
+export type { RoutineSimilarityConfig, RoutineSimilarityEnvInput };
 
 export const DEFAULT_WEB_APP_BASE_URL = "https://app.example.com";
 
@@ -128,9 +136,16 @@ export function resolvePhysioAuthConfig(input: {
 export function createPhysioServerConfig(input: {
   webAppBaseUrl?: string;
   auth: PhysioAuthConfig;
+  routineSimilarity?: Partial<RoutineSimilarityConfig>;
+  routineSimilarityEnv?: RoutineSimilarityEnvInput;
 }): PhysioServerConfig {
+  const baseSimilarity = resolveRoutineSimilarityConfig(
+    input.routineSimilarityEnv ?? {},
+    input.routineSimilarity ?? {},
+  );
   return {
     webAppBaseUrl: resolveWebAppBaseUrl(input.webAppBaseUrl),
     auth: input.auth,
+    routineSimilarity: baseSimilarity,
   };
 }

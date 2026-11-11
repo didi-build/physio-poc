@@ -25,6 +25,10 @@ export type WorkerEnv = {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   PHYSIO_ALLOWED_GOOGLE_EMAILS?: string;
+  PHYSIO_ROUTINE_SIMILAR_THRESHOLD?: string;
+  PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS?: string;
+  PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS?: string;
+  PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
   PHYSIO_DB?: PhysioD1Database;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };

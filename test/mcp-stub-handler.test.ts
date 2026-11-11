@@ -78,6 +78,7 @@ describe("MCP stub handler (placeholder helpers)", () => {
     const config: PhysioServerConfig = {
       webAppBaseUrl: "https://stub-isolated.example",
       auth: MCP_TEST_CONFIG.auth,
+      routineSimilarity: MCP_TEST_CONFIG.routineSimilarity,
     };
     const args = { query: "calf stretch" };
     const first = await invokePhysioMcpStubTool(

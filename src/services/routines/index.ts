@@ -8,6 +8,21 @@ export {
   RoutineAuthoringServiceError,
   parseRoutineDraftDiscardUndo,
 } from "./routine-authoring-service.js";
+export {
+  RoutineSimilarityService,
+  RoutineSimilarityServiceError,
+} from "./routine-similarity-service.js";
+export {
+  DEFAULT_ROUTINE_SIMILAR_CONDITION_BONUS,
+  DEFAULT_ROUTINE_SIMILAR_MAX_RESULTS,
+  DEFAULT_ROUTINE_SIMILAR_THRESHOLD,
+  resolveRoutineSimilarityConfig,
+  type RoutineSimilarityConfig,
+} from "../../routine-similarity-config.js";
+export {
+  exerciseSetJaccard,
+  scoreRoutineSimilarity,
+} from "./routine-similarity-score.js";
 export type {
   BodyRegionListItem,
   CommunityRoutineSummary,

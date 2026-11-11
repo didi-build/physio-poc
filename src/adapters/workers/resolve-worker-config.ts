@@ -1,5 +1,8 @@
 import type { PhysioAuthConfig, PhysioServerConfig } from "../../http/config.js";
-import { resolveBetterAuthSecretForRuntime } from "../../http/config.js";
+import {
+  createPhysioServerConfig,
+  resolveBetterAuthSecretForRuntime,
+} from "../../http/config.js";
 import { parseAllowedGoogleEmails } from "../../auth/allowed-emails.js";
 import { resolveWorkerProductionWebAppBaseUrl } from "../../auth/worker-production-web-app-base-url.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
@@ -18,11 +21,11 @@ function workerProductionAuthConfig(env: WorkerEnv): PhysioAuthConfig {
 }
 
 export function resolveWorkerPhysioServerConfig(env: WorkerEnv): PhysioServerConfig {
-  const webAppBaseUrl = resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL);
-  return {
-    webAppBaseUrl,
+  return createPhysioServerConfig({
+    webAppBaseUrl: resolveWorkerProductionWebAppBaseUrl(env.WEB_APP_BASE_URL),
     auth: workerProductionAuthConfig(env),
-  };
+    routineSimilarityEnv: env,
+  });
 }
 
 export function resolveWorkerFailClosedPhysioServerConfig(
@@ -43,8 +46,8 @@ export function resolveWorkerFailClosedPhysioServerConfig(
     fakeGoogleProviderEnabled: false,
     authBaseUrl: webAppBaseUrl ?? fallbackBase,
   };
-  return {
+  return createPhysioServerConfig({
     webAppBaseUrl: webAppBaseUrl ?? fallbackBase,
     auth,
-  };
+  });
 }
