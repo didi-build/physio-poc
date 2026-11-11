@@ -396,6 +396,29 @@ describe("DIDI-1225 routine similar HTTP (integration)", () => {
     }
   });
 
+  it("includes another practitioner published community routine when exercises match", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerA, practitionerB } = await seedTwoPractitioners(storage);
+      const bPublished = await createRoutineWithExercises(storage, practitionerB, {
+        routine: "b-pub-visible",
+        draftVersion: "b-pub-visible-draft",
+        rowIds: ["b-pub-visible-r0"],
+        exerciseIds: [FIXTURE_EXERCISE_ID],
+        versionIds: [FIXTURE_VERSION_ID],
+        name: "B community",
+        publish: true,
+      });
+      const response = await postSimilar(storage, practitionerA, "a@example.com", {
+        exercise_ids: [FIXTURE_EXERCISE_ID],
+      });
+      const body = (await response.json()) as { matches: { routine_id: string }[] };
+      expect(body.matches.map((m) => m.routine_id)).toContain(bPublished);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("never returns another practitioner private draft even when it would score highest", async () => {
     const storage = await openMigratedDatabase();
     try {
