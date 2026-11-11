@@ -34,8 +34,21 @@ record() {
 }
 
 # M1 drop visibility filter (others' private drafts leak)
-sed -i '/AND NOT (r.published_version IS NULL AND r.created_by <> ?)/d' \
-  src/storage/repositories/routine-similarity-read.ts
+python3 <<'PY'
+from pathlib import Path
+p = Path("src/storage/repositories/routine-similarity-read.ts")
+needle = (
+    "WHERE (r.published_version IS NOT NULL OR r.created_by = ?)\n"
+    "         AND NOT (r.published_version IS NULL AND r.created_by <> ?)${excludeSql}"
+)
+p.write_text(
+    p.read_text().replace(
+        needle,
+        "WHERE (r.created_by = ? OR r.created_by <> ?)${excludeSql}",
+        1,
+    )
+)
+PY
 record M1
 
 # M2 drop published-only (caller-only candidates)
@@ -73,8 +86,17 @@ PY
 record M5
 
 # M6 endpoint writes on success
-perl -0pi -e 's/(matches: matches\.slice)/await this.sql.run("INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)", ["00000000-0000-4000-8000-mutantwrite01", "mutant"]);\n    return {\n      threshold: similarity.threshold,\n      condition_match_bonus: similarity.conditionMatchBonus,\n      matches: $1/' \
-  src/services/routines/routine-similarity-service.ts
+python3 <<'PY'
+from pathlib import Path
+p = Path("src/services/routines/routine-similarity-service.ts")
+needle = "    return {\n      threshold: similarity.threshold,"
+insert = (
+    '    await this.sql.run("INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)", '
+    '["00000000-0000-4000-8000-mutantwrite01", "mutant"]);\n'
+    + needle
+)
+p.write_text(p.read_text().replace(needle, insert, 1))
+PY
 record M6
 
 # M7 skip auth on similar route handler
