@@ -10,7 +10,6 @@ export function RoutineAutoSaveStatus({ state }: RoutineAutoSaveStatusProps) {
     state === "saving" || state === "idle" ? DRAFT_SAVING : DRAFT_SAVED_UNTIL_PUBLISH;
   return (
     <p className="rt-autosave-status" aria-live="polite">
-      {state === "saved" ? "✓ " : null}
       {text}
     </p>
   );

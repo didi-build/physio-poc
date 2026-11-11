@@ -23,6 +23,7 @@ import {
   VALIDATION_ADD_EXERCISE,
   VALIDATION_ADD_ROUTINE_NAME,
   VERSION_HISTORY,
+  DRAFT_SAVED_UNTIL_PUBLISH,
   saveAsVersionNext,
   toastSavedCommunityVersion,
 } from "../../src/ui/copy/routines.js";
@@ -366,6 +367,68 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       await waitFor(() => {
         expect(screen.getByText(/Version 1 restored as version 3/)).toBeTruthy();
       });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("shows draft autosave copy verbatim without extra glyphs", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024h"),
+        "auto@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "auto@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      renderApp(`/routines/${created.routine_id}/edit`, client);
+      await waitFor(() => {
+        expect(screen.getByText(DRAFT_SAVED_UNTIL_PUBLISH)).toBeTruthy();
+      });
+      expect(screen.queryByText(/^✓/)).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("shows sentence-case body region on draft detail and publish sheet", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024i"),
+        "case@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "case@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      const routineId = created.routine_id;
+      await client.autosaveRoutineDraft(routineId, { name: "Knee program" });
+      renderApp(`/routines/${routineId}`, client);
+      await waitFor(() => {
+        expect(screen.getByText("Knee")).toBeTruthy();
+      });
+      expect(screen.queryByText(/^knee$/)).toBeNull();
+      await userEvent.click(screen.getByTestId("rt-draft-detail-publish"));
+      const sheet = await screen.findByRole("dialog");
+      const meta = sheet.querySelector(".rt-card-meta");
+      expect(meta?.textContent).toBe("Knee");
+      expect(within(sheet).queryByText(/^knee$/)).toBeNull();
     } finally {
       storage.close();
     }

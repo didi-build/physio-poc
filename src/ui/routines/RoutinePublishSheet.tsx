@@ -15,6 +15,7 @@ import {
 } from "../copy/routines.js";
 import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
+import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 
 export type RoutinePublishSheetProps = {
   open: boolean;
@@ -39,10 +40,11 @@ export function RoutinePublishSheet({
   onPublish,
   onNotYet,
 }: RoutinePublishSheetProps) {
+  const regionDisplay = capitalizeBodyRegionLabel(bodyRegionLabel);
   const meta =
     conditionLabel !== null && conditionLabel.length > 0
-      ? `${conditionLabel} · ${bodyRegionLabel}`
-      : bodyRegionLabel;
+      ? `${conditionLabel} · ${regionDisplay}`
+      : regionDisplay;
 
   return (
     <ConfirmSheet

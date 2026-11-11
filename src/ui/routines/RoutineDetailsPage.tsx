@@ -77,6 +77,7 @@ import {
   ExerciseLibraryErrorSlot,
 } from "../exercise-library/ExerciseLibraryStates.js";
 import { formatListDate } from "../exercise-library/library-filters.js";
+import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
 
@@ -245,7 +246,9 @@ export function RoutineDetailsPage() {
         </Link>
         <div className="rt-detail-badges">
           <span className="rt-tag rt-tag--draft">{DRAFT_DETAIL_VISIBILITY}</span>
-          <span className="rt-badge rt-badge--slate">{details.body_region_label}</span>
+          <span className="rt-badge rt-badge--slate">
+            {capitalizeBodyRegionLabel(details.body_region_label)}
+          </span>
         </div>
         <h1 id="rt-detail-heading" className="ex-page-title">
           {draftName}
@@ -549,7 +552,9 @@ export function RoutineDetailsPage() {
         {details.conditions_available && details.condition_label ? (
           <span className="rt-badge rt-badge--teal">{details.condition_label}</span>
         ) : null}
-        <span className="rt-badge rt-badge--slate">{details.body_region_label}</span>
+        <span className="rt-badge rt-badge--slate">
+          {capitalizeBodyRegionLabel(details.body_region_label)}
+        </span>
         {saved ? (
           <span className="rt-badge rt-badge--green">{IN_MY_ROUTINES}</span>
         ) : null}
