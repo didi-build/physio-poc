@@ -28,6 +28,7 @@ import {
   routineMyCopyPath,
   routineSentProgramsPath,
 } from "../../routine-library-api-paths.js";
+import { OpaqueEntityIdValidationError } from "../../domain/opaque-entity-id.js";
 import {
   RoutineSimilarityService,
   RoutineSimilarityServiceError,
@@ -54,17 +55,19 @@ function similarityService(deps: AppDependencies): RoutineSimilarityService {
 }
 
 function similarityErrorResponse(error: unknown): Response {
+  if (error instanceof OpaqueEntityIdValidationError) {
+    return Response.json(
+      { error: "invalid_input" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
   if (error instanceof RoutineSimilarityServiceError) {
     const status =
-      error.code === "practitioner_not_found"
+      error.code === "practitioner_not_found" ||
+      error.code === "draft_routine_not_found"
         ? 404
-        : error.code === "draft_routine_not_found"
-          ? 404
-          : 400;
-    return Response.json(
-      { error: error.code, message: error.message },
-      { status, headers: JSON_HEADERS },
-    );
+        : 400;
+    return Response.json({ error: error.code }, { status, headers: JSON_HEADERS });
   }
   throw error;
 }

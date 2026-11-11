@@ -12,6 +12,9 @@ export const DEFAULT_ROUTINE_SIMILAR_THRESHOLD = 0.5;
 export const DEFAULT_ROUTINE_SIMILAR_CONDITION_BONUS = 0.1;
 export const DEFAULT_ROUTINE_SIMILAR_MAX_RESULTS = 5;
 
+/** Cap on exercise_ids and condition_ids list length per request (bounded work). */
+export const ROUTINE_SIMILAR_MAX_INPUT_IDS = 64;
+
 export type RoutineSimilarityEnvInput = {
   PHYSIO_ROUTINE_SIMILAR_THRESHOLD?: string;
   PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS?: string;

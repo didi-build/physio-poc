@@ -1,5 +1,8 @@
 import type { PhysioServerConfig } from "../../http/config.js";
-import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  OpaqueEntityIdValidationError,
+  validateOpaqueEntityId,
+} from "../../domain/opaque-entity-id.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { RoutineConditionsRepository } from "../../storage/repositories/routines.js";
 import { RoutineSimilarityReadRepository } from "../../storage/repositories/routine-similarity-read.js";
@@ -8,18 +11,18 @@ import {
   requirePractitionerRecord,
   PractitionerNotFoundError,
 } from "../practitioner-access.js";
+import { ROUTINE_SIMILAR_MAX_INPUT_IDS } from "../../routine-similarity-config.js";
 import { scoreRoutineSimilarity } from "./routine-similarity-score.js";
 
+export type RoutineSimilarityErrorCode =
+  | "practitioner_not_found"
+  | "invalid_input"
+  | "draft_routine_not_found"
+  | "ai_similarity_not_implemented";
+
 export class RoutineSimilarityServiceError extends Error {
-  constructor(
-    message: string,
-    readonly code:
-      | "practitioner_not_found"
-      | "invalid_input"
-      | "routine_not_found"
-      | "draft_routine_not_found",
-  ) {
-    super(message);
+  constructor(readonly code: RoutineSimilarityErrorCode) {
+    super(code);
     this.name = "RoutineSimilarityServiceError";
   }
 }
@@ -54,27 +57,45 @@ function groupExerciseIdsByRoutine(
   return map;
 }
 
+function assertValidOpaqueId(value: string, field: string): string {
+  try {
+    return validateOpaqueEntityId(value, field);
+  } catch (error) {
+    if (error instanceof OpaqueEntityIdValidationError) {
+      throw new RoutineSimilarityServiceError("invalid_input");
+    }
+    throw error;
+  }
+}
+
 function parseIdList(raw: unknown, field: string): string[] {
   if (raw === undefined) {
     return [];
   }
   if (!Array.isArray(raw)) {
-    throw new RoutineSimilarityServiceError(
-      `${field} must be an array`,
-      "invalid_input",
-    );
+    throw new RoutineSimilarityServiceError("invalid_input");
+  }
+  if (raw.length > ROUTINE_SIMILAR_MAX_INPUT_IDS) {
+    throw new RoutineSimilarityServiceError("invalid_input");
   }
   const ids: string[] = [];
   for (const item of raw) {
     if (typeof item !== "string") {
-      throw new RoutineSimilarityServiceError(
-        `${field} must contain string ids`,
-        "invalid_input",
-      );
+      throw new RoutineSimilarityServiceError("invalid_input");
     }
-    ids.push(validateOpaqueEntityId(item, field));
+    ids.push(assertValidOpaqueId(item, field));
   }
   return ids;
+}
+
+function parseOptionalRoutineId(raw: unknown, field: string): string | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== "string") {
+    throw new RoutineSimilarityServiceError("invalid_input");
+  }
+  return assertValidOpaqueId(raw, field);
 }
 
 export class RoutineSimilarityService {
@@ -96,10 +117,15 @@ export class RoutineSimilarityService {
     excludeRoutineId?: unknown;
     draftRoutineId?: unknown;
   }): Promise<FindSimilarRoutinesResult> {
-    const practitionerId = validateOpaqueEntityId(
-      input.practitionerId,
-      "Practitioner id",
-    );
+    let practitionerId: string;
+    try {
+      practitionerId = validateOpaqueEntityId(input.practitionerId, "Practitioner id");
+    } catch (error) {
+      if (error instanceof OpaqueEntityIdValidationError) {
+        throw new RoutineSimilarityServiceError("invalid_input");
+      }
+      throw error;
+    }
     try {
       await requirePractitionerRecord(
         new PractitionersRepository(this.sql),
@@ -107,60 +133,35 @@ export class RoutineSimilarityService {
       );
     } catch (error) {
       if (error instanceof PractitionerNotFoundError) {
-        throw new RoutineSimilarityServiceError(
-          "Practitioner not found",
-          "practitioner_not_found",
-        );
+        throw new RoutineSimilarityServiceError("practitioner_not_found");
       }
       throw error;
     }
 
     const similarity = this.config.routineSimilarity;
     if (similarity.aiSimilarityEnabled) {
-      throw new RoutineSimilarityServiceError(
-        "AI similarity is not implemented",
-        "invalid_input",
-      );
+      throw new RoutineSimilarityServiceError("ai_similarity_not_implemented");
     }
 
     let draftExerciseIds = parseIdList(input.exerciseIds, "exercise_ids");
     let draftConditionIds = parseIdList(input.conditionIds, "condition_ids");
-    let excludeRoutineId: string | undefined;
+    let excludeRoutineId = parseOptionalRoutineId(
+      input.excludeRoutineId,
+      "exclude_routine_id",
+    );
 
-    if (input.excludeRoutineId !== undefined && input.excludeRoutineId !== null) {
-      if (typeof input.excludeRoutineId !== "string") {
-        throw new RoutineSimilarityServiceError(
-          "exclude_routine_id must be a string",
-          "invalid_input",
-        );
-      }
-      excludeRoutineId = validateOpaqueEntityId(
-        input.excludeRoutineId,
-        "exclude_routine_id",
-      );
-    }
-
-    if (input.draftRoutineId !== undefined && input.draftRoutineId !== null) {
-      if (typeof input.draftRoutineId !== "string") {
-        throw new RoutineSimilarityServiceError(
-          "draft_routine_id must be a string",
-          "invalid_input",
-        );
-      }
-      const draftRoutineId = validateOpaqueEntityId(
-        input.draftRoutineId,
-        "draft_routine_id",
-      );
+    const draftRoutineId = parseOptionalRoutineId(
+      input.draftRoutineId,
+      "draft_routine_id",
+    );
+    if (draftRoutineId !== undefined) {
       const loadedExerciseIds =
         await this.similarityRead.listExerciseIdsForVisibleRoutine(
           practitionerId,
           draftRoutineId,
         );
       if (loadedExerciseIds === null) {
-        throw new RoutineSimilarityServiceError(
-          "Draft routine not found",
-          "draft_routine_not_found",
-        );
+        throw new RoutineSimilarityServiceError("draft_routine_not_found");
       }
       excludeRoutineId = draftRoutineId;
       if (input.exerciseIds === undefined) {
