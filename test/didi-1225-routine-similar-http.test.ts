@@ -564,6 +564,15 @@ describe("DIDI-1225 routine similar HTTP (integration)", () => {
       });
       expect(badDraft.status).toBe(400);
       await expect(badDraft.json()).resolves.toEqual({ error: "invalid_input" });
+
+      const badCondition = await postSimilar(storage, practitionerA, "a@example.com", {
+        exercise_ids: [FIXTURE_EXERCISE_ID],
+        condition_ids: ["not-a-uuid"],
+      });
+      expect(badCondition.status).toBe(400);
+      const badConditionBody = await badCondition.json();
+      expect(badConditionBody).toEqual({ error: "invalid_input" });
+      expect(badConditionBody).not.toHaveProperty("message");
     } finally {
       storage.close();
     }
