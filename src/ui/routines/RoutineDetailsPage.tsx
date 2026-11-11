@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import type { PublishValidationIssue } from "../../services/routines/types.js";
+import { RoutinesAuthoringError } from "../api/routines-client.js";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
   RoutineDetailsResult,
@@ -33,6 +35,12 @@ import {
   MAKE_MY_OWN_COPY,
   REMOVE_FROM_MY,
   ROUTINE_PAGE_NOTE,
+  DRAFT_DETAIL_SAVED_NOTE,
+  DRAFT_DETAIL_VISIBILITY,
+  DRAFT_PUBLISH_NOTE,
+  DISCARD_DRAFT,
+  EDIT_DRAFT,
+  PUBLISH,
   SAVE_TO_MY_ROUTINES,
   SEE_THEM_IN_PROGRAMS,
   SEGMENT_HINT,
@@ -41,6 +49,9 @@ import {
   toastKeptCopy,
   toastRemovedFromMy,
   toastSavedToMy,
+  toastDiscardedDraft,
+  toastPublishedVersion1,
+  KEPT_AS_DRAFT,
   UPDATE_MY_COPY,
   USE_FOR_PATIENT,
   USE_FOR_PATIENT_HINT,
@@ -66,6 +77,9 @@ import {
   ExerciseLibraryErrorSlot,
 } from "../exercise-library/ExerciseLibraryStates.js";
 import { formatListDate } from "../exercise-library/library-filters.js";
+import { capitalizeBodyRegionLabel } from "./body-region-display.js";
+import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
+import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
 
 type SourceView = "community" | "mine";
 
@@ -99,6 +113,11 @@ export function RoutineDetailsPage() {
   const [mutationFailed, setMutationFailed] = useState(false);
   const [routineProgramBusy, setRoutineProgramBusy] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
+  const [draftPublishOpen, setDraftPublishOpen] = useState(false);
+  const [draftPublishBusy, setDraftPublishBusy] = useState(false);
+  const [draftValidation, setDraftValidation] = useState<
+    PublishValidationIssue[] | null
+  >(null);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
   const sessionReady = sessionState.status === "ready";
@@ -173,10 +192,134 @@ export function RoutineDetailsPage() {
   }
 
   if (details.is_draft) {
-    navigate(fillPhysioAppRoutePattern("routines"));
+    const draftName = details.draft.name?.trim() || name;
+    const onDiscardDraft = () => {
+      void client.discardRoutineDraft(routineId).then(({ undo }) => {
+        const discardedName = details.draft.name ?? "";
+        showToast({
+          message: toastDiscardedDraft(discardedName),
+          onUndo: () => {
+            void client.undoRoutineDraftDiscard(routineId, undo).then(() => {
+              navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
+              load();
+            });
+          },
+        });
+        navigate(fillPhysioAppRoutePattern("routines"), { replace: true });
+      });
+    };
+    const onDraftPublish = () => {
+      setDraftValidation(null);
+      setDraftPublishOpen(true);
+    };
+    const confirmDraftPublish = () => {
+      setDraftPublishBusy(true);
+      void client
+        .publishRoutineDraft(routineId, {
+          name: details.draft.name ?? undefined,
+        })
+        .then(() => {
+          setDraftPublishOpen(false);
+          showToast({ message: toastPublishedVersion1(draftName) });
+          load();
+        })
+        .catch((error: unknown) => {
+          if (error instanceof RoutinesAuthoringError && error.validationIssues) {
+            setDraftValidation(error.validationIssues);
+            setDraftPublishOpen(false);
+            return;
+          }
+          setDraftPublishOpen(false);
+        })
+        .finally(() => {
+          setDraftPublishBusy(false);
+        });
+    };
+
     return (
-      <section className="ex-page rt-detail" aria-labelledby="rt-detail-heading">
-        <ExerciseLibraryBusyState />
+      <section
+        className="ex-page rt-detail rt-detail--draft"
+        aria-labelledby="rt-detail-heading"
+      >
+        <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
+          {BACK_ROUTINES}
+        </Link>
+        <div className="rt-detail-badges">
+          <span className="rt-tag rt-tag--draft">{DRAFT_DETAIL_VISIBILITY}</span>
+          <span className="rt-badge rt-badge--slate">
+            {capitalizeBodyRegionLabel(details.body_region_label)}
+          </span>
+        </div>
+        <h1 id="rt-detail-heading" className="ex-page-title">
+          {draftName}
+        </h1>
+        <p className="rt-draft-detail-note">{DRAFT_DETAIL_SAVED_NOTE}</p>
+        {details.who_its_for ? <p>{details.who_its_for}</p> : null}
+        {draftValidation ? (
+          <RoutinePublishValidationPanel issues={draftValidation} />
+        ) : null}
+        <div className="rt-exercises-panel">
+          <h2>{EXERCISES_HEADING}</h2>
+          <ul className="rt-exercise-list">
+            {details.draft.rows.map((row) => (
+              <li
+                key={`${row.exercise_id}-${row.position}`}
+                className="rt-exercise-row"
+              >
+                <span className="rt-exercise-pos">{row.position + 1}</span>
+                <span>{row.exercise_name}</span>
+                <span className="rt-type-chip">
+                  {TYPE_LABELS[row.prescription_type] ?? row.prescription_type}
+                </span>
+                <span>{formatExerciseParams(row.params)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="rt-detail-note">{DRAFT_PUBLISH_NOTE}</p>
+        <div className="rt-draft-detail-actions">
+          <button
+            type="button"
+            className="ex-secondary-btn"
+            onClick={() => {
+              navigate(fillPhysioAppRoutePattern("routineDraftEdit", { routineId }));
+            }}
+          >
+            {EDIT_DRAFT}
+          </button>
+          <button
+            type="button"
+            className="ex-primary-btn"
+            data-testid="rt-draft-detail-publish"
+            onClick={onDraftPublish}
+          >
+            {PUBLISH}
+          </button>
+        </div>
+        <button
+          type="button"
+          className="ex-link-btn ex-danger"
+          data-testid="rt-discard-draft"
+          onClick={onDiscardDraft}
+        >
+          {DISCARD_DRAFT}
+        </button>
+        <RoutinePublishSheet
+          open={draftPublishOpen}
+          name={details.draft.name ?? ""}
+          bodyRegionLabel={details.body_region_label}
+          conditionLabel={details.condition_label}
+          rows={details.draft.rows}
+          publishBusy={draftPublishBusy}
+          onClose={() => {
+            setDraftPublishOpen(false);
+          }}
+          onPublish={confirmDraftPublish}
+          onNotYet={() => {
+            setDraftPublishOpen(false);
+            showToast({ message: KEPT_AS_DRAFT });
+          }}
+        />
       </section>
     );
   }
@@ -343,10 +486,22 @@ export function RoutineDetailsPage() {
       >
         {saved ? EDIT_MY_COPY : MAKE_MY_OWN_COPY}
       </button>
-      <button type="button" className="ex-secondary-btn" disabled>
+      <button
+        type="button"
+        className="ex-secondary-btn"
+        onClick={() => {
+          navigate(fillPhysioAppRoutePattern("routineEditForEveryone", { routineId }));
+        }}
+      >
         {EDIT_FOR_EVERYONE}
       </button>
-      <button type="button" className="ex-secondary-btn" disabled>
+      <button
+        type="button"
+        className="ex-secondary-btn"
+        onClick={() => {
+          navigate(fillPhysioAppRoutePattern("routineVersionHistory", { routineId }));
+        }}
+      >
         {VERSION_HISTORY}
       </button>
       {saved ? (
@@ -397,7 +552,9 @@ export function RoutineDetailsPage() {
         {details.conditions_available && details.condition_label ? (
           <span className="rt-badge rt-badge--teal">{details.condition_label}</span>
         ) : null}
-        <span className="rt-badge rt-badge--slate">{details.body_region_label}</span>
+        <span className="rt-badge rt-badge--slate">
+          {capitalizeBodyRegionLabel(details.body_region_label)}
+        </span>
         {saved ? (
           <span className="rt-badge rt-badge--green">{IN_MY_ROUTINES}</span>
         ) : null}

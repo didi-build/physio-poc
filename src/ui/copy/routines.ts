@@ -200,3 +200,131 @@ export const TOAST_SAVED_MY_COPY =
   "Saved to your copy. Only you see it. The community routine did not change.";
 
 export const ROUTINE_DETAIL_HEADING = "Routine";
+export const NEW_ROUTINE = "New routine";
+
+export const ROUTINE_NAME_LABEL = "Routine name";
+export const ROUTINE_NAME_PLACEHOLDER = "Knee osteoarthritis, starter";
+export const ADD_NAME_TO_PUBLISH = "Add a name to publish.";
+export const WHO_ITS_FOR_LABEL = "Who it's for";
+export const OPTIONAL_SUFFIX = "(optional)";
+export const WHO_ITS_FOR_PLACEHOLDER =
+  "Gentle strength for knee osteoarthritis, three days a week";
+export const WHO_ITS_FOR_PRIVACY =
+  "Describe the condition, not a patient. No names or patient details.";
+export const NO_EXERCISES_YET = "No exercises yet.";
+export const NO_EXERCISES_ADD_FROM_LIBRARY =
+  "No exercises yet. Add them from the exercise library.";
+export const ADD_AT_LEAST_ONE_EXERCISE_PUBLISH =
+  "Add at least one exercise to publish.";
+export const ADD_EXERCISE = "Add exercise";
+export const ADD_EXERCISE_TO_ROUTINE = "Add exercise to routine";
+export const FROM_EXERCISE_LIBRARY = "From the exercise library";
+
+export const DRAFT_SAVING = "Saving…";
+export const DRAFT_SAVED_UNTIL_PUBLISH =
+  "Draft saved. Only you can see it until you publish.";
+export const DRAFT_DETAIL_VISIBILITY = "Draft, only you can see it";
+export const DRAFT_DETAIL_SAVED_NOTE = "Saved automatically today. Not published yet.";
+export const DRAFT_PUBLISH_NOTE =
+  "Publish it to use it for patients and share it with every practitioner. There is no review step for routines.";
+export const EDIT_DRAFT = "Edit draft";
+export const PUBLISH = "Publish";
+export const DISCARD_DRAFT = "Discard draft";
+export const DONE_FOR_NOW = "Done for now";
+
+export const BEFORE_YOU_PUBLISH = "Before you publish";
+export const VALIDATION_ADD_ROUTINE_NAME = "Add a routine name";
+export const VALIDATION_ADD_EXERCISE = "Add at least one exercise";
+export const DRAFT_STILL_SAVED = "Your draft is still saved.";
+
+export const PUBLISH_THIS_ROUTINE = "Publish this routine?";
+export const PUBLISH_NOW = "Publish now";
+export const NOT_YET = "Not yet";
+export const KEPT_AS_DRAFT = "Kept as a draft. Only you can see it.";
+export const WHAT_HAPPENS = "What happens";
+export const PUBLISH_POINT_LIVE_V1 =
+  "It goes live as version 1 in All routines, for every practitioner.";
+export const PUBLISH_POINT_VERSION_HISTORY =
+  "Anyone can use it, improve it and restore older versions. Every change is kept in version history.";
+export const PUBLISH_POINT_NO_REVIEW =
+  "There is no review step. Routines reuse approved exercises, so nothing new needs checking.";
+export const NOT_YET_KEEPS_DRAFT = "Not yet keeps it as a draft that only you can see.";
+
+export function toastPublishedVersion1(name: string): string {
+  return `Published. Version 1 of ${name} is live for every practitioner.`;
+}
+
+export function toastDiscardedDraft(name: string): string {
+  const display = name.trim().length > 0 ? name : UNTITLED_ROUTINE;
+  return `Discarded the draft ${display}`;
+}
+
+export const EDIT_FOR_EVERYONE_KICKER = "Edit for everyone";
+export function versionLiveLine(version: number): string {
+  return `Version ${version}, live`;
+}
+export const EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK = "history";
+
+export function editForEveryoneBannerBeforeHistory(
+  liveVersion: number,
+  nextVersion: number,
+): string {
+  return `This is the community routine. When you save, it becomes version ${nextVersion} for every practitioner. Version ${liveVersion} stays in `;
+}
+
+export const EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY = " and anyone can restore it.";
+export const EDIT_FOR_EVERYONE_PROGRAMS_NOTE =
+  "Programs already sent don't change. Saved copies in My routines get a flag to update.";
+export const CHANGED = "Changed";
+export const NO_CHANGES_YET = "No changes yet";
+export const WHAT_DID_YOU_CHANGE = "What did you change?";
+export const WHAT_DID_YOU_CHANGE_PLACEHOLDER = "For example: added calf stretch";
+export const WHAT_DID_YOU_CHANGE_HELPER =
+  "Shown in version history so others know why it changed.";
+export const EDIT_MY_COPY_INSTEAD =
+  "Only want it different for you? Edit my copy instead";
+export function saveAsVersionNext(version: number): string {
+  return `Save as version ${version + 1}`;
+}
+export function toastSavedCommunityVersion(version: number): string {
+  return `Saved as version ${version} for everyone. Programs already sent did not change.`;
+}
+
+export const LIVE = "Live";
+export const YOUR_COPY_BADGE = "Your copy";
+export const RESTORED_FROM_BADGE_PREFIX = "Restored from v";
+export function sentProgramsFromVersion(count: number): string {
+  return `You sent ${count} programs made from this version`;
+}
+export const RESTORE_THIS_VERSION = "Restore this version";
+export const RESTORE_VERSION_PROGRAMS_NOTE =
+  "Programs already sent never change. Saved copies in My routines get a flag to update.";
+export function restoreVersionConfirmTitle(version: number): string {
+  return `Restore version ${version}?`;
+}
+export const RESTORE_CANCEL_NOTE =
+  "Programs already sent keep their version. Practitioners who saved this routine get a flag to update.";
+export function restoreAsVersion(version: number): string {
+  return `Restore as version ${version}`;
+}
+export function toastVersionRestored(fromVersion: number, newVersion: number): string {
+  return `Version ${fromVersion} restored as version ${newVersion}. Programs already sent did not change.`;
+}
+export const FIRST_VERSION = "First version";
+
+export function moveExerciseUpAria(name: string): string {
+  return `Move ${name} up`;
+}
+export function moveExerciseDownAria(name: string): string {
+  return `Move ${name} down`;
+}
+export function removeExerciseAria(name: string): string {
+  return `Remove ${name}`;
+}
+export function typeForExerciseAria(name: string): string {
+  return `Type for ${name}`;
+}
+
+export function addedExerciseToast(name: string): string {
+  return `Added ${name}`;
+}
