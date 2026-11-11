@@ -23,10 +23,16 @@ import {
   BODY_REGIONS_LIST_PATH,
   ROUTINES_COMMUNITY_SEARCH_PATH,
   ROUTINES_MY_ROUTINES_PATH,
+  ROUTINES_SIMILAR_PATH,
   routineDetailsPath,
   routineMyCopyPath,
   routineSentProgramsPath,
 } from "../../routine-library-api-paths.js";
+import { OpaqueEntityIdValidationError } from "../../domain/opaque-entity-id.js";
+import {
+  RoutineSimilarityService,
+  RoutineSimilarityServiceError,
+} from "../../services/routines/routine-similarity-service.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
 
@@ -39,8 +45,31 @@ export function isRoutinesLibraryApiPath(pathname: string): boolean {
   return (
     pathname === ROUTINES_AUTHORING_COLLECTION_PATH ||
     pathname === BODY_REGIONS_LIST_PATH ||
+    pathname === ROUTINES_SIMILAR_PATH ||
     ROUTINES_ME_PATH.test(pathname)
   );
+}
+
+function similarityService(deps: AppDependencies): RoutineSimilarityService {
+  return new RoutineSimilarityService(deps.sql, deps.config);
+}
+
+function similarityErrorResponse(error: unknown): Response {
+  if (error instanceof OpaqueEntityIdValidationError) {
+    return Response.json(
+      { error: "invalid_input" },
+      { status: 400, headers: JSON_HEADERS },
+    );
+  }
+  if (error instanceof RoutineSimilarityServiceError) {
+    const status =
+      error.code === "practitioner_not_found" ||
+      error.code === "draft_routine_not_found"
+        ? 404
+        : 400;
+    return Response.json({ error: error.code }, { status, headers: JSON_HEADERS });
+  }
+  throw error;
 }
 
 function libraryService(deps: AppDependencies): RoutinesLibraryService {
@@ -257,6 +286,36 @@ export async function handleRoutinesRequest(
       return Response.json(regions, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
+    }
+  }
+
+  if (path === ROUTINES_SIMILAR_PATH) {
+    if (request.method !== "POST") {
+      return null;
+    }
+    const practitionerId = requirePractitioner(options.sessionPractitioner);
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const rejected = rejectBodyPractitionerId(body);
+    if (rejected) {
+      return rejected;
+    }
+    try {
+      const result = await similarityService(deps).findSimilar({
+        practitionerId,
+        exerciseIds: body.exercise_ids,
+        conditionIds: body.condition_ids,
+        excludeRoutineId: body.exclude_routine_id,
+        draftRoutineId: body.draft_routine_id,
+      });
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return similarityErrorResponse(error);
     }
   }
 

@@ -6,6 +6,8 @@ export const ROUTINES_COMMUNITY_SEARCH_PATH = "/api/me/routines/community/search
 
 export const ROUTINES_MY_ROUTINES_PATH = "/api/me/my-routines";
 
+export const ROUTINES_SIMILAR_PATH = "/api/me/routines/similar";
+
 export function routineDetailsPath(routineId: string): string {
   return `/api/me/routines/${encodeURIComponent(routineId)}`;
 }

@@ -14,6 +14,10 @@ export type NodeEnvInput = {
   PHYSIO_ALLOWED_GOOGLE_EMAILS?: string;
   PHYSIO_USE_FAKE_GOOGLE_PROVIDER?: string;
   NODE_ENV?: string;
+  PHYSIO_ROUTINE_SIMILAR_THRESHOLD?: string;
+  PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS?: string;
+  PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS?: string;
+  PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
 };
 
 export function resolveNodePhysioServerConfig(
@@ -33,6 +37,7 @@ export function resolveNodePhysioServerConfig(
   return createPhysioServerConfig({
     webAppBaseUrl: env.WEB_APP_BASE_URL,
     auth,
+    routineSimilarityEnv: env,
   });
 }
 
