@@ -90,9 +90,16 @@ export type RoutineCommunityChangeList =
       baseline_available: false;
     };
 
+export type BodyRegionListItem = {
+  id: string;
+  label: string;
+};
+
 type RoutineDetailsShared = {
   routine_id: string;
+  body_region_id: string;
   body_region_label: string;
+  condition_id: string | null;
   condition_label: string | null;
   who_its_for: string | null;
   sent_program_count: number;

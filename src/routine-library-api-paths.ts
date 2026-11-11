@@ -1,5 +1,7 @@
 /** Session-only routines library API (DIDI-1018). */
 
+export const BODY_REGIONS_LIST_PATH = "/api/me/body-regions";
+
 export const ROUTINES_COMMUNITY_SEARCH_PATH = "/api/me/routines/community/search";
 
 export const ROUTINES_MY_ROUTINES_PATH = "/api/me/my-routines";

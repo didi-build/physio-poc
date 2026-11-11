@@ -7,7 +7,10 @@ import {
 } from "../../mcp-connector/urls.js";
 import { ProgramBuilderService } from "../programs/program-builder-service.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
-import { PractitionersRepository } from "../../storage/repositories/exercise-data.js";
+import {
+  BodyRegionsRepository,
+  PractitionersRepository,
+} from "../../storage/repositories/exercise-data.js";
 import {
   RoutineLibraryReadRepository,
   type PublishedRoutineSearchRow,
@@ -37,6 +40,7 @@ import {
   type RoutineRowComparable,
 } from "./routine-personal-change-projection.js";
 import type {
+  BodyRegionListItem,
   CommunityRoutineSummary,
   McpRoutineSearchSummary,
   MyRoutineDraftItem,
@@ -232,6 +236,11 @@ export class RoutinesLibraryService {
   async conditionsAvailable(): Promise<boolean> {
     const rows = await this.conditions.listAll();
     return rows.length > 0;
+  }
+
+  async listBodyRegions(): Promise<BodyRegionListItem[]> {
+    const rows = await new BodyRegionsRepository(this.sql).listAll();
+    return rows.map((row) => ({ id: row.id, label: row.label }));
   }
 
   private async conditionOptionsForUi(
@@ -582,7 +591,9 @@ export class RoutinesLibraryService {
       return {
         routine_id: validatedRoutineId,
         is_draft: true,
+        body_region_id: routine.body_region_id,
         body_region_label: bodyRegionLabel,
+        condition_id: routine.condition_id,
         condition_label: conditionLabel,
         who_its_for: routine.who_its_for,
         draft: {
@@ -679,7 +690,9 @@ export class RoutinesLibraryService {
     return {
       routine_id: validatedRoutineId,
       is_draft: false,
+      body_region_id: routine.body_region_id,
       body_region_label: head.body_region_label,
+      condition_id: routine.condition_id,
       condition_label: conditionsAvailable ? head.condition_label : null,
       who_its_for: routine.who_its_for,
       draft: null,
