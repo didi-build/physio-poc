@@ -271,6 +271,44 @@ describe("Routine authoring UI (DIDI-1024)", () => {
     }
   });
 
+  it("cancels an untouched draft when only body region was selected", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-reg"),
+        "regonly@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "regonly@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
+      });
+      const group = screen.getByRole("group", { name: BODY_REGION });
+      await userEvent.click(within(group).getByRole("button", { name: "Knee" }));
+      await waitFor(async () => {
+        const list = await client.listMyRoutines();
+        expect(list.drafts.length).toBe(1);
+      });
+      const cancel = await screen.findByRole("button", { name: "Cancel" });
+      await userEvent.click(cancel);
+      await waitFor(() => {
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+      });
+      const afterCancel = await client.listMyRoutines();
+      expect(afterCancel.drafts.length).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("cancels an untouched new routine from the editor", async () => {
     const storage = await openMigratedDatabase();
     try {
