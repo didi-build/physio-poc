@@ -369,6 +369,29 @@ describe("0009 routine conditions migration (integration)", () => {
     }
   });
 
+  it("fails 0009 when NBSP label collides with ASCII-spaced Low back after normalisation", async () => {
+    const storage = await openThroughMigration0008();
+    try {
+      await storage.run(
+        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+        [id("cond-nbsp-a"), "\u00A0Low\u00A0back"],
+      );
+      await storage.run(
+        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+        [id("cond-nbsp-b"), "Low back"],
+      );
+      await expect(
+        applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL),
+      ).rejects.toThrow();
+      const index = await storage.first<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
+      );
+      expect(index).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
   it("defines routine_conditions without ON DELETE CASCADE from conditions", async () => {
     const storage = await openMigratedDatabase();
     try {
