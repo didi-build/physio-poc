@@ -15,9 +15,11 @@ import {
   BACK_ROUTINES,
   CHANGED,
   EDIT_FOR_EVERYONE_KICKER,
+  EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY,
+  EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK,
   EDIT_FOR_EVERYONE_PROGRAMS_NOTE,
   EDIT_MY_COPY_INSTEAD,
-  editForEveryoneBanner,
+  editForEveryoneBannerBeforeHistory,
   NO_CHANGES_YET,
   ROUTINE_NAME_LABEL,
   WHAT_DID_YOU_CHANGE,
@@ -158,8 +160,20 @@ export function RoutineEditForEveryonePage() {
         {name}
       </h1>
       <p className="ex-muted">{versionLiveLine(liveVersion)}</p>
-      <p className="rt-edit-everyone-banner">
-        {editForEveryoneBanner(liveVersion + 1)} {EDIT_FOR_EVERYONE_PROGRAMS_NOTE}
+      <div className="rt-edit-everyone-banner">
+        <p>
+          {editForEveryoneBannerBeforeHistory(liveVersion, liveVersion + 1)}
+          <Link
+            to={fillPhysioAppRoutePattern("routineVersionHistory", { routineId })}
+            className="rt-edit-everyone-banner-history"
+          >
+            {EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK}
+          </Link>
+          {EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY}
+        </p>
+      </div>
+      <p className="rt-edit-everyone-programs-note">
+        {EDIT_FOR_EVERYONE_PROGRAMS_NOTE}
       </p>
 
       <label className="ex-field">

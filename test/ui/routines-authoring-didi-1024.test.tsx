@@ -17,7 +17,11 @@ import {
   DRAFT_PUBLISH_NOTE,
   EDIT_DRAFT,
   EDIT_FOR_EVERYONE,
+  EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY,
+  EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK,
+  EDIT_FOR_EVERYONE_PROGRAMS_NOTE,
   NEW_ROUTINE,
+  editForEveryoneBannerBeforeHistory,
   PUBLISH_POINT_NO_REVIEW,
   PUBLISH_THIS_ROUTINE,
   VALIDATION_ADD_EXERCISE,
@@ -465,6 +469,101 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         expect(screen.getByText(VALIDATION_ADD_ROUTINE_NAME)).toBeTruthy();
         expect(screen.getByText(VALIDATION_ADD_EXERCISE)).toBeTruthy();
       });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("shows edit for everyone banner, history link, and programs note on separate lines", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-banner"),
+        "banner@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "banner@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      const routineId = created.routine_id;
+      await client.autosaveRoutineDraft(routineId, {
+        name: "Community knee",
+        rows: [
+          {
+            position: 0,
+            exercise_id: FIXTURE_EXERCISE_ID,
+            exercise_version_id: FIXTURE_VERSION_ID,
+            prescription_type: "stretching",
+            params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+          },
+        ],
+      });
+      await client.publishRoutineDraft(routineId);
+      renderApp(`/routines/${routineId}/edit-for-everyone`, client);
+      await waitFor(() => {
+        expect(screen.getByTestId("rt-save-community-version")).toBeTruthy();
+      });
+      const banner = document.querySelector(".rt-edit-everyone-banner");
+      expect(banner).toBeTruthy();
+      const liveVersion = 1;
+      const nextVersion = 2;
+      expect(banner?.textContent).toBe(
+        `${editForEveryoneBannerBeforeHistory(liveVersion, nextVersion)}${EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK}${EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY}`,
+      );
+      const historyLink = within(banner as HTMLElement).getByRole("link", {
+        name: EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK,
+      });
+      expect(historyLink.getAttribute("href")).toBe(`/routines/${routineId}/versions`);
+      const programsNote = document.querySelector(".rt-edit-everyone-programs-note");
+      expect(programsNote?.textContent).toBe(EDIT_FOR_EVERYONE_PROGRAMS_NOTE);
+      expect(banner?.contains(programsNote as Node)).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("shows New routine for a fresh draft and Edit draft when the draft has content", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-head"),
+        "head@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "head@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeTruthy();
+      });
+      await userEvent.type(
+        screen.getByPlaceholderText(ROUTINE_NAME_PLACEHOLDER),
+        "Named draft",
+      );
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: EDIT_DRAFT })).toBeTruthy();
+      });
+
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      await client.autosaveRoutineDraft(created.routine_id, { name: "Saved knee" });
+      renderApp(`/routines/${created.routine_id}/edit`, client);
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: EDIT_DRAFT })).toBeTruthy();
+      });
+      expect(screen.queryByRole("heading", { name: NEW_ROUTINE })).toBeNull();
     } finally {
       storage.close();
     }

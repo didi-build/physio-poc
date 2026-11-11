@@ -1707,8 +1707,21 @@
 }
 
 .rt-edit-everyone-banner {
-  margin: 0.75rem 0 1rem;
+  margin: 0.75rem 0 0.5rem;
   padding: 0.75rem;
   border-radius: var(--shell-radius-md);
   background: #f0f9ff;
+}
+
+.rt-edit-everyone-banner-history {
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
+.rt-edit-everyone-programs-note {
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  color: var(--ex-muted, #64748b);
 }

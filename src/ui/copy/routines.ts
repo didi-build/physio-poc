@@ -263,9 +263,16 @@ export const EDIT_FOR_EVERYONE_KICKER = "Edit for everyone";
 export function versionLiveLine(version: number): string {
   return `Version ${version}, live`;
 }
-export function editForEveryoneBanner(nextVersion: number): string {
-  return `This is the community routine. When you save, it becomes version ${nextVersion} for every practitioner, and every change is kept in version history.`;
+export const EDIT_FOR_EVERYONE_BANNER_HISTORY_LINK = "history";
+
+export function editForEveryoneBannerBeforeHistory(
+  liveVersion: number,
+  nextVersion: number,
+): string {
+  return `This is the community routine. When you save, it becomes version ${nextVersion} for every practitioner. Version ${liveVersion} stays in `;
 }
+
+export const EDIT_FOR_EVERYONE_BANNER_AFTER_HISTORY = " and anyone can restore it.";
 export const EDIT_FOR_EVERYONE_PROGRAMS_NOTE =
   "Programs already sent don't change. Saved copies in My routines get a flag to update.";
 export const CHANGED = "Changed";

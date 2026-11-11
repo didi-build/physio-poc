@@ -28,6 +28,7 @@ import {
   CONDITION_SAMPLE_LIST,
   CONDITION_SAMPLE_NOTE,
   DONE_FOR_NOW,
+  EDIT_DRAFT,
   FROM_EXERCISE_LIBRARY,
   KEPT_AS_DRAFT,
   NEW_ROUTINE,
@@ -302,6 +303,9 @@ export function RoutineDraftEditorPage({
     rowsCount: rows.length,
   });
 
+  const draftHeading =
+    name.trim().length === 0 && rows.length === 0 ? NEW_ROUTINE : EDIT_DRAFT;
+
   const persistRows = useCallback(
     async (next: RoutineExerciseRow[]) => {
       if (!bodyRegionId) {
@@ -478,7 +482,7 @@ export function RoutineDraftEditorPage({
       </Link>
       <div className="rt-authoring-title-row">
         <h1 id="rt-authoring-title" className="ex-page-title">
-          {NEW_ROUTINE}
+          {draftHeading}
         </h1>
         <span className="rt-tag rt-tag--draft">{TAG_DRAFT}</span>
       </div>
