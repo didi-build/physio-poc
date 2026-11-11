@@ -16,7 +16,7 @@ ALTER TABLE conditions ADD COLUMN created_by_practitioner_id TEXT REFERENCES pra
 ALTER TABLE conditions ADD COLUMN label_normalized TEXT;
 
 -- Matches normalizeConditionLabelKey (see condition-label-normalize-sql.ts).
--- Non-ASCII fail-closed: temporary-table CHECK guard before UPDATE (case folding not mirrored).
+-- Non-ASCII fail-closed: scratch CHECK table (dropped in-migration) before UPDATE; case folding not mirrored.
 CREATE TABLE _didi_1217_label_non_ascii_guard (
   offending_count INTEGER NOT NULL CHECK (offending_count = 0)
 );

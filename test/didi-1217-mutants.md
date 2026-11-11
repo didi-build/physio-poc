@@ -1,28 +1,29 @@
 # DIDI-1217 mutants (migration 0009, conditions adapters, routine_conditions)
 
-Baseline (commit `98493adaf668bfa9f5cbe5c73bd093ccc142110f`), full suite `npm run test`:
+Baseline (commit `b1fe077b44b44dbc727456d71c9acb5a79a59f9e`), full suite `npm run test`:
 
 ```
  Test Files  239 passed (239)
-      Tests  2544 passed | 4 skipped (2548)
+      Tests  2548 passed | 4 skipped (2552)
 ```
 
-Each mutant: apply diff on committed head, run full `npm run test`, capture raw `FAIL` lines and summary, revert touched files under `src/` and `migrations/`, confirm `git diff --quiet`.
+Reproduce: `./scripts/run-didi-1217-mutants.sh` (reverts `src/` and `migrations/` after each mutant; prints `clean: yes` when `git diff --quiet`).
 
-| ID             | Mutation                                                                        | Status | Raw summary           |
-| -------------- | ------------------------------------------------------------------------------- | ------ | --------------------- |
-| M1             | Comment out routine_conditions backfill `INSERT OR IGNORE`                      | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 2 failed   | 2542 passed | 4 skipped (2548)` |
-| M2a            | Backfill plain `INSERT` (no `OR IGNORE`)                                        | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 1 failed   | 2543 passed | 4 skipped (2548)` |
-| M2             | Duplicate plain `INSERT` after `INSERT OR IGNORE`                               | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 2 failed   | 2542 passed | 4 skipped (2548)` |
-| M3             | Remove `idx_conditions_label_normalized`                                        | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 7 failed   | 2537 passed | 4 skipped (2548)` |
-| M4             | `ConditionsRepository` uses raw `label` instead of `normalizeConditionLabelKey` | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 3 failed   | 2541 passed | 4 skipped (2548)` |
-| M5             | Drop composite PK; add non-unique `idx_routine_conditions_pair`                 | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 12 failed  | 2532 passed | 4 skipped (2548)` |
-| M6             | Drop `REFERENCES conditions` on `condition_id`                                  | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 6 failed   | 2538 passed | 4 skipped (2548)` |
-| M7-no-lower    | Migration UPDATE: `lower(trim(` → `trim(`                                       | Killed | `Test Files 86 failed | 153 passed (239) / Tests 875 failed | 1669 passed | 4 skipped (2548)` |
-| M8-no-collapse | `CONDITION_LABEL_COLLAPSE_PASSES = 0` + sync migration                          | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 1 failed   | 2543 passed | 4 skipped (2548)` |
-| M9-CASCADE     | `ON DELETE CASCADE` on `condition_id`                                           | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 4 failed   | 2540 passed | 4 skipped (2548)` |
-| M10-no-nbsp    | Skip `char(160)` mapping in builder + sync migration                            | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 7 failed   | 2537 passed | 4 skipped (2548)` |
-| M11-no-u3000   | Skip `char(12288)` mapping in builder + sync migration                          | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 6 failed   | 2538 passed | 4 skipped (2548)` |
+| ID                     | Mutation                                                                        | Status | Raw summary           |
+| ---------------------- | ------------------------------------------------------------------------------- | ------ | --------------------- |
+| M1                     | Comment out routine_conditions backfill `INSERT OR IGNORE`                      | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 2 failed   | 2546 passed | 4 skipped (2552)` |
+| M2a                    | Backfill plain `INSERT` (no `OR IGNORE`)                                        | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 1 failed   | 2547 passed | 4 skipped (2552)` |
+| M2                     | Duplicate plain `INSERT` after `INSERT OR IGNORE`                               | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 2 failed   | 2546 passed | 4 skipped (2552)` |
+| M3                     | Remove `idx_conditions_label_normalized`                                        | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 7 failed   | 2541 passed | 4 skipped (2552)` |
+| M4                     | `ConditionsRepository` uses raw `label` instead of `normalizeConditionLabelKey` | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 5 failed   | 2543 passed | 4 skipped (2552)` |
+| M5                     | Drop composite PK; add non-unique `idx_routine_conditions_pair`                 | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 3 failed   | 2545 passed | 4 skipped (2552)` |
+| M6                     | Drop `REFERENCES conditions` on `condition_id`                                  | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 6 failed   | 2542 passed | 4 skipped (2552)` |
+| M7-no-lower            | Migration UPDATE: `lower(trim(` → `trim(`                                       | Killed | `Test Files 86 failed | 153 passed (239) / Tests 878 failed | 1670 passed | 4 skipped (2552)` |
+| M8-no-collapse         | `CONDITION_LABEL_COLLAPSE_PASSES = 0` + sync migration                          | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 2 failed   | 2546 passed | 4 skipped (2552)` |
+| M9-CASCADE             | `ON DELETE CASCADE` on `condition_id`                                           | Killed | `Test Files 3 failed  | 236 passed (239) / Tests 6 failed   | 2542 passed | 4 skipped (2552)` |
+| M10-no-nbsp            | Skip `char(160)` mapping in builder + sync migration                            | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 7 failed   | 2541 passed | 4 skipped (2552)` |
+| M11-no-u3000           | Skip `char(12288)` mapping in builder + sync migration                          | Killed | `Test Files 1 failed  | 238 passed (239) / Tests 6 failed   | 2542 passed | 4 skipped (2552)` |
+| M12-no-non-ascii-guard | Remove scratch CHECK guard from migration                                       | Killed | `Test Files 2 failed  | 237 passed (239) / Tests 3 failed   | 2545 passed | 4 skipped (2552)` |
 
 ## Failing test names (raw `FAIL` lines per mutant)
 
@@ -50,17 +51,19 @@ FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migrat
 
 ```
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > fails 0009 when pre-existing condition labels collide after normalisation
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding)
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > fails 0009 when NBSP label collides with ASCII-spaced Low back after normalisation
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on BetterSqliteStorage
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on D1SqlStorage fake
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > stores normalized label and rejects case or spacing duplicates
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > rejects rename that collides on normalized key
-FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-update direct entry at 390 and 1280 px
-FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
-FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
 ```
 
 ### M4
 
 ```
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on BetterSqliteStorage
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on D1SqlStorage fake
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > stores normalized label and rejects case or spacing duplicates
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > rejects rename that collides on normalized key
 FAIL  test/routine-data-model.test.ts > routine data model migration (integration, SQLite) > insert rejects patient-detail labels and accepts a clinical label
@@ -72,15 +75,6 @@ FAIL  test/routine-data-model.test.ts > routine data model migration (integratio
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > migration backfill SQL is idempotent when join rows already exist
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects duplicate routine_conditions pair on BetterSqliteStorage
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects duplicate routine_conditions pair on D1SqlStorage fake
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > keeps exercises-mine title/tabs/helper on the shared gutter at 390 and 1280 px
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > keeps routines-all title/tabs/helper on the shared gutter at 390 and 1280 px
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > matches Exercises and Routines title-to-tabs gap at 390 px
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > matches Exercises and Routines title-to-tabs gap at 1280 px
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > pins helper min-height at NaN px on Exercises
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > pins helper min-height at NaN px on Exercises
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > pins helper min-height at NaN px on Exercises
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > avoids horizontal overflow for exercises-mine at 390 and 1280 px
-FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > avoids horizontal overflow for routines-all at 390 and 1280 px
 ```
 
 ### M6
@@ -109,12 +103,13 @@ FAIL  test/didi-1204-http.test.ts > DIDI-1204 body regions and routine details i
 FAIL  test/didi-1204-http.test.ts > DIDI-1204 body regions and routine details ids ({ label: 'D1SqlStorage fake', …(1) }) > returns body_region_id on published and author draft details; condition_id when set
 FAIL  test/didi-1204-http.test.ts > DIDI-1204 body regions and routine details ids ({ label: 'D1SqlStorage fake', …(1) }) > returns 401 without a session on GET body-regions and routine details
 FAIL  test/didi-1204-http.test.ts > DIDI-1204 body regions (authoring draft via HTTP) > includes body_region_id on draft details created through the authoring API
-FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > ships canonical label_normalized backfill UPDATE matching the adapter
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > ships canonical label normalization DML (non-ASCII guard + UPDATE)
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > applyMigration skips re-running 0009 as a whole
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > backfills at apply time when routines already have condition_id
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > migration backfill SQL is idempotent when join rows already exist
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > leaves routines, versions, saved copies, and program origin unchanged (0008 → 0009)
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > backfills label_normalized on pre-0009 condition rows
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding)
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > defines routine_conditions without ON DELETE CASCADE from conditions
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects duplicate routine_conditions pair on BetterSqliteStorage
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects duplicate routine_conditions pair on D1SqlStorage fake
@@ -122,6 +117,8 @@ FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository 
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > enforces foreign keys on D1SqlStorage fake
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects delete of condition or routine referenced in routine_conditions on BetterSqliteStorage
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects delete of condition or routine referenced in routine_conditions on D1SqlStorage fake
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on BetterSqliteStorage
+FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration) > rejects NBSP-wrapped duplicate after ASCII insert on D1SqlStorage fake
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > stores normalized label and rejects case or spacing duplicates
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > rejects rename that collides on normalized key
 FAIL  test/didi-1217-routine-conditions.test.ts > conditions label_normalized (integration, SQLite) > serves typeahead ordered by sort_order and label
@@ -926,6 +923,7 @@ FAIL  test/worker-production-ui-static.test.ts > Worker production UI static (DI
 FAIL  test/worker-production-ui-static.test.ts > Worker production UI static (DIDI-1169) > GET /api/unknown still returns JSON not_found
 FAIL  test/worker-production-ui-static.test.ts > Worker production UI static (DIDI-1169) > GET /health still returns ok JSON
 FAIL  test/worker-production-ui-static.test.ts > Worker production UI static (DIDI-1169) > GET /mcp without session still returns 401 bearer challenge
+FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > avoids horizontal overflow for routines-all at 390 and 1280 px
 FAIL  test/ui/programs-didi-1025-from-routine-http.test.tsx > Program from routine UI (DIDI-1025, integration HTTP) > shows the From a routine option in the new program chooser
 FAIL  test/ui/programs-didi-1025-from-routine-http.test.tsx > Program from routine UI (DIDI-1025, integration HTTP) > creates from routine via Use for a patient and opens the publish sheet without publishing
 FAIL  test/ui/programs-didi-1025-from-routine-http.test.tsx > Program from routine UI (DIDI-1025, integration HTTP) > Use for a patient prefills the routine name and Publish now uses the publish API
@@ -958,7 +956,6 @@ FAIL  test/ui/routines-auth-http.browser.test.ts > Routines auth HTTP browser (3
 FAIL  test/ui/routines-auth-http.browser.test.ts > Routines auth HTTP browser (390/1280, DIDI-1022 post-cap) > second practitioner sees community detail without owner's personal copy at 1280 px
 FAIL  test/ui/routines-auth-http.browser.test.ts > Routines auth HTTP browser (390/1280, DIDI-1022 post-cap) > second practitioner cannot remove owner's copy over HTTP
 FAIL  test/ui/routines-auth-http.browser.test.ts > Routines auth HTTP browser (390/1280, DIDI-1022 post-cap) > second practitioner cannot replay owner's undo over HTTP
-FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
 FAIL  test/ui/routines-library-mutation-http.test.tsx > Routines library mutation failures (HTTP → UI) > save without session shows mutation error slot and does not reload detail
 FAIL  test/ui/routines-library-mutation-http.test.tsx > Routines library mutation failures (HTTP → UI) > generic save HTTP failure shows mutation error slot without success toast
 FAIL  test/ui/routines-library-mutation-http.test.tsx > Routines library mutation failures (HTTP → UI) > remove stale_write over HTTP shows error slot, keeps saved state, no success toast
@@ -978,6 +975,7 @@ FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HT
 
 ```
 FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > fails 0009 when pre-existing condition labels collide after normalisation
+FAIL  test/ui/library-spacing-layout.browser.test.ts > Library page shared spacing (DIDI-1180) > pins helper min-height at NaN px on Exercises
 ```
 
 ### M9-CASCADE
@@ -987,6 +985,8 @@ FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migrat
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects delete of condition or routine referenced in routine_conditions on BetterSqliteStorage
 FAIL  test/didi-1217-routine-conditions.test.ts > routine_conditions repository (integration, SQLite + D1 fake) > rejects delete of condition or routine referenced in routine_conditions on D1SqlStorage fake
 FAIL  test/exercise-data-model-qa-round3.test.ts > QA round 3: foreign key list (integration, SQLite) > lists exactly 42 foreign keys and each uses ON DELETE RESTRICT
+FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
+FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
 ```
 
 ### M10-no-nbsp
@@ -998,7 +998,7 @@ FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > D1SqlStorage fake > trailing U+00A0 matches normalizeConditionLabelKey
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > BetterSqliteStorage > internal U+00A0 matches normalizeConditionLabelKey
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > D1SqlStorage fake > internal U+00A0 matches normalizeConditionLabelKey
-FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > fails 0009 when NBSP label collides with ASCII-spaced Low back after normalisation
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding)
 ```
 
 ### M11-no-u3000
@@ -1010,4 +1010,12 @@ FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > D1SqlStorage fake > trailing U+3000 matches normalizeConditionLabelKey
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > BetterSqliteStorage > internal U+3000 matches normalizeConditionLabelKey
 FAIL  test/condition-label-normalize-sql.test.ts > condition label normalize SQL expr (integration) > D1SqlStorage fake > internal U+3000 matches normalizeConditionLabelKey
+```
+
+### M12-no-non-ascii-guard
+
+```
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > ships canonical label normalization DML (non-ASCII guard + UPDATE)
+FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > fails 0009 when a label contains non-ASCII letters after whitespace mapping
+FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
 ```
