@@ -32,6 +32,7 @@ const EXPECTED_MIGRATION_FILES = [
   "0006_mcp_oauth.sql",
   "0007_sql_batch_min_rows_guard.sql",
   "0008_routine_draft_discards.sql",
+  "0009_routine_conditions.sql",
 ] as const;
 
 function materializePhase1MigrationsDir(targetDir: string): void {

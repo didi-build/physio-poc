@@ -80,7 +80,13 @@ describe("routine data model migration (integration, SQLite)", () => {
         label: "Low back pain",
       });
       expect(await conditions.listAll()).toEqual([
-        { id: id("cond-ok"), label: "Low back pain", sort_order: 0 },
+        {
+          id: id("cond-ok"),
+          label: "Low back pain",
+          sort_order: 0,
+          label_normalized: "low back pain",
+          created_by_practitioner_id: null,
+        },
       ]);
     } finally {
       storage.close();
