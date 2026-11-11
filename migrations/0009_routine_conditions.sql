@@ -15,11 +15,9 @@ ALTER TABLE conditions ADD COLUMN created_by_practitioner_id TEXT REFERENCES pra
 
 ALTER TABLE conditions ADD COLUMN label_normalized TEXT;
 
--- Backfill uses lower(trim(label)) only (not full whitespace collapse). Safe on deploy:
--- conditions is seeded empty in 0005; any new row must use ConditionsRepository, which
--- sets label_normalized via normalizeConditionLabelKey on every write.
+-- Matches normalizeConditionLabelKey (see condition-label-normalize-sql.ts).
 UPDATE conditions
-SET label_normalized = lower(trim(label))
+SET label_normalized = replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(lower(trim(replace(replace(replace(replace(replace(label, char(9), ' '), char(10), ' '), char(13), ' '), char(11), ' '), char(12), ' '))), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' '), '  ', ' ')
 WHERE label IS NOT NULL
   AND label_normalized IS NULL;
 
