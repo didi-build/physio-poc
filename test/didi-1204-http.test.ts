@@ -12,6 +12,7 @@ import {
   MIGRATION_0005_ID,
   MIGRATION_0007_ID,
   MIGRATION_0008_ID,
+  MIGRATION_0009_ID,
 } from "../src/storage/migrations/apply.js";
 import {
   BODY_REGIONS_LIST_PATH,
@@ -27,6 +28,7 @@ import {
   MIGRATION_0005_SQL,
   MIGRATION_0007_SQL,
   MIGRATION_0008_SQL,
+  MIGRATION_0009_SQL,
   openMigratedDatabase,
   seedPractitioner,
   TS,
@@ -66,6 +68,7 @@ async function openMigratedD1SqlStorage(): Promise<D1SqlStorage> {
   await applyMigration(sql, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   await applyMigration(sql, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   await applyMigration(sql, MIGRATION_0008_ID, MIGRATION_0008_SQL);
+  await applyMigration(sql, MIGRATION_0009_ID, MIGRATION_0009_SQL);
   return sql;
 }
 

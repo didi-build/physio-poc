@@ -17,6 +17,8 @@ Numbered files under `migrations/` (Node test runner and D1 via wrangler when wi
 | 0005 | `0005_routine_data_model.sql`       | Routines data model (DIDI-1017)                                                                     |
 | 0006 | `0006_mcp_oauth.sql`                | Better Auth MCP OAuth provider tables and Physio consent audit tables (DIDI-1043)                   |
 | 0007 | `0007_sql_batch_min_rows_guard.sql` | Internal empty guard table for SqlStoragePort batch minRowsAffected (DIDI-1101)                     |
+| 0008 | `0008_routine_draft_discards.sql`   | Ephemeral discard tombstones for undo_draft_discard (DIDI-1204)                                     |
+| 0009 | `0009_routine_conditions.sql`       | Routine–condition join, condition dedupe columns, backfill (DIDI-1217)                              |
 
 ## schema_migrations on D1
 

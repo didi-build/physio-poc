@@ -4,6 +4,7 @@ import {
   type PrescriptionType,
 } from "../../domain/exercise-types.js";
 import {
+  normalizeConditionLabelKey,
   validateChangeSummary,
   validateConditionLabel,
   validateOptionalRoutineName,
@@ -49,6 +50,8 @@ export type ConditionRow = {
   id: string;
   label: string;
   sort_order: number;
+  label_normalized: string | null;
+  created_by_practitioner_id: string | null;
 };
 
 export type RoutineRecord = {
@@ -141,9 +144,49 @@ function assertPrescriptionType(value: string): PrescriptionType {
 export class ConditionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
 
+  async findById(conditionId: string): Promise<ConditionRow | null> {
+    return this.sql.first<ConditionRow>(
+      `SELECT id, label, sort_order, label_normalized, created_by_practitioner_id
+       FROM conditions WHERE id = ? LIMIT 1`,
+      [validateOpaqueEntityId(conditionId, "Condition id")],
+    );
+  }
+
   async listAll(): Promise<ConditionRow[]> {
     return this.sql.all<ConditionRow>(
-      "SELECT id, label, sort_order FROM conditions ORDER BY sort_order ASC, label ASC",
+      `SELECT id, label, sort_order, label_normalized, created_by_practitioner_id
+       FROM conditions ORDER BY sort_order ASC, label ASC`,
+    );
+  }
+
+  async findByLabelNormalizedKey(label: string): Promise<ConditionRow | null> {
+    const key = normalizeConditionLabelKey(label);
+    return this.sql.first<ConditionRow>(
+      `SELECT id, label, sort_order, label_normalized, created_by_practitioner_id
+       FROM conditions WHERE label_normalized = ? LIMIT 1`,
+      [key],
+    );
+  }
+
+  async searchTypeaheadByLabel(
+    normalizedPrefix: string,
+    limit = 20,
+  ): Promise<ConditionRow[]> {
+    const prefix = normalizeConditionLabelKey(normalizedPrefix);
+    if (prefix.length < 1) {
+      return [];
+    }
+    const capped = Math.min(Math.max(limit, 1), 50);
+    return this.sql.all<ConditionRow>(
+      `SELECT id, label, sort_order, label_normalized, created_by_practitioner_id
+       FROM conditions
+       WHERE label_normalized LIKE ? ESCAPE '\\'
+       ORDER BY sort_order ASC, label ASC
+       LIMIT ?`,
+      [
+        `${prefix.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`,
+        capped,
+      ],
     );
   }
 
@@ -151,13 +194,90 @@ export class ConditionsRepository {
     id: string;
     label: string;
     sortOrder?: number;
+    createdByPractitionerId?: string | null;
   }): Promise<void> {
     const id = validateOpaqueEntityId(input.id, "Condition id");
     const label = validateConditionLabel(input.label);
+    const normalized = normalizeConditionLabelKey(label);
+    const createdBy =
+      input.createdByPractitionerId === undefined ||
+      input.createdByPractitionerId === null
+        ? null
+        : validateOpaqueEntityId(input.createdByPractitionerId, "Practitioner id");
     await this.sql.run(
-      "INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, ?)",
-      [id, label, input.sortOrder ?? 0],
+      `INSERT INTO conditions (
+        id, label, label_normalized, sort_order, created_by_practitioner_id
+      ) VALUES (?, ?, ?, ?, ?)`,
+      [id, label, normalized, input.sortOrder ?? 0, createdBy],
     );
+  }
+
+  async updateLabel(input: { id: string; label: string }): Promise<void> {
+    const id = validateOpaqueEntityId(input.id, "Condition id");
+    const label = validateConditionLabel(input.label);
+    const normalized = normalizeConditionLabelKey(label);
+    await this.sql.run(
+      `UPDATE conditions SET label = ?, label_normalized = ? WHERE id = ?`,
+      [label, normalized, id],
+    );
+  }
+
+  async deleteById(conditionId: string): Promise<void> {
+    await this.sql.run(`DELETE FROM conditions WHERE id = ?`, [
+      validateOpaqueEntityId(conditionId, "Condition id"),
+    ]);
+  }
+}
+
+export class RoutineConditionsRepository {
+  constructor(private readonly sql: SqlStoragePort) {}
+
+  async listConditionIdsForRoutine(routineId: string): Promise<string[]> {
+    const rid = validateOpaqueEntityId(routineId, "Routine id");
+    const rows = await this.sql.all<{ condition_id: string }>(
+      `SELECT condition_id FROM routine_conditions WHERE routine_id = ?
+       ORDER BY condition_id ASC`,
+      [rid],
+    );
+    return rows.map((row) => row.condition_id);
+  }
+
+  async link(routineId: string, conditionId: string): Promise<void> {
+    await this.sql.run(
+      `INSERT OR IGNORE INTO routine_conditions (routine_id, condition_id) VALUES (?, ?)`,
+      [
+        validateOpaqueEntityId(routineId, "Routine id"),
+        validateOpaqueEntityId(conditionId, "Condition id"),
+      ],
+    );
+  }
+
+  async unlink(routineId: string, conditionId: string): Promise<void> {
+    await this.sql.run(
+      `DELETE FROM routine_conditions WHERE routine_id = ? AND condition_id = ?`,
+      [
+        validateOpaqueEntityId(routineId, "Routine id"),
+        validateOpaqueEntityId(conditionId, "Condition id"),
+      ],
+    );
+  }
+
+  async replaceAllForRoutine(
+    routineId: string,
+    conditionIds: readonly string[],
+  ): Promise<void> {
+    const rid = validateOpaqueEntityId(routineId, "Routine id");
+    const normalizedIds = conditionIds.map((cid) =>
+      validateOpaqueEntityId(cid, "Condition id"),
+    );
+    const unique = [...new Set(normalizedIds)];
+    await this.sql.run(`DELETE FROM routine_conditions WHERE routine_id = ?`, [rid]);
+    for (const conditionId of unique) {
+      await this.sql.run(
+        `INSERT INTO routine_conditions (routine_id, condition_id) VALUES (?, ?)`,
+        [rid, conditionId],
+      );
+    }
   }
 }
 

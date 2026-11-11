@@ -164,7 +164,7 @@ export function validateRoutineWhoItsFor(
   return validateExerciseTemplateText(text.trim(), "Who it is for");
 }
 
-/** Condition label: team-seeded fixed list entries only; no patient details. */
+/** Condition label: community list entries; no patient details. */
 export function validateConditionLabel(label: string): string {
   const trimmed = label.trim();
   if (trimmed.length < 1) {
@@ -173,6 +173,11 @@ export function validateConditionLabel(label: string): string {
   assertMaxLength(trimmed, MAX_LENGTH_PROGRAM_TITLE, "Condition label");
   assertNoPatientDetails(trimmed, "Condition label");
   return trimmed;
+}
+
+/** Trim, case-fold, and collapse internal whitespace for dedupe and typeahead. */
+export function normalizeConditionLabelKey(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 /**
