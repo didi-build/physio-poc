@@ -7,7 +7,10 @@ import {
 } from "../../mcp-connector/urls.js";
 import { ProgramBuilderService } from "../programs/program-builder-service.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
-import { PractitionersRepository } from "../../storage/repositories/exercise-data.js";
+import {
+  BodyRegionsRepository,
+  PractitionersRepository,
+} from "../../storage/repositories/exercise-data.js";
 import {
   RoutineLibraryReadRepository,
   type PublishedRoutineSearchRow,
@@ -36,7 +39,9 @@ import {
   savedBaselineVersionIsAvailable,
   type RoutineRowComparable,
 } from "./routine-personal-change-projection.js";
+import { findUnapprovedRoutineRow } from "./validate-approved-rows.js";
 import type {
+  BodyRegionListItem,
   CommunityRoutineSummary,
   McpRoutineSearchSummary,
   MyRoutineDraftItem,
@@ -65,7 +70,8 @@ export class RoutinesLibraryServiceError extends Error {
       | "invalid_input"
       | "undo_mismatch"
       | "routine_not_published"
-      | "stale_write",
+      | "stale_write"
+      | "exercise_not_found",
   ) {
     super(message);
     this.name = "RoutinesLibraryServiceError";
@@ -232,6 +238,11 @@ export class RoutinesLibraryService {
   async conditionsAvailable(): Promise<boolean> {
     const rows = await this.conditions.listAll();
     return rows.length > 0;
+  }
+
+  async listBodyRegions(): Promise<BodyRegionListItem[]> {
+    const rows = await new BodyRegionsRepository(this.sql).listAll();
+    return rows.map((row) => ({ id: row.id, label: row.label }));
   }
 
   private async conditionOptionsForUi(
@@ -582,7 +593,9 @@ export class RoutinesLibraryService {
       return {
         routine_id: validatedRoutineId,
         is_draft: true,
+        body_region_id: routine.body_region_id,
         body_region_label: bodyRegionLabel,
+        condition_id: routine.condition_id,
         condition_label: conditionLabel,
         who_its_for: routine.who_its_for,
         draft: {
@@ -679,7 +692,9 @@ export class RoutinesLibraryService {
     return {
       routine_id: validatedRoutineId,
       is_draft: false,
+      body_region_id: routine.body_region_id,
       body_region_label: head.body_region_label,
+      condition_id: routine.condition_id,
       condition_label: conditionsAvailable ? head.condition_label : null,
       who_its_for: routine.who_its_for,
       draft: null,
@@ -858,6 +873,12 @@ export class RoutinesLibraryService {
         "my_routine_not_found",
       );
     }
+    await this.validateApprovedRows(
+      input.rows.map((row) => ({
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+      })),
+    );
     const undo = await this.captureUndoSnapshot(
       input.practitionerId,
       validatedRoutineId,
@@ -920,6 +941,13 @@ export class RoutinesLibraryService {
         "invalid_input",
       );
     }
+
+    await this.validateApprovedRows(
+      snap.copy.rows.map((row) => ({
+        exerciseId: row.exercise_id,
+        exerciseVersionId: row.exercise_version_id,
+      })),
+    );
 
     try {
       await this.myCopies.restoreSavedCopyFromSnapshot({
@@ -984,6 +1012,15 @@ export class RoutinesLibraryService {
         params_json: row.params_json,
       }),
     );
+  }
+
+  private async validateApprovedRows(
+    rows: { exerciseId: string; exerciseVersionId: string }[],
+  ): Promise<void> {
+    const unapproved = await findUnapprovedRoutineRow(this.exerciseRead, rows);
+    if (unapproved) {
+      throw new RoutinesLibraryServiceError("Exercise not found", "exercise_not_found");
+    }
   }
 
   private async mapRowsWithTitles<

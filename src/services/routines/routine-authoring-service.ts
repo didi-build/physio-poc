@@ -17,6 +17,7 @@ import {
   PractitionerNotFoundError,
   requirePractitionerRecord,
 } from "../practitioner-access.js";
+import { findUnapprovedRoutineRow } from "./validate-approved-rows.js";
 import type {
   PublishValidationIssue,
   RoutineDraftDiscardUndo,
@@ -230,16 +231,18 @@ export class RoutineAuthoringService {
   }
 
   private async validateApprovedRows(rows: AuthoringRowInput[]): Promise<void> {
-    for (const row of rows) {
-      const version = await this.exerciseRead.getApprovedVersionById(
-        row.exerciseVersionId,
+    const unapproved = await findUnapprovedRoutineRow(
+      this.exerciseRead,
+      rows.map((row) => ({
+        exerciseId: row.exerciseId,
+        exerciseVersionId: row.exerciseVersionId,
+      })),
+    );
+    if (unapproved) {
+      throw new RoutineAuthoringServiceError(
+        "Exercise not found",
+        "exercise_not_found",
       );
-      if (!version || version.exercise_id !== row.exerciseId) {
-        throw new RoutineAuthoringServiceError(
-          "Exercise not found",
-          "exercise_not_found",
-        );
-      }
     }
   }
 

@@ -8,12 +8,6 @@ export type RoutineConditionOption = {
   label: string;
 };
 
-/** `GET /api/me/body-regions` (DIDI-1204). */
-export type MeBodyRegionOption = {
-  id: string;
-  label: string;
-};
-
 export type CommunityRoutineSummary = {
   routine_id: string;
   routine_version_id: string;
@@ -96,13 +90,16 @@ export type RoutineCommunityChangeList =
       baseline_available: false;
     };
 
+export type BodyRegionListItem = {
+  id: string;
+  label: string;
+};
+
 type RoutineDetailsShared = {
   routine_id: string;
-  /** DIDI-1204 (required once API lands). */
-  body_region_id?: string;
+  body_region_id: string;
   body_region_label: string;
-  /** DIDI-1204 (null when unset once API lands). */
-  condition_id?: string | null;
+  condition_id: string | null;
   condition_label: string | null;
   who_its_for: string | null;
   sent_program_count: number;

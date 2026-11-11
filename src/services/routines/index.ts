@@ -9,6 +9,7 @@ export {
   parseRoutineDraftDiscardUndo,
 } from "./routine-authoring-service.js";
 export type {
+  BodyRegionListItem,
   CommunityRoutineSummary,
   MyRoutinesListResult,
   RoutineDetailsResult,

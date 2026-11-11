@@ -20,6 +20,7 @@ import {
   routineVersionHistoryPath,
 } from "../../routine-authoring-api-paths.js";
 import {
+  BODY_REGIONS_LIST_PATH,
   ROUTINES_COMMUNITY_SEARCH_PATH,
   ROUTINES_MY_ROUTINES_PATH,
   routineDetailsPath,
@@ -36,7 +37,9 @@ const ROUTINES_ME_PATH =
 
 export function isRoutinesLibraryApiPath(pathname: string): boolean {
   return (
-    pathname === ROUTINES_AUTHORING_COLLECTION_PATH || ROUTINES_ME_PATH.test(pathname)
+    pathname === ROUTINES_AUTHORING_COLLECTION_PATH ||
+    pathname === BODY_REGIONS_LIST_PATH ||
+    ROUTINES_ME_PATH.test(pathname)
   );
 }
 
@@ -71,15 +74,15 @@ function errorResponse(error: unknown): Response {
     const status =
       error.code === "stale_write"
         ? 409
-        : error.code === "practitioner_not_found" || error.code === "routine_not_found"
+        : error.code === "practitioner_not_found" ||
+            error.code === "routine_not_found" ||
+            error.code === "my_routine_not_found" ||
+            error.code === "routine_not_published" ||
+            error.code === "exercise_not_found"
           ? 404
-          : error.code === "my_routine_not_found"
-            ? 404
-            : error.code === "routine_not_published"
-              ? 404
-              : error.code === "undo_mismatch"
-                ? 400
-                : 400;
+          : error.code === "undo_mismatch"
+            ? 400
+            : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },
@@ -240,6 +243,23 @@ export async function handleRoutinesRequest(
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const path = url.pathname;
+
+  if (path === BODY_REGIONS_LIST_PATH) {
+    if (request.method !== "GET") {
+      return null;
+    }
+    const practitionerId = requirePractitioner(options.sessionPractitioner);
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
+    try {
+      const regions = await libraryService(deps).listBodyRegions();
+      return Response.json(regions, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
   const match = ROUTINES_ME_PATH.exec(path);
   if (!match) {
     return null;

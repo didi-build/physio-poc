@@ -118,9 +118,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "ui1024@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       renderApp("/routines/new", client);
       await waitFor(
@@ -156,9 +154,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "pub@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -207,9 +203,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "disc@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const undoSpy = vi.spyOn(client, "undoRoutineDraftDiscard");
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
@@ -251,9 +245,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "val@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       renderApp(`/routines/${created.routine_id}/edit`, client);
@@ -284,9 +276,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "efe@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -335,9 +325,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "hist@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       const routineId = created.routine_id;
@@ -397,9 +385,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         "link@example.com",
       );
       const client = new RoutinesClient({
-        fetchFn: createRoutinesHttpFetch(deps, cookie, {
-          stubPlannedBodyRegionApi: true,
-        }),
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
       const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
       renderApp(`/routines/${created.routine_id}`, client);

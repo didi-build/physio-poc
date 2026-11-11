@@ -1,13 +1,12 @@
 import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
-import { ME_BODY_REGIONS_PATH } from "../../me-session-api-paths.js";
 import {
   ROUTINES_AUTHORING_COLLECTION_PATH,
   routineAuthoringItemPath,
   routineVersionHistoryPath,
 } from "../../routine-authoring-api-paths.js";
 import type {
-  MeBodyRegionOption,
+  BodyRegionListItem,
   MyRoutinesListResult,
   PublishValidationIssue,
   RoutineDetailsResult,
@@ -20,6 +19,7 @@ import type {
 import type { RoutineExerciseRow } from "../../services/routines/types.js";
 import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
+  BODY_REGIONS_LIST_PATH,
   ROUTINES_COMMUNITY_SEARCH_PATH,
   ROUTINES_MY_ROUTINES_PATH,
   routineDetailsPath,
@@ -172,9 +172,9 @@ export class RoutinesClient {
     );
   }
 
-  listMeBodyRegions(options?: ReadRequestOptions): Promise<MeBodyRegionOption[]> {
-    return this.fetchFn(ME_BODY_REGIONS_PATH, readGetInit(options)).then((response) =>
-      readJson<MeBodyRegionOption[]>(response),
+  listMeBodyRegions(options?: ReadRequestOptions): Promise<BodyRegionListItem[]> {
+    return this.fetchFn(BODY_REGIONS_LIST_PATH, readGetInit(options)).then((response) =>
+      readJson<BodyRegionListItem[]>(response),
     );
   }
 

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
   PublishValidationIssue,
-  MeBodyRegionOption,
+  BodyRegionListItem,
   RoutineConditionOption,
   RoutineDetailsDraft,
   RoutineExerciseRow,
@@ -81,7 +81,7 @@ export function RoutineDraftEditorPage() {
   const [whoItsFor, setWhoItsFor] = useState("");
   const [conditionId, setConditionId] = useState<string | null>(null);
   const [bodyRegionId, setBodyRegionId] = useState<string | null>(null);
-  const [bodyRegionOptions, setBodyRegionOptions] = useState<MeBodyRegionOption[]>([]);
+  const [bodyRegionOptions, setBodyRegionOptions] = useState<BodyRegionListItem[]>([]);
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -145,10 +145,8 @@ export function RoutineDraftEditorPage() {
     }
     setName(draftDetails.draft.name ?? "");
     setWhoItsFor(draftDetails.who_its_for ?? "");
-    setConditionId(draftDetails.condition_id ?? null);
-    if (draftDetails.body_region_id) {
-      setBodyRegionId(draftDetails.body_region_id);
-    }
+    setConditionId(draftDetails.condition_id);
+    setBodyRegionId(draftDetails.body_region_id);
     setRows(draftDetails.draft.rows);
     hydratedRef.current = true;
     autoSave.markSaved();
