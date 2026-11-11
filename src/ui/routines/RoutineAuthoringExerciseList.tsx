@@ -61,7 +61,6 @@ export function RoutineAuthoringExerciseList({
     >
       <div className="rt-exercises-header">
         <h2 id="rt-authoring-exercises">{EXERCISES_HEADING}</h2>
-        <span className="ex-muted">{rows.length} total</span>
       </div>
       <ul className="rt-authoring-exercise-list">
         {rows.map((row, index) => {
