@@ -60,6 +60,15 @@ type DraftEditorSnapshot = RoutineDetailsDraft & {
   condition_options: RoutineConditionOption[];
 };
 
+type NewDraftBootstrap = {
+  conditions_available: boolean;
+  condition_options: RoutineConditionOption[];
+};
+
+type RoutineDraftEditorPageProps = {
+  isNewDraft?: boolean;
+};
+
 function rowsPayload(rows: RoutineExerciseRow[]) {
   return rows.map((row) => ({
     position: row.position,
@@ -70,8 +79,12 @@ function rowsPayload(rows: RoutineExerciseRow[]) {
   }));
 }
 
-export function RoutineDraftEditorPage() {
-  const { routineId = "" } = useParams();
+export function RoutineDraftEditorPage({
+  isNewDraft = false,
+}: RoutineDraftEditorPageProps = {}) {
+  const paramsRoutineId = useParams().routineId ?? "";
+  const [newDraftRoutineId, setNewDraftRoutineId] = useState("");
+  const effectiveRoutineId = isNewDraft ? newDraftRoutineId : paramsRoutineId;
   const client = useRoutinesApi();
   const library = useExerciseLibraryApi();
   const navigate = useNavigate();
@@ -89,14 +102,19 @@ export function RoutineDraftEditorPage() {
     PublishValidationIssue[] | null
   >(null);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [newDraftBootstrap, setNewDraftBootstrap] = useState<NewDraftBootstrap | null>(
+    null,
+  );
+  const [newDraftBootstrapFailed, setNewDraftBootstrapFailed] = useState(false);
   const hydratedRef = useRef(false);
+  const createDraftPromiseRef = useRef<Promise<string> | null>(null);
 
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
   const sessionReady = sessionState.status === "ready";
   const cacheKey =
-    routineId.length > 0 && sessionEpoch
-      ? routineDetailKey(sessionEpoch, routineId)
+    effectiveRoutineId.length > 0 && sessionEpoch
+      ? routineDetailKey(sessionEpoch, effectiveRoutineId)
       : null;
 
   const {
@@ -105,10 +123,10 @@ export function RoutineDraftEditorPage() {
     loadFailed,
   } = useSessionCachedRead<DraftEditorSnapshot | null>({
     cacheKey,
-    enabled: routineId.length > 0 && sessionReady,
+    enabled: !isNewDraft && effectiveRoutineId.length > 0 && sessionReady,
     fetcher: async (signal) => {
       const [detailsResult, list] = await Promise.all([
-        client.getRoutineDetails(routineId, { signal }),
+        client.getRoutineDetails(effectiveRoutineId, { signal }),
         client.listMyRoutines({}, { signal }),
       ]);
       if (!detailsResult.is_draft) {
@@ -140,6 +158,31 @@ export function RoutineDraftEditorPage() {
   }, [client, sessionReady]);
 
   useEffect(() => {
+    if (!isNewDraft || !sessionReady) {
+      return;
+    }
+    let cancelled = false;
+    void client
+      .listMyRoutines()
+      .then((list) => {
+        if (!cancelled) {
+          setNewDraftBootstrap({
+            conditions_available: list.conditions_available,
+            condition_options: list.condition_options,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNewDraftBootstrapFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, isNewDraft, sessionReady]);
+
+  useEffect(() => {
     if (!draftDetails || hydratedRef.current) {
       return;
     }
@@ -152,26 +195,91 @@ export function RoutineDraftEditorPage() {
     autoSave.markSaved();
   }, [autoSave, draftDetails]);
 
-  const conditionsAvailable = draftDetails?.conditions_available ?? false;
-  const conditionOptions = draftDetails?.condition_options ?? [];
+  const conditionsAvailable = isNewDraft
+    ? (newDraftBootstrap?.conditions_available ?? false)
+    : (draftDetails?.conditions_available ?? false);
+  const conditionOptions = isNewDraft
+    ? (newDraftBootstrap?.condition_options ?? [])
+    : (draftDetails?.condition_options ?? []);
 
-  const persistPatch = useCallback(async () => {
-    if (!bodyRegionId) {
-      return;
-    }
-    await client.autosaveRoutineDraft(routineId, {
+  const draftAutosavePatch = useCallback(
+    () => ({
       name: name.trim().length > 0 ? name.trim() : null,
       who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
       condition_id: conditionId,
-      body_region_id: bodyRegionId,
+      body_region_id: bodyRegionId!,
       rows: rowsPayload(rows),
-    });
+    }),
+    [bodyRegionId, conditionId, name, rows, whoItsFor],
+  );
+
+  const ensureServerDraft = useCallback(
+    async (regionId: string): Promise<string> => {
+      if (effectiveRoutineId.length > 0) {
+        return effectiveRoutineId;
+      }
+      if (!isNewDraft) {
+        return effectiveRoutineId;
+      }
+      if (!createDraftPromiseRef.current) {
+        createDraftPromiseRef.current = client
+          .createRoutineDraft({
+            body_region_id: regionId,
+            condition_id: conditionId,
+            who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
+            name: name.trim().length > 0 ? name.trim() : null,
+          })
+          .then((result) => {
+            setNewDraftRoutineId(result.routine_id);
+            navigate(
+              fillPhysioAppRoutePattern("routineDraftEdit", {
+                routineId: result.routine_id,
+              }),
+              { replace: true },
+            );
+            return result.routine_id;
+          });
+      }
+      return createDraftPromiseRef.current;
+    },
+    [client, conditionId, effectiveRoutineId, isNewDraft, name, navigate, whoItsFor],
+  );
+
+  const persistPatch = useCallback(async (): Promise<string> => {
+    if (!bodyRegionId) {
+      return "";
+    }
+    const routineId =
+      effectiveRoutineId.length > 0
+        ? effectiveRoutineId
+        : await ensureServerDraft(bodyRegionId);
+    if (routineId.length === 0) {
+      return "";
+    }
+    await client.autosaveRoutineDraft(routineId, draftAutosavePatch());
     autoSave.markSaved();
-  }, [autoSave, bodyRegionId, client, conditionId, name, routineId, rows, whoItsFor]);
+    return routineId;
+  }, [
+    autoSave,
+    bodyRegionId,
+    client,
+    draftAutosavePatch,
+    effectiveRoutineId,
+    ensureServerDraft,
+  ]);
 
   const scheduleSave = useCallback(() => {
-    autoSave.scheduleDebouncedSave("draft", () => persistPatch());
+    autoSave.scheduleDebouncedSave("draft", async () => {
+      await persistPatch();
+    });
   }, [autoSave, persistPatch]);
+
+  const queueAutosave = useCallback(() => {
+    if (!bodyRegionId) {
+      return;
+    }
+    scheduleSave();
+  }, [bodyRegionId, scheduleSave]);
 
   const untouched = isClientDraftUntouched({
     name,
@@ -180,12 +288,18 @@ export function RoutineDraftEditorPage() {
     rowsCount: rows.length,
   });
 
-  const onRowsChange = (next: RoutineExerciseRow[]) => {
-    setRows(next);
-    if (!bodyRegionId) {
-      return;
-    }
-    autoSave.scheduleDebouncedSave("rows", async () => {
+  const persistRows = useCallback(
+    async (next: RoutineExerciseRow[]) => {
+      if (!bodyRegionId) {
+        return;
+      }
+      const routineId =
+        effectiveRoutineId.length > 0
+          ? effectiveRoutineId
+          : await ensureServerDraft(bodyRegionId);
+      if (routineId.length === 0) {
+        return;
+      }
       await client.autosaveRoutineDraft(routineId, {
         name: name.trim().length > 0 ? name.trim() : null,
         who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
@@ -194,7 +308,25 @@ export function RoutineDraftEditorPage() {
         rows: rowsPayload(next),
       });
       autoSave.markSaved();
-    });
+    },
+    [
+      autoSave,
+      bodyRegionId,
+      client,
+      conditionId,
+      effectiveRoutineId,
+      ensureServerDraft,
+      name,
+      whoItsFor,
+    ],
+  );
+
+  const onRowsChange = (next: RoutineExerciseRow[]) => {
+    setRows(next);
+    if (!bodyRegionId) {
+      return;
+    }
+    autoSave.scheduleDebouncedSave("rows", () => persistRows(next));
   };
 
   const onAddExercise = (exerciseId: string) => {
@@ -206,17 +338,25 @@ export function RoutineDraftEditorPage() {
       if (!bodyRegionId) {
         return;
       }
-      void autoSave.runSave("add-exercise", async () => {
-        await client.autosaveRoutineDraft(routineId, {
+      void autoSave.runSave("add-exercise", () => persistRows(next));
+    });
+  };
+
+  const onBodyRegionSelect = (regionId: string) => {
+    setBodyRegionId(regionId);
+    void ensureServerDraft(regionId)
+      .then((routineId) =>
+        client.autosaveRoutineDraft(routineId, {
           name: name.trim().length > 0 ? name.trim() : null,
           who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
           condition_id: conditionId,
-          body_region_id: bodyRegionId,
-          rows: rowsPayload(next),
-        });
+          body_region_id: regionId,
+          rows: rowsPayload(rows),
+        }),
+      )
+      .then(() => {
         autoSave.markSaved();
       });
-    });
   };
 
   const tryPublish = () => {
@@ -227,8 +367,15 @@ export function RoutineDraftEditorPage() {
   const onPublishConfirm = () => {
     setPublishBusy(true);
     void persistPatch()
-      .then(() => client.publishRoutineDraft(routineId, { name: name.trim() }))
-      .then(() => {
+      .then((routineId) => {
+        if (routineId.length === 0) {
+          throw new Error("Draft not created");
+        }
+        return client
+          .publishRoutineDraft(routineId, { name: name.trim() })
+          .then(() => routineId);
+      })
+      .then((routineId) => {
         setPublishOpen(false);
         showToast({ message: toastPublishedVersion1(name.trim()) });
         navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }), {
@@ -250,11 +397,15 @@ export function RoutineDraftEditorPage() {
 
   const leavePath = untouched
     ? fillPhysioAppRoutePattern("routines")
-    : fillPhysioAppRoutePattern("routineDetail", { routineId });
+    : fillPhysioAppRoutePattern("routineDetail", { routineId: effectiveRoutineId });
 
   const onLeave = () => {
     if (untouched) {
-      void client.cancelUntouchedRoutineDraft(routineId).finally(() => {
+      if (effectiveRoutineId.length === 0) {
+        navigate(leavePath, { replace: true });
+        return;
+      }
+      void client.cancelUntouchedRoutineDraft(effectiveRoutineId).finally(() => {
         navigate(leavePath, { replace: true });
       });
       return;
@@ -264,7 +415,21 @@ export function RoutineDraftEditorPage() {
     });
   };
 
-  if (sessionState.status === "error" || loadFailed) {
+  const selectedBodyRegionLabel =
+    bodyRegionOptions.find((option) => option.id === bodyRegionId)?.label ??
+    draftDetails?.body_region_label ??
+    "";
+  const selectedConditionLabel =
+    conditionOptions.find((option) => option.condition_id === conditionId)?.label ??
+    draftDetails?.condition_label ??
+    null;
+
+  if (
+    sessionState.status === "error" ||
+    loadFailed ||
+    newDraftBootstrapFailed ||
+    (isNewDraft && newDraftBootstrap && bodyRegionOptions.length === 0)
+  ) {
     return (
       <section className="ex-page rt-authoring">
         <ExerciseLibraryDetailErrorSlot />
@@ -272,15 +437,14 @@ export function RoutineDraftEditorPage() {
     );
   }
 
-  if (loading || !draftDetails) {
-    return (
-      <section className="ex-page rt-authoring" aria-busy>
-        <ExerciseLibraryBusyState />
-      </section>
-    );
-  }
+  const awaitingExistingDraft = !isNewDraft && (loading || !draftDetails);
+  const awaitingNewDraft =
+    isNewDraft &&
+    (sessionState.status === "loading" ||
+      newDraftBootstrap === null ||
+      bodyRegionOptions.length === 0);
 
-  if (!bodyRegionId || bodyRegionOptions.length === 0) {
+  if (awaitingExistingDraft || awaitingNewDraft) {
     return (
       <section className="ex-page rt-authoring" aria-busy>
         <ExerciseLibraryBusyState />
@@ -315,7 +479,7 @@ export function RoutineDraftEditorPage() {
             value={name}
             onChange={(event) => {
               setName(event.target.value);
-              scheduleSave();
+              queueAutosave();
             }}
           />
           {name.trim().length === 0 ? (
@@ -339,7 +503,7 @@ export function RoutineDraftEditorPage() {
                     const next =
                       conditionId === option.condition_id ? null : option.condition_id;
                     setConditionId(next);
-                    scheduleSave();
+                    queueAutosave();
                   }}
                 >
                   {option.label}
@@ -365,8 +529,7 @@ export function RoutineDraftEditorPage() {
                 type="button"
                 className={`ex-pill${option.id === bodyRegionId ? " ex-pill--active" : ""}`}
                 onClick={() => {
-                  setBodyRegionId(option.id);
-                  scheduleSave();
+                  onBodyRegionSelect(option.id);
                 }}
               >
                 {capitalizeBodyRegionLabel(option.label)}
@@ -386,7 +549,7 @@ export function RoutineDraftEditorPage() {
             value={whoItsFor}
             onChange={(event) => {
               setWhoItsFor(event.target.value);
-              scheduleSave();
+              queueAutosave();
             }}
           />
           <span className="ex-field-note">{WHO_ITS_FOR_PRIVACY}</span>
@@ -441,8 +604,8 @@ export function RoutineDraftEditorPage() {
       <RoutinePublishSheet
         open={publishOpen}
         name={name}
-        bodyRegionLabel={draftDetails.body_region_label}
-        conditionLabel={draftDetails.condition_label}
+        bodyRegionLabel={selectedBodyRegionLabel}
+        conditionLabel={selectedConditionLabel}
         rows={rows}
         publishBusy={publishBusy}
         onClose={() => {

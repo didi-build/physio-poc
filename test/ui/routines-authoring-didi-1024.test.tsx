@@ -10,7 +10,7 @@ import { PhysioApp } from "../../src/ui/App.js";
 import { ExerciseLibraryClient } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
-import { RoutinesClient } from "../../src/ui/api/routines-client.js";
+import { RoutinesClient, type FetchFn } from "../../src/ui/api/routines-client.js";
 import {
   BEFORE_YOU_PUBLISH,
   DRAFT_DETAIL_VISIBILITY,
@@ -24,6 +24,9 @@ import {
   VALIDATION_ADD_ROUTINE_NAME,
   VERSION_HISTORY,
   DRAFT_SAVED_UNTIL_PUBLISH,
+  DRAFT_SAVING,
+  BODY_REGION,
+  ROUTINE_NAME_PLACEHOLDER,
   saveAsVersionNext,
   toastSavedCommunityVersion,
 } from "../../src/ui/copy/routines.js";
@@ -105,6 +108,42 @@ function renderApp(path: string, client: RoutinesClient) {
 }
 
 describe("Routine authoring UI (DIDI-1024)", () => {
+  it("does not POST when /routines/new first renders", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-post"),
+        "post@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "post@example.com",
+      );
+      let postCount = 0;
+      const baseFetch = createRoutinesHttpFetch(deps, cookie);
+      const trackingFetch: FetchFn = async (input, init) => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (method === "POST") {
+          postCount += 1;
+        }
+        return baseFetch(input, init);
+      };
+      const client = new RoutinesClient({ fetchFn: trackingFetch });
+      renderApp("/routines/new", client);
+      await waitFor(
+        () => {
+          expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeTruthy();
+        },
+        { timeout: 15_000 },
+      );
+      expect(postCount).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("cancels an untouched new routine from the editor", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -121,6 +160,8 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       const client = new RoutinesClient({
         fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
+      const before = await client.listMyRoutines();
+      expect(before.drafts.length).toBe(0);
       renderApp("/routines/new", client);
       await waitFor(
         () => {
@@ -128,17 +169,14 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         },
         { timeout: 15_000 },
       );
-      const before = await client.listMyRoutines();
-      const routineId = before.drafts[before.drafts.length - 1]?.routine_id ?? "";
-      expect(routineId.length).toBeGreaterThan(0);
+      const afterRender = await client.listMyRoutines();
+      expect(afterRender.drafts.length).toBe(0);
       await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
-      await waitFor(async () => {
-        const list = await client.listMyRoutines();
-        expect(list.drafts.some((draft) => draft.routine_id === routineId)).toBe(false);
-      });
+      const afterCancel = await client.listMyRoutines();
+      expect(afterCancel.drafts.length).toBe(0);
     } finally {
       storage.close();
     }
@@ -372,6 +410,37 @@ describe("Routine authoring UI (DIDI-1024)", () => {
     }
   });
 
+  it("shows DRAFT_SAVING while a draft autosave is in flight", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024j"),
+        "saving@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "saving@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      renderApp(`/routines/${created.routine_id}/edit`, client);
+      await waitFor(() => {
+        expect(screen.getByTestId("rt-draft-publish")).toBeTruthy();
+      });
+      const nameInput = await screen.findByPlaceholderText(ROUTINE_NAME_PLACEHOLDER);
+      await userEvent.type(nameInput, "A");
+      await waitFor(() => {
+        expect(screen.getByText(DRAFT_SAVING)).toBeTruthy();
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("shows draft autosave copy verbatim without extra glyphs", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -394,6 +463,37 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         expect(screen.getByText(DRAFT_SAVED_UNTIL_PUBLISH)).toBeTruthy();
       });
       expect(screen.queryByText(/^✓/)).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("shows sentence-case body region pills on the draft editor", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024k"),
+        "pill@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "pill@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const created = await client.createRoutineDraft({ body_region_id: "br-knee" });
+      renderApp(`/routines/${created.routine_id}/edit`, client);
+      await waitFor(() => {
+        expect(screen.getByTestId("rt-draft-publish")).toBeTruthy();
+      });
+      const group = screen.getByRole("group", { name: BODY_REGION });
+      await waitFor(() => {
+        expect(within(group).getByRole("button", { name: "Knee" })).toBeTruthy();
+      });
+      expect(within(group).queryByRole("button", { name: "knee" })).toBeNull();
     } finally {
       storage.close();
     }
