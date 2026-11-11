@@ -1,6 +1,6 @@
 # DIDI-1225 mutants
 
-Baseline commit: `b95c351`.
+Baseline commit: `596bbc4` (mutant runs executed against the same application code at `fa64adb`; runner script finalized in `596bbc4`).
 
 Baseline green: `npm run test` — **242** files passed, **2584** passed / **4** skipped (**2588** total).
 
