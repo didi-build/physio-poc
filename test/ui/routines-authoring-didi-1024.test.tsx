@@ -299,7 +299,9 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       });
       const cancel = await screen.findByRole("button", { name: "Cancel" });
       await userEvent.click(cancel);
-      expect(await screen.findByTestId("routines-page", {}, { timeout: 5000 })).toBeTruthy();
+      expect(
+        await screen.findByTestId("routines-page", {}, { timeout: 5000 }),
+      ).toBeTruthy();
       const afterCancel = await client.listMyRoutines();
       expect(afterCancel.drafts.length).toBe(0);
     } finally {
