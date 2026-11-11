@@ -46,16 +46,40 @@ import { id } from "./helpers/opaque-test-ids.js";
 const REPO_ROOT = join(import.meta.dirname, "..");
 const BODY_REGION_KNEE = "br-knee";
 
-async function openThroughMigration0008(): Promise<BetterSqliteStorage> {
-  const storage = BetterSqliteStorage.openInMemory();
+const MIXED_WHITESPACE_CONDITION_LABEL = "\u00A0\t\u3000low\u00A0\u3000 back";
+
+async function applyMigrationsThrough0008(storage: SqlStoragePort): Promise<void> {
   await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
   await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   await applyMigration(storage, MIGRATION_0008_ID, MIGRATION_0008_SQL);
+}
+
+async function openThroughMigration0008(): Promise<BetterSqliteStorage> {
+  const storage = BetterSqliteStorage.openInMemory();
+  await applyMigrationsThrough0008(storage);
   return storage;
 }
+
+const preMigration0009Backends: {
+  label: string;
+  open: () => Promise<SqlStoragePort & { close?: () => void }>;
+}[] = [
+  {
+    label: "BetterSqliteStorage",
+    open: async () => openThroughMigration0008(),
+  },
+  {
+    label: "D1SqlStorage fake",
+    open: async () => {
+      const storage = new D1SqlStorage(createFakePhysioD1Database());
+      await applyMigrationsThrough0008(storage);
+      return storage;
+    },
+  },
+];
 
 function normalizeSqlWhitespace(sql: string): string {
   return sql.replace(/\s+/g, " ").trim();
@@ -328,25 +352,57 @@ describe("0009 routine conditions migration (integration)", () => {
     }
   });
 
-  it("backfills label_normalized on pre-0009 condition rows", async () => {
-    const storage = await openThroughMigration0008();
-    try {
-      const condId = id("cond-legacy-space");
-      const rawLabel = "  LOW\tback\n";
-      await storage.run(
-        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
-        [condId, rawLabel],
-      );
-      await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
-      const row = await storage.first<{ label_normalized: string }>(
-        "SELECT label_normalized FROM conditions WHERE id = ? LIMIT 1",
-        [condId],
-      );
-      expect(row?.label_normalized).toBe(normalizeConditionLabelKey(rawLabel));
-    } finally {
-      storage.close();
-    }
-  });
+  it.each(preMigration0009Backends)(
+    "0009 mixed Unicode whitespace label matches adapter after migration on $label",
+    async ({ open }) => {
+      const storage = await open();
+      try {
+        const condId = id("cond-mixed-ws");
+        await storage.run(
+          `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+          [condId, MIXED_WHITESPACE_CONDITION_LABEL],
+        );
+        await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+        const row = await storage.first<{ label_normalized: string }>(
+          "SELECT label_normalized FROM conditions WHERE id = ? LIMIT 1",
+          [condId],
+        );
+        expect(row?.label_normalized).toBe(
+          normalizeConditionLabelKey(MIXED_WHITESPACE_CONDITION_LABEL),
+        );
+        expect(row?.label_normalized).toBe("low back");
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    },
+  );
+
+  it.each(preMigration0009Backends)(
+    "backfills label_normalized on pre-0009 condition rows ($label)",
+    async ({ open }) => {
+      const storage = await open();
+      try {
+        const condId = id("cond-legacy-space");
+        const rawLabel = "  LOW\tback\n";
+        await storage.run(
+          `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+          [condId, rawLabel],
+        );
+        await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+        const row = await storage.first<{ label_normalized: string }>(
+          "SELECT label_normalized FROM conditions WHERE id = ? LIMIT 1",
+          [condId],
+        );
+        expect(row?.label_normalized).toBe(normalizeConditionLabelKey(rawLabel));
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    },
+  );
 
   it("fails 0009 when pre-existing condition labels collide after normalisation", async () => {
     const storage = await openThroughMigration0008();
@@ -371,55 +427,65 @@ describe("0009 routine conditions migration (integration)", () => {
     }
   });
 
-  it("fails 0009 when a label contains non-ASCII letters after whitespace mapping", async () => {
-    const storage = await openThroughMigration0008();
-    try {
-      await storage.run(
-        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
-        [id("cond-unicode"), "ÉPAULE"],
-      );
-      await expect(
-        applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL),
-      ).rejects.toThrow();
-      const index = await storage.first<{ name: string }>(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
-      );
-      expect(index).toBeNull();
-    } finally {
-      storage.close();
-    }
-  });
+  it.each(preMigration0009Backends)(
+    "fails 0009 when a label contains non-ASCII letters after whitespace mapping ($label)",
+    async ({ open }) => {
+      const storage = await open();
+      try {
+        await storage.run(
+          `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+          [id("cond-unicode"), "ÉPAULE"],
+        );
+        await expect(
+          applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL),
+        ).rejects.toThrow();
+        const index = await storage.first<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
+        );
+        expect(index).toBeNull();
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    },
+  );
 
-  it("applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding)", async () => {
-    const storage = await openThroughMigration0008();
-    try {
-      await storage.run(
-        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
-        [id("cond-ascii-a"), "Knee pain"],
-      );
-      await storage.run(
-        `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
-        [id("cond-ascii-b"), "\u00A0Shoulder pain\u00A0"],
-      );
-      await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
-      const index = await storage.first<{ name: string }>(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
-      );
-      expect(index?.name).toBe("idx_conditions_label_normalized");
-      const knee = await storage.first<{ label_normalized: string }>(
-        "SELECT label_normalized FROM conditions WHERE id = ?",
-        [id("cond-ascii-a")],
-      );
-      const shoulder = await storage.first<{ label_normalized: string }>(
-        "SELECT label_normalized FROM conditions WHERE id = ?",
-        [id("cond-ascii-b")],
-      );
-      expect(knee?.label_normalized).toBe("knee pain");
-      expect(shoulder?.label_normalized).toBe("shoulder pain");
-    } finally {
-      storage.close();
-    }
-  });
+  it.each(preMigration0009Backends)(
+    "applies 0009 when labels are ASCII after whitespace mapping (including NBSP padding) ($label)",
+    async ({ open }) => {
+      const storage = await open();
+      try {
+        await storage.run(
+          `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+          [id("cond-ascii-a"), "Knee pain"],
+        );
+        await storage.run(
+          `INSERT INTO conditions (id, label, sort_order) VALUES (?, ?, 0)`,
+          [id("cond-ascii-b"), "\u00A0Shoulder pain\u00A0"],
+        );
+        await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+        const index = await storage.first<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_conditions_label_normalized'",
+        );
+        expect(index?.name).toBe("idx_conditions_label_normalized");
+        const knee = await storage.first<{ label_normalized: string }>(
+          "SELECT label_normalized FROM conditions WHERE id = ?",
+          [id("cond-ascii-a")],
+        );
+        const shoulder = await storage.first<{ label_normalized: string }>(
+          "SELECT label_normalized FROM conditions WHERE id = ?",
+          [id("cond-ascii-b")],
+        );
+        expect(knee?.label_normalized).toBe("knee pain");
+        expect(shoulder?.label_normalized).toBe("shoulder pain");
+      } finally {
+        if ("close" in storage && typeof storage.close === "function") {
+          storage.close();
+        }
+      }
+    },
+  );
 
   it("fails 0009 when NBSP label collides with ASCII-spaced Low back after normalisation", async () => {
     const storage = await openThroughMigration0008();

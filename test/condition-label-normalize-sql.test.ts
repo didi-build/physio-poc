@@ -76,6 +76,21 @@ describe("condition label normalize SQL expr (integration)", () => {
           }
         },
       );
+
+      it("mixed Unicode whitespace yields low back (0009 SQL expr)", async () => {
+        const label = "\u00A0\t\u3000low\u00A0\u3000 back";
+        const storage = backend.open();
+        try {
+          expect(await sqlNormalizedLabel(storage, label)).toBe("low back");
+          expect(await sqlNormalizedLabel(storage, label)).toBe(
+            normalizeConditionLabelKey(label),
+          );
+        } finally {
+          if (typeof storage.close === "function") {
+            storage.close();
+          }
+        }
+      });
     });
   }
 });
