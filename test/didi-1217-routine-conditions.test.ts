@@ -38,6 +38,21 @@ import { id } from "./helpers/opaque-test-ids.js";
 const REPO_ROOT = join(import.meta.dirname, "..");
 const BODY_REGION_KNEE = "br-knee";
 
+/** Backfill DML exactly as shipped in migrations/0009_routine_conditions.sql (not a test-local copy). */
+export function routineConditionsBackfillSqlFromMigration0009(): string {
+  const migrationSql = readFileSync(
+    join(REPO_ROOT, "migrations/0009_routine_conditions.sql"),
+    "utf8",
+  );
+  const match = migrationSql.match(
+    /INSERT OR IGNORE INTO routine_conditions\b[\s\S]*?WHERE condition_id IS NOT NULL\s*;/,
+  );
+  if (!match) {
+    throw new Error("0009 migration is missing routine_conditions backfill INSERT");
+  }
+  return match[0];
+}
+
 async function openD1MigratedStorage(): Promise<D1SqlStorage> {
   const sql = new D1SqlStorage(createFakePhysioD1Database());
   await applyMigration(sql, MIGRATION_0001_ID, MIGRATION_0001_SQL);
@@ -128,7 +143,7 @@ describe("0009 routine conditions migration (integration)", () => {
     }
   });
 
-  it("backfills routine_conditions from routines.condition_id idempotently", async () => {
+  it("migration backfill SQL is idempotent when join rows already exist", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(storage);
@@ -151,10 +166,20 @@ describe("0009 routine conditions migration (integration)", () => {
       );
 
       await storage.run(`DELETE FROM routine_conditions`);
-      const backfill = `INSERT OR IGNORE INTO routine_conditions (routine_id, condition_id)
-SELECT id, condition_id FROM routines WHERE condition_id IS NOT NULL`;
+      const backfill = routineConditionsBackfillSqlFromMigration0009();
+      expect(backfill).toContain("INSERT OR IGNORE");
+
       await storage.run(backfill);
+      const countAfterFirst = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM routine_conditions",
+      );
+      expect(countAfterFirst?.c).toBe(1);
+
       await storage.run(backfill);
+      const countAfterSecond = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM routine_conditions",
+      );
+      expect(countAfterSecond).toEqual(countAfterFirst);
 
       const join = new RoutineConditionsRepository(storage);
       expect(await join.listConditionIdsForRoutine(withCond)).toEqual([condId]);
