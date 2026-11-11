@@ -27,6 +27,7 @@ import {
   DRAFT_SAVING,
   BODY_REGION,
   ROUTINE_NAME_PLACEHOLDER,
+  WHO_ITS_FOR_PLACEHOLDER,
   saveAsVersionNext,
   toastSavedCommunityVersion,
 } from "../../src/ui/copy/routines.js";
@@ -108,6 +109,12 @@ function renderApp(path: string, client: RoutinesClient) {
 }
 
 describe("Routine authoring UI (DIDI-1024)", () => {
+  afterEach(async () => {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 250);
+    });
+  });
+
   it("does not POST when /routines/new first renders", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -144,6 +151,126 @@ describe("Routine authoring UI (DIDI-1024)", () => {
     }
   });
 
+  it("does not preselect a body region on /routines/new", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-nopre"),
+        "nopre@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "nopre@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeTruthy();
+      });
+      const group = screen.getByRole("group", { name: BODY_REGION });
+      const pills = within(group).getAllByRole("button");
+      expect(pills.some((pill) => pill.className.includes("ex-pill--active"))).toBe(
+        false,
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps draft field values when body region is selected last", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1024-last"),
+        "last@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "last@example.com",
+      );
+      const client = new RoutinesClient({
+        fetchFn: createRoutinesHttpFetch(deps, cookie),
+      });
+      const library = {
+        ...stubLibraryClient(),
+        searchApproved: vi.fn().mockResolvedValue({
+          exercises: [
+            {
+              exercise_id: FIXTURE_EXERCISE_ID,
+              exercise_version_id: FIXTURE_VERSION_ID,
+              exercise_name: "Heel slide",
+              category: "Stretching",
+              body_regions: ["knee"],
+              allowed_prescription_types: ["stretching"],
+              matched_alias: null,
+              usage_count: 0,
+            },
+          ],
+          next_cursor: null,
+          search_link: null,
+          total_count: 1,
+        }),
+      } as unknown as ExerciseLibraryClient;
+      render(
+        <MemoryRouter initialEntries={["/routines/new"]}>
+          <PhysioApp
+            exerciseLibraryClient={library}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={stubProgramsClient()}
+            routinesClient={client}
+          />
+        </MemoryRouter>,
+      );
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeTruthy();
+      });
+      const routineName = "Pre-region routine";
+      await userEvent.type(
+        screen.getByPlaceholderText(ROUTINE_NAME_PLACEHOLDER),
+        routineName,
+      );
+      await userEvent.type(
+        screen.getByPlaceholderText(WHO_ITS_FOR_PLACEHOLDER),
+        "Morning stiffness",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /Add exercise/i }));
+      await userEvent.click(screen.getByRole("button", { name: "All exercises" }));
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Add Heel slide" }),
+      );
+      await waitFor(() => {
+        expect(screen.getByText("Heel slide")).toBeTruthy();
+      });
+      const group = screen.getByRole("group", { name: BODY_REGION });
+      await userEvent.click(within(group).getByRole("button", { name: "Knee" }));
+      await waitFor(
+        async () => {
+          expect(screen.getByDisplayValue(routineName)).toBeTruthy();
+          expect(screen.getByText("Heel slide")).toBeTruthy();
+          const list = await client.listMyRoutines();
+          expect(list.drafts.length).toBe(1);
+          const routineId = list.drafts[0]!.routine_id;
+          const details = await client.getRoutineDetails(routineId);
+          expect(details.draft).not.toBeNull();
+          expect(details.draft!.name).toBe(routineName);
+          expect(details.draft!.rows.length).toBe(1);
+          expect(details.who_its_for).toBe("Morning stiffness");
+          expect(details.body_region_id).toBe("br-knee");
+        },
+        { timeout: 15_000 },
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
   it("cancels an untouched new routine from the editor", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -166,6 +293,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       await waitFor(
         () => {
           expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeTruthy();
+          expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
         },
         { timeout: 15_000 },
       );

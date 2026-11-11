@@ -147,11 +147,16 @@ export function RoutineDraftEditorPage({
       return;
     }
     let cancelled = false;
-    void client.listMeBodyRegions().then((regions) => {
-      if (!cancelled) {
-        setBodyRegionOptions(regions);
-      }
-    });
+    void client
+      .listMeBodyRegions()
+      .then((regions) => {
+        if (!cancelled) {
+          setBodyRegionOptions(regions);
+        }
+      })
+      .catch(() => {
+        /* unmount or test teardown */
+      });
     return () => {
       cancelled = true;
     };
@@ -231,18 +236,27 @@ export function RoutineDraftEditorPage({
           })
           .then((result) => {
             setNewDraftRoutineId(result.routine_id);
-            navigate(
-              fillPhysioAppRoutePattern("routineDraftEdit", {
-                routineId: result.routine_id,
-              }),
-              { replace: true },
-            );
             return result.routine_id;
           });
       }
       return createDraftPromiseRef.current;
     },
-    [client, conditionId, effectiveRoutineId, isNewDraft, name, navigate, whoItsFor],
+    [client, conditionId, effectiveRoutineId, isNewDraft, name, whoItsFor],
+  );
+
+  const goToDraftEditUrl = useCallback(
+    (routineId: string) => {
+      if (!isNewDraft) {
+        return;
+      }
+      navigate(
+        fillPhysioAppRoutePattern("routineDraftEdit", {
+          routineId,
+        }),
+        { replace: true },
+      );
+    },
+    [isNewDraft, navigate],
   );
 
   const persistPatch = useCallback(async (): Promise<string> => {
@@ -346,16 +360,19 @@ export function RoutineDraftEditorPage({
     setBodyRegionId(regionId);
     void ensureServerDraft(regionId)
       .then((routineId) =>
-        client.autosaveRoutineDraft(routineId, {
-          name: name.trim().length > 0 ? name.trim() : null,
-          who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-          condition_id: conditionId,
-          body_region_id: regionId,
-          rows: rowsPayload(rows),
-        }),
+        client
+          .autosaveRoutineDraft(routineId, {
+            name: name.trim().length > 0 ? name.trim() : null,
+            who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
+            condition_id: conditionId,
+            body_region_id: regionId,
+            rows: rowsPayload(rows),
+          })
+          .then(() => routineId),
       )
-      .then(() => {
+      .then((routineId) => {
         autoSave.markSaved();
+        goToDraftEditUrl(routineId);
       });
   };
 
@@ -395,23 +412,25 @@ export function RoutineDraftEditorPage({
       });
   };
 
-  const leavePath = untouched
-    ? fillPhysioAppRoutePattern("routines")
-    : fillPhysioAppRoutePattern("routineDetail", { routineId: effectiveRoutineId });
+  const routinesListPath = fillPhysioAppRoutePattern("routines");
 
   const onLeave = () => {
     if (untouched) {
       if (effectiveRoutineId.length === 0) {
-        navigate(leavePath, { replace: true });
+        navigate(routinesListPath, { replace: true });
         return;
       }
       void client.cancelUntouchedRoutineDraft(effectiveRoutineId).finally(() => {
-        navigate(leavePath, { replace: true });
+        navigate(routinesListPath, { replace: true });
       });
       return;
     }
-    void persistPatch().finally(() => {
-      navigate(leavePath);
+    void persistPatch().then((routineId) => {
+      const path =
+        routineId.length > 0
+          ? fillPhysioAppRoutePattern("routineDetail", { routineId })
+          : routinesListPath;
+      navigate(path);
     });
   };
 
