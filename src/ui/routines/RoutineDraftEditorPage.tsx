@@ -386,24 +386,16 @@ export function RoutineDraftEditorPage({
         return;
       }
       await client.autosaveRoutineDraft(routineId, {
-        name: name.trim().length > 0 ? name.trim() : null,
-        who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-        condition_id: conditionId,
-        body_region_id: bodyRegionId,
+        name: nameRef.current.trim().length > 0 ? nameRef.current.trim() : null,
+        who_its_for:
+          whoItsForRef.current.trim().length > 0 ? whoItsForRef.current.trim() : null,
+        condition_id: conditionIdRef.current,
+        body_region_id: bodyRegionIdRef.current!,
         rows: rowsPayload(next),
       });
       autoSave.markSaved();
     },
-    [
-      autoSave,
-      bodyRegionId,
-      client,
-      conditionId,
-      effectiveRoutineId,
-      ensureServerDraft,
-      name,
-      whoItsFor,
-    ],
+    [autoSave, client, effectiveRoutineId, ensureServerDraft],
   );
 
   const onRowsChange = (next: RoutineExerciseRow[]) => {

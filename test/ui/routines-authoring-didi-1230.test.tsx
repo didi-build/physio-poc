@@ -598,7 +598,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
     }
   }, 20_000);
 
-  it("type name during delayed POST then Done for now wins when setup PATCH is slower than save", async () => {
+  it("regression: Done for now during slow POST does not issue setup PATCH after POST settles", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(
@@ -663,6 +663,71 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       await new Promise((resolve) => {
         setTimeout(resolve, 1_000);
       });
+    } finally {
+      storage.close();
+    }
+  }, 30_000);
+
+  it("type name during delayed POST keeps typed name on setup PATCH and server without leaving", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-setup-name"),
+        "setup-name@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "setup-name@example.com",
+      );
+      const routineName = "Knee mobility";
+      const whoItsForText = "Post-op week two";
+      const { client, createdRoutineId, routinePatchCount, routinePatchNames } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {
+          post: true,
+          postDelayMs: SLOW_POST_DELAY_MS,
+        });
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      const whoInput = screen.getByPlaceholderText(
+        "Gentle strength for knee osteoarthritis, three days a week",
+      );
+      await userEvent.click(whoInput);
+      await userEvent.paste(whoItsForText);
+      await waitFor(() => {
+        expect(screen.getByDisplayValue(routineName)).toBeTruthy();
+      });
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/\/routines\/[^/]+\/edit$/);
+        },
+        { timeout: 15_000 },
+      );
+      expect(routinePatchCount.current).toBeGreaterThan(0);
+      expect(routinePatchNames[0]).toBe(routineName);
+      expect(routinePatchNames.some((patchName) => patchName === null)).toBe(false);
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, 500);
+      });
+      const details = await client.getRoutineDetails(createdRoutineId.current);
+      expect(details.draft!.name).toBe(routineName);
+      expect(details.who_its_for).toBe(whoItsForText);
     } finally {
       storage.close();
     }
