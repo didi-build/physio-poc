@@ -548,19 +548,77 @@
   background: white;
 }
 
-.ex-request-shell {
+.ex-request-card {
   margin-top: 1.25rem;
-  border: 1px dashed #cbd5e1;
+  border: 1px solid var(--shell-slate-200);
   border-radius: 1rem;
-  padding: 1.25rem;
+  padding: 1rem;
   background: white;
 }
 
+.ex-request-card-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ex-request-card-copy {
+  min-width: 0;
+}
+
+.ex-request-lead-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--shell-slate-900);
+}
+
+.ex-request-lead-line {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--shell-slate-600);
+}
+
+.ex-request-lead-divider {
+  height: 1px;
+  margin: 1rem 0;
+  background: #f1f5f9;
+}
+
+.ex-request-heading {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--shell-slate-900);
+}
+
+.ex-request-heading--with-lead {
+  font-size: 1rem;
+}
+
+.ex-request-subtext {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--shell-slate-500);
+}
+
 .ex-request-form {
-  margin-top: 1rem;
-  border-radius: 0.75rem;
-  padding: 1rem;
-  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.ex-request-field-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--shell-slate-700);
+}
+
+.ex-request-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .ex-input {
@@ -570,15 +628,30 @@
   border: 1px solid var(--shell-slate-200);
   border-radius: 0.75rem;
   padding: 0 0.75rem;
+  font-size: 0.875rem;
 }
 
-.ex-request-readonly {
-  margin-top: 0.25rem;
-  border: 1px solid var(--shell-slate-200);
-  border-radius: 0.75rem;
-  padding: 0.625rem 0.75rem;
-  background: white;
-  font-size: 0.875rem;
+.ex-input:focus {
+  border-color: var(--shell-teal-700);
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(15 118 110 / 0.3);
+}
+
+.ex-request-form .ex-primary-btn {
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .ex-request-card {
+    padding: 1.5rem;
+  }
+
+  .ex-request-card-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 2rem;
+    align-items: start;
+  }
 }
 
 .ex-muted {
