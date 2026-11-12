@@ -20,6 +20,8 @@ import {
   seedApprovedExerciseVersion,
   seedPractitioner,
   TS,
+  VERSION_INSERT_SQL,
+  versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   MCP_TEST_CONFIG,
@@ -204,6 +206,66 @@ describe("DIDI-1191 public share link media (integration)", () => {
       expect(text).toBe(PUBLIC_SHARE_LINK_UNAVAILABLE_BODY);
       expect(text).not.toContain("media");
       expect(JSON.parse(text)).toEqual(PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps media URLs on the pinned snapshot version when a newer approved version exists", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1191-pin");
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Pinned media",
+      });
+      await seedExerciseRow(storage, programId, practitionerId);
+      await seedPublicMediaForFixtureVersion(storage, objects);
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      const newerVersionId = id("ver-1191-newer");
+      const newerMediaSetId = id("ms-1191-newer");
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: newerVersionId,
+          exercise_id: FIXTURE_EXERCISE_ID,
+          version_number: 2,
+          status: "approved",
+          approved_by: practitionerId,
+          approved_at: TS,
+        }),
+      ]);
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          newerMediaSetId,
+          `media-sets/${newerMediaSetId}/start.png`,
+          `media-sets/${newerMediaSetId}/end.png`,
+          null,
+          "public",
+          TS,
+        ],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        newerMediaSetId,
+        newerVersionId,
+      ]);
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const deps = apiDeps(storage, objects, practitionerId);
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        deps,
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.media?.start_url).toContain(FIXTURE_VERSION_ID);
+      expect(body.rows[0]?.media?.start_url).not.toContain(newerVersionId);
     } finally {
       storage.close();
     }
