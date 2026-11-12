@@ -90,7 +90,8 @@ export class ProgramBuilderServiceError extends Error {
       | "exercise_not_found"
       | "exercise_request_not_found"
       | "invalid_input"
-      | "restore_window_expired",
+      | "restore_window_expired"
+      | "stale_write",
   ) {
     super(message);
     this.name = "ProgramBuilderServiceError";
@@ -1583,6 +1584,9 @@ export class ProgramBuilderService {
 
   private mapRoutineProgramCreateError(err: unknown): never {
     if (err instanceof RoutineRepositoryError) {
+      if (err.code === "stale_write") {
+        throw new ProgramBuilderServiceError("Stale write", "stale_write");
+      }
       if (
         err.message.includes("published routine version") ||
         err.message.includes("Source routine version not found") ||

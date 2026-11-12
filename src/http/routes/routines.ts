@@ -87,13 +87,15 @@ function programService(deps: AppDependencies): ProgramBuilderService {
 function errorResponse(error: unknown): Response {
   if (error instanceof ProgramBuilderServiceError) {
     const status =
-      error.code === "program_not_found" ||
-      error.code === "program_row_not_found" ||
-      error.code === "exercise_not_found" ||
-      error.code === "exercise_request_not_found" ||
-      error.code === "practitioner_not_found"
-        ? 404
-        : 400;
+      error.code === "stale_write"
+        ? 409
+        : error.code === "program_not_found" ||
+            error.code === "program_row_not_found" ||
+            error.code === "exercise_not_found" ||
+            error.code === "exercise_request_not_found" ||
+            error.code === "practitioner_not_found"
+          ? 404
+          : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },

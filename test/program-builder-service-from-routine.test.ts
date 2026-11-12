@@ -9,6 +9,7 @@ import {
 } from "../src/storage/repositories/programs.js";
 import {
   PractitionerRoutinesRepository,
+  RoutineRepositoryError,
   RoutineVersionRowsRepository,
   RoutineVersionsRepository,
   RoutinesRepository,
@@ -2243,6 +2244,47 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         id("prog-prg7-search"),
       ]);
       expect(result.matched_code).toBe("PRG-PRG7");
+    } finally {
+      storage.close();
+    }
+  });
+});
+
+describe("ProgramBuilderService program from routine (DIDI-1170)", () => {
+  it("maps repository stale_write to stale_write, not invalid_input", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerA = await seedPractitioner(
+        storage,
+        id("pb-stale-write"),
+        "pb-stale@example.com",
+      );
+      await seedApprovedExerciseVersion(storage, practitionerA);
+      const service = new ProgramBuilderService(storage);
+      await publishRoutine(storage, practitionerA, {
+        routine: "pb-stale-routine",
+        draftVersion: "pb-stale-draft",
+        row: "pb-stale-row",
+        name: "Stale write program source",
+      });
+      const original = ProgramsRepository.prototype.buildCreateBatchStatements;
+      ProgramsRepository.prototype.buildCreateBatchStatements = async function () {
+        throw new RoutineRepositoryError("Stale write", { code: "stale_write" });
+      };
+      try {
+        await expect(
+          service.createProgramFromRoutine(practitionerA, {
+            programId: id("prog-stale-write"),
+            routineId: id("pb-stale-routine"),
+            source: "community",
+            rowIds: [id("prog-stale-write-row")],
+          }),
+        ).rejects.toMatchObject({
+          code: "stale_write",
+        });
+      } finally {
+        ProgramsRepository.prototype.buildCreateBatchStatements = original;
+      }
     } finally {
       storage.close();
     }
