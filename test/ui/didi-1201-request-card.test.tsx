@@ -19,6 +19,7 @@ import {
 import {
   LIB_TAB_ALL,
   REQUEST_HEADING,
+  SEARCH_LABEL,
   SUBMIT_REQUEST,
   TRY_ALL_OR_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
@@ -110,6 +111,26 @@ describe("DIDI-1201 request card on All exercises empty states", () => {
       expect(screen.getByTestId("exercise-request-card")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Exercise")).toHaveValue("UniqueName");
+  });
+
+  it("clears the Exercise field when the search query is cleared after a no-match search", async () => {
+    renderAllExercises(
+      `${fillPhysioAppRoutePattern("exerciseSearch")}?q=UniqueName`,
+      emptyAllLibraryClient(),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exercise")).toHaveValue("UniqueName");
+    });
+
+    const user = userEvent.setup();
+    const search = screen.getByRole("searchbox", { name: SEARCH_LABEL });
+    await user.clear(search);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exercise")).toHaveValue("");
+    });
+    expect(screen.getByTestId("exercise-request-card")).toBeInTheDocument();
   });
 
   it("shows the request card when filters match nothing (state 3)", async () => {
