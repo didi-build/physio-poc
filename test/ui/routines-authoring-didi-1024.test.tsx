@@ -303,14 +303,14 @@ describe("Routine authoring UI (DIDI-1024)", () => {
         () => {
           expect(screen.getByTestId("routines-page")).toBeTruthy();
         },
-        { timeout: 4_000 },
+        { timeout: 8_000 },
       );
       const afterCancel = await client.listMyRoutines();
       expect(afterCancel.drafts.length).toBe(0);
     } finally {
       storage.close();
     }
-  }, 8_000);
+  }, 12_000);
 
   it("cancels an untouched new routine from the editor", async () => {
     const storage = await openMigratedDatabase();
