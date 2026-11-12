@@ -41,7 +41,9 @@ Account identity wiring belongs to DIDI-1172. "Kojo" and "Signed in as Kojo, phy
 | Search | Name, alias or body region. A matched alias is shown ("Matched alias:") |
 | Filters & sort | Collapsible, collapsed by default. Header shows a count of active filters and a one line summary when collapsed. Inside: Body region pills, Type dropdown, Sort (Most used, Newest, A to Z), Reset, Done |
 | Type dropdown | Strengthening & stretching (default), Strengthening (Isometric, concentric, eccentric), Stretching (Hold a stretch). One type always stays on |
-| No exact match | "No exact match for ..." with "Similar in the library and drafts" (library matches: Use this; drafts: View draft) and the request form underneath (see exercise-requests) |
+| No exact match | "No exact match for ..." with "Similar in the library and drafts" (library matches: Use this; drafts: View draft) and the request card underneath, Exercise prefilled from the search. With no similar results, the message sits inside the request card (see "DIDI-1200: Request card on All exercises empty states") |
+| All exercises empty | No search and 0 exercises, or no search and the filters match nothing: the request card with an empty Exercise field (DIDI-1200) |
+| My exercises empty | Unchanged, no request card: the message, "Try All exercises, or request it there." and "Search all exercises" (DIDI-1200; which message is DIDI-1057) |
 | Exercise details | Images and video, steps, cues per type, version, "Edit for everyone", "Edit my copy", "History (N)", "Report duplicate or merge", "Regenerate" with the daily count left |
 | Edit for everyone | Shared entry editor. Saving makes version N+1 for every practitioner; optional "What did you change?" note; "Changed" badges |
 | Version history | Every version with who, date, summary and changes; "Restore this version" with a confirm; restoring saves as a new version; merges are permanent |
@@ -58,6 +60,7 @@ Account identity wiring belongs to DIDI-1172. "Kojo" and "Signed in as Kojo, phy
 - Filters header: "Filters & sort"; groups "Body region", "Type", "Sort"; buttons "Reset", "Done".
 - Toast when the last type is removed: "Showing both types. At least one type stays on."
 - No exact match: "These look close. If one fits, use it instead of requesting a new one."
+- Request card (All exercises empty states only, DIDI-1200): "None of these? Request a new exercise" with similar results, otherwise "Request a new exercise"; "The AI drafts it for any practitioner to review and approve."; "Exercise"; "Note for the AI (optional)"; placeholder "For example: rehab version, supine"; button "Submit request". No new strings.
 - Edit for everyone banner: "This is the shared library entry. When you save, it becomes version N+1 for every practitioner." Button "Save as version N+1" ("No changes yet" until something changes).
 - Version history intro: "Every change to the shared entry is kept: text edits, regenerated images and video, and merges. Restoring an older version saves it as a new version, so nothing is lost. A merge can't be undone."
 - My copy: "Your edits sit on top of the library exercise. Only you see them. Anything you haven't edited follows the library." Field conflict: "The library changed this after you edited it", buttons "Use library version" / "Keep mine".
@@ -297,6 +300,24 @@ All states are rendered from the approved web revision 465225161508020224 (this 
 >
 > **Is/was:** was: not specified beyond "library rules like the exercise library" (Q3, 4:23-4:35 PM). Is: saved copies stay frozen, are flagged on community updates, and adopting is easy. No conflict with earlier direction; patient program copies are still edited one at a time, with no push (Q2b).
 
+**DIDI-594 description, entry I, "Request-exercise card on every empty Exercises state, flattened" (LOCKED, Nov 10, 2026)** (https://linear.app/didi-build/issue/DIDI-594), verbatim:
+
+> **I.** Diadem, directly in CTO's chat, Nov 10, 2026, 1:25 PM EST, about the Exercises page:
+>
+> "1) requesting a new exercise only shows up if there is something being searched. it makes sense to me if this shows up for any empty state (even when nothing is being searched)
+>
+> 2) visually, there are too many embedded layers (form inside a form inside a form)"
+
+Diadem, Nov 10, 2026, 2:07 PM ET, DIDI-594 entry I update 1 (is/was comment 93487fc0), picking variant C on DIDI-1200, verbatim: "C, however, this should only display on the "all exercise" tab (not my exercises)"
+
+Diadem, Nov 10, 2026, 2:09 PM ET, DIDI-594 entry I update 1 (is/was comment 93487fc0), answering "Approve C2 for the spec?", verbatim: "Yes, approve C2"
+
+| Topic | Was | Is |
+| -- | -- | -- |
+| When the request card shows | Only on All exercises when a search finds no exact match | On every All exercises empty state: search with no exact match, no search with 0 exercises, no search with filters that match nothing. Not on My exercises (2:07 PM) |
+| Exercise field | Read-only, the search text | Editable. Prefilled from the search when there is one; empty when there is no search |
+| Card nesting | Dashed card around a shaded box around a read-only Exercise box | One container (variant C2) |
+
 ## Copy inventory (verbatim from the approved source)
 
 Every user-facing string in the parts of the approved source that render this feature, in source order. `{...}` marks a value filled in at runtime (a name, a count, a version, a date). Sample data (exercise names, program names, dates) is example content, not copy.
@@ -523,6 +544,8 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+* Nov 10, 2026, 2:09 PM ET, DIDI-1200: Diadem approved C2 ("Yes, approve C2"). The Request a new exercise card shows on every All exercises empty state (search with no exact match, no search with 0 exercises, filters that match nothing) as one container, with the empty message inside it when there are no similar results. Exercise is editable: prefilled from the search, empty with no search; Submit request is disabled until it has text. My exercises empty states are unchanged and have no card ("C, however, this should only display on the "all exercise" tab (not my exercises)", 2:07 PM ET). PROPOSED strings: 0. Matches Product direction: yes. https://linear.app/didi-build/issue/DIDI-1200, https://linear.app/didi-build/issue/DIDI-594
+
 * Nov 6, 2026, 1:52 AM ET (America/Toronto), DIDI-1173 final approval in Designer's chat. Diadem's three answers, verbatim:
   1. "I approve moving Requests into the Kojo menu with three bottom tabs"
   2. "Keep the inbox icon on the Requests row"
@@ -578,3 +601,134 @@ DIDI-1114's exploration (comment `8c7b24a6-d542-41f0-b1bf-42d16d285178`, MagicPa
 * Sequence DIDI-1115 icon restoration and DIDI-1175 relocation so neither reintroduces a fourth tab; do not block the approved current-bar icon restoration or this approved relocation on the separate DIDI-1114 title/dark-mode work.
 * Coordinate the account-menu touch point with DIDI-1172 so identity follows the Google session. Do not infer impersonation or a data leak from the old Kojo fixture alone.
 * On eventual implementation, update the Shared layout and nav-copy lines in `design/README.md`, this `Navigation (whole app)` section, and the stale four-tab line in `design/app/routines/spec.md` together. Historical approved reference TSX and baseline screenshots remain provenance; do not silently overwrite the approved v12 record.
+
+## DIDI-1200: Request card on All exercises empty states
+
+**Matches Product direction: yes.** It follows DIDI-594 entry I update 1 (the card on every empty state, one container), narrowed by Diadem's 2:07 PM ET words to the All exercises tab only. The quotes are under "Locked Product direction" above.
+
+Design: C2, https://designs.magicpath.ai/v1/sparkling-sand-6261 (MagicPath project 470971882498322432, component 470981126777901056, revision 470981126777901057). Approved by Diadem, Nov 10, 2026, 2:09 PM ET: "Yes, approve C2".
+
+### When the card shows
+
+| # | State | Tab | Search | Filters | Card | Exercise field |
+| -- | -- | -- | -- | -- | -- | -- |
+| 1 | Search with no exact match | All exercises | Yes | Any | Yes | Prefilled from the search |
+| 2 | Library empty | All exercises | No | None | Yes | Empty |
+| 3 | Filters match nothing | All exercises | No | Active, 0 results | Yes | Empty |
+| 4 | My exercises empty | My exercises | No | None | No, unchanged | n/a |
+| 5 | My exercises search finds nothing | My exercises | Yes | Any | No, unchanged | n/a |
+| 6 | My exercises filters match nothing | My exercises | No | Active | No, unchanged | n/a |
+
+The card never shows when the All exercises list has results and there is no search, or when a search has an exact match (unchanged).
+
+### Layout: one container
+
+The dashed `.ex-request-shell`, the shaded `.ex-request-form` and the read-only `.ex-request-readonly` box are removed. There is one card, and everything sits directly on it:
+
+- Card: white, 1px solid slate-200 (`--shell-slate-200`) border, radius 1rem.
+  - Padding: 1rem below 1024 px, 1.5rem from 1024 px.
+  - Margin: 1.25rem below the Filters & sort panel (as `.ex-empty`). In state 1 with similar results, 1.25rem below the similar list.
+  - Section with `aria-labelledby` on the request heading.
+- Lead (the empty message), only when there are no similar results and a message exists (state 1 without similar results: "No exact match for "{query}"" and "It isn't in the library or in drafts yet."):
+  - Heading 1rem, weight 600, slate-900.
+  - Line 0.875rem, slate-600, 0.25rem below the heading.
+  - A 1px slate-100 divider under the lead, with 1rem above and below it.
+  - States 2 and 3 have no lead: the card starts with the request heading.
+- With similar results (state 1): "No exact match for "{query}"", "These look close. If one fits, use it instead of requesting a new one." and the "Similar in the library and drafts" list stay above the card, unchanged. The card holds only the request.
+- Request heading:
+  - Text: "None of these? Request a new exercise" with similar results, otherwise "Request a new exercise".
+  - Size: 1.125rem, weight 600. When it follows a lead, it is 1rem.
+  - Subtext "The AI drafts it for any practitioner to review and approve." is 0.875rem, slate-500, 0.25rem below.
+- Fields (a `form`, stacked, gap 0.75rem):
+  - Exercise: label "Exercise" (0.875rem, weight 500, slate-700), then an `.ex-input` text field (min height 2.75rem, radius 0.75rem, slate-200 border) 0.25rem below.
+  - Note: label "Note for the AI" with "(optional)" in slate-500 and normal weight, then an `.ex-input` with placeholder "For example: rehab version, supine".
+  - Submit request: `.ex-primary-btn`, full width of the fields column.
+  - Focus: the inputs show a teal-700 border and a 2px teal-700 ring at 30% opacity; the button uses the existing focus ring.
+
+| Width | Arrangement |
+| -- | -- |
+| Below 1024 px (390 px reference) | One column: lead (if any), request heading and subtext, then fields 1rem below |
+| 1024 px and up (1280 px reference) | Two columns inside the card, `grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr)`, gap 2rem. Left: lead (if any), request heading and subtext. Right: the fields, top-aligned with the left column |
+
+### Behaviour
+
+- **Exercise field.**
+  - With a search, it starts as the trimmed search text (state 1, and any search that finds no exact match). With no search, it starts empty (states 2 and 3).
+  - It is editable. Changing the search resets it to the new search text.
+  - It is not focused automatically. Mockup 02 shows the field's focus style only.
+- **Submit request** is disabled (`disabled`, opacity 0.5, not-allowed cursor) while the trimmed Exercise value is empty. No error message, so no new string.
+- **After submit.** The card content is replaced by the existing submitted panel ("Requested: {name}", "AI drafting", "View request") in the same single container. The existing conflict flow ("Someone submitted something similar") is unchanged.
+- **My exercises is unchanged.** No card. Each empty state keeps main's message, "Try All exercises, or request it there." and the primary "Search all exercises" button (`.ex-primary-btn`), which switches to All exercises and carries the search over, as today.
+
+### Copy inventory for this change
+
+No new or changed strings: PROPOSED strings: 0. All wording is reused verbatim from this spec's copy inventory and `src/ui/copy/exercise-library.ts`:
+- "No exact match for "{query}""
+- "These look close. If one fits, use it instead of requesting a new one."
+- "It isn't in the library or in drafts yet."
+- "Similar in the library and drafts"
+- "In library"
+- "Use this"
+- "Draft"
+- "Requested by"
+- "AI drafting"
+- "View draft"
+- "None of these? Request a new exercise"
+- "Request a new exercise"
+- "The AI drafts it for any practitioner to review and approve."
+- "Exercise"
+- "Note for the AI"
+- "(optional)"
+- "For example: rehab version, supine"
+- "Submit request"
+- "No saved exercises with these filters"
+- "Nothing in My exercises matches "{query}""
+- "Try All exercises, or request it there."
+- "Search all exercises"
+
+Sample data in the mockups, not copy: "copenhagen plank", "Side plank", "Adductor side plank", "Kojo", the filter summary "Ankle · Stretching · Most used", and the "0" in the All exercises intro.
+
+### Mockups
+
+Rendered from C2 (revision 470981126777901057). Phone PNGs are 390 px wide and desktop PNGs 1280 px wide. Heights follow the content. The app nav bar is not drawn.
+
+| State | Phone (390 px) | Desktop (1280 px) |
+| -- | -- | -- |
+| 00 C2 all states overview | [phone](mockups/didi-1200-00-c2-all-states-phone.png) | [desktop](mockups/didi-1200-00-c2-all-states-desktop.png) |
+| 01 all exercises search no match | [phone](mockups/didi-1200-01-all-exercises-search-no-match-phone.png) | [desktop](mockups/didi-1200-01-all-exercises-search-no-match-desktop.png) |
+| 02 all exercises empty no search | [phone](mockups/didi-1200-02-all-exercises-empty-no-search-phone.png) | [desktop](mockups/didi-1200-02-all-exercises-empty-no-search-desktop.png) |
+| 03 all exercises filters no match | [phone](mockups/didi-1200-03-all-exercises-filters-no-match-phone.png) | [desktop](mockups/didi-1200-03-all-exercises-filters-no-match-desktop.png) |
+| 04 my exercises empty, unchanged | [phone](mockups/didi-1200-04-my-exercises-empty-unchanged-phone.png) | [desktop](mockups/didi-1200-04-my-exercises-empty-unchanged-desktop.png) |
+| 05 my exercises search, DIDI-1057 option A, unchanged | [phone](mockups/didi-1200-05-my-exercises-search-didi-1057-a-unchanged-phone.png) | [desktop](mockups/didi-1200-05-my-exercises-search-didi-1057-a-unchanged-desktop.png) |
+| 06 my exercises search, DIDI-1057 option B, unchanged | [phone](mockups/didi-1200-06-my-exercises-search-didi-1057-b-unchanged-phone.png) | [desktop](mockups/didi-1200-06-my-exercises-search-didi-1057-b-unchanged-desktop.png) |
+| 07 my exercises filters, unchanged | [phone](mockups/didi-1200-07-my-exercises-filters-unchanged-phone.png) | [desktop](mockups/didi-1200-07-my-exercises-filters-unchanged-desktop.png) |
+
+Mockups 00 and 02 show the Exercise field's focus style. That is for reference only; nothing is autofocused. Mockups 04 to 07 record main's My exercises behaviour, so the implementation has a reference that nothing changes there.
+
+### Notes for Developer (DIDI-1201)
+
+All in `src/ui/exercise-library/ExerciseLibraryPage.tsx` unless noted.
+
+- **Show the card.** Render it when `tab === "all"`, the list is loaded and not failed, and either `showNoExactMatch` (:281) is true or there is no search and `allExercises.length === 0`. Keep `tab === "all"`: no card on My exercises.
+- **`submitRequest`** (:336-366): stop requiring `trimmedQuery`. Send `requested_name` from the Exercise field's trimmed value, and return early only when that value is empty. Keep `form_opened_at` and the conflict path unchanged.
+- **Exercise field state.** Keep it in its own state, seeded from `trimmedQuery` and reset when the search changes (the `searchParams` effect, :253-260).
+- **`RequestForm.tsx`.** Replace the read-only `.ex-request-readonly` div (:54-55) with a labelled `.ex-input` (with `htmlFor`). Disable Submit request when the trimmed value is empty. Move the lead message into the card when there are no similar results.
+- **CSS** (`src/ui/styles/exercise-library.css`):
+  - Retire the nesting: `.ex-request-shell` (:551-557, dashed) and `.ex-request-form` (:559-564, shaded) become one card (solid 1px slate-200, radius 1rem, padding as above). `.ex-request-readonly` (:575-582) is no longer used.
+  - Add the 1024 px two-column grid.
+- **My exercises.** Leave the My exercises branch (:433-536) as it is, including the primary "Search all exercises".
+- **Tests.**
+  - The card renders in states 1, 2 and 3.
+  - The card does not render in the My exercises states.
+  - Exercise is empty with no search and prefilled with one.
+  - Submit request is disabled when Exercise is empty.
+  - Submitting with no search sends the typed name.
+
+### Open items, not blocking
+
+- **DIDI-1057** (unanswered): which message My exercises shows when a search finds nothing.
+  - A: "Nothing in My exercises matches "{query}"" with "Try All exercises, or request it there."
+  - B: "No saved exercises with these filters"
+  - My exercises has no card either way (mockups 05 and 06).
+- **My exercises empty with no search and no filters.** Main shows "No saved exercises with these filters" here, because the ternary at :450-454 has identical branches, and no spec message exists for this case. This change keeps main's behaviour. A dedicated message would need Diadem's approval.
+- **"Search all exercises" with no search.** It opens the full All exercises list. When that list has results, the card does not show until a search finds nothing. Not changed here.

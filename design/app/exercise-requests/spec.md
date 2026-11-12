@@ -21,7 +21,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | State | What it shows |
 | -- | -- |
 | Search with similar | "Similar in the library and drafts" on the results page while searching, before the practitioner starts a request. Library matches: "Use this". Drafts in progress: "View draft" |
-| No match | "Request a new exercise" form: Exercise (prefilled from the search), "Note for the AI (optional)", "Submit request" |
+| No match | "Request a new exercise" card on every All exercises empty state: a search with no exact match (Exercise prefilled from the search), no search with 0 exercises, or filters that match nothing (Exercise empty). One container; Exercise is editable; "Note for the AI (optional)"; "Submit request", disabled until Exercise has text. Not on My exercises. See exercise-library "DIDI-1200: Request card on All exercises empty states" |
 | Requested | "It isn't in the library or in drafts yet." then AI drafting, "View request" |
 | Conflict on save | Only when someone else submitted something similar while this practitioner was filling in the form: page "Someone submitted something similar" with "Use this", "Merge my changes", "Submit anyway", "Back to edit" |
 | Requests and drafts | Only in-progress requests and drafts from every practitioner (nothing published). "Requested by" each one; "Review draft" |
@@ -31,7 +31,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 ## Key copy
 
 - Results: "Similar in the library and drafts"; "These look close. If one fits, use it instead of requesting a new one."
-- Form: "None of these? Request a new exercise" (or "Request a new exercise" with no similar results), "The AI drafts it for any practitioner to review and approve.", "Note for the AI (optional)", placeholder "For example: rehab version, supine", button "Submit request".
+- Form: "None of these? Request a new exercise" (or "Request a new exercise" with no similar results), "The AI drafts it for any practitioner to review and approve.", "Note for the AI (optional)", placeholder "For example: rehab version, supine", button "Submit request". The form is one card and shows on All exercises empty states only (DIDI-1200); no new strings.
 - Conflict: "Someone submitted something similar"; "While you were adding this, someone submitted something similar. Your request isn't submitted yet."; "Merge my changes adds your name and note to their draft, so there's one request."
 - Requests page: "Shared with all practitioners, so nobody requests the same exercise twice."; empty: "Nothing in progress. Approved exercises are in the library."
 - Approve toasts: "Approved. It left Requests and drafts, and it is in your My exercises as new." / "Approved. It left Requests and drafts. It is in All exercises, and in the requester's My exercises."
@@ -318,3 +318,4 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Oct 25, 2026**: v9 comment #12: similar results move to the search results page; conflict page only on save. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v10 comment #18: Requests and drafts shows only work in progress; approved requests go straight into My exercises. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change to this feature in v11 or v12. https://linear.app/didi-build/issue/DIDI-809
+- **Nov 10, 2026**: DIDI-1200 C2 approved by Diadem (2:09 PM ET). The request card shows on every All exercises empty state, not only on a search with no match, as a single container. Exercise is editable: prefilled from the search, empty with no search. Not on My exercises. No new strings. https://linear.app/didi-build/issue/DIDI-1200
