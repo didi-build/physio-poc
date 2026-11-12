@@ -375,13 +375,14 @@ export function RoutineDraftEditorPage({
 
   const persistRows = useCallback(
     async (next: RoutineExerciseRow[]) => {
-      if (!bodyRegionId) {
+      const regionId = bodyRegionIdRef.current;
+      if (!regionId) {
         return;
       }
       const routineId =
         effectiveRoutineId.length > 0
           ? effectiveRoutineId
-          : await ensureServerDraft(bodyRegionId);
+          : await ensureServerDraft(regionId);
       if (routineId.length === 0) {
         return;
       }

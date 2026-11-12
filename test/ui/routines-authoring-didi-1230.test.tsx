@@ -17,6 +17,11 @@ import { openMigratedDatabase } from "../helpers/exercise-sqlite-fixture.js";
 import { seedPractitioner } from "../helpers/exercise-sqlite-fixture.js";
 import { id } from "../helpers/opaque-test-ids.js";
 import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
+} from "../helpers/exercise-sqlite-fixture.js";
+import { seedApprovedExerciseForBuilder } from "../helpers/from-routine-http-fixture.js";
+import {
   appDepsForRoutinesHttpUi,
   createRoutinesHttpFetch,
 } from "../helpers/routines-http-ui-fixture.js";
@@ -26,20 +31,61 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function stubLibraryClient(): ExerciseLibraryClient {
+const LIBRARY_DETAILS_DELAY_MS = 600;
+
+function buildExerciseLibraryClient(
+  options: { delayedDetails?: boolean } = {},
+): ExerciseLibraryClient {
+  const details = {
+    exercise_id: FIXTURE_EXERCISE_ID,
+    exercise_version_id: FIXTURE_VERSION_ID,
+    version_number: 1,
+    category: "Stretching",
+    body_regions: ["knee"],
+    aliases: [],
+    allowed_prescription_types: ["stretching"],
+    usage_count: 0,
+    approved_at: "2026-01-01",
+    media_set_id: null,
+    in_my_exercises: false,
+    favourite: false,
+    library: { title: "Heel slide", cue_stretching: null },
+  };
   return {
     listMyExercises: vi.fn().mockResolvedValue({
       list_state: "ok",
       sections: { new_from_requests: [], pinned: [], recently_used_and_saved: [] },
     }),
     searchApproved: vi.fn().mockResolvedValue({
-      exercises: [],
+      exercises: [
+        {
+          exercise_id: FIXTURE_EXERCISE_ID,
+          exercise_version_id: FIXTURE_VERSION_ID,
+          exercise_name: "Heel slide",
+          category: "Stretching",
+          body_regions: ["knee"],
+          allowed_prescription_types: ["stretching"],
+          matched_alias: null,
+          usage_count: 0,
+        },
+      ],
       next_cursor: null,
       search_link: null,
-      total_count: 0,
+      total_count: 1,
     }),
-    getExerciseDetails: vi.fn(),
+    getExerciseDetails: options.delayedDetails
+      ? vi.fn().mockImplementation(async () => {
+          await new Promise((resolve) => {
+            setTimeout(resolve, LIBRARY_DETAILS_DELAY_MS);
+          });
+          return details;
+        })
+      : vi.fn().mockResolvedValue(details),
   } as unknown as ExerciseLibraryClient;
+}
+
+function stubLibraryClient(): ExerciseLibraryClient {
+  return buildExerciseLibraryClient();
 }
 
 function stubRequestsClient(): ExerciseRequestsClient {
@@ -160,6 +206,7 @@ type TrackingClientParts = {
   createdRoutineId: { current: string };
   routinePatchCount: { current: number };
   routinePatchNames: (string | null)[];
+  routinePatchRowCounts: number[];
 };
 
 function buildTrackingClient(
@@ -201,6 +248,7 @@ function buildTrackingClient(
   const createdRoutineId = { current: "" };
   const routinePatchCount = { current: 0 };
   const routinePatchNames: (string | null)[] = [];
+  const routinePatchRowCounts: number[] = [];
   const trackingFetch: FetchFn = async (input, init) => {
     const method = (init?.method ?? "GET").toUpperCase();
     const pathname = requestPath(input);
@@ -212,13 +260,21 @@ function buildTrackingClient(
       routinePatchCount.current += 1;
       if (typeof init?.body === "string") {
         try {
-          const parsed = JSON.parse(init.body) as { name?: string | null };
+          const parsed = JSON.parse(init.body) as {
+            name?: string | null;
+            rows?: unknown[];
+          };
           routinePatchNames.push(parsed.name === undefined ? null : parsed.name);
+          routinePatchRowCounts.push(
+            Array.isArray(parsed.rows) ? parsed.rows.length : 0,
+          );
         } catch {
           routinePatchNames.push(null);
+          routinePatchRowCounts.push(0);
         }
       } else {
         routinePatchNames.push(null);
+        routinePatchRowCounts.push(0);
       }
     }
     const response = await fetch(input, init);
@@ -241,13 +297,18 @@ function buildTrackingClient(
     createdRoutineId,
     routinePatchCount,
     routinePatchNames,
+    routinePatchRowCounts,
   };
 }
 
 function renderApp(
   path: string,
   client: RoutinesClient,
-  options: { historyEntries?: string[]; historyIndex?: number } = {},
+  options: {
+    historyEntries?: string[];
+    historyIndex?: number;
+    exerciseLibraryClient?: ExerciseLibraryClient;
+  } = {},
 ) {
   const entries = options.historyEntries ?? [path];
   const initialIndex = options.historyIndex ?? entries.length - 1;
@@ -255,7 +316,7 @@ function renderApp(
     <MemoryRouter initialEntries={entries} initialIndex={initialIndex}>
       <LocationSpy />
       <PhysioApp
-        exerciseLibraryClient={stubLibraryClient()}
+        exerciseLibraryClient={options.exerciseLibraryClient ?? stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient()}
         programsClient={stubProgramsClient()}
         routinesClient={client}
@@ -728,6 +789,86 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       const details = await client.getRoutineDetails(createdRoutineId.current);
       expect(details.draft!.name).toBe(routineName);
       expect(details.who_its_for).toBe(whoItsForText);
+    } finally {
+      storage.close();
+    }
+  }, 30_000);
+
+  it("add exercise while getExerciseDetails is pending keeps typed name on rows PATCH", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-add-rows"),
+        "add-rows@example.com",
+      );
+      await seedApprovedExerciseForBuilder(storage, author);
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "add-rows@example.com",
+      );
+      const routineName = "Knee mobility";
+      const { client, createdRoutineId, routinePatchNames, routinePatchRowCounts } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {});
+      const library = buildExerciseLibraryClient({ delayedDetails: true });
+      renderApp("/routines/new", client, { exerciseLibraryClient: library });
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      await userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/\/routines\/[^/]+\/edit$/);
+        },
+        { timeout: 15_000 },
+      );
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Add exercise/i })).toBeTruthy();
+      });
+      await userEvent.click(screen.getByRole("button", { name: /Add exercise/i }));
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "All exercises" })).toBeTruthy();
+      });
+      await userEvent.click(screen.getByRole("button", { name: "All exercises" }));
+      const addExercise = await screen.findByRole("button", {
+        name: "Add Heel slide",
+      });
+      void userEvent.click(addExercise);
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      await waitFor(
+        () => {
+          expect(screen.getByText("Heel slide")).toBeTruthy();
+        },
+        { timeout: 10_000 },
+      );
+      await waitFor(
+        () => {
+          const rowsPatchIndex = routinePatchRowCounts.findIndex((count) => count > 0);
+          expect(rowsPatchIndex).toBeGreaterThanOrEqual(0);
+          expect(routinePatchNames[rowsPatchIndex]).toBe(routineName);
+        },
+        { timeout: 10_000 },
+      );
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      await waitFor(
+        async () => {
+          const details = await client.getRoutineDetails(createdRoutineId.current);
+          expect(details.draft!.name).toBe(routineName);
+          expect(details.draft!.rows.length).toBe(1);
+        },
+        { timeout: 10_000 },
+      );
     } finally {
       storage.close();
     }
