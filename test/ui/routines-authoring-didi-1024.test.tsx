@@ -299,15 +299,18 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       });
       const cancel = await screen.findByRole("button", { name: "Cancel" });
       await userEvent.click(cancel);
-      expect(
-        await screen.findByTestId("routines-page", {}, { timeout: 5000 }),
-      ).toBeTruthy();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("routines-page")).toBeTruthy();
+        },
+        { timeout: 4_000 },
+      );
       const afterCancel = await client.listMyRoutines();
       expect(afterCancel.drafts.length).toBe(0);
     } finally {
       storage.close();
     }
-  });
+  }, 8_000);
 
   it("cancels an untouched new routine from the editor", async () => {
     const storage = await openMigratedDatabase();
