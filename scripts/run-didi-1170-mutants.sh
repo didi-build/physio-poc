@@ -8,7 +8,12 @@ mkdir -p "$(dirname "$OUT")"
 BASELINE_SHA="$(git rev-parse --short HEAD)"
 echo "baseline_sha=$BASELINE_SHA" >>"$OUT"
 echo "=== baseline npm run test ===" >>"$OUT"
-npm run test 2>&1 | rg "^ FAIL |Test Files|Tests  " >>"$OUT" || true
+set +e
+npm run test > /tmp/didi-1170-baseline.log 2>&1
+baseline_ec=$?
+set -e
+echo "exit_code: ${baseline_ec}" >>"$OUT"
+rg "^ FAIL |^ Test Files|^      Tests " /tmp/didi-1170-baseline.log >>"$OUT" || true
 echo "" >>"$OUT"
 
 FILES=(
@@ -26,16 +31,28 @@ restore() {
 
 record() {
   local id="$1"
-  echo "=== $id ===" >>"$OUT"
-  git diff --stat "${FILES[@]}" >>"$OUT" || true
-  git diff "${FILES[@]}" >>"$OUT" || true
-  npm run test 2>&1 | rg "^ FAIL |Test Files|Tests  " >>"$OUT" || true
+  local log="/tmp/didi-1170-test-${id}.log"
+  echo "=== ${id} ===" >>"$OUT"
+  if git diff --quiet -- "${FILES[@]}"; then
+    echo "diff_empty_before_test: yes" >>"$OUT"
+  else
+    echo "diff_empty_before_test: no" >>"$OUT"
+    git diff --stat "${FILES[@]}" >>"$OUT" || true
+    git diff "${FILES[@]}" >>"$OUT" || true
+  fi
+  set +e
+  npm run test >"${log}" 2>&1
+  local ec=$?
+  set -e
+  echo "exit_code: ${ec}" >>"$OUT"
+  rg "^ FAIL |^ Test Files|^      Tests " "${log}" >>"$OUT" || true
+  rg "^ FAIL " "${log}" >>"$OUT" || true
   restore
   if git diff --quiet -- "${FILES[@]}"; then
-    echo "clean: yes" >>"$OUT"
+    echo "revert_git_diff_quiet: yes" >>"$OUT"
   else
-    echo "clean: NO" >>"$OUT"
-    git status --short "${FILES[@]}" >>"$OUT"
+    echo "revert_git_diff_quiet: no" >>"$OUT"
+    git status --short "${FILES[@]}" >>"$OUT" || true
     restore
   fi
   echo "" >>"$OUT"
@@ -75,7 +92,7 @@ p.write_text(
 PY
 record M3a
 
-# M3b library route stale_write branch (only first occurrence in routines.ts errorResponse for library)
+# M3b library route stale_write branch
 python3 <<'PY'
 from pathlib import Path
 p = Path("src/http/routes/routines.ts")
@@ -123,7 +140,7 @@ p.write_text(text.replace(old, "", 1))
 PY
 record M4b
 
-# M5 publishDraft batch: drop draft publish minRowsAffected guards
+# M5 publishDraft batch: remove minRowsAffected guards only (not global 999)
 python3 <<'PY'
 from pathlib import Path
 p = Path("src/storage/repositories/routines.ts")
@@ -131,22 +148,17 @@ text = p.read_text()
 start = text.index("  buildPublishDraftBatchStatements(input: {")
 end = text.index("  async savePublishedVersion(input: {", start)
 chunk = text[start:end]
-chunk = chunk.replace("minRowsAffected: 1,", "minRowsAffected: 999,", 2)
+chunk = chunk.replace("        minRowsAffected: 1,\n", "")
 p.write_text(text[:start] + chunk + text[end:])
 PY
 record M5
 
-# M6 savePublishedVersion batch: drop expected published_version guard rows
+# M6 savePublishedVersion: remove routine published_version guard minRowsAffected only
 python3 <<'PY'
 from pathlib import Path
 p = Path("src/storage/repositories/routines.ts")
 text = p.read_text()
-text = text.replace(
-    "WHERE id = ? AND published_version = ?`,\n        bindings: [",
-    "WHERE id = ? AND published_version = ?`,\n        bindings: [",
-)
-text = text.replace(
-    """        bindings: [
+needle = """        bindings: [
           input.nextVersion,
           input.createdAt,
           input.conditionId,
@@ -155,24 +167,15 @@ text = text.replace(
           routineId,
           input.expectedPublishedVersion,
         ],
-        minRowsAffected: 1,""",
-    """        bindings: [
-          input.nextVersion,
-          input.createdAt,
-          input.conditionId,
-          input.bodyRegionId,
-          input.whoItsFor,
-          routineId,
-          input.expectedPublishedVersion,
-        ],
-        minRowsAffected: 999,""",
-    1,
-)
-p.write_text(text)
+        minRowsAffected: 1,
+      },
+      {
+        sql: `INSERT INTO routine_versions ("""
+p.write_text(text.replace(needle, needle.replace("        minRowsAffected: 1,\n", ""), 1))
 PY
 record M6
 
-# M7 saveFrozenCopy batch guard
+# M7 saveFrozenCopy: drop published_version pin in INSERT guard
 python3 <<'PY'
 from pathlib import Path
 p = Path("src/storage/repositories/routines.ts")
@@ -191,26 +194,38 @@ old = """      WHERE r.id = ? AND r.published_version = ? AND r.created_by = ?`,
           routineCreatedBy,
         ],
         minRowsAffected: 1,"""
-new = old.replace("minRowsAffected: 1,", "minRowsAffected: 999,", 1)
+new = """      WHERE r.id = ? AND r.created_by = ?`,
+        bindings: [
+          copyId,
+          input.practitionerId,
+          sourceRoutineVersionId,
+          input.sourceVersionNumber,
+          input.savedAt,
+          null,
+          0,
+          routineId,
+          routineCreatedBy,
+        ],
+        minRowsAffected: 1,"""
 p.write_text(text.replace(old, new, 1))
 PY
 record M7
 
-# M8 replaceSavedCopyFromPublished batch guard
+# M8 replaceSavedCopy: remove routines published_version batch guard before replace
 python3 <<'PY'
 from pathlib import Path
 p = Path("src/storage/repositories/routines.ts")
 text = p.read_text()
-old = """              WHERE id = ? AND practitioner_id = ? AND routine_id = ?`,
-        bindings: [
-          sourceRoutineVersionId,
-          input.sourceVersionNumber,
-          copyId,
-          input.practitionerId,
-          routineId,
-        ],
-        minRowsAffected: 1,"""
-new = old.replace("minRowsAffected: 1,", "minRowsAffected: 999,", 1)
+old = """      {
+        sql: `UPDATE routines SET draft_updated_at = draft_updated_at
+              WHERE id = ? AND published_version = ?`,
+        bindings: [routineId, input.sourceVersionNumber],
+        minRowsAffected: 1,
+      },
+      {
+        sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,"""
+new = """      {
+        sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,"""
 p.write_text(text.replace(old, new, 1))
 PY
 record M8

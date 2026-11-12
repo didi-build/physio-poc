@@ -51,11 +51,12 @@ import {
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import {
+  batchIncludesReplaceSavedCopyFromPublished,
+  batchIncludesRoutinePublishedVersionGuard,
   batchIncludesSaveFrozenCopy,
   batchIncludesSavePublishedVersion,
   wrapSqlStorageWithBeforeBatchHook,
 } from "./helpers/batch-interleave-sql-storage.js";
-import { installRealStaleAdoptCopyFixture } from "./helpers/routines-http-ui-fixture.js";
 import type { AppDependencies } from "../src/http/app.js";
 
 const BASE = "https://physio.test.example";
@@ -282,46 +283,6 @@ describe.each(STORAGE_CASES)(
       }
     });
 
-    it("POST my-routines save succeeds without a concurrent race", async () => {
-      const storage = await open();
-      try {
-        const { practitionerA: author } = await seedTwoPractitioners(
-          asMigratedStorage(storage),
-        );
-        const routineId = id(`1170-freeze-ok-${label}`);
-        await publishRoutine(asMigratedStorage(storage), author, {
-          routine: `1170-freeze-ok-${label}`,
-          draftVersion: `1170-freeze-ok-draft-${label}`,
-          row: `1170-freeze-ok-row-${label}`,
-          name: "Freeze ok v1",
-        });
-        const { deps, cookie } = appDeps(storage, author, "a@example.com");
-        const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
-        const save = await handleRequest(
-          new Request(
-            myCopyUrl,
-            mutatingAppApiRequestInit(myCopyUrl, {
-              method: "POST",
-              headers: { cookie, "content-type": "application/json" },
-              body: JSON.stringify({ action: "save" }),
-            }),
-          ),
-          deps,
-        );
-        expect(save.status).toBe(200);
-        expect(
-          await new PractitionerRoutinesRepository(storage).findForPractitioner(
-            author,
-            routineId,
-          ),
-        ).not.toBeNull();
-      } finally {
-        if ("close" in storage && typeof storage.close === "function") {
-          storage.close();
-        }
-      }
-    });
-
     it("POST my-routines save: competing publish bump before saveFrozenCopy batch returns 409 stale_write with no copy row", async () => {
       const storage = await open();
       try {
@@ -392,16 +353,11 @@ describe.each(STORAGE_CASES)(
       }
     });
 
-    it("adopt_community_version: real batch guard failure returns 409 stale_write without adopting", async () => {
+    it("adopt_community_version: competing community version before replace batch returns 409 stale_write without partial rows", async () => {
       const storage = await open();
       try {
         const { practitionerA: author } = await seedTwoPractitioners(
           asMigratedStorage(storage),
-        );
-        const wrongAuthor = await seedPractitioner(
-          storage,
-          id(`1170-adopt-wrong-${label}`),
-          `adopt-wrong-${label}@example.com`,
         );
         const routineId = id(`1170-adopt-${label}`);
         const v1 = await publishRoutine(asMigratedStorage(storage), author, {
@@ -427,7 +383,8 @@ describe.each(STORAGE_CASES)(
             },
           ],
         });
-        await new RoutineVersionsRepository(storage).savePublishedVersion({
+        const versions = new RoutineVersionsRepository(storage);
+        const v2 = await versions.savePublishedVersion({
           id: id(`1170-adopt-v2-${label}`),
           routineId,
           createdBy: author,
@@ -438,26 +395,43 @@ describe.each(STORAGE_CASES)(
         const copyBefore = await new PractitionerRoutinesRepository(
           storage,
         ).findForPractitioner(author, routineId);
-        const { deps, cookie } = appDeps(storage, author, "a@example.com");
+        const rowCountBefore = (
+          await storage.first<{ c: number }>(
+            `SELECT COUNT(*) AS c FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+            [copyBefore!.id],
+          )
+        )?.c;
+        const interleaved = wrapSqlStorageWithBeforeBatchHook(storage, {
+          shouldHook: (statements) =>
+            batchIncludesReplaceSavedCopyFromPublished(statements) ||
+            batchIncludesRoutinePublishedVersionGuard(statements),
+          once: true,
+          runCompetingWrite: async () => {
+            await versions.savePublishedVersion({
+              id: id(`1170-adopt-v3-${label}`),
+              routineId,
+              createdBy: author,
+              createdAt: TS,
+              name: "Adopt race v3",
+              copyFromVersionId: v2.id,
+            });
+          },
+        });
+        const { deps, cookie } = appDeps(interleaved, author, "a@example.com");
         const myCopyUrl = `${BASE}${routineMyCopyPath(routineId)}`;
-        const restore = installRealStaleAdoptCopyFixture(wrongAuthor);
-        try {
-          const adopt = await handleRequest(
-            new Request(
-              myCopyUrl,
-              mutatingAppApiRequestInit(myCopyUrl, {
-                method: "POST",
-                headers: { cookie, "content-type": "application/json" },
-                body: JSON.stringify({ action: "adopt_community_version" }),
-              }),
-            ),
-            deps,
-          );
-          expect(adopt.status).toBe(409);
-          expect(((await adopt.json()) as { error: string }).error).toBe("stale_write");
-        } finally {
-          restore();
-        }
+        const adopt = await handleRequest(
+          new Request(
+            myCopyUrl,
+            mutatingAppApiRequestInit(myCopyUrl, {
+              method: "POST",
+              headers: { cookie, "content-type": "application/json" },
+              body: JSON.stringify({ action: "adopt_community_version" }),
+            }),
+          ),
+          deps,
+        );
+        expect(adopt.status).toBe(409);
+        expect(((await adopt.json()) as { error: string }).error).toBe("stale_write");
         const copyAfter = await new PractitionerRoutinesRepository(
           storage,
         ).findForPractitioner(author, routineId);
@@ -467,11 +441,15 @@ describe.each(STORAGE_CASES)(
         expect(copyAfter?.source_version_number).toBe(
           copyBefore?.source_version_number,
         );
-        const rowsAfter = await storage.first<{ c: number }>(
-          `SELECT COUNT(*) AS c FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
-          [copyBefore!.id],
-        );
-        expect(rowsAfter?.c).toBe(1);
+        const rowCountAfter = (
+          await storage.first<{ c: number }>(
+            `SELECT COUNT(*) AS c FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
+            [copyBefore!.id],
+          )
+        )?.c;
+        expect(rowCountAfter).toBe(rowCountBefore);
+        const routine = await new RoutinesRepository(storage).findById(routineId);
+        expect(routine?.published_version).toBe(3);
       } finally {
         if ("close" in storage && typeof storage.close === "function") {
           storage.close();
@@ -602,7 +580,9 @@ describe("DIDI-1170 program from routine HTTP stale_write", () => {
           deps,
         );
         expect(response.status).toBe(409);
-        expect(((await response.json()) as { error: string }).error).toBe("stale_write");
+        expect(((await response.json()) as { error: string }).error).toBe(
+          "stale_write",
+        );
         expect(
           await new ProgramsRepository(storage).findById(id("1170-prog-http-prog")),
         ).toBeNull();

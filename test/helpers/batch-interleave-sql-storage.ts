@@ -59,3 +59,16 @@ export function batchIncludesReplaceSavedCopyFromPublished(
       statement.minRowsAffected === 1,
   );
 }
+
+export function batchIncludesRoutinePublishedVersionGuard(
+  statements: readonly SqlBatchStatement[],
+): boolean {
+  return statements.some(
+    (statement) =>
+      statement.sql.includes(
+        "UPDATE routines SET draft_updated_at = draft_updated_at",
+      ) &&
+      statement.sql.includes("WHERE id = ? AND published_version = ?") &&
+      statement.minRowsAffected === 1,
+  );
+}

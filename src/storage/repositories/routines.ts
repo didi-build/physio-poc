@@ -1404,6 +1404,12 @@ export class PractitionerRoutinesRepository {
     );
     return [
       {
+        sql: `UPDATE routines SET draft_updated_at = draft_updated_at
+              WHERE id = ? AND published_version = ?`,
+        bindings: [routineId, input.sourceVersionNumber],
+        minRowsAffected: 1,
+      },
+      {
         sql: `DELETE FROM practitioner_routine_rows WHERE practitioner_routine_id = ?`,
         bindings: [copyId],
       },
