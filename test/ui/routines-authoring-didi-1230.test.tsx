@@ -5,7 +5,8 @@ import "./setup.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 import { PhysioApp } from "../../src/ui/App.js";
 import { ExerciseLibraryClient } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-client.js";
@@ -15,7 +16,6 @@ import { ROUTINES_AUTHORING_COLLECTION_PATH } from "../../src/routine-authoring-
 import {
   BACK_ROUTINES,
   BODY_REGION,
-  DONE_FOR_NOW,
   ROUTINE_NAME_PLACEHOLDER,
 } from "../../src/ui/copy/routines.js";
 import { CANCEL } from "../../src/ui/copy/my-defaults.js";
@@ -64,11 +64,25 @@ function stubProgramsClient(): ProgramsClient {
 
 const LOCATION_PROBE = "location-spy";
 const ROUTINE_SETUP_DELAY_MS = 250;
+const locationHistory: string[] = [];
 
 function LocationSpy() {
   const location = useLocation();
+  useEffect(() => {
+    locationHistory.push(location.pathname);
+  }, [location.pathname]);
   return <div data-testid={LOCATION_PROBE}>{location.pathname}</div>;
 }
+
+function expectLocationHistoryNeverIncludesDraftEdit() {
+  expect(
+    locationHistory.some((pathname) => /\/routines\/[^/]+\/edit$/.test(pathname)),
+  ).toBe(false);
+}
+
+beforeEach(() => {
+  locationHistory.length = 0;
+});
 
 function requestPath(input: RequestInfo | URL): string {
   const raw =
@@ -93,6 +107,22 @@ function withDelay(baseFetch: FetchFn, rule: DelayRule): FetchFn {
     const method = (init?.method ?? "GET").toUpperCase();
     const pathname = requestPath(input);
     if (method === rule.method && rule.match(pathname)) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS);
+      });
+    }
+    return baseFetch(input, init);
+  };
+}
+
+function withDelayedUntouchedCancelDelete(baseFetch: FetchFn): FetchFn {
+  return async (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const pathname = requestPath(input);
+    if (
+      method === "DELETE" &&
+      pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
+    ) {
       await new Promise((resolve) => {
         setTimeout(resolve, ROUTINE_SETUP_DELAY_MS);
       });
@@ -126,6 +156,18 @@ function expectNeverOnDraftEditPath() {
   expect(pathname).not.toMatch(/\/routines\/[^/]+\/edit$/);
 }
 
+async function assertStaysOnRoutinesListThroughSetupDelay() {
+  await waitFor(
+    () => {
+      const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+      expect(pathname).toBe("/routines");
+      expect(pathname).not.toMatch(/\/routines\/[^/]+\/edit$/);
+      expect(screen.getByTestId("routines-page")).toBeTruthy();
+    },
+    { timeout: ROUTINE_SETUP_DELAY_MS + 2_000 },
+  );
+}
+
 describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
   afterEach(async () => {
     await new Promise((resolve) => {
@@ -147,7 +189,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         "post-delay@example.com",
       );
       const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(baseFetch, {
+      const delayedFetch = withDelay(withDelayedUntouchedCancelDelete(baseFetch), {
         method: "POST",
         match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
       });
@@ -182,6 +224,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
       expectNeverOnDraftEditPath();
+      await assertStaysOnRoutinesListThroughSetupDelay();
       await waitFor(
         () => {
           expect(createdRoutineId.length).toBeGreaterThan(0);
@@ -189,6 +232,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         },
         { timeout: 10_000 },
       );
+      expectLocationHistoryNeverIncludesDraftEdit();
       const list = await client.listMyRoutines();
       expect(list.drafts.length).toBe(0);
       try {
@@ -216,7 +260,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         "patch-delay@example.com",
       );
       const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(baseFetch, {
+      const delayedFetch = withDelay(withDelayedUntouchedCancelDelete(baseFetch), {
         method: "PATCH",
         match: (p) =>
           p.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
@@ -248,18 +292,25 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       });
       const group = screen.getByRole("group", { name: BODY_REGION });
       void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
+      await waitFor(
+        () => {
+          expect(createdRoutineId.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
       await userEvent.click(screen.getByRole("button", { name: CANCEL }));
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
       expectNeverOnDraftEditPath();
+      await assertStaysOnRoutinesListThroughSetupDelay();
       await waitFor(
         () => {
-          expect(createdRoutineId.length).toBeGreaterThan(0);
           expect(deleteRoutineIds).toEqual([createdRoutineId]);
         },
         { timeout: 10_000 },
       );
+      expectLocationHistoryNeverIncludesDraftEdit();
       const list = await client.listMyRoutines();
       expect(list.drafts.length).toBe(0);
       try {
@@ -321,9 +372,11 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
       expectNeverOnDraftEditPath();
+      await assertStaysOnRoutinesListThroughSetupDelay();
       await waitFor(() => {
         expect(deleteRoutineIds.length).toBe(1);
       });
+      expectLocationHistoryNeverIncludesDraftEdit();
       const list = await client.listMyRoutines();
       expect(list.drafts.length).toBe(0);
     } finally {
@@ -381,9 +434,11 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
       expectNeverOnDraftEditPath();
+      await assertStaysOnRoutinesListThroughSetupDelay();
       await waitFor(() => {
         expect(deleteRoutineIds.length).toBe(1);
       });
+      expectLocationHistoryNeverIncludesDraftEdit();
       const list = await client.listMyRoutines();
       expect(list.drafts.length).toBe(0);
     } finally {
@@ -434,11 +489,15 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       await userEvent.type(nameInput, routineName);
       const group = screen.getByRole("group", { name: BODY_REGION });
       void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
-      await userEvent.click(screen.getByRole("button", { name: DONE_FOR_NOW }));
+      const navLinks = screen.getAllByRole("link", { name: BACK_ROUTINES });
+      const shellNav = navLinks.find((link) =>
+        link.className.includes("shell-tab-link"),
+      );
+      expect(shellNav).toBeTruthy();
+      await userEvent.click(shellNav!);
       await waitFor(() => {
-        const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
-        expect(pathname).toMatch(/^\/routines\/[^/]+$/);
-        expect(pathname).not.toMatch(/\/edit$/);
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+        expect(screen.getByTestId(LOCATION_PROBE)).toHaveTextContent("/routines");
       });
       await waitFor(
         async () => {
