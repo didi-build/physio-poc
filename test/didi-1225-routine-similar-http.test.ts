@@ -110,6 +110,11 @@ async function createRoutineWithExercises(
     });
   }
   if (seeds.publish) {
+    const { attachPublishableMediaToVersion } =
+      await import("./helpers/exercise-sqlite-fixture.js");
+    for (const versionId of seeds.versionIds) {
+      await attachPublishableMediaToVersion(storage, versionId);
+    }
     await versions.publishDraft({
       routineId,
       authorId,

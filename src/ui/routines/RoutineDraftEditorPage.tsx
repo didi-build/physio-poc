@@ -55,7 +55,10 @@ import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 import { isClientDraftUntouched } from "./routine-draft-untouched.js";
-import { buildRoutineRowFromExerciseDetails } from "./routine-row-utils.js";
+import {
+  buildRoutineRowFromExerciseDetails,
+  reindexRoutineRows,
+} from "./routine-row-utils.js";
 
 type DraftEditorSnapshot = RoutineDetailsDraft & {
   condition_options: RoutineConditionOption[];
@@ -103,6 +106,8 @@ export function RoutineDraftEditorPage({
     PublishValidationIssue[] | null
   >(null);
   const [publishBusy, setPublishBusy] = useState(false);
+  const [serverMissingImagesBlock, setServerMissingImagesBlock] = useState(false);
+  const [missingImagesFocusHeading, setMissingImagesFocusHeading] = useState(false);
   const [newDraftBootstrap, setNewDraftBootstrap] = useState<NewDraftBootstrap | null>(
     null,
   );
@@ -458,6 +463,8 @@ export function RoutineDraftEditorPage({
 
   const tryPublish = () => {
     setValidationIssues(null);
+    setServerMissingImagesBlock(false);
+    setMissingImagesFocusHeading(false);
     setPublishOpen(true);
   };
 
@@ -483,6 +490,14 @@ export function RoutineDraftEditorPage({
         if (error instanceof RoutinesAuthoringError && error.validationIssues) {
           setValidationIssues(error.validationIssues);
           setPublishOpen(false);
+          return;
+        }
+        if (
+          error instanceof RoutinesAuthoringError &&
+          error.code === "missing_images_block_publish"
+        ) {
+          setServerMissingImagesBlock(true);
+          setMissingImagesFocusHeading(true);
           return;
         }
         setPublishOpen(false);
@@ -749,6 +764,8 @@ export function RoutineDraftEditorPage({
         conditionLabel={selectedConditionLabel}
         rows={rows}
         publishBusy={publishBusy}
+        serverMissingImagesBlock={serverMissingImagesBlock}
+        missingImagesFocusHeading={missingImagesFocusHeading}
         onClose={() => {
           setPublishOpen(false);
         }}
@@ -756,6 +773,14 @@ export function RoutineDraftEditorPage({
         onNotYet={() => {
           setPublishOpen(false);
           showToast({ message: KEPT_AS_DRAFT });
+        }}
+        onRemoveMissingImagesRow={(position) => {
+          const next = reindexRoutineRows(
+            rows.filter((row) => row.position !== position),
+          );
+          setRows(next);
+          setServerMissingImagesBlock(false);
+          void persistRows(next);
         }}
       />
     </section>

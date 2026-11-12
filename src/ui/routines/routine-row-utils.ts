@@ -1,6 +1,7 @@
 import { GLOBAL_TYPE_DEFAULTS_SEED } from "../../domain/global-type-defaults-seed.js";
 import type { PrescriptionType } from "../../domain/exercise-types.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
+import { exerciseVersionLacksStartOrEndImage } from "../../domain/exercise-publish-media.js";
 import type { RoutineExerciseRow } from "../../services/routines/types.js";
 
 export function defaultPrescriptionTypeForExercise(
@@ -25,6 +26,9 @@ export function buildRoutineRowFromExerciseDetails(
     exercise_name: details.library.title,
     prescription_type: prescriptionType,
     params: { ...GLOBAL_TYPE_DEFAULTS_SEED[prescriptionType] },
+    lacks_start_or_end_image: exerciseVersionLacksStartOrEndImage({
+      media_set_id: details.media_set_id,
+    }),
   };
 }
 

@@ -10,6 +10,7 @@ import { publishApiUserMessage } from "./publish-api-user-message.js";
 import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
 import { PublishPlaceholderNotice } from "./PublishPlaceholderNotice.js";
+import { PublishMissingImagesNotice } from "./PublishMissingImagesNotice.js";
 import {
   customExpiresOnIsBeforeEarliestPickable,
   initialPublishExpiryChoice,
@@ -57,6 +58,7 @@ export type PublishSheetProps = {
   }) => void;
   onNotYet: () => void;
   onRemovePlaceholder: (rowId: string) => void;
+  onRemoveMissingImagesRow?: (rowId: string) => void;
 };
 
 export function PublishSheet({
@@ -72,10 +74,12 @@ export function PublishSheet({
   onPublished,
   onNotYet,
   onRemovePlaceholder,
+  onRemoveMissingImagesRow,
 }: PublishSheetProps) {
   const titleId = useId();
   const nameHelpId = useId();
   const placeholderNoticeId = useId();
+  const missingImagesNoticeId = useId();
   const [expiry, setExpiry] = useState<ShareLinkExpiresIn>(
     initialPublishExpiryChoice(shareView),
   );
@@ -84,10 +88,22 @@ export function PublishSheet({
   const [publishBusy, setPublishBusy] = useState(false);
   const [copyHint, setCopyHint] = useState("");
   const [placeholderNoticeCleared, setPlaceholderNoticeCleared] = useState(false);
+  const [missingImagesNoticeCleared, setMissingImagesNoticeCleared] = useState(false);
+  const [serverMissingImagesBlock, setServerMissingImagesBlock] = useState(false);
+  const [missingImagesFocusHeading, setMissingImagesFocusHeading] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
   const placeholders = useMemo(
     () => program.rows.filter((row) => row.kind === "placeholder"),
+    [program.rows],
+  );
+  const missingImageRows = useMemo(
+    () =>
+      program.rows
+        .filter(
+          (row) => row.kind === "exercise" && row.lacks_start_or_end_image === true,
+        )
+        .map((row) => ({ id: row.id, title: row.text_snapshot.title })),
     [program.rows],
   );
 
@@ -100,6 +116,7 @@ export function PublishSheet({
   const trimmedName = nameDraft.trim();
   const nameInvalid = trimmedName.length === 0;
   const placeholdersBlock = placeholders.length > 0;
+  const missingImagesBlock = missingImageRows.length > 0 || serverMissingImagesBlock;
   const staleSavedCustom = savedCustomExpiryIsStale(shareView);
   const customExpiryPickInvalid =
     expiry === SHARE_LINK_EXPIRES_IN.custom_date &&
@@ -113,6 +130,7 @@ export function PublishSheet({
     publishBusy ||
     nameInvalid ||
     placeholdersBlock ||
+    missingImagesBlock ||
     program.rows.length === 0 ||
     customExpiryPickInvalid ||
     closedPathStaleCustom;
@@ -126,6 +144,9 @@ export function PublishSheet({
     setExpiryTouched(false);
     setCopyHint("");
     setPlaceholderNoticeCleared(false);
+    setMissingImagesNoticeCleared(false);
+    setServerMissingImagesBlock(false);
+    setMissingImagesFocusHeading(false);
     setPublishError(null);
   }, [open, shareView]);
 
@@ -187,6 +208,17 @@ export function PublishSheet({
       });
     } catch (error) {
       if (error instanceof ProgramsApiError) {
+        if (error.code === "missing_images_block_publish") {
+          try {
+            const refreshed = await client.getProgramByCode(program.code);
+            onProgramUpdated(refreshed);
+          } catch {
+            // Keep current program view if refresh fails.
+          }
+          setServerMissingImagesBlock(true);
+          setMissingImagesFocusHeading(true);
+          return;
+        }
         const message = publishApiUserMessage(error);
         if (message) {
           setPublishError(message);
@@ -197,7 +229,14 @@ export function PublishSheet({
     }
   };
 
-  const publishDescribedBy = placeholdersBlock ? placeholderNoticeId : undefined;
+  const publishDescribedByIds = [
+    placeholdersBlock || placeholderNoticeCleared ? placeholderNoticeId : null,
+    missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock
+      ? missingImagesNoticeId
+      : null,
+  ].filter((id): id is string => id !== null);
+  const publishDescribedBy =
+    publishDescribedByIds.length > 0 ? publishDescribedByIds.join(" ") : undefined;
 
   return (
     <ConfirmSheet
@@ -254,6 +293,27 @@ export function PublishSheet({
               onRemovePlaceholder(rowId);
               if (before === 1) {
                 setPlaceholderNoticeCleared(true);
+              }
+            }}
+          />
+        </div>
+      ) : null}
+
+      {missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock ? (
+        <div id={missingImagesNoticeId}>
+          <PublishMissingImagesNotice
+            rows={missingImageRows}
+            showRepublishLine={
+              !isFirstPublish && program.auto_save_status.kind === "unpublished_changes"
+            }
+            publishedAt={shareView?.published_at ?? null}
+            focusHeading={missingImagesFocusHeading}
+            onRemove={(rowId) => {
+              const before = missingImageRows.length;
+              onRemoveMissingImagesRow?.(rowId);
+              if (before === 1) {
+                setMissingImagesNoticeCleared(true);
+                setServerMissingImagesBlock(false);
               }
             }}
           />

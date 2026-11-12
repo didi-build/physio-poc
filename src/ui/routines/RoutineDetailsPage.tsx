@@ -80,8 +80,19 @@ import { formatListDate } from "../exercise-library/library-filters.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
+import { reindexRoutineRows } from "./routine-row-utils.js";
 
 type SourceView = "community" | "mine";
+
+function draftRowsPayload(rows: RoutineExerciseRow[]) {
+  return rows.map((row) => ({
+    position: row.position,
+    exercise_id: row.exercise_id,
+    exercise_version_id: row.exercise_version_id,
+    prescription_type: row.prescription_type,
+    params: row.params,
+  }));
+}
 
 const TYPE_LABELS: Record<string, string> = {
   stretching: "Stretching",
@@ -115,6 +126,10 @@ export function RoutineDetailsPage() {
   const [source, setSource] = useState<SourceView>("community");
   const [draftPublishOpen, setDraftPublishOpen] = useState(false);
   const [draftPublishBusy, setDraftPublishBusy] = useState(false);
+  const [draftServerMissingImagesBlock, setDraftServerMissingImagesBlock] =
+    useState(false);
+  const [draftMissingImagesFocusHeading, setDraftMissingImagesFocusHeading] =
+    useState(false);
   const [draftValidation, setDraftValidation] = useState<
     PublishValidationIssue[] | null
   >(null);
@@ -210,6 +225,8 @@ export function RoutineDetailsPage() {
     };
     const onDraftPublish = () => {
       setDraftValidation(null);
+      setDraftServerMissingImagesBlock(false);
+      setDraftMissingImagesFocusHeading(false);
       setDraftPublishOpen(true);
     };
     const confirmDraftPublish = () => {
@@ -229,10 +246,35 @@ export function RoutineDetailsPage() {
             setDraftPublishOpen(false);
             return;
           }
+          if (
+            error instanceof RoutinesAuthoringError &&
+            error.code === "missing_images_block_publish"
+          ) {
+            setDraftServerMissingImagesBlock(true);
+            setDraftMissingImagesFocusHeading(true);
+            return;
+          }
           setDraftPublishOpen(false);
         })
         .finally(() => {
           setDraftPublishBusy(false);
+        });
+    };
+    const removeDraftMissingImagesRow = (position: number) => {
+      const next = reindexRoutineRows(
+        details.draft.rows.filter((row) => row.position !== position),
+      );
+      setDraftServerMissingImagesBlock(false);
+      void client
+        .autosaveRoutineDraft(routineId, {
+          name: details.draft.name,
+          who_its_for: details.who_its_for,
+          condition_id: details.condition_id,
+          body_region_id: details.body_region_id,
+          rows: draftRowsPayload(next),
+        })
+        .then(() => {
+          load();
         });
     };
 
@@ -311,6 +353,8 @@ export function RoutineDetailsPage() {
           conditionLabel={details.condition_label}
           rows={details.draft.rows}
           publishBusy={draftPublishBusy}
+          serverMissingImagesBlock={draftServerMissingImagesBlock}
+          missingImagesFocusHeading={draftMissingImagesFocusHeading}
           onClose={() => {
             setDraftPublishOpen(false);
           }}
@@ -319,6 +363,7 @@ export function RoutineDetailsPage() {
             setDraftPublishOpen(false);
             showToast({ message: KEPT_AS_DRAFT });
           }}
+          onRemoveMissingImagesRow={removeDraftMissingImagesRow}
         />
       </section>
     );
