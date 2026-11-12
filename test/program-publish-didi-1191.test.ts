@@ -8,10 +8,7 @@ import {
   PUBLIC_SHARE_LINK_UNAVAILABLE_VIEW,
   type PublicShareLinkOpenView,
 } from "../src/services/programs/program-publish-service.js";
-import {
-  PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
-  PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY,
-} from "../src/services/programs/public-share-link-media.js";
+import { PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY } from "../src/services/programs/public-share-link-media.js";
 import {
   ProgramRowsRepository,
   ProgramsRepository,
@@ -328,9 +325,7 @@ describe("DIDI-1191 public share link media (integration)", () => {
         );
         expect(response.status).toBe(200);
         expect(response.headers.get("content-type")).toBe("image/png");
-        expect(response.headers.get("cache-control")).toBe(
-          PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
-        );
+        expect(response.headers.get("cache-control")).toBe("private, max-age=300");
         expect(response.headers.get("x-content-type-options")).toBe("nosniff");
         const bytes = new Uint8Array(await response.arrayBuffer());
         expect(bytes).toEqual(PNG_BYTES);
@@ -364,9 +359,7 @@ describe("DIDI-1191 public share link media (integration)", () => {
       expect(unknown.status).toBe(404);
       const unknownBody = await unknown.text();
       expect(unknownBody).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
-      expect(unknown.headers.get("cache-control")).toBe(
-        PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
-      );
+      expect(unknown.headers.get("cache-control")).toBe("private, max-age=300");
       expect(unknown.headers.get("x-content-type-options")).toBe("nosniff");
 
       const open = await handleRequest(new Request(`${BASE}${mediaPath}`), deps);
@@ -442,6 +435,7 @@ describe("DIDI-1191 public share link media (integration)", () => {
         objects,
       );
       const otherVersionId = id("ver-not-on-snapshot");
+      const otherMediaSetId = id("ms-not-on-snapshot");
       await storage.run(VERSION_INSERT_SQL, [
         ...versionInsertBindings({
           id: otherVersionId,
@@ -452,6 +446,21 @@ describe("DIDI-1191 public share link media (integration)", () => {
           approved_at: TS,
         }),
       ]);
+      const otherStart = `media-sets/${otherMediaSetId}/start.png`;
+      const otherEnd = `media-sets/${otherMediaSetId}/end.png`;
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [otherMediaSetId, otherStart, otherEnd, null, "public", TS],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        otherMediaSetId,
+        otherVersionId,
+      ]);
+      const media = new PrefixMediaStorage(objects);
+      await media.putImage(otherStart, PNG_BYTES, "image/png", "public");
+      await media.putImage(otherEnd, PNG_BYTES, "image/png", "public");
       const deps = apiDeps(storage, objects, practitionerId);
       const response = await handleRequest(
         new Request(
@@ -511,23 +520,21 @@ describe("DIDI-1191 public share link media (integration)", () => {
       });
       await seedExerciseRow(storage, programId, practitionerId);
       const mediaSetId = id("ms-1191-private");
+      const startKey = `media-sets/${mediaSetId}/start.png`;
+      const endKey = `media-sets/${mediaSetId}/end.png`;
       await storage.run(
         `INSERT INTO exercise_media_sets (
           id, start_object_key, end_object_key, start_provider_url, visibility, created_at
         ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          mediaSetId,
-          `media-sets/${mediaSetId}/start.png`,
-          `media-sets/${mediaSetId}/end.png`,
-          null,
-          "draft",
-          TS,
-        ],
+        [mediaSetId, startKey, endKey, null, "draft", TS],
       );
       await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
         mediaSetId,
         FIXTURE_VERSION_ID,
       ]);
+      const media = new PrefixMediaStorage(objects);
+      await media.putImage(startKey, PNG_BYTES, "image/png", "public");
+      await media.putImage(endKey, PNG_BYTES, "image/png", "public");
       const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
       const result = await publish.publishProgram(practitionerId, programId);
       const token = decodeURIComponent(result.share_link.split("/l/")[1]!);
@@ -546,9 +553,7 @@ describe("DIDI-1191 public share link media (integration)", () => {
       );
       expect(response.status).toBe(404);
       expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
-      expect(response.headers.get("cache-control")).toBe(
-        PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
-      );
+      expect(response.headers.get("cache-control")).toBe("private, max-age=300");
       expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     } finally {
       storage.close();

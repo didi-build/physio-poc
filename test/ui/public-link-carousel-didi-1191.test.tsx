@@ -5,6 +5,8 @@ import "./setup.js";
 import "../../src/ui/styles/public-link-page.css";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicLinkExerciseCarousel } from "../../src/ui/link-page/PublicLinkExerciseCarousel.js";
 import { PUBLIC_LINK_CAROUSEL_START } from "../../src/copy/programs-share.js";
@@ -66,6 +68,11 @@ describe("PublicLinkExerciseCarousel unit (DIDI-1191)", () => {
           ".link-page-carousel--reduced-motion .link-page-carousel-indicator",
         ),
       ).not.toBeNull();
+      const cssPath = path.join(process.cwd(), "src/ui/styles/public-link-page.css");
+      const css = readFileSync(cssPath, "utf8");
+      expect(css).toMatch(
+        /\.link-page-carousel--reduced-motion \.link-page-carousel-indicator\s*\{[^}]*transition:\s*none/,
+      );
     } finally {
       window.matchMedia = originalMatchMedia;
     }

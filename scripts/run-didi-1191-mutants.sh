@@ -18,20 +18,20 @@ FILES=(
 )
 
 restore() {
-  git checkout -- "${FILES[@]}"
+  git restore --source=HEAD --worktree --staged -- "${FILES[@]}" 2>/dev/null || git checkout -- "${FILES[@]}"
 }
 
 run_suite() {
-  set +e
   local suite_log
   suite_log="$(mktemp)"
+  set +e
   npm run test >"$suite_log" 2>&1
   local exit_code=$?
   set -e
-  echo "$exit_code"
   rg "^ FAIL " "$suite_log" || true
   rg "^Test Files" "$suite_log" || true
   rg "^Tests  " "$suite_log" || true
+  echo "SUITE_EXIT:${exit_code}"
   rm -f "$suite_log"
 }
 
@@ -56,9 +56,9 @@ record() {
   local suite_output
   suite_output="$(run_suite)"
   local exit_code
-  exit_code="$(echo "$suite_output" | head -n1)"
-  echo "suite_exit: $exit_code" >>"$OUT"
-  echo "$suite_output" | tail -n +2 >>"$OUT"
+  exit_code="$(echo "$suite_output" | rg '^SUITE_EXIT:' | cut -d: -f2)"
+  echo "suite_exit: ${exit_code:-?}" >>"$OUT"
+  echo "$suite_output" | rg -v '^SUITE_EXIT:' >>"$OUT" || true
   restore
   git diff --quiet -- "${FILES[@]}"
   local revert_exit=$?
@@ -66,10 +66,15 @@ record() {
   echo "" >>"$OUT"
 }
 
-# M1 open-link identity (superseded closed token must 404)
-perl -0pi -e 's/const openLink = await links\.findOpenByProgramId\(program\.id\);\n  if \(!openLink \|\| openLink\.id !== link\.id\) \{\n    return null;\n  \}\n//s' \
+# M1 closed share-link gate (one-open-per-program makes open-link id check redundant)
+perl -0pi -e 's/if \(link\.closed_at !== null\) \{\n    return null;\n  \}\n//s' \
   src/services/programs/public-share-link-gate.ts
-record M1 "Drop open-link identity gate (stale token while a newer link is open)"
+record M1 "Drop closed_at gate on share link media"
+
+# M1b open-link identity (distinct from closed_at under idx_share_links_one_open_per_program)
+perl -0pi -e 's/if \(!openLink \|\| openLink\.id !== link\.id\) \{\n    return null;\n  \}\n/if (false) { return null; }/s' \
+  src/services/programs/public-share-link-gate.ts
+record M1b "Disable open-link identity gate (equivalent under one-open-per-program)"
 
 # M2 expiry gate
 perl -0pi -e 's/if \(linkIsExpired\(link, requestTime\)\) \{\n    return null;\n  \}\n//s' \
@@ -147,17 +152,17 @@ perl -0pi -e 's/\{slideCaption \? \(\n        <p className="link-page-carousel-c
 record M15 "Remove caption below indicators (spec 3e regression)"
 
 # M16 indicator transition under reduced motion (spec 3f)
-sed -i '/link-page-carousel--reduced-motion .link-page-carousel-indicator/d' \
+perl -0pi -e 's/\.link-page-carousel--reduced-motion \.link-page-carousel-indicator \{\n  transition: none;\n\}\n\n//s' \
   src/ui/styles/public-link-page.css
 record M16 "Keep indicator colour transition under reduced motion"
 
 # M17 auto-focus Try again on load failed (spec 3g)
-perl -0pi -e 's/if \(loadFailed \|\| missingMedia\) \{/useEffect(() => { if (loadFailed || missingMedia) tryAgainRef.current?.focus(); }, [loadFailed, missingMedia]);\n  if (loadFailed || missingMedia) {/s' \
+perl -0pi -e 's/if \(loadFailed\) \{/useEffect(() => { if (loadFailed) tryAgainRef.current?.focus(); }, [loadFailed]);\n  if (loadFailed) {/s' \
   src/ui/link-page/PublicLinkExerciseCarousel.tsx
-record M17 "Auto-focus Try again when media is missing or load failed"
+record M17 "Auto-focus Try again when media load failed"
 
 # M18 render carousel with empty src when media failed (spec 3h)
-perl -0pi -e 's/if \(loadFailed \|\| missingMedia\) \{/if (false \&\& (loadFailed || missingMedia)) {/' \
+perl -0pi -e 's/if \(loadFailed\) \{/if (false \&\& loadFailed) {/' \
   src/ui/link-page/PublicLinkExerciseCarousel.tsx
 record M18 "Skip load-failed guard (spec 3h regression)"
 

@@ -26,8 +26,14 @@ for (let i = 0; i < blocks.length; i += 2) {
   const diffNonempty = body.match(/^diff_nonempty: (yes|NO)$/m)?.[1] ?? "?";
   const suiteExit = body.match(/^suite_exit: (\d+)$/m)?.[1] ?? "?";
   const revertExit = body.match(/^revert_exit: (\d+)$/m)?.[1] ?? "?";
-  const testFilesLine = body.match(/^Test Files\s+(.+)$/m)?.[1]?.trim() ?? "";
-  const testsLine = body.match(/^Tests\s+(.+)$/m)?.[1]?.trim() ?? "";
+  const testFilesLine =
+    body.match(/^Test Files\s+(.+)$/m)?.[0]?.trim() ??
+    body.match(/^ Test Files\s+(.+)$/m)?.[0]?.trim() ??
+    "";
+  const testsLine =
+    body.match(/^Tests\s+(.+)$/m)?.[0]?.trim() ??
+    body.match(/^ Tests\s+(.+)$/m)?.[0]?.trim() ??
+    "";
 
   const failLines = [...body.matchAll(/^ FAIL\s+(.+)$/gm)].map((m) => m[1].trim());
   const kills = failLines.filter((name) => DIDI_1191_KILL.test(name));
