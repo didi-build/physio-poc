@@ -364,6 +364,10 @@ describe("DIDI-1191 public share link media (integration)", () => {
       expect(unknown.status).toBe(404);
       const unknownBody = await unknown.text();
       expect(unknownBody).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+      expect(unknown.headers.get("cache-control")).toBe(
+        PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
+      );
+      expect(unknown.headers.get("x-content-type-options")).toBe("nosniff");
 
       const open = await handleRequest(new Request(`${BASE}${mediaPath}`), deps);
       expect(open.status).toBe(200);
@@ -462,6 +466,36 @@ describe("DIDI-1191 public share link media (integration)", () => {
     }
   });
 
+  it("returns 404 for a closed link token when a newer open link exists for the program", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1191-superseded-token");
+      const closedToken = await publishOpenProgram(
+        storage,
+        programId,
+        practitionerId,
+        objects,
+      );
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      await publish.closeShareLink(practitionerId, programId);
+      const republished = await publish.publishProgram(practitionerId, programId);
+      expect(republished.share_link).not.toContain(closedToken);
+      const deps = apiDeps(storage, objects, practitionerId);
+      const response = await handleRequest(
+        new Request(
+          `${BASE}${publicShareLinkMediaApiPath(closedToken, FIXTURE_VERSION_ID, "start")}`,
+        ),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns 404 when media is not in the approved public set", async () => {
     const storage = await openMigratedDatabase();
     const objects = new InMemoryObjectStorage();
@@ -503,6 +537,41 @@ describe("DIDI-1191 public share link media (integration)", () => {
       );
       const jsonBody = (await json.json()) as PublicShareLinkOpenView;
       expect(jsonBody.rows[0]?.media).toBeNull();
+      const deps = apiDeps(storage, objects, practitionerId);
+      const response = await handleRequest(
+        new Request(
+          `${BASE}${publicShareLinkMediaApiPath(token, FIXTURE_VERSION_ID, "start")}`,
+        ),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+      expect(response.headers.get("cache-control")).toBe(
+        PUBLIC_SHARE_LINK_MEDIA_CACHE_CONTROL,
+      );
+      expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 404 when the pinned snapshot version is not approved", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const token = await publishOpenProgram(
+        storage,
+        id("prog-1191-draft-version"),
+        practitionerId,
+        objects,
+      );
+      await storage.run(
+        `UPDATE exercise_versions
+         SET status = ?, approved_by = NULL, approved_at = NULL
+         WHERE id = ?`,
+        ["draft", FIXTURE_VERSION_ID],
+      );
       const deps = apiDeps(storage, objects, practitionerId);
       const response = await handleRequest(
         new Request(

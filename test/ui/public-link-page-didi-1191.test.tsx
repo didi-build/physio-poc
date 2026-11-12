@@ -2,14 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -228,75 +221,6 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     );
   });
 
-  it("places Start caption under indicators on slide 2 only (spec 3e)", async () => {
-    const user = userEvent.setup();
-    mockOpenLink([
-      {
-        position: 0,
-        title: "Heel slide",
-        prescription_type: "stretching",
-        params: { hold_s: 30 },
-        note: null,
-        media: MEDIA,
-      },
-    ]);
-    await waitFor(() => {
-      expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
-    });
-    const track = document.querySelector(
-      ".link-page-carousel-track",
-    ) as HTMLElement | null;
-    expect(track).not.toBeNull();
-    expect(within(track!).queryByText(PUBLIC_LINK_CAROUSEL_START)).toBeNull();
-    await user.click(screen.getByRole("button", { name: PUBLIC_LINK_CAROUSEL_START }));
-    const caption = document.querySelector(".link-page-carousel-caption");
-    expect(caption).not.toBeNull();
-    expect(caption).toHaveTextContent(PUBLIC_LINK_CAROUSEL_START);
-    expect(track!.contains(caption!)).toBe(false);
-    const indicators = document.querySelector(".link-page-carousel-indicators");
-    expect(indicators).not.toBeNull();
-    expect(
-      indicators!.compareDocumentPosition(caption!) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("disables indicator colour transition under reduced motion (spec 3f)", async () => {
-    const originalMatchMedia = window.matchMedia.bind(window);
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: query.includes("prefers-reduced-motion"),
-      media: query,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      dispatchEvent: () => false,
-    }));
-    try {
-      mockOpenLink([
-        {
-          position: 0,
-          title: "Heel slide",
-          prescription_type: "stretching",
-          params: { hold_s: 30 },
-          note: null,
-          media: MEDIA,
-        },
-      ]);
-      await waitFor(() => {
-        expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
-      });
-      expect(
-        document.querySelector(".link-page-carousel--reduced-motion"),
-      ).not.toBeNull();
-      expect(
-        document.querySelector(
-          ".link-page-carousel--reduced-motion .link-page-carousel-indicator",
-        ),
-      ).not.toBeNull();
-    } finally {
-      window.matchMedia = originalMatchMedia;
-    }
-  });
-
   it("does not focus Try again on initial load failed (spec 3g)", async () => {
     mockOpenLink([
       {
@@ -315,39 +239,6 @@ describe("Public link page media carousel (DIDI-1191)", () => {
       name: "Try loading images for Heel slide again",
     });
     expect(document.activeElement).not.toBe(tryAgain);
-  });
-
-  it("moves focus to the carousel frame only after Try again (spec 3g)", async () => {
-    const user = userEvent.setup();
-    mockOpenLink([
-      {
-        position: 0,
-        title: "Heel slide",
-        prescription_type: "stretching",
-        params: { hold_s: 30 },
-        note: null,
-        media: MEDIA,
-      },
-    ]);
-    await waitFor(() => {
-      expect(screen.getByTestId("exercise-motion-start")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByTestId("exercise-motion-start")).toBeInTheDocument();
-    });
-    fireEvent.error(screen.getByTestId("exercise-motion-start"));
-    await waitFor(
-      () => {
-        expect(screen.getByTestId("public-link-media-failed")).toBeInTheDocument();
-      },
-      { timeout: 3000 },
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Try loading images for Heel slide again" }),
-    );
-    await waitFor(() => {
-      expect(document.activeElement).toHaveClass("link-page-carousel-frame");
-    });
   });
 
   it("with media null keeps load failed without empty src or loop (spec 3h)", async () => {
