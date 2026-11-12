@@ -122,30 +122,36 @@ describe("Public link page media carousel (DIDI-1191)", () => {
   });
 
   it("does not show Pause video on slide 1 when reduced motion is preferred", async () => {
-    vi.stubGlobal(
-      "matchMedia",
-      vi.fn().mockImplementation((query: string) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        addEventListener: () => undefined,
-        removeEventListener: () => undefined,
-      })),
-    );
-    mockOpenLink([
-      {
-        position: 0,
-        title: "Heel slide",
-        prescription_type: "stretching",
-        params: { hold_s: 30 },
-        note: null,
-        media: MEDIA,
-      },
-    ]);
-    await waitFor(() => {
-      expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
-    });
-    expect(screen.queryByRole("button", { name: ARIA_PAUSE_EXERCISE_VIDEO })).toBeNull();
-    expect(screen.getByTestId("exercise-motion-loop")).toBeNull();
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }));
+    try {
+      mockOpenLink([
+        {
+          position: 0,
+          title: "Heel slide",
+          prescription_type: "stretching",
+          params: { hold_s: 30 },
+          note: null,
+          media: MEDIA,
+        },
+      ]);
+      await waitFor(() => {
+        expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
+      });
+      expect(
+        screen.queryByRole("button", { name: ARIA_PAUSE_EXERCISE_VIDEO }),
+      ).toBeNull();
+      expect(screen.queryByTestId("exercise-motion-loop")).toBeNull();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   it("marks the expiry footer as screen-only chrome", async () => {
