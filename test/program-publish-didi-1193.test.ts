@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -9,6 +9,7 @@ import {
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
   PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+  ProgramRepositoryError,
   ProgramRowsRepository,
   ProgramsRepository,
   ShareLinksRepository,
@@ -262,6 +263,105 @@ describe("program publish missing images DIDI-1193", () => {
       expect(body.message).not.toBe(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
     } finally {
       storage.close();
+    }
+  });
+
+  it("repository publish blocks missing media raced into the guarded publish batch", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1193-guard-batch");
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Guarded batch",
+      });
+      await seedApprovedExerciseVersionWithMedia(storage, practitionerId);
+      await addProgramRow(storage, programId, id("row-1193-guard"));
+      const before = await snapshotPublishContractState(storage, programId);
+      vi.spyOn(
+        programs,
+        "programHasExerciseRowsLackingPublishMedia",
+      ).mockImplementationOnce(async () => false);
+      const baseBatch = storage.batch.bind(storage);
+      let stripped = false;
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        if (
+          !stripped &&
+          statements.some((statement) =>
+            statement.sql.includes("published_version = draft_version"),
+          )
+        ) {
+          stripped = true;
+          await storage.run(
+            `UPDATE exercise_versions SET media_set_id = NULL WHERE id = ?`,
+            [FIXTURE_VERSION_ID],
+          );
+        }
+        return baseBatch(statements);
+      });
+      await expect(programs.publish(programId, TS)).rejects.toThrow(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+      );
+      await expect(programs.publish(programId, TS)).rejects.toBeInstanceOf(
+        ProgramRepositoryError,
+      );
+      expect(await snapshotPublishContractState(storage, programId)).toEqual(before);
+    } finally {
+      storage.close();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("repository republish blocks missing media raced into guarded batch and keeps link settings", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1193-guard-repub");
+      const programs = new ProgramsRepository(storage);
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Guarded republish",
+      });
+      await seedApprovedExerciseVersionWithMedia(storage, practitionerId);
+      await addProgramRow(storage, programId, id("row-1193-guard-repub"));
+      await publish.publishProgram(practitionerId, programId, {
+        linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.never },
+      });
+      const before = await snapshotPublishContractState(storage, programId);
+      const baseBatch = storage.batch.bind(storage);
+      let stripped = false;
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        if (
+          !stripped &&
+          statements.some((statement) =>
+            statement.sql.includes("published_version = draft_version"),
+          )
+        ) {
+          stripped = true;
+          await storage.run(
+            `UPDATE exercise_versions SET media_set_id = NULL WHERE id = ?`,
+            [FIXTURE_VERSION_ID],
+          );
+        }
+        return baseBatch(statements);
+      });
+      await expect(
+        programs.publish(programId, TS, {
+          linkExpiry: { expiresIn: SHARE_LINK_EXPIRES_IN.one_week },
+          practitionerId,
+          expiryNow: new Date(TS),
+        }),
+      ).rejects.toThrow(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE);
+      expect(await snapshotPublishContractState(storage, programId)).toEqual(before);
+    } finally {
+      storage.close();
+      vi.restoreAllMocks();
     }
   });
 

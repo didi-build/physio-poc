@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublishSheet } from "../../src/ui/programs/PublishSheet.js";
 import { ProgramsApiError, ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { MISSING_IMAGES_BLOCK_HEADING } from "../../src/ui/copy/program-publish.js";
@@ -48,6 +48,10 @@ const baseProgram: ProgramBuilderView = {
 };
 
 describe("Publish sheet missing images DIDI-1193", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("disables Publish now and shows advisory notice", () => {
     render(
       <PublishSheet
@@ -111,7 +115,7 @@ describe("Publish sheet missing images DIDI-1193", () => {
       ),
     );
     vi.spyOn(client, "getProgramByCode").mockResolvedValue(programWithMedia);
-    render(
+    const view = render(
       <PublishSheet
         open
         program={programWithMedia}
@@ -127,15 +131,20 @@ describe("Publish sheet missing images DIDI-1193", () => {
         onRemovePlaceholder={() => {}}
       />,
     );
-    const publishNow = screen
+    const publishNow = within(view.container)
       .getAllByRole("button", { name: "Publish now" })
       .find((button) => button.classList.contains("pg-btn--primary"));
+    expect(publishNow).toHaveProperty("disabled", false);
     await userEvent.click(publishNow!);
+    const notice = await within(view.container).findByTestId(
+      "publish-missing-images-notice",
+    );
     expect(
-      await within(
-        screen.getAllByTestId("publish-missing-images-notice")[0]!,
-      ).findByRole("heading", { name: MISSING_IMAGES_BLOCK_HEADING }),
+      within(notice).getByRole("heading", { name: MISSING_IMAGES_BLOCK_HEADING }),
     ).toBeTruthy();
-    expect(publishNow).toHaveProperty("disabled", true);
+    const publishAfter = within(view.container)
+      .getAllByRole("button", { name: "Publish now" })
+      .find((button) => button.classList.contains("pg-btn--primary"));
+    expect(publishAfter).toHaveProperty("disabled", true);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -184,6 +184,139 @@ describe("routine publish missing images DIDI-1193", () => {
       ).toBeNull();
     } finally {
       storage.close();
+    }
+  });
+
+  it("repository publishDraft blocks missing media raced into guarded batch", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const routineId = id("rt-1193-guard-draft");
+      const draftVersionId = id("rt-1193-guard-draft-ver");
+      await seedApprovedExerciseVersionWithMedia(storage, author);
+      await seedAuthorDraft(
+        storage,
+        author,
+        routineId,
+        draftVersionId,
+        id("rt-row-guard"),
+      );
+      const versions = new RoutineVersionsRepository(storage);
+      const before = await new RoutinesRepository(storage).findById(routineId);
+      vi.spyOn(versions, "exerciseVersionsLackPublishMedia").mockImplementationOnce(
+        async () => false,
+      );
+      const baseBatch = storage.batch.bind(storage);
+      let stripped = false;
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        if (
+          !stripped &&
+          statements.some((statement) =>
+            statement.sql.includes("UPDATE routine_versions SET status = ?"),
+          )
+        ) {
+          stripped = true;
+          await storage.run(
+            `UPDATE exercise_versions SET media_set_id = NULL WHERE id = ?`,
+            [FIXTURE_VERSION_ID],
+          );
+        }
+        return baseBatch(statements);
+      });
+      await expect(
+        versions.publishDraft({
+          routineId,
+          authorId: author,
+          publishedAt: TS,
+          name: "Guarded",
+        }),
+      ).rejects.toMatchObject({
+        code: "missing_images_block_publish",
+        message: PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+      });
+      const after = await new RoutinesRepository(storage).findById(routineId);
+      expect(after?.published_version).toBe(before?.published_version);
+      expect(after?.published_version).toBeNull();
+    } finally {
+      storage.close();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("repository savePublishedVersion blocks missing media raced into guarded batch", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const routineId = id("rt-1193-guard-save");
+      const draftVersionId = id("rt-1193-guard-save-draft");
+      await seedApprovedExerciseVersionWithMedia(storage, author);
+      await seedAuthorDraft(
+        storage,
+        author,
+        routineId,
+        draftVersionId,
+        id("rt-row-guard-save"),
+      );
+      const versions = new RoutineVersionsRepository(storage);
+      await versions.publishDraft({
+        routineId,
+        authorId: author,
+        publishedAt: TS,
+        name: "Live v1",
+      });
+      const live = await versions.findPublishedVersion(routineId, 1);
+      const beforePublished = (
+        await new RoutinesRepository(storage).findById(routineId)
+      )?.published_version;
+      vi.spyOn(versions, "exerciseVersionsLackPublishMedia").mockImplementationOnce(
+        async () => false,
+      );
+      const baseBatch = storage.batch.bind(storage);
+      let stripped = false;
+      vi.spyOn(storage, "batch").mockImplementation(async (statements) => {
+        if (
+          !stripped &&
+          statements.some(
+            (statement) =>
+              statement.sql.includes("UPDATE routines SET published_version = ?") &&
+              statement.sql.includes("WHERE id = ? AND published_version = ?"),
+          )
+        ) {
+          stripped = true;
+          await storage.run(
+            `UPDATE exercise_versions SET media_set_id = NULL WHERE id = ?`,
+            [FIXTURE_VERSION_ID],
+          );
+        }
+        return baseBatch(statements);
+      });
+      await expect(
+        versions.savePublishedVersion({
+          id: id("rt-1193-guard-save-v2"),
+          routineId,
+          createdBy: author,
+          createdAt: TS,
+          name: "Live v2",
+          copyFromVersionId: live!.id,
+          rows: [
+            {
+              id: id("rt-row-guard-save-v2"),
+              position: 0,
+              exerciseId: FIXTURE_EXERCISE_ID,
+              exerciseVersionId: FIXTURE_VERSION_ID,
+              prescriptionType: "stretching",
+              params: { hold_s: 30, per_day: { min: 1, max: 2 }, days_per_week: 7 },
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({ code: "missing_images_block_publish" });
+      expect(
+        (await new RoutinesRepository(storage).findById(routineId))?.published_version,
+      ).toBe(beforePublished);
+      expect(await versions.findPublishedVersion(routineId, 2)).toBeNull();
+    } finally {
+      storage.close();
+      vi.restoreAllMocks();
     }
   });
 
