@@ -109,6 +109,10 @@ export function RoutineDraftEditorPage({
   const [newDraftBootstrapFailed, setNewDraftBootstrapFailed] = useState(false);
   const hydratedRef = useRef(false);
   const createDraftPromiseRef = useRef<Promise<string> | null>(null);
+  const newDraftSetupAbandonedRef = useRef(false);
+  const newDraftSetupCompleteRef = useRef(false);
+  const setupCancelDoneRef = useRef(false);
+  const touchStateRef = useRef(true);
 
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -250,6 +254,10 @@ export function RoutineDraftEditorPage({
       if (!isNewDraft) {
         return;
       }
+      if (newDraftSetupAbandonedRef.current) {
+        return;
+      }
+      newDraftSetupCompleteRef.current = true;
       navigate(
         fillPhysioAppRoutePattern("routineDraftEdit", {
           routineId,
@@ -302,6 +310,54 @@ export function RoutineDraftEditorPage({
     conditionId,
     rowsCount: rows.length,
   });
+  touchStateRef.current = untouched;
+
+  const finalizeAbandonedNewDraftSetup = useCallback(() => {
+    const promise = createDraftPromiseRef.current;
+    if (!promise || setupCancelDoneRef.current) {
+      return;
+    }
+    void promise
+      .then((routineId) => {
+        if (newDraftSetupCompleteRef.current) {
+          return;
+        }
+        if (!newDraftSetupAbandonedRef.current) {
+          return;
+        }
+        if (!touchStateRef.current) {
+          return;
+        }
+        if (setupCancelDoneRef.current) {
+          return;
+        }
+        setupCancelDoneRef.current = true;
+        return client.cancelUntouchedRoutineDraft(routineId);
+      })
+      .catch(() => {
+        /* draft create failed or page tore down */
+      });
+  }, [client]);
+
+  useEffect(() => {
+    if (!isNewDraft) {
+      return;
+    }
+    return () => {
+      if (newDraftSetupCompleteRef.current || newDraftSetupAbandonedRef.current) {
+        return;
+      }
+      if (!createDraftPromiseRef.current) {
+        return;
+      }
+      if (!touchStateRef.current) {
+        newDraftSetupAbandonedRef.current = true;
+        return;
+      }
+      newDraftSetupAbandonedRef.current = true;
+      finalizeAbandonedNewDraftSetup();
+    };
+  }, [finalizeAbandonedNewDraftSetup, isNewDraft]);
 
   const draftHeading =
     name.trim().length === 0 && rows.length === 0 ? NEW_ROUTINE : EDIT_DRAFT;
@@ -363,8 +419,11 @@ export function RoutineDraftEditorPage({
   const onBodyRegionSelect = (regionId: string) => {
     setBodyRegionId(regionId);
     void ensureServerDraft(regionId)
-      .then((routineId) =>
-        client
+      .then((routineId) => {
+        if (newDraftSetupAbandonedRef.current) {
+          return null;
+        }
+        return client
           .autosaveRoutineDraft(routineId, {
             name: name.trim().length > 0 ? name.trim() : null,
             who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
@@ -372,11 +431,17 @@ export function RoutineDraftEditorPage({
             body_region_id: regionId,
             rows: rowsPayload(rows),
           })
-          .then(() => routineId),
-      )
+          .then(() => routineId);
+      })
       .then((routineId) => {
+        if (!routineId || newDraftSetupAbandonedRef.current) {
+          return;
+        }
         autoSave.markSaved();
         goToDraftEditUrl(routineId);
+      })
+      .catch(() => {
+        /* setup abandoned or request failed after leave */
       });
   };
 
@@ -420,7 +485,13 @@ export function RoutineDraftEditorPage({
 
   const onLeave = () => {
     if (untouched) {
+      if (isNewDraft) {
+        newDraftSetupAbandonedRef.current = true;
+      }
       if (effectiveRoutineId.length === 0) {
+        if (isNewDraft && createDraftPromiseRef.current) {
+          finalizeAbandonedNewDraftSetup();
+        }
         navigate(routinesListPath, { replace: true });
         return;
       }
@@ -477,7 +548,27 @@ export function RoutineDraftEditorPage({
 
   return (
     <section className="ex-page rt-authoring" aria-labelledby="rt-authoring-title">
-      <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
+      <Link
+        to={fillPhysioAppRoutePattern("routines")}
+        className="ex-back-link"
+        onClick={(event) => {
+          if (
+            !isNewDraft ||
+            !untouched ||
+            (!createDraftPromiseRef.current && effectiveRoutineId.length === 0)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          newDraftSetupAbandonedRef.current = true;
+          if (effectiveRoutineId.length === 0) {
+            finalizeAbandonedNewDraftSetup();
+          } else {
+            void client.cancelUntouchedRoutineDraft(effectiveRoutineId);
+          }
+          navigate(routinesListPath, { replace: true });
+        }}
+      >
         {BACK_ROUTINES}
       </Link>
       <div className="rt-authoring-title-row">
