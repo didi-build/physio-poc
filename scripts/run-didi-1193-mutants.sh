@@ -63,6 +63,23 @@ if bindings_old not in text:
 text = text.replace(bindings_old, bindings_new, 1)
 p.write_text(text)
 PY
+python3 <<'PY'
+from pathlib import Path
+p = Path("src/services/programs/program-publish-service.ts")
+old = """    if (
+      await this.programs.programHasExerciseRowsLackingPublishMedia(validatedProgramId)
+    ) {
+      throw new ProgramPublishServiceError(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+        "missing_images_block_publish",
+      );
+    }
+"""
+if old not in p.read_text():
+    raise SystemExit("M4 service pre-check missing")
+text = p.read_text().replace(old, "", 1)
+p.write_text(text)
+PY
 record M4-guard-outside-program-batch
 
 # M5: remove missing-images NOT EXISTS from routine publishDraft batch
@@ -86,6 +103,24 @@ text = text.replace(
 )
 p.write_text(text)
 PY
+python3 <<'PY'
+from pathlib import Path
+p = Path("src/storage/repositories/routines.ts")
+old = """    if (
+      await this.exerciseVersionsLackPublishMedia(
+        rows.map((row) => row.exercise_version_id),
+      )
+    ) {
+      throw new RoutineRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE, {
+        code: "missing_images_block_publish",
+      });
+    }
+"""
+text = p.read_text()
+if old not in text:
+    raise SystemExit("M5 pre-check missing")
+p.write_text(text.replace(old, "", 1))
+PY
 record M5-skip-routine-publish-guard
 
 # M6: skip missing-images guard on routine republish (pre-check and batch)
@@ -93,15 +128,20 @@ python3 <<'PY'
 from pathlib import Path
 p = Path("src/storage/repositories/routines.ts")
 text = p.read_text()
+marker = "    const exerciseVersionIds = input.rows"
+idx = text.find(marker)
+if idx < 0:
+    raise SystemExit("M6 marker missing")
 pre = """    if (await this.exerciseVersionsLackPublishMedia(exerciseVersionIds)) {
       throw new RoutineRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE, {
         code: "missing_images_block_publish",
       });
     }
 """
-if pre not in text:
+idx_pre = text.find(pre, idx)
+if idx_pre < 0:
     raise SystemExit("M6 pre-check missing")
-text = text.replace(pre, "", 1)
+text = text[:idx_pre] + text[idx_pre + len(pre) :]
 old = """    const mediaGuard = exerciseVersionLacksPublishMediaInClause(
       input.exerciseVersionIds,
     );
