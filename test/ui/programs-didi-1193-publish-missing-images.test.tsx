@@ -110,10 +110,7 @@ describe("Publish sheet missing images DIDI-1193", () => {
         MISSING_IMAGES_BLOCK_HEADING,
       ),
     );
-    vi.spyOn(client, "getProgramByCode").mockResolvedValue({
-      ...programWithMedia,
-      rows: [exerciseRow("row-1", true)],
-    });
+    vi.spyOn(client, "getProgramByCode").mockResolvedValue(programWithMedia);
     render(
       <PublishSheet
         open

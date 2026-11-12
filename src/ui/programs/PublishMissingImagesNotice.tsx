@@ -19,6 +19,7 @@ export type PublishMissingImagesNoticeProps = {
   showRepublishLine: boolean;
   publishedAt: string | null;
   focusHeading: boolean;
+  serverRejected?: boolean;
   onRemove: (rowId: string) => void;
 };
 
@@ -27,21 +28,23 @@ export function PublishMissingImagesNotice({
   showRepublishLine,
   publishedAt,
   focusHeading,
+  serverRejected = false,
   onRemove,
 }: PublishMissingImagesNoticeProps) {
   const headingId = useId();
   const listEmpty = rows.length === 0;
+  const showBlockHeading = !listEmpty || serverRejected;
   const [liveMessage, setLiveMessage] = useState("");
   const noticeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!focusHeading || listEmpty) {
+    if (!focusHeading || !showBlockHeading) {
       return;
     }
     const heading = noticeRef.current?.querySelector("h3");
     heading?.setAttribute("tabindex", "-1");
     heading?.focus();
-  }, [focusHeading, listEmpty]);
+  }, [focusHeading, showBlockHeading]);
 
   useEffect(() => {
     if (!liveMessage) {
@@ -55,7 +58,9 @@ export function PublishMissingImagesNotice({
     };
   }, [liveMessage]);
 
-  const heading = listEmpty ? MISSING_IMAGES_NONE_LEFT : MISSING_IMAGES_BLOCK_HEADING;
+  const heading = showBlockHeading
+    ? MISSING_IMAGES_BLOCK_HEADING
+    : MISSING_IMAGES_NONE_LEFT;
 
   return (
     <section

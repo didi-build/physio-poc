@@ -308,6 +308,7 @@ export function PublishSheet({
             }
             publishedAt={shareView?.published_at ?? null}
             focusHeading={missingImagesFocusHeading}
+            serverRejected={serverMissingImagesBlock}
             onRemove={(rowId) => {
               const before = missingImageRows.length;
               onRemoveMissingImagesRow?.(rowId);
