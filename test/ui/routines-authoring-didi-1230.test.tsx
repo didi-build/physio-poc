@@ -13,12 +13,6 @@ import { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-clien
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { RoutinesClient, type FetchFn } from "../../src/ui/api/routines-client.js";
 import { ROUTINES_AUTHORING_COLLECTION_PATH } from "../../src/routine-authoring-api-paths.js";
-import {
-  BACK_ROUTINES,
-  BODY_REGION,
-  ROUTINE_NAME_PLACEHOLDER,
-} from "../../src/ui/copy/routines.js";
-import { CANCEL } from "../../src/ui/copy/my-defaults.js";
 import { openMigratedDatabase } from "../helpers/exercise-sqlite-fixture.js";
 import { seedPractitioner } from "../helpers/exercise-sqlite-fixture.js";
 import { id } from "../helpers/opaque-test-ids.js";
@@ -131,6 +125,60 @@ function withDelayedUntouchedCancelDelete(baseFetch: FetchFn): FetchFn {
   };
 }
 
+type TrackingClientParts = {
+  client: RoutinesClient;
+  deleteRoutineIds: string[];
+  createdRoutineId: { current: string };
+};
+
+function buildTrackingClient(
+  baseFetch: FetchFn,
+  delays: { post?: boolean; patch?: boolean; delayedDelete?: boolean },
+): TrackingClientParts {
+  let fetch = baseFetch;
+  if (delays.delayedDelete) {
+    fetch = withDelayedUntouchedCancelDelete(fetch);
+  }
+  if (delays.post) {
+    fetch = withDelay(fetch, {
+      method: "POST",
+      match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
+    });
+  }
+  if (delays.patch) {
+    fetch = withDelay(fetch, {
+      method: "PATCH",
+      match: (p) =>
+        p.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
+        p !== ROUTINES_AUTHORING_COLLECTION_PATH,
+    });
+  }
+  const deleteRoutineIds: string[] = [];
+  const createdRoutineId = { current: "" };
+  const trackingFetch: FetchFn = async (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const pathname = requestPath(input);
+    const response = await fetch(input, init);
+    if (method === "POST" && pathname === ROUTINES_AUTHORING_COLLECTION_PATH) {
+      const clone = response.clone();
+      const body = (await clone.json()) as { routine_id: string };
+      createdRoutineId.current = body.routine_id;
+    }
+    if (
+      method === "DELETE" &&
+      pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
+    ) {
+      deleteRoutineIds.push(pathname.split("/").pop() ?? "");
+    }
+    return response;
+  };
+  return {
+    client: new RoutinesClient({ fetchFn: trackingFetch }),
+    deleteRoutineIds,
+    createdRoutineId,
+  };
+}
+
 function renderApp(
   path: string,
   client: RoutinesClient,
@@ -151,21 +199,61 @@ function renderApp(
   );
 }
 
-function expectNeverOnDraftEditPath() {
-  const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
-  expect(pathname).not.toMatch(/\/routines\/[^/]+\/edit$/);
+function bodyRegionGroup() {
+  return screen.getByRole("group", { name: "Body region" });
 }
 
 async function assertStaysOnRoutinesListThroughSetupDelay() {
+  const deadline = Date.now() + ROUTINE_SETUP_DELAY_MS + 2_000;
+  while (Date.now() < deadline) {
+    const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+    expect(pathname).toBe("/routines");
+    expect(pathname).not.toMatch(/\/routines\/[^/]+\/edit$/);
+    expect(screen.getByTestId("routines-page")).toBeTruthy();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+  }
+}
+
+async function assertExactlyOneDeleteAfterSetupSettles(
+  deleteRoutineIds: string[],
+  createdRoutineId: string,
+) {
   await waitFor(
     () => {
-      const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
-      expect(pathname).toBe("/routines");
-      expect(pathname).not.toMatch(/\/routines\/[^/]+\/edit$/);
-      expect(screen.getByTestId("routines-page")).toBeTruthy();
+      expect(createdRoutineId.length).toBeGreaterThan(0);
+      expect(deleteRoutineIds).toEqual([createdRoutineId]);
     },
-    { timeout: ROUTINE_SETUP_DELAY_MS + 2_000 },
+    { timeout: 10_000 },
   );
+  await new Promise((resolve) => {
+    setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 350);
+  });
+  expect(deleteRoutineIds).toEqual([createdRoutineId]);
+}
+
+async function assertDraftRemovedFromServer(client: RoutinesClient, routineId: string) {
+  try {
+    await client.getRoutineDetails(routineId);
+    expect.fail("expected draft to be removed from server");
+  } catch (error) {
+    expect(error).toMatchObject({ code: "routine_not_found" });
+  }
+}
+
+async function clickPageBackToRoutines() {
+  const backLinks = screen.getAllByRole("link", { name: "Routines" });
+  const backLink = backLinks.find((link) => link.className.includes("ex-back-link"));
+  expect(backLink).toBeTruthy();
+  await userEvent.click(backLink!);
+}
+
+async function clickShellRoutinesNav() {
+  const navLinks = screen.getAllByRole("link", { name: "Routines" });
+  const shellNav = navLinks.find((link) => link.className.includes("shell-tab-link"));
+  expect(shellNav).toBeTruthy();
+  await userEvent.click(shellNav!);
 }
 
 describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
@@ -188,63 +276,33 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         author,
         "post-delay@example.com",
       );
-      const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(withDelayedUntouchedCancelDelete(baseFetch), {
-        method: "POST",
-        match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
-      });
-      const deleteRoutineIds: string[] = [];
-      let createdRoutineId = "";
-      const trackingFetch: FetchFn = async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const pathname = requestPath(input);
-        const response = await delayedFetch(input, init);
-        if (method === "POST" && pathname === ROUTINES_AUTHORING_COLLECTION_PATH) {
-          const clone = response.clone();
-          const body = (await clone.json()) as { routine_id: string };
-          createdRoutineId = body.routine_id;
-        }
-        if (
-          method === "DELETE" &&
-          pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
-        ) {
-          deleteRoutineIds.push(pathname.split("/").pop() ?? "");
-        }
-        return response;
-      };
-      const client = new RoutinesClient({ fetchFn: trackingFetch });
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true, delayedDelete: true },
+      );
       renderApp("/routines/new", client);
       await waitFor(() => {
-        expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
+        expect(bodyRegionGroup()).toBeTruthy();
       });
-      const group = screen.getByRole("group", { name: BODY_REGION });
-      void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
-      await userEvent.click(screen.getByRole("button", { name: CANCEL }));
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
-      expectNeverOnDraftEditPath();
       await assertStaysOnRoutinesListThroughSetupDelay();
-      await waitFor(
-        () => {
-          expect(createdRoutineId.length).toBeGreaterThan(0);
-          expect(deleteRoutineIds).toEqual([createdRoutineId]);
-        },
-        { timeout: 10_000 },
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
       );
       expectLocationHistoryNeverIncludesDraftEdit();
-      const list = await client.listMyRoutines();
-      expect(list.drafts.length).toBe(0);
-      try {
-        await client.getRoutineDetails(createdRoutineId);
-        expect.fail("expected draft to be removed from server");
-      } catch (error) {
-        expect(error).toMatchObject({ code: "routine_not_found" });
-      }
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
     } finally {
       storage.close();
     }
-  }, 15_000);
+  }, 20_000);
 
   it("Cancel during delayed PATCH stays on /routines, skips editor, deletes draft once", async () => {
     const storage = await openMigratedDatabase();
@@ -259,264 +317,443 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         author,
         "patch-delay@example.com",
       );
-      const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(withDelayedUntouchedCancelDelete(baseFetch), {
-        method: "PATCH",
-        match: (p) =>
-          p.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
-          p !== ROUTINES_AUTHORING_COLLECTION_PATH,
-      });
-      const deleteRoutineIds: string[] = [];
-      let createdRoutineId = "";
-      const trackingFetch: FetchFn = async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const pathname = requestPath(input);
-        const response = await delayedFetch(input, init);
-        if (method === "POST" && pathname === ROUTINES_AUTHORING_COLLECTION_PATH) {
-          const clone = response.clone();
-          const body = (await clone.json()) as { routine_id: string };
-          createdRoutineId = body.routine_id;
-        }
-        if (
-          method === "DELETE" &&
-          pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
-        ) {
-          deleteRoutineIds.push(pathname.split("/").pop() ?? "");
-        }
-        return response;
-      };
-      const client = new RoutinesClient({ fetchFn: trackingFetch });
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { patch: true, delayedDelete: true },
+      );
       renderApp("/routines/new", client);
       await waitFor(() => {
-        expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
+        expect(bodyRegionGroup()).toBeTruthy();
       });
-      const group = screen.getByRole("group", { name: BODY_REGION });
-      void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
       await waitFor(
         () => {
-          expect(createdRoutineId.length).toBeGreaterThan(0);
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
         },
         { timeout: 5_000 },
       );
-      await userEvent.click(screen.getByRole("button", { name: CANCEL }));
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
-      expectNeverOnDraftEditPath();
       await assertStaysOnRoutinesListThroughSetupDelay();
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
+      );
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
+  it("Routines back link during delayed POST leaves /routines and deletes untouched draft once", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-back-post"),
+        "back-post@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "back-post@example.com",
+      );
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true, delayedDelete: true },
+      );
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await clickPageBackToRoutines();
+      await waitFor(() => {
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+      });
+      await assertStaysOnRoutinesListThroughSetupDelay();
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
+      );
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
+  it("Routines back link during delayed PATCH leaves /routines and deletes untouched draft once", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-back-patch"),
+        "back-patch@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "back-patch@example.com",
+      );
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { patch: true, delayedDelete: true },
+      );
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
       await waitFor(
         () => {
-          expect(deleteRoutineIds).toEqual([createdRoutineId]);
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
         },
-        { timeout: 10_000 },
+        { timeout: 5_000 },
       );
-      expectLocationHistoryNeverIncludesDraftEdit();
-      const list = await client.listMyRoutines();
-      expect(list.drafts.length).toBe(0);
-      try {
-        await client.getRoutineDetails(createdRoutineId);
-        expect.fail("expected draft to be removed from server");
-      } catch (error) {
-        expect(error).toMatchObject({ code: "routine_not_found" });
-      }
-    } finally {
-      storage.close();
-    }
-  }, 15_000);
-
-  it("Routines back link during delayed POST leaves /routines and deletes untouched draft", async () => {
-    const storage = await openMigratedDatabase();
-    try {
-      const author = await seedPractitioner(
-        storage,
-        id("ui-1230-nav"),
-        "nav-delay@example.com",
-      );
-      const { deps, cookie } = appDepsForRoutinesHttpUi(
-        storage,
-        author,
-        "nav-delay@example.com",
-      );
-      const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(baseFetch, {
-        method: "POST",
-        match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
-      });
-      const deleteRoutineIds: string[] = [];
-      const trackingFetch: FetchFn = async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const pathname = requestPath(input);
-        const response = await delayedFetch(input, init);
-        if (
-          method === "DELETE" &&
-          pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
-        ) {
-          deleteRoutineIds.push(pathname.split("/").pop() ?? "");
-        }
-        return response;
-      };
-      const client = new RoutinesClient({ fetchFn: trackingFetch });
-      renderApp("/routines/new", client);
-      await waitFor(() => {
-        expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
-      });
-      const group = screen.getByRole("group", { name: BODY_REGION });
-      void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
-      const backLinks = screen.getAllByRole("link", { name: BACK_ROUTINES });
-      const backLink = backLinks.find((link) =>
-        link.className.includes("ex-back-link"),
-      );
-      expect(backLink).toBeTruthy();
-      await userEvent.click(backLink!);
+      await clickPageBackToRoutines();
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
-      expectNeverOnDraftEditPath();
       await assertStaysOnRoutinesListThroughSetupDelay();
-      await waitFor(() => {
-        expect(deleteRoutineIds.length).toBe(1);
-      });
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
+      );
       expectLocationHistoryNeverIncludesDraftEdit();
-      const list = await client.listMyRoutines();
-      expect(list.drafts.length).toBe(0);
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
     } finally {
       storage.close();
     }
-  }, 15_000);
+  }, 20_000);
 
-  it("shell Routines nav during delayed PATCH leaves /routines and deletes untouched draft", async () => {
+  it("shell Routines nav during delayed POST leaves /routines and deletes untouched draft once", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(
         storage,
-        id("ui-1230-nav-patch"),
-        "nav-patch@example.com",
+        id("ui-1230-shell-post"),
+        "shell-post@example.com",
       );
       const { deps, cookie } = appDepsForRoutinesHttpUi(
         storage,
         author,
-        "nav-patch@example.com",
+        "shell-post@example.com",
       );
-      const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(baseFetch, {
-        method: "PATCH",
-        match: (p) =>
-          p.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
-          p !== ROUTINES_AUTHORING_COLLECTION_PATH,
-      });
-      const deleteRoutineIds: string[] = [];
-      const trackingFetch: FetchFn = async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const pathname = requestPath(input);
-        const response = await delayedFetch(input, init);
-        if (
-          method === "DELETE" &&
-          pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
-        ) {
-          deleteRoutineIds.push(pathname.split("/").pop() ?? "");
-        }
-        return response;
-      };
-      const client = new RoutinesClient({ fetchFn: trackingFetch });
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true, delayedDelete: true },
+      );
       renderApp("/routines/new", client);
       await waitFor(() => {
-        expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
+        expect(bodyRegionGroup()).toBeTruthy();
       });
-      const group = screen.getByRole("group", { name: BODY_REGION });
-      void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
-      const navLinks = screen.getAllByRole("link", { name: BACK_ROUTINES });
-      const shellNav = navLinks.find((link) =>
-        link.className.includes("shell-tab-link"),
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
       );
-      expect(shellNav).toBeTruthy();
-      await userEvent.click(shellNav!);
+      await clickShellRoutinesNav();
       await waitFor(() => {
         expect(screen.getByTestId("routines-page")).toBeTruthy();
       });
-      expectNeverOnDraftEditPath();
       await assertStaysOnRoutinesListThroughSetupDelay();
-      await waitFor(() => {
-        expect(deleteRoutineIds.length).toBe(1);
-      });
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
+      );
       expectLocationHistoryNeverIncludesDraftEdit();
-      const list = await client.listMyRoutines();
-      expect(list.drafts.length).toBe(0);
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
     } finally {
       storage.close();
     }
-  }, 15_000);
+  }, 20_000);
 
-  it("does not delete a touched draft when the user edits mid-chain then leaves", async () => {
+  it("shell Routines nav during delayed PATCH leaves /routines and deletes untouched draft once", async () => {
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(
         storage,
-        id("ui-1230-touch"),
-        "touch-mid@example.com",
+        id("ui-1230-shell-patch"),
+        "shell-patch@example.com",
       );
       const { deps, cookie } = appDepsForRoutinesHttpUi(
         storage,
         author,
-        "touch-mid@example.com",
+        "shell-patch@example.com",
       );
-      const baseFetch = createRoutinesHttpFetch(deps, cookie);
-      const delayedFetch = withDelay(baseFetch, {
-        method: "PATCH",
-        match: (p) =>
-          p.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
-          p !== ROUTINES_AUTHORING_COLLECTION_PATH,
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { patch: true, delayedDelete: true },
+      );
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
       });
-      let deleteCount = 0;
-      const trackingFetch: FetchFn = async (input, init) => {
-        const method = (init?.method ?? "GET").toUpperCase();
-        const pathname = requestPath(input);
-        const response = await delayedFetch(input, init);
-        if (
-          method === "DELETE" &&
-          pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`)
-        ) {
-          deleteCount += 1;
-        }
-        return response;
-      };
-      const client = new RoutinesClient({ fetchFn: trackingFetch });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      await clickShellRoutinesNav();
+      await waitFor(() => {
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+      });
+      await assertStaysOnRoutinesListThroughSetupDelay();
+      await assertExactlyOneDeleteAfterSetupSettles(
+        deleteRoutineIds,
+        createdRoutineId.current,
+      );
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect((await client.listMyRoutines()).drafts.length).toBe(0);
+      await assertDraftRemovedFromServer(client, createdRoutineId.current);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
+  it("Done for now during delayed POST skips editor and keeps touched draft", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-done-post"),
+        "done-post@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "done-post@example.com",
+      );
+      const { client, deleteRoutineIds } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true },
+      );
       const routineName = "Knee mobility";
       renderApp("/routines/new", client);
       await waitFor(() => {
-        expect(screen.getByPlaceholderText(ROUTINE_NAME_PLACEHOLDER)).toBeTruthy();
+        expect(
+          screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        ).toBeTruthy();
       });
-      const nameInput = screen.getByPlaceholderText(ROUTINE_NAME_PLACEHOLDER);
-      await userEvent.type(nameInput, routineName);
-      const group = screen.getByRole("group", { name: BODY_REGION });
-      void userEvent.click(within(group).getByRole("button", { name: "Knee" }));
-      const navLinks = screen.getAllByRole("link", { name: BACK_ROUTINES });
-      const shellNav = navLinks.find((link) =>
-        link.className.includes("shell-tab-link"),
+      await userEvent.type(
+        screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        routineName,
       );
-      expect(shellNav).toBeTruthy();
-      await userEvent.click(shellNav!);
-      await waitFor(() => {
-        expect(screen.getByTestId("routines-page")).toBeTruthy();
-        expect(screen.getByTestId(LOCATION_PROBE)).toHaveTextContent("/routines");
-      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Done for now" }));
       await waitFor(
-        async () => {
-          const list = await client.listMyRoutines();
-          expect(list.drafts.length).toBe(1);
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/^\/routines\/[^/]+$/);
+          expect(pathname).not.toMatch(/\/edit$/);
         },
         { timeout: 10_000 },
       );
-      expect(deleteCount).toBe(0);
-      const list = await client.listMyRoutines();
-      const routineId = list.drafts[0]!.routine_id;
-      const details = await client.getRoutineDetails(routineId);
-      expect(details.draft).not.toBeNull();
-      expect(details.draft!.name).toBe(routineName);
       await new Promise((resolve) => {
-        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 200);
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 500);
       });
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect(deleteRoutineIds.length).toBe(0);
+      const list = await client.listMyRoutines();
+      expect(list.drafts.length).toBe(1);
+      const details = await client.getRoutineDetails(list.drafts[0]!.routine_id);
+      expect(details.draft!.name).toBe(routineName);
     } finally {
       storage.close();
     }
-  }, 15_000);
+  }, 20_000);
+
+  it("Done for now during delayed PATCH skips editor and keeps touched draft", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-done-patch"),
+        "done-patch@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "done-patch@example.com",
+      );
+      const { client, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { patch: true },
+      );
+      const routineName = "Knee mobility";
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        ).toBeTruthy();
+      });
+      await userEvent.type(
+        screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        routineName,
+      );
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Done for now" }));
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/^\/routines\/[^/]+$/);
+          expect(pathname).not.toMatch(/\/edit$/);
+        },
+        { timeout: 10_000 },
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 500);
+      });
+      expectLocationHistoryNeverIncludesDraftEdit();
+      const list = await client.listMyRoutines();
+      expect(list.drafts.length).toBe(1);
+      const details = await client.getRoutineDetails(list.drafts[0]!.routine_id);
+      expect(details.draft!.name).toBe(routineName);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
+  it("touched name after knee during delayed POST leaves draft on server", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-touch-post"),
+        "touch-post@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "touch-post@example.com",
+      );
+      const { client, deleteRoutineIds } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true },
+      );
+      const routineName = "Knee mobility";
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        ).toBeTruthy();
+      });
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      await waitFor(() => {
+        expect(screen.getByDisplayValue(routineName)).toBeTruthy();
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Done for now" }));
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/^\/routines\/[^/]+$/);
+        },
+        { timeout: 10_000 },
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 500);
+      });
+      expect(deleteRoutineIds.length).toBe(0);
+      expectLocationHistoryNeverIncludesDraftEdit();
+      const list = await client.listMyRoutines();
+      expect(list.drafts.length).toBe(1);
+      const details = await client.getRoutineDetails(list.drafts[0]!.routine_id);
+      expect(details.draft!.name).toBe(routineName);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
+  it("touched name after id during delayed PATCH leaves draft on server", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-touch-patch"),
+        "touch-patch@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "touch-patch@example.com",
+      );
+      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { patch: true },
+      );
+      const routineName = "Knee mobility";
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      await waitFor(() => {
+        expect(screen.getByDisplayValue(routineName)).toBeTruthy();
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Done for now" }));
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/^\/routines\/[^/]+$/);
+        },
+        { timeout: 10_000 },
+      );
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 500);
+      });
+      expect(deleteRoutineIds.length).toBe(0);
+      expectLocationHistoryNeverIncludesDraftEdit();
+      const list = await client.listMyRoutines();
+      expect(list.drafts.length).toBe(1);
+      const details = await client.getRoutineDetails(createdRoutineId.current);
+      expect(details.draft!.name).toBe(routineName);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
 });

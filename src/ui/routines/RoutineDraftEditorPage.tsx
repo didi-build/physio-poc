@@ -440,8 +440,11 @@ export function RoutineDraftEditorPage({
         autoSave.markSaved();
         goToDraftEditUrl(routineId);
       })
-      .catch(() => {
-        /* setup abandoned or request failed after leave */
+      .catch((error: unknown) => {
+        if (newDraftSetupAbandonedRef.current) {
+          return;
+        }
+        throw error;
       });
   };
 
@@ -483,6 +486,15 @@ export function RoutineDraftEditorPage({
 
   const routinesListPath = fillPhysioAppRoutePattern("routines");
 
+  const markNewDraftSetupAbandonedIfPending = useCallback(() => {
+    if (!isNewDraft || newDraftSetupCompleteRef.current) {
+      return;
+    }
+    if (createDraftPromiseRef.current) {
+      newDraftSetupAbandonedRef.current = true;
+    }
+  }, [isNewDraft]);
+
   const onLeave = () => {
     if (untouched) {
       if (isNewDraft) {
@@ -500,6 +512,7 @@ export function RoutineDraftEditorPage({
       });
       return;
     }
+    markNewDraftSetupAbandonedIfPending();
     void persistPatch().then((routineId) => {
       const path =
         routineId.length > 0
@@ -552,6 +565,12 @@ export function RoutineDraftEditorPage({
         to={fillPhysioAppRoutePattern("routines")}
         className="ex-back-link"
         onClick={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+          }
           if (
             !isNewDraft ||
             !untouched ||
