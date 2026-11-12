@@ -13,7 +13,7 @@ const DIDI_1191_KILL =
   /program-publish-didi-1191|worker-public-share-link-media-didi-1191|public-link-page-didi-1191|public-link-carousel-didi-1191/;
 
 const text = readFileSync(logPath, "utf8");
-const blocks = text.split(/^=== (M\d+) ===$/m).slice(1);
+const blocks = text.split(/^=== (M\d+(?:[a-z])?) ===$/m).slice(1);
 const sections = [];
 const summaryRows = [];
 
