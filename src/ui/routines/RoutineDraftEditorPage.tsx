@@ -113,6 +113,16 @@ export function RoutineDraftEditorPage({
   const newDraftSetupCompleteRef = useRef(false);
   const setupCancelDoneRef = useRef(false);
   const touchStateRef = useRef(true);
+  const nameRef = useRef(name);
+  const whoItsForRef = useRef(whoItsFor);
+  const conditionIdRef = useRef(conditionId);
+  const rowsRef = useRef(rows);
+  const bodyRegionIdRef = useRef(bodyRegionId);
+  nameRef.current = name;
+  whoItsForRef.current = whoItsFor;
+  conditionIdRef.current = conditionId;
+  rowsRef.current = rows;
+  bodyRegionIdRef.current = bodyRegionId;
 
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -214,13 +224,14 @@ export function RoutineDraftEditorPage({
 
   const draftAutosavePatch = useCallback(
     () => ({
-      name: name.trim().length > 0 ? name.trim() : null,
-      who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-      condition_id: conditionId,
-      body_region_id: bodyRegionId!,
-      rows: rowsPayload(rows),
+      name: nameRef.current.trim().length > 0 ? nameRef.current.trim() : null,
+      who_its_for:
+        whoItsForRef.current.trim().length > 0 ? whoItsForRef.current.trim() : null,
+      condition_id: conditionIdRef.current,
+      body_region_id: bodyRegionIdRef.current!,
+      rows: rowsPayload(rowsRef.current),
     }),
-    [bodyRegionId, conditionId, name, rows, whoItsFor],
+    [],
   );
 
   const ensureServerDraft = useCallback(
@@ -423,13 +434,17 @@ export function RoutineDraftEditorPage({
         if (newDraftSetupAbandonedRef.current) {
           return null;
         }
+        const setupName = nameRef.current;
+        const setupWho = whoItsForRef.current;
+        const setupCondition = conditionIdRef.current;
+        const setupRows = rowsRef.current;
         return client
           .autosaveRoutineDraft(routineId, {
-            name: name.trim().length > 0 ? name.trim() : null,
-            who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-            condition_id: conditionId,
+            name: setupName.trim().length > 0 ? setupName.trim() : null,
+            who_its_for: setupWho.trim().length > 0 ? setupWho.trim() : null,
+            condition_id: setupCondition,
             body_region_id: regionId,
-            rows: rowsPayload(rows),
+            rows: rowsPayload(setupRows),
           })
           .then(() => routineId);
       })

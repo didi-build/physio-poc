@@ -58,6 +58,8 @@ function stubProgramsClient(): ProgramsClient {
 
 const LOCATION_PROBE = "location-spy";
 const ROUTINE_SETUP_DELAY_MS = 250;
+const SETUP_PATCH_EXTRA_DELAY_MS = 600;
+const SLOW_POST_DELAY_MS = 900;
 const locationHistory: string[] = [];
 
 function LocationSpy() {
@@ -96,13 +98,40 @@ type DelayRule = {
   match: (pathname: string) => boolean;
 };
 
-function withDelay(baseFetch: FetchFn, rule: DelayRule): FetchFn {
+function withDelay(
+  baseFetch: FetchFn,
+  rule: DelayRule,
+  delayMs: number = ROUTINE_SETUP_DELAY_MS,
+): FetchFn {
   return async (input, init) => {
     const method = (init?.method ?? "GET").toUpperCase();
     const pathname = requestPath(input);
     if (method === rule.method && rule.match(pathname)) {
       await new Promise((resolve) => {
-        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS);
+        setTimeout(resolve, delayMs);
+      });
+    }
+    return baseFetch(input, init);
+  };
+}
+
+function withExtraDelayOnFirstRoutinePatch(
+  baseFetch: FetchFn,
+  extraMs: number,
+): FetchFn {
+  let firstPatch = true;
+  return async (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const pathname = requestPath(input);
+    if (
+      firstPatch &&
+      method === "PATCH" &&
+      pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
+      pathname !== ROUTINES_AUTHORING_COLLECTION_PATH
+    ) {
+      firstPatch = false;
+      await new Promise((resolve) => {
+        setTimeout(resolve, extraMs);
       });
     }
     return baseFetch(input, init);
@@ -129,21 +158,36 @@ type TrackingClientParts = {
   client: RoutinesClient;
   deleteRoutineIds: string[];
   createdRoutineId: { current: string };
+  routinePatchCount: { current: number };
+  routinePatchNames: (string | null)[];
 };
 
 function buildTrackingClient(
   baseFetch: FetchFn,
-  delays: { post?: boolean; patch?: boolean; delayedDelete?: boolean },
+  delays: {
+    post?: boolean;
+    patch?: boolean;
+    delayedDelete?: boolean;
+    extraFirstPatchDelayMs?: number;
+    postDelayMs?: number;
+  },
 ): TrackingClientParts {
   let fetch = baseFetch;
+  if (delays.extraFirstPatchDelayMs) {
+    fetch = withExtraDelayOnFirstRoutinePatch(fetch, delays.extraFirstPatchDelayMs);
+  }
   if (delays.delayedDelete) {
     fetch = withDelayedUntouchedCancelDelete(fetch);
   }
   if (delays.post) {
-    fetch = withDelay(fetch, {
-      method: "POST",
-      match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
-    });
+    fetch = withDelay(
+      fetch,
+      {
+        method: "POST",
+        match: (p) => p === ROUTINES_AUTHORING_COLLECTION_PATH,
+      },
+      delays.postDelayMs,
+    );
   }
   if (delays.patch) {
     fetch = withDelay(fetch, {
@@ -155,9 +199,28 @@ function buildTrackingClient(
   }
   const deleteRoutineIds: string[] = [];
   const createdRoutineId = { current: "" };
+  const routinePatchCount = { current: 0 };
+  const routinePatchNames: (string | null)[] = [];
   const trackingFetch: FetchFn = async (input, init) => {
     const method = (init?.method ?? "GET").toUpperCase();
     const pathname = requestPath(input);
+    if (
+      method === "PATCH" &&
+      pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
+      pathname !== ROUTINES_AUTHORING_COLLECTION_PATH
+    ) {
+      routinePatchCount.current += 1;
+      if (typeof init?.body === "string") {
+        try {
+          const parsed = JSON.parse(init.body) as { name?: string | null };
+          routinePatchNames.push(parsed.name === undefined ? null : parsed.name);
+        } catch {
+          routinePatchNames.push(null);
+        }
+      } else {
+        routinePatchNames.push(null);
+      }
+    }
     const response = await fetch(input, init);
     if (method === "POST" && pathname === ROUTINES_AUTHORING_COLLECTION_PATH) {
       const clone = response.clone();
@@ -176,6 +239,8 @@ function buildTrackingClient(
     client: new RoutinesClient({ fetchFn: trackingFetch }),
     deleteRoutineIds,
     createdRoutineId,
+    routinePatchCount,
+    routinePatchNames,
   };
 }
 
@@ -276,10 +341,11 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         author,
         "post-delay@example.com",
       );
-      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
-        createRoutinesHttpFetch(deps, cookie),
-        { post: true, delayedDelete: true },
-      );
+      const { client, deleteRoutineIds, createdRoutineId, routinePatchCount } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {
+          post: true,
+          delayedDelete: true,
+        });
       renderApp("/routines/new", client);
       await waitFor(() => {
         expect(bodyRegionGroup()).toBeTruthy();
@@ -296,6 +362,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         deleteRoutineIds,
         createdRoutineId.current,
       );
+      expect(routinePatchCount.current).toBe(0);
       expectLocationHistoryNeverIncludesDraftEdit();
       expect((await client.listMyRoutines()).drafts.length).toBe(0);
       await assertDraftRemovedFromServer(client, createdRoutineId.current);
@@ -364,10 +431,11 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         author,
         "back-post@example.com",
       );
-      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
-        createRoutinesHttpFetch(deps, cookie),
-        { post: true, delayedDelete: true },
-      );
+      const { client, deleteRoutineIds, createdRoutineId, routinePatchCount } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {
+          post: true,
+          delayedDelete: true,
+        });
       renderApp("/routines/new", client);
       await waitFor(() => {
         expect(bodyRegionGroup()).toBeTruthy();
@@ -384,6 +452,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         deleteRoutineIds,
         createdRoutineId.current,
       );
+      expect(routinePatchCount.current).toBe(0);
       expectLocationHistoryNeverIncludesDraftEdit();
       expect((await client.listMyRoutines()).drafts.length).toBe(0);
       await assertDraftRemovedFromServer(client, createdRoutineId.current);
@@ -452,10 +521,11 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         author,
         "shell-post@example.com",
       );
-      const { client, deleteRoutineIds, createdRoutineId } = buildTrackingClient(
-        createRoutinesHttpFetch(deps, cookie),
-        { post: true, delayedDelete: true },
-      );
+      const { client, deleteRoutineIds, createdRoutineId, routinePatchCount } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {
+          post: true,
+          delayedDelete: true,
+        });
       renderApp("/routines/new", client);
       await waitFor(() => {
         expect(bodyRegionGroup()).toBeTruthy();
@@ -472,6 +542,7 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
         deleteRoutineIds,
         createdRoutineId.current,
       );
+      expect(routinePatchCount.current).toBe(0);
       expectLocationHistoryNeverIncludesDraftEdit();
       expect((await client.listMyRoutines()).drafts.length).toBe(0);
       await assertDraftRemovedFromServer(client, createdRoutineId.current);
@@ -526,6 +597,76 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       storage.close();
     }
   }, 20_000);
+
+  it("type name during delayed POST then Done for now wins when setup PATCH is slower than save", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-patch-order"),
+        "patch-order@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "patch-order@example.com",
+      );
+      const routineName = "Knee mobility";
+      const { client, createdRoutineId, routinePatchCount, routinePatchNames } =
+        buildTrackingClient(createRoutinesHttpFetch(deps, cookie), {
+          post: true,
+          postDelayMs: SLOW_POST_DELAY_MS,
+          extraFirstPatchDelayMs: SETUP_PATCH_EXTRA_DELAY_MS,
+        });
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      await waitFor(() => {
+        expect(screen.getByDisplayValue(routineName)).toBeTruthy();
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Done for now" }));
+      await waitFor(
+        () => {
+          const pathname = screen.getByTestId(LOCATION_PROBE).textContent ?? "";
+          expect(pathname).toMatch(/^\/routines\/[^/]+$/);
+        },
+        { timeout: 10_000 },
+      );
+      await waitFor(
+        () => {
+          expect(createdRoutineId.current.length).toBeGreaterThan(0);
+          expect(routinePatchCount.current).toBeGreaterThan(0);
+        },
+        { timeout: 5_000 },
+      );
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect(
+        routinePatchNames.some((patchName) => patchName === null || patchName === ""),
+      ).toBe(false);
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS);
+      });
+      const patchCountAfterPostSettles = routinePatchCount.current;
+      await new Promise((resolve) => {
+        setTimeout(resolve, SETUP_PATCH_EXTRA_DELAY_MS + ROUTINE_SETUP_DELAY_MS);
+      });
+      expect(routinePatchCount.current).toBe(patchCountAfterPostSettles);
+      const details = await client.getRoutineDetails(createdRoutineId.current);
+      expect(details.draft!.name).toBe(routineName);
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1_000);
+      });
+    } finally {
+      storage.close();
+    }
+  }, 30_000);
 
   it("Done for now during delayed POST skips editor and keeps touched draft", async () => {
     const storage = await openMigratedDatabase();
