@@ -7,11 +7,6 @@ import {
 } from "../copy/program-publish.js";
 import { formatProgramPublishedAt } from "../copy/programs.js";
 
-type PreviewRowMedia = {
-  media_start_url?: string | null;
-  media_end_url?: string | null;
-};
-
 function PreviewThumb({ url }: { url?: string | null }) {
   if (url) {
     return <img className="pg-share-preview-thumb-img" src={url} alt="" />;
@@ -47,15 +42,14 @@ export function ProgramSharePdfPreview({
       </div>
       <ol className="pg-share-preview-rows">
         {preview.rows.map((row, index) => {
-          const media = row as typeof row & PreviewRowMedia;
           const dose = formatExerciseParams(row.params);
           const typeLabel = TYPE_LABELS[row.prescription_type].toLowerCase();
           return (
             <li key={row.position} className="pg-share-preview-row">
               <div className="pg-share-preview-row-inner">
                 <div className="pg-share-preview-row-media" aria-hidden="true">
-                  <PreviewThumb url={media.media_start_url} />
-                  <PreviewThumb url={media.media_end_url} />
+                  <PreviewThumb url={row.media?.start_url} />
+                  <PreviewThumb url={row.media?.end_url} />
                 </div>
                 <div className="pg-share-preview-row-body">
                   <p className="pg-share-preview-row-title">

@@ -43,8 +43,7 @@ const PUBLIC_PREVIEW = {
       prescription_type: "stretching",
       params: { hold_s: 30 },
       note: "Slow and controlled",
-      media_start_url: HARNESS_THUMB,
-      media_end_url: HARNESS_THUMB,
+      media: { start_url: HARNESS_THUMB, end_url: HARNESS_THUMB },
     },
     {
       position: 1,
@@ -52,6 +51,7 @@ const PUBLIC_PREVIEW = {
       prescription_type: "isometric",
       params: { hold_s: 10 },
       note: null,
+      media: null,
     },
   ],
 };

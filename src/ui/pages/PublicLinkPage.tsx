@@ -7,10 +7,11 @@ import {
   PUBLIC_LINK_PRINT,
   PUBLIC_LINK_SAVE_AS_PDF,
 } from "../../copy/programs-share.js";
-import { formatExerciseParams } from "../../domain/format-exercise-params.js";
 import { publicShareLinkApiPath } from "../../programs-api-paths.js";
 import type { PublicShareLinkView } from "../../services/programs/program-publish-service.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
+import { LinkPageDoseBlock } from "../link-page/LinkPageDoseBlock.js";
+import { PublicLinkExerciseCarousel } from "../link-page/PublicLinkExerciseCarousel.js";
 
 export function PublicLinkPage() {
   const { code } = useParams();
@@ -96,20 +97,18 @@ export function PublicLinkPage() {
         </div>
       </header>
       <ol className="link-page-rows">
-        {view.rows.map((row) => {
-          const doseLine = formatExerciseParams(row.params);
-          return (
-            <li key={row.position} className="link-page-row">
-              <h2>
-                {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
-              </h2>
-              {doseLine ? <p className="pg-muted">{doseLine}</p> : null}
-              {row.note ? <p>{row.note}</p> : null}
-            </li>
-          );
-        })}
+        {view.rows.map((row) => (
+          <li key={row.position} className="link-page-row">
+            <h2 className="link-page-row-title">
+              {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
+            </h2>
+            <PublicLinkExerciseCarousel title={row.title} media={row.media} />
+            <LinkPageDoseBlock params={row.params} />
+            {row.note ? <p className="link-page-row-note">{row.note}</p> : null}
+          </li>
+        ))}
       </ol>
-      <p className="link-page-footer">{view.expiry_line}</p>
+      <p className="link-page-footer link-page-no-print">{view.expiry_line}</p>
     </main>
   );
 }

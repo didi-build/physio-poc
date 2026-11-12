@@ -22,6 +22,22 @@ export function publicLinkExpiryUntilDateLine(dateLabel: string): string {
   return `This link works until ${dateLabel}.`;
 }
 
+/** design/app/programs/spec.md Approved Nov 9, 2026, 11:31 AM ET (DIDI-1192) */
+export const PUBLIC_LINK_IMAGES_DIDNT_LOAD = "Images didn't load.";
+
+export const PUBLIC_LINK_TRY_AGAIN = "Try again";
+
+/** design/app/programs/spec.md Approved Nov 10, 2026, 12:09 AM ET (DIDI-1192) */
+export const PUBLIC_LINK_CAROUSEL_VIDEO = "Video";
+export const PUBLIC_LINK_CAROUSEL_START = "Start";
+export const PUBLIC_LINK_CAROUSEL_END = "End";
+export const PUBLIC_LINK_CAROUSEL_PREVIOUS = "Previous";
+export const PUBLIC_LINK_CAROUSEL_NEXT = "Next";
+
+export function publicLinkTryLoadingImagesAgainLabel(title: string): string {
+  return `Try loading images for ${title} again`;
+}
+
 export function formatShareLinkExpiryDisplayDate(isoInstant: string): string {
   const instant = Date.parse(isoInstant);
   if (Number.isNaN(instant)) {

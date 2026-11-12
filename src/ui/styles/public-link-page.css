@@ -13,6 +13,12 @@
     sans-serif;
 }
 
+@media (min-width: 1024px) {
+  .link-page-root {
+    max-width: 64rem;
+  }
+}
+
 .link-page-header {
   margin-bottom: 1.25rem;
 }
@@ -71,6 +77,206 @@
   border: 1px solid #e2e8f0;
   border-radius: 1rem;
   padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+@media (min-width: 1024px) {
+  .link-page-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    grid-template-areas:
+      "title media"
+      "dose media"
+      "note media";
+    gap: 0 1.5rem;
+    align-items: start;
+  }
+
+  .link-page-row-title {
+    grid-area: title;
+  }
+
+  .link-page-carousel,
+  .link-page-media-failed {
+    grid-area: media;
+  }
+
+  .link-page-dose {
+    grid-area: dose;
+  }
+
+  .link-page-row-note {
+    grid-area: note;
+  }
+}
+
+.link-page-row-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.link-page-carousel {
+  margin-top: 0.5rem;
+}
+
+.link-page-dose {
+  margin-top: 0.75rem;
+}
+
+.link-page-dose-line {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.375;
+  color: #475569;
+}
+
+.link-page-dose-strong {
+  font-weight: 600;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-page-row-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: #1e293b;
+}
+
+.link-page-carousel-frame {
+  position: relative;
+  border-radius: 0.75rem;
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.link-page-carousel-track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.link-page-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.link-page-carousel-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  aspect-ratio: 4 / 3;
+  position: relative;
+}
+
+.link-page-carousel-still {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 0.75rem;
+}
+
+.link-page-carousel-motion {
+  height: 100%;
+}
+
+.link-page-carousel-caption {
+  margin: 0.25rem 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.link-page-carousel-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.link-page-carousel-indicator {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.link-page-carousel-indicator--current {
+  color: #0f766e;
+}
+
+.link-page-carousel-indicator:focus-visible,
+.link-page-carousel-frame:focus-visible,
+.link-page-carousel-chevron:focus-visible,
+.link-page-media-retry:focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: 2px;
+}
+
+.link-page-carousel-chevron {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.link-page-carousel-chevron:hover {
+  color: #334155;
+}
+
+.link-page-carousel-chevron--prev {
+  left: 0.25rem;
+}
+
+.link-page-carousel-chevron--next {
+  right: 0.25rem;
+}
+
+.link-page-media-failed {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.link-page-media-failed p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.link-page-media-retry {
+  margin-top: 0.75rem;
+  min-height: 2.75rem;
+  border: none;
+  background: transparent;
+  color: #115e59;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .link-page-root--unavailable {

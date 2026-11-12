@@ -11,7 +11,9 @@ import {
   EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
   exerciseMediaGeneratePath,
   exerciseMediaRegeneratePath,
+  exerciseMediaPublicImagePath,
   exerciseMediaServePath,
+  type ExerciseMediaPublicImagePhase,
 } from "../../exercise-media-api-paths.js";
 import type { PractitionerSession } from "../../auth/auth-port.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
@@ -67,6 +69,14 @@ export function exerciseMediaHttpRouteCases(
     {
       method: "GET",
       path: `${exerciseMediaServePath(exerciseVersionId)}?access=internal`,
+    },
+    {
+      method: "GET",
+      path: exerciseMediaPublicImagePath(exerciseVersionId, "start"),
+    },
+    {
+      method: "GET",
+      path: exerciseMediaPublicImagePath(exerciseVersionId, "end"),
     },
   ];
 }
@@ -153,6 +163,50 @@ export async function handleExerciseMediaRequest(
       const response = routeErrorResponse(error);
       if (response) {
         return response;
+      }
+      throw error;
+    }
+  }
+
+  const imageMatch = path.match(
+    /^\/api\/exercise-versions\/([^/]+)\/media\/(start|end)$/,
+  );
+  if (imageMatch && request.method === "GET") {
+    const access = url.searchParams.get("access");
+    if (access !== "public") {
+      return serveJson(
+        { error: "invalid_input", message: "access must be public" },
+        400,
+      );
+    }
+    try {
+      const exerciseVersionId = imageMatch[1] ?? "";
+      const phase = imageMatch[2] as ExerciseMediaPublicImagePhase;
+      const view = await mediaService(deps).getMediaForServing(
+        exerciseVersionId,
+        "public",
+      );
+      if (!view) {
+        return new Response(null, { status: 404, headers: SERVE_JSON_HEADERS });
+      }
+      const objectKey = phase === "start" ? view.startObjectKey : view.endObjectKey;
+      const storage = new PrefixMediaStorage(deps.objects);
+      const image = await storage.getPublicImage(objectKey);
+      if (!image) {
+        return new Response(null, { status: 404, headers: SERVE_JSON_HEADERS });
+      }
+      const bodyCopy = new Uint8Array(image.body);
+      return new Response(bodyCopy, {
+        status: 200,
+        headers: {
+          "content-type": image.contentType,
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch (error) {
+      const response = routeErrorResponse(error);
+      if (response) {
+        return withServeCacheControl(response);
       }
       throw error;
     }

@@ -22,10 +22,10 @@ function expectExactReadoutWithPendingSlotsUnset(
 }
 
 describe("formatExerciseParams (unit)", () => {
-  it("omits pending-slot segments with exact readout (sets 1 and ascent_s present)", () => {
+  it("includes wired set readout with exact phrase (sets 1 and ascent_s present)", () => {
     expectExactReadoutWithPendingSlotsUnset(
       PENDING_SLOT_FIXTURE_PARAMS,
-      "10 reps, 2s hold, 3x a week",
+      "10 reps, 2s hold, 1 set, 3x a week",
     );
   });
 
@@ -36,10 +36,10 @@ describe("formatExerciseParams (unit)", () => {
     );
   });
 
-  it("omits plural sets readout when the n-sets slot is undefined", () => {
+  it("includes plural sets readout when sets is greater than one", () => {
     expectExactReadoutWithPendingSlotsUnset(
       GLOBAL_TYPE_DEFAULTS_SEED.concentric,
-      "10 reps, 2s hold, 3x a week",
+      "10 reps, 2s hold, 3 sets, 3x a week",
     );
   });
 

@@ -23,6 +23,7 @@ const preview: PublicShareLinkOpenView = {
       prescription_type: "stretching",
       params: { hold_s: 30 },
       note: "Slow and controlled",
+      media: null,
     },
     {
       position: 1,
@@ -30,6 +31,7 @@ const preview: PublicShareLinkOpenView = {
       prescription_type: "isometric",
       params: { hold_s: 10 },
       note: null,
+      media: null,
     },
   ],
 };
