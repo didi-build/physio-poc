@@ -25,6 +25,7 @@ import {
   appDepsForRoutinesHttpUi,
   createRoutinesHttpFetch,
 } from "../helpers/routines-http-ui-fixture.js";
+import { NEW_ROUTINE } from "../../src/ui/copy/routines.js";
 
 afterEach(() => {
   cleanup();
@@ -182,6 +183,38 @@ function withExtraDelayOnFirstRoutinePatch(
     }
     return baseFetch(input, init);
   };
+}
+
+function withSetupPatchHttp500(baseFetch: FetchFn): FetchFn {
+  return async (input, init) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const pathname = requestPath(input);
+    if (
+      method === "PATCH" &&
+      pathname.startsWith(`${ROUTINES_AUTHORING_COLLECTION_PATH}/`) &&
+      pathname !== ROUTINES_AUTHORING_COLLECTION_PATH
+    ) {
+      return new Response(JSON.stringify({ error: "internal" }), { status: 500 });
+    }
+    return baseFetch(input, init);
+  };
+}
+
+function captureNextUnhandledRejection(): Promise<unknown> {
+  return new Promise((resolve) => {
+    const onProcessRejection = (reason: unknown) => {
+      process.off("unhandledRejection", onProcessRejection);
+      resolve(reason);
+    };
+    process.on("unhandledRejection", onProcessRejection);
+    const onWindowRejection = (event: PromiseRejectionEvent) => {
+      event.preventDefault();
+      window.removeEventListener("unhandledrejection", onWindowRejection);
+      process.off("unhandledRejection", onProcessRejection);
+      resolve(event.reason);
+    };
+    window.addEventListener("unhandledrejection", onWindowRejection);
+  });
 }
 
 function withDelayedUntouchedCancelDelete(baseFetch: FetchFn): FetchFn {
@@ -793,6 +826,54 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
       storage.close();
     }
   }, 30_000);
+
+  it("setup PATCH HTTP 500 while not abandoned propagates error and does not open editor", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-setup-500"),
+        "setup-500@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "setup-500@example.com",
+      );
+      const baseFetch = createRoutinesHttpFetch(deps, cookie);
+      const client = new RoutinesClient({
+        fetchFn: withSetupPatchHttp500(baseFetch),
+      });
+      const setupFailure = captureNextUnhandledRejection();
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(bodyRegionGroup()).toBeTruthy();
+      });
+      await userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await expect(
+        Promise.race([
+          setupFailure,
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error("expected setup PATCH failure to propagate"));
+            }, 5_000);
+          }),
+        ]),
+      ).resolves.toMatchObject({
+        name: "RoutinesAuthoringError",
+        code: "internal",
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId(LOCATION_PROBE).textContent).toBe("/routines/new");
+      });
+      expectLocationHistoryNeverIncludesDraftEdit();
+      expect(screen.getByRole("heading", { name: NEW_ROUTINE })).toBeInTheDocument();
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
 
   it("add exercise while getExerciseDetails is pending keeps typed name on rows PATCH", async () => {
     const storage = await openMigratedDatabase();
