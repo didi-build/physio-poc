@@ -109,6 +109,20 @@ export function RoutineDraftEditorPage({
   const [newDraftBootstrapFailed, setNewDraftBootstrapFailed] = useState(false);
   const hydratedRef = useRef(false);
   const createDraftPromiseRef = useRef<Promise<string> | null>(null);
+  const newDraftSetupAbandonedRef = useRef(false);
+  const newDraftSetupCompleteRef = useRef(false);
+  const setupCancelDoneRef = useRef(false);
+  const touchStateRef = useRef(true);
+  const nameRef = useRef(name);
+  const whoItsForRef = useRef(whoItsFor);
+  const conditionIdRef = useRef(conditionId);
+  const rowsRef = useRef(rows);
+  const bodyRegionIdRef = useRef(bodyRegionId);
+  nameRef.current = name;
+  whoItsForRef.current = whoItsFor;
+  conditionIdRef.current = conditionId;
+  rowsRef.current = rows;
+  bodyRegionIdRef.current = bodyRegionId;
 
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -210,13 +224,14 @@ export function RoutineDraftEditorPage({
 
   const draftAutosavePatch = useCallback(
     () => ({
-      name: name.trim().length > 0 ? name.trim() : null,
-      who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-      condition_id: conditionId,
-      body_region_id: bodyRegionId!,
-      rows: rowsPayload(rows),
+      name: nameRef.current.trim().length > 0 ? nameRef.current.trim() : null,
+      who_its_for:
+        whoItsForRef.current.trim().length > 0 ? whoItsForRef.current.trim() : null,
+      condition_id: conditionIdRef.current,
+      body_region_id: bodyRegionIdRef.current!,
+      rows: rowsPayload(rowsRef.current),
     }),
-    [bodyRegionId, conditionId, name, rows, whoItsFor],
+    [],
   );
 
   const ensureServerDraft = useCallback(
@@ -250,6 +265,10 @@ export function RoutineDraftEditorPage({
       if (!isNewDraft) {
         return;
       }
+      if (newDraftSetupAbandonedRef.current) {
+        return;
+      }
+      newDraftSetupCompleteRef.current = true;
       navigate(
         fillPhysioAppRoutePattern("routineDraftEdit", {
           routineId,
@@ -302,41 +321,82 @@ export function RoutineDraftEditorPage({
     conditionId,
     rowsCount: rows.length,
   });
+  touchStateRef.current = untouched;
+
+  const finalizeAbandonedNewDraftSetup = useCallback(() => {
+    const promise = createDraftPromiseRef.current;
+    if (!promise || setupCancelDoneRef.current) {
+      return;
+    }
+    void promise
+      .then((routineId) => {
+        if (newDraftSetupCompleteRef.current) {
+          return;
+        }
+        if (!newDraftSetupAbandonedRef.current) {
+          return;
+        }
+        if (!touchStateRef.current) {
+          return;
+        }
+        if (setupCancelDoneRef.current) {
+          return;
+        }
+        setupCancelDoneRef.current = true;
+        return client.cancelUntouchedRoutineDraft(routineId);
+      })
+      .catch(() => {
+        /* draft create failed or page tore down */
+      });
+  }, [client]);
+
+  useEffect(() => {
+    if (!isNewDraft) {
+      return;
+    }
+    return () => {
+      if (newDraftSetupCompleteRef.current || newDraftSetupAbandonedRef.current) {
+        return;
+      }
+      if (!createDraftPromiseRef.current) {
+        return;
+      }
+      if (!touchStateRef.current) {
+        newDraftSetupAbandonedRef.current = true;
+        return;
+      }
+      newDraftSetupAbandonedRef.current = true;
+      finalizeAbandonedNewDraftSetup();
+    };
+  }, [finalizeAbandonedNewDraftSetup, isNewDraft]);
 
   const draftHeading =
     name.trim().length === 0 && rows.length === 0 ? NEW_ROUTINE : EDIT_DRAFT;
 
   const persistRows = useCallback(
     async (next: RoutineExerciseRow[]) => {
-      if (!bodyRegionId) {
+      const regionId = bodyRegionIdRef.current;
+      if (!regionId) {
         return;
       }
       const routineId =
         effectiveRoutineId.length > 0
           ? effectiveRoutineId
-          : await ensureServerDraft(bodyRegionId);
+          : await ensureServerDraft(regionId);
       if (routineId.length === 0) {
         return;
       }
       await client.autosaveRoutineDraft(routineId, {
-        name: name.trim().length > 0 ? name.trim() : null,
-        who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-        condition_id: conditionId,
-        body_region_id: bodyRegionId,
+        name: nameRef.current.trim().length > 0 ? nameRef.current.trim() : null,
+        who_its_for:
+          whoItsForRef.current.trim().length > 0 ? whoItsForRef.current.trim() : null,
+        condition_id: conditionIdRef.current,
+        body_region_id: bodyRegionIdRef.current!,
         rows: rowsPayload(next),
       });
       autoSave.markSaved();
     },
-    [
-      autoSave,
-      bodyRegionId,
-      client,
-      conditionId,
-      effectiveRoutineId,
-      ensureServerDraft,
-      name,
-      whoItsFor,
-    ],
+    [autoSave, client, effectiveRoutineId, ensureServerDraft],
   );
 
   const onRowsChange = (next: RoutineExerciseRow[]) => {
@@ -363,20 +423,36 @@ export function RoutineDraftEditorPage({
   const onBodyRegionSelect = (regionId: string) => {
     setBodyRegionId(regionId);
     void ensureServerDraft(regionId)
-      .then((routineId) =>
-        client
-          .autosaveRoutineDraft(routineId, {
-            name: name.trim().length > 0 ? name.trim() : null,
-            who_its_for: whoItsFor.trim().length > 0 ? whoItsFor.trim() : null,
-            condition_id: conditionId,
-            body_region_id: regionId,
-            rows: rowsPayload(rows),
-          })
-          .then(() => routineId),
-      )
       .then((routineId) => {
+        if (newDraftSetupAbandonedRef.current) {
+          return null;
+        }
+        const setupName = nameRef.current;
+        const setupWho = whoItsForRef.current;
+        const setupCondition = conditionIdRef.current;
+        const setupRows = rowsRef.current;
+        return client
+          .autosaveRoutineDraft(routineId, {
+            name: setupName.trim().length > 0 ? setupName.trim() : null,
+            who_its_for: setupWho.trim().length > 0 ? setupWho.trim() : null,
+            condition_id: setupCondition,
+            body_region_id: regionId,
+            rows: rowsPayload(setupRows),
+          })
+          .then(() => routineId);
+      })
+      .then((routineId) => {
+        if (!routineId || newDraftSetupAbandonedRef.current) {
+          return;
+        }
         autoSave.markSaved();
         goToDraftEditUrl(routineId);
+      })
+      .catch((error: unknown) => {
+        if (newDraftSetupAbandonedRef.current) {
+          return;
+        }
+        throw error;
       });
   };
 
@@ -418,9 +494,24 @@ export function RoutineDraftEditorPage({
 
   const routinesListPath = fillPhysioAppRoutePattern("routines");
 
+  const markNewDraftSetupAbandonedIfPending = useCallback(() => {
+    if (!isNewDraft || newDraftSetupCompleteRef.current) {
+      return;
+    }
+    if (createDraftPromiseRef.current) {
+      newDraftSetupAbandonedRef.current = true;
+    }
+  }, [isNewDraft]);
+
   const onLeave = () => {
     if (untouched) {
+      if (isNewDraft) {
+        newDraftSetupAbandonedRef.current = true;
+      }
       if (effectiveRoutineId.length === 0) {
+        if (isNewDraft && createDraftPromiseRef.current) {
+          finalizeAbandonedNewDraftSetup();
+        }
         navigate(routinesListPath, { replace: true });
         return;
       }
@@ -429,6 +520,7 @@ export function RoutineDraftEditorPage({
       });
       return;
     }
+    markNewDraftSetupAbandonedIfPending();
     void persistPatch().then((routineId) => {
       const path =
         routineId.length > 0
@@ -477,7 +569,33 @@ export function RoutineDraftEditorPage({
 
   return (
     <section className="ex-page rt-authoring" aria-labelledby="rt-authoring-title">
-      <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
+      <Link
+        to={fillPhysioAppRoutePattern("routines")}
+        className="ex-back-link"
+        onClick={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+          }
+          if (
+            !isNewDraft ||
+            !untouched ||
+            (!createDraftPromiseRef.current && effectiveRoutineId.length === 0)
+          ) {
+            return;
+          }
+          event.preventDefault();
+          newDraftSetupAbandonedRef.current = true;
+          if (effectiveRoutineId.length === 0) {
+            finalizeAbandonedNewDraftSetup();
+          } else {
+            void client.cancelUntouchedRoutineDraft(effectiveRoutineId);
+          }
+          navigate(routinesListPath, { replace: true });
+        }}
+      >
         {BACK_ROUTINES}
       </Link>
       <div className="rt-authoring-title-row">
