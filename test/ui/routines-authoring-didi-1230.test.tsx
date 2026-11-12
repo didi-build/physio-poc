@@ -698,6 +698,50 @@ describe("Routine authoring new-draft setup cancel (DIDI-1230)", () => {
     }
   }, 20_000);
 
+  it("touched shell nav during delayed POST does not delete draft", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(
+        storage,
+        id("ui-1230-touch-nav"),
+        "touch-nav@example.com",
+      );
+      const { deps, cookie } = appDepsForRoutinesHttpUi(
+        storage,
+        author,
+        "touch-nav@example.com",
+      );
+      const { client, deleteRoutineIds } = buildTrackingClient(
+        createRoutinesHttpFetch(deps, cookie),
+        { post: true },
+      );
+      const routineName = "Knee mobility";
+      renderApp("/routines/new", client);
+      await waitFor(() => {
+        expect(
+          screen.getByPlaceholderText("Knee osteoarthritis, starter"),
+        ).toBeTruthy();
+      });
+      const nameInput = screen.getByPlaceholderText("Knee osteoarthritis, starter");
+      await userEvent.click(nameInput);
+      await userEvent.paste(routineName);
+      void userEvent.click(
+        within(bodyRegionGroup()).getByRole("button", { name: "Knee" }),
+      );
+      await clickShellRoutinesNav();
+      await waitFor(() => {
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, ROUTINE_SETUP_DELAY_MS + 500);
+      });
+      expect(deleteRoutineIds.length).toBe(0);
+      expect((await client.listMyRoutines()).drafts.length).toBe(1);
+    } finally {
+      storage.close();
+    }
+  }, 20_000);
+
   it("touched name after id during delayed PATCH leaves draft on server", async () => {
     const storage = await openMigratedDatabase();
     try {
