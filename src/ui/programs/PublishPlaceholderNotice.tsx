@@ -13,6 +13,7 @@ import {
 } from "../copy/program-publish.js";
 import { PENDING_REVIEW_BADGE, removeRowAriaLabel } from "../copy/programs.js";
 import { notLiveStillPublishedHelper } from "../copy/program-publish.js";
+import { nextRemoveButtonIndex } from "./publish-notice-remove-focus.js";
 
 export type PublishPlaceholderNoticeProps = {
   placeholders: readonly ProgramBuilderRow[];
@@ -87,6 +88,7 @@ export function PublishPlaceholderNotice({
                 className="pg-icon-btn pg-icon-btn--remove"
                 aria-label={removeRowAriaLabel(row.text_snapshot.title)}
                 onClick={() => {
+                  const removedIndex = placeholders.findIndex((p) => p.id === row.id);
                   onRemove(row.id);
                   const remaining = placeholders.filter((p) => p.id !== row.id);
                   const removed = placeholderRemovedLive(row.text_snapshot.title);
@@ -95,6 +97,15 @@ export function PublishPlaceholderNotice({
                     noticeRef.current?.querySelector("h3")?.focus();
                   } else {
                     setLiveMessage(removed);
+                    const focusIndex = nextRemoveButtonIndex(
+                      removedIndex,
+                      remaining.length,
+                    );
+                    const rowEl =
+                      noticeRef.current?.querySelectorAll(".pg-placeholder-row")[
+                        focusIndex
+                      ];
+                    rowEl?.querySelector<HTMLAnchorElement>("a.pg-link-btn")?.focus();
                   }
                 }}
               >

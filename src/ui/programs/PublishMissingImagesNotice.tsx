@@ -8,6 +8,10 @@ import {
   notLiveStillPublishedHelper,
 } from "../copy/program-publish.js";
 import { removeRowAriaLabel } from "../copy/programs.js";
+import {
+  focusRemoveButtonInNotice,
+  nextRemoveButtonIndex,
+} from "./publish-notice-remove-focus.js";
 
 export type PublishMissingImagesRow = {
   id: string;
@@ -92,6 +96,7 @@ export function PublishMissingImagesNotice({
                 className="pg-icon-btn pg-icon-btn--remove"
                 aria-label={removeRowAriaLabel(row.title)}
                 onClick={() => {
+                  const removedIndex = rows.findIndex((p) => p.id === row.id);
                   onRemove(row.id);
                   const remaining = rows.filter((p) => p.id !== row.id);
                   const removed = missingImagesRemovedLiveProgram(row.title);
@@ -100,10 +105,14 @@ export function PublishMissingImagesNotice({
                     noticeRef.current?.querySelector("h3")?.focus();
                   } else {
                     setLiveMessage(removed);
-                    const next = noticeRef.current?.querySelector<HTMLButtonElement>(
-                      `[aria-label="${removeRowAriaLabel(remaining[0]!.title)}"]`,
+                    const focusIndex = nextRemoveButtonIndex(
+                      removedIndex,
+                      remaining.length,
                     );
-                    next?.focus();
+                    focusRemoveButtonInNotice(
+                      noticeRef.current,
+                      remaining[focusIndex]!.title,
+                    );
                   }
                 }}
               >

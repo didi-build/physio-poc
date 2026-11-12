@@ -230,12 +230,14 @@ export async function attachPublishableMediaToVersion(
     const set = await storage.first<{
       start_object_key: string;
       end_object_key: string;
+      visibility: string;
     }>(
-      `SELECT start_object_key, end_object_key FROM exercise_media_sets WHERE id = ? LIMIT 1`,
+      `SELECT start_object_key, end_object_key, visibility FROM exercise_media_sets WHERE id = ? LIMIT 1`,
       [version.media_set_id],
     );
     if (
       set &&
+      set.visibility === "public" &&
       set.start_object_key.trim().length > 0 &&
       set.end_object_key.trim().length > 0
     ) {

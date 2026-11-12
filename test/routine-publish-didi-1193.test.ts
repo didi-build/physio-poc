@@ -14,6 +14,8 @@ import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
+  attachMediaSetToVersion,
+  insertExerciseMediaSet,
   seedApprovedExerciseVersionWithoutMedia,
   seedApprovedExerciseVersionWithMedia,
   seedPractitioner,
@@ -61,6 +63,37 @@ async function seedAuthorDraft(
 }
 
 describe("routine publish missing images DIDI-1193", () => {
+  it("rejects draft publish when media set visibility is draft", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const author = await seedPractitioner(storage);
+      const routineId = id("rt-1193-draft-vis");
+      const draftVersionId = id("rt-1193-draft-vis-ver");
+      const mediaSetId = id("rt-media-draft");
+      await seedApprovedExerciseVersionWithoutMedia(storage, author);
+      await insertExerciseMediaSet(storage, {
+        id: mediaSetId,
+        startObjectKey: "start.png",
+        endObjectKey: "end.png",
+        visibility: "draft",
+      });
+      await attachMediaSetToVersion(storage, FIXTURE_VERSION_ID, mediaSetId);
+      await seedAuthorDraft(
+        storage,
+        author,
+        routineId,
+        draftVersionId,
+        id("rt-row-draft-vis"),
+      );
+      const service = new RoutineAuthoringService(storage);
+      await expect(
+        service.publishDraft({ practitionerId: author, routineId, name: "Draft vis" }),
+      ).rejects.toMatchObject({ code: "missing_images_block_publish" });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects draft publish without media and leaves routine unpublished", async () => {
     const storage = await openMigratedDatabase();
     try {

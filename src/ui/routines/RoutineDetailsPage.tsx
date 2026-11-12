@@ -250,6 +250,7 @@ export function RoutineDetailsPage() {
             error instanceof RoutinesAuthoringError &&
             error.code === "missing_images_block_publish"
           ) {
+            load();
             setDraftServerMissingImagesBlock(true);
             setDraftMissingImagesFocusHeading(true);
             return;

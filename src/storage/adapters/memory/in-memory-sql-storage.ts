@@ -70,10 +70,10 @@ type WherePredicate =
     };
 
 const ROUTINE_DRAFT_PUBLISH_MEDIA_WHERE =
-  /^id = \? AND status = \? AND NOT EXISTS \( SELECT 1 FROM routine_version_rows rvr INNER JOIN exercise_versions ev ON ev\.id = rvr\.exercise_version_id WHERE rvr\.routine_version_id = \? AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
+  /^id = \? AND status = \? AND NOT EXISTS \( SELECT 1 FROM routine_version_rows rvr INNER JOIN exercise_versions ev ON ev\.id = rvr\.exercise_version_id WHERE rvr\.routine_version_id = \? AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND ems\.visibility = 'public' AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
 
 const ROUTINE_SAVE_PUBLISHED_MEDIA_GUARD =
-  /^id = \? AND published_version = \? AND NOT EXISTS \( SELECT 1 FROM exercise_versions ev WHERE ev\.id IN \((?:\?, )*\?\) AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
+  /^id = \? AND published_version = \? AND NOT EXISTS \( SELECT 1 FROM exercise_versions ev WHERE ev\.id IN \((?:\?, )*\?\) AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND ems\.visibility = 'public' AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
 
 function exerciseVersionLacksPublishMediaInMemory(
   tables: Map<string, Row[]>,

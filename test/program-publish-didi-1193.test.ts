@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import {
   ProgramPublishService,
   ProgramPublishServiceError,
@@ -154,6 +155,38 @@ describe("program publish missing images DIDI-1193", () => {
       });
       await attachMediaSetToVersion(storage, FIXTURE_VERSION_ID, mediaSetId);
       await addProgramRow(storage, programId, id("row-1193-start"));
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      await expect(
+        publish.publishProgram(practitionerId, programId),
+      ).rejects.toMatchObject({
+        code: "missing_images_block_publish",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects first publish when media set visibility is draft", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1193-draft-vis");
+      const mediaSetId = id("media-draft-vis");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Draft visibility",
+      });
+      await seedApprovedExerciseVersionWithoutMedia(storage, practitionerId);
+      await insertExerciseMediaSet(storage, {
+        id: mediaSetId,
+        startObjectKey: "media-sets/start.png",
+        endObjectKey: "media-sets/end.png",
+        visibility: "draft",
+      });
+      await attachMediaSetToVersion(storage, FIXTURE_VERSION_ID, mediaSetId);
+      await addProgramRow(storage, programId, id("row-1193-draft-vis"));
       const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
       await expect(
         publish.publishProgram(practitionerId, programId),
@@ -362,6 +395,35 @@ describe("program publish missing images DIDI-1193", () => {
     } finally {
       storage.close();
       vi.restoreAllMocks();
+    }
+  });
+
+  it("builder advisory flags orphan media_set_id without a set row", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1193-orphan-set");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Orphan set",
+      });
+      await seedApprovedExerciseVersionWithoutMedia(storage, practitionerId);
+      const orphanSetId = id("media-orphan-row");
+      await storage.run(`UPDATE exercise_versions SET media_set_id = ? WHERE id = ?`, [
+        orphanSetId,
+        FIXTURE_VERSION_ID,
+      ]);
+      await addProgramRow(storage, programId, id("row-1193-orphan"));
+      const view = await new ProgramBuilderService(storage).getProgram(
+        practitionerId,
+        programId,
+      );
+      const exerciseRow = view.rows.find((row) => row.kind === "exercise");
+      expect(exerciseRow?.lacks_start_or_end_image).toBe(true);
+    } finally {
+      storage.close();
     }
   });
 

@@ -7,6 +7,10 @@ import {
   missingImagesRemovedLiveRoutine,
 } from "../copy/routines.js";
 import { removeRowAriaLabel } from "../copy/programs.js";
+import {
+  focusRemoveButtonInNotice,
+  nextRemoveButtonIndex,
+} from "../programs/publish-notice-remove-focus.js";
 
 export type RoutinePublishMissingImagesRow = {
   position: number;
@@ -16,27 +20,30 @@ export type RoutinePublishMissingImagesRow = {
 export type RoutinePublishMissingImagesNoticeProps = {
   rows: readonly RoutinePublishMissingImagesRow[];
   focusHeading: boolean;
+  serverRejected?: boolean;
   onRemove: (position: number) => void;
 };
 
 export function RoutinePublishMissingImagesNotice({
   rows,
   focusHeading,
+  serverRejected = false,
   onRemove,
 }: RoutinePublishMissingImagesNoticeProps) {
   const headingId = useId();
   const listEmpty = rows.length === 0;
+  const showBlockHeading = !listEmpty || serverRejected;
   const [liveMessage, setLiveMessage] = useState("");
   const noticeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!focusHeading || listEmpty) {
+    if (!focusHeading || !showBlockHeading) {
       return;
     }
     const heading = noticeRef.current?.querySelector("h3");
     heading?.setAttribute("tabindex", "-1");
     heading?.focus();
-  }, [focusHeading, listEmpty]);
+  }, [focusHeading, showBlockHeading]);
 
   useEffect(() => {
     if (!liveMessage) {
@@ -50,7 +57,9 @@ export function RoutinePublishMissingImagesNotice({
     };
   }, [liveMessage]);
 
-  const heading = listEmpty ? MISSING_IMAGES_NONE_LEFT : MISSING_IMAGES_BLOCK_HEADING;
+  const heading = showBlockHeading
+    ? MISSING_IMAGES_BLOCK_HEADING
+    : MISSING_IMAGES_NONE_LEFT;
 
   return (
     <section
@@ -82,6 +91,9 @@ export function RoutinePublishMissingImagesNotice({
                 className="pg-icon-btn pg-icon-btn--remove"
                 aria-label={removeRowAriaLabel(row.title)}
                 onClick={() => {
+                  const removedIndex = rows.findIndex(
+                    (p) => p.position === row.position,
+                  );
                   onRemove(row.position);
                   const remaining = rows.filter((p) => p.position !== row.position);
                   const removed = missingImagesRemovedLiveRoutine(row.title);
@@ -90,10 +102,14 @@ export function RoutinePublishMissingImagesNotice({
                     noticeRef.current?.querySelector("h3")?.focus();
                   } else {
                     setLiveMessage(removed);
-                    const next = noticeRef.current?.querySelector<HTMLButtonElement>(
-                      `[aria-label="${removeRowAriaLabel(remaining[0]!.title)}"]`,
+                    const focusIndex = nextRemoveButtonIndex(
+                      removedIndex,
+                      remaining.length,
                     );
-                    next?.focus();
+                    focusRemoveButtonInNotice(
+                      noticeRef.current,
+                      remaining[focusIndex]!.title,
+                    );
                   }
                 }}
               >

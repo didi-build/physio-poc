@@ -1062,13 +1062,16 @@ export class RoutinesLibraryService {
         const mediaSet = await new ExerciseMediaSetsRepository(this.sql).findById(
           version.media_set_id,
         );
-        if (mediaSet) {
-          lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage({
-            media_set_id: version.media_set_id,
-            start_object_key: mediaSet.start_object_key,
-            end_object_key: mediaSet.end_object_key,
-          });
-        }
+        lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage(
+          mediaSet
+            ? {
+                media_set_id: version.media_set_id,
+                start_object_key: mediaSet.start_object_key,
+                end_object_key: mediaSet.end_object_key,
+                visibility: mediaSet.visibility,
+              }
+            : { media_set_id: version.media_set_id },
+        );
       }
       items.push({
         position: core.position,

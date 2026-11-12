@@ -230,10 +230,8 @@ export function PublishSheet({
   };
 
   const publishDescribedByIds = [
-    placeholdersBlock || placeholderNoticeCleared ? placeholderNoticeId : null,
-    missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock
-      ? missingImagesNoticeId
-      : null,
+    placeholders.length > 0 ? placeholderNoticeId : null,
+    missingImageRows.length > 0 ? missingImagesNoticeId : null,
   ].filter((id): id is string => id !== null);
   const publishDescribedBy =
     publishDescribedByIds.length > 0 ? publishDescribedByIds.join(" ") : undefined;
@@ -281,7 +279,7 @@ export function PublishSheet({
       </div>
 
       {placeholders.length > 0 || placeholderNoticeCleared ? (
-        <div id={placeholderNoticeId}>
+        <div id={placeholders.length > 0 ? placeholderNoticeId : undefined}>
           <PublishPlaceholderNotice
             placeholders={placeholders}
             showRepublishLine={
@@ -300,7 +298,7 @@ export function PublishSheet({
       ) : null}
 
       {missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock ? (
-        <div id={missingImagesNoticeId}>
+        <div id={missingImageRows.length > 0 ? missingImagesNoticeId : undefined}>
           <PublishMissingImagesNotice
             rows={missingImageRows}
             showRepublishLine={

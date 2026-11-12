@@ -61,9 +61,7 @@ export function RoutinePublishSheet({
   const missingImagesBlock = missingImageRows.length > 0 || serverMissingImagesBlock;
   const publishDisabled = publishBusy || missingImagesBlock;
   const publishDescribedBy =
-    missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock
-      ? missingImagesNoticeId
-      : undefined;
+    missingImageRows.length > 0 ? missingImagesNoticeId : undefined;
 
   useEffect(() => {
     if (!open) {
@@ -124,10 +122,11 @@ export function RoutinePublishSheet({
       </article>
 
       {missingImagesBlock || missingImagesNoticeCleared || serverMissingImagesBlock ? (
-        <div id={missingImagesNoticeId}>
+        <div id={missingImageRows.length > 0 ? missingImagesNoticeId : undefined}>
           <RoutinePublishMissingImagesNotice
             rows={missingImageRows}
             focusHeading={missingImagesFocusHeading}
+            serverRejected={serverMissingImagesBlock}
             onRemove={(position) => {
               if (!onRemoveMissingImagesRow) {
                 return;
