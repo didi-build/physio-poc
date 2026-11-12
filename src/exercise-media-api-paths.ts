@@ -14,13 +14,3 @@ export function exerciseMediaRegeneratePath(exerciseVersionId: string): string {
 export function exerciseMediaServePath(exerciseVersionId: string): string {
   return `/api/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media`;
 }
-
-export type ExerciseMediaPublicImagePhase = "start" | "end";
-
-/** Public image bytes for an approved exercise version (link page and other unauthenticated views). */
-export function exerciseMediaPublicImagePath(
-  exerciseVersionId: string,
-  phase: ExerciseMediaPublicImagePhase,
-): string {
-  return `/api/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media/${phase}?access=public`;
-}

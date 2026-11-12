@@ -18,20 +18,6 @@ describe("Worker entry (integration)", () => {
 
   it("returns 401 for exercise media API routes without a session on the Worker entry", async () => {
     for (const testCase of exerciseMediaHttpRouteCases()) {
-      if (
-        testCase.method === "GET" &&
-        (testCase.path.includes("/media/start?") ||
-          testCase.path.includes("/media/end?"))
-      ) {
-        const publicImage = await worker.fetch(
-          new Request(`https://example.workers.dev${testCase.path}`, {
-            method: testCase.method,
-          }),
-          {},
-        );
-        expect(publicImage.status).not.toBe(401);
-        continue;
-      }
       const response = await worker.fetch(
         new Request(`https://example.workers.dev${testCase.path}`, {
           method: testCase.method,

@@ -466,6 +466,7 @@ export class ProgramPublishService {
         const media = await resolvePublicShareLinkRowMedia(
           this.sql,
           this.webAppBaseUrl,
+          trimmed,
           exerciseVersionId,
         );
         return {

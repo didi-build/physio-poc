@@ -2,13 +2,6 @@ import { isAuthAppApiPath } from "./auth-app-api-prefix.js";
 import { MCP_PATH } from "../http/app.js";
 import { isPublicShareLinkApiPath } from "../http/routes/public-share-link.js";
 
-const PUBLIC_EXERCISE_MEDIA_IMAGE_PATH =
-  /^\/api\/exercise-versions\/[^/]+\/media\/(start|end)$/;
-
-export function isPublicExerciseMediaImageApiPath(pathname: string): boolean {
-  return PUBLIC_EXERCISE_MEDIA_IMAGE_PATH.test(pathname);
-}
-
 export type SessionGuardOptions = {
   /** Dev/test only: marks paths public for session guard (set from Node entry, not Worker). */
   extraSessionPublicPath?: (pathname: string) => boolean;
@@ -33,6 +26,11 @@ export const SESSION_PUBLIC_ROUTE_SAMPLES: readonly SessionPublicRouteSample[] =
   {
     ruleId: "public-share-link-api",
     samplePath: "/api/public/share-links/demo-token",
+    method: "GET",
+  },
+  {
+    ruleId: "public-share-link-media-api",
+    samplePath: "/api/public/share-links/demo-token/media/ver-1/start",
     method: "GET",
   },
   { ruleId: "better-auth-api", samplePath: "/api/auth/sign-in/social", method: "POST" },
@@ -78,11 +76,7 @@ export function requiresPractitionerSession(
     return true;
   }
   if (pathname.startsWith("/api/")) {
-    return (
-      !isPublicApiAuthPath(pathname) &&
-      !isPublicShareLinkApiPath(pathname) &&
-      !isPublicExerciseMediaImageApiPath(pathname)
-    );
+    return !isPublicApiAuthPath(pathname) && !isPublicShareLinkApiPath(pathname);
   }
   if (options.extraSessionPublicPath?.(pathname)) {
     return false;

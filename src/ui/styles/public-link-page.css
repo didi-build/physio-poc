@@ -147,11 +147,22 @@
   color: #1e293b;
 }
 
+.link-page-carousel-stage {
+  position: relative;
+}
+
 .link-page-carousel-frame {
   position: relative;
   border-radius: 0.75rem;
   background: #f1f5f9;
   overflow: hidden;
+}
+
+.link-page-carousel-loop-btn {
+  position: absolute;
+  z-index: 2;
+  right: 0.75rem;
+  bottom: 0.75rem;
 }
 
 .link-page-carousel-track {
@@ -214,13 +225,26 @@
   transition: color 0.15s ease;
 }
 
+.link-page-carousel-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: currentColor;
+  display: block;
+}
+
 .link-page-carousel-indicator--current {
   color: #0f766e;
+}
+
+.link-page-carousel--reduced-motion .link-page-carousel-indicator {
+  transition: none;
 }
 
 .link-page-carousel-indicator:focus-visible,
 .link-page-carousel-frame:focus-visible,
 .link-page-carousel-chevron:focus-visible,
+.link-page-carousel-loop-btn:focus-visible,
 .link-page-media-retry:focus-visible {
   outline: 2px solid #0f766e;
   outline-offset: 2px;
@@ -230,7 +254,7 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 2;
+  z-index: 3;
   width: 2.75rem;
   height: 2.75rem;
   border: none;

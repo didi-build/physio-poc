@@ -1,8 +1,8 @@
 import { normalizeWebAppBaseUrl } from "../../app-routes.js";
 import {
-  exerciseMediaPublicImagePath,
-  type ExerciseMediaPublicImagePhase,
-} from "../../exercise-media-api-paths.js";
+  publicShareLinkMediaApiPath,
+  type PublicShareLinkMediaPhase,
+} from "../../programs-api-paths.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
   ExerciseMediaSetsRepository,
@@ -16,10 +16,12 @@ export type PublicShareLinkRowMedia = {
 
 export function buildPublicShareLinkRowMediaUrl(
   webAppBaseUrl: string,
+  linkToken: string,
   exerciseVersionId: string,
-  phase: ExerciseMediaPublicImagePhase,
+  phase: PublicShareLinkMediaPhase,
 ): string {
-  return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${exerciseMediaPublicImagePath(
+  return `${normalizeWebAppBaseUrl(webAppBaseUrl)}${publicShareLinkMediaApiPath(
+    linkToken,
     exerciseVersionId,
     phase,
   )}`;
@@ -27,15 +29,22 @@ export function buildPublicShareLinkRowMediaUrl(
 
 export function buildPublicShareLinkRowMediaUrls(
   webAppBaseUrl: string,
+  linkToken: string,
   exerciseVersionId: string,
 ): PublicShareLinkRowMedia {
   return {
     start_url: buildPublicShareLinkRowMediaUrl(
       webAppBaseUrl,
+      linkToken,
       exerciseVersionId,
       "start",
     ),
-    end_url: buildPublicShareLinkRowMediaUrl(webAppBaseUrl, exerciseVersionId, "end"),
+    end_url: buildPublicShareLinkRowMediaUrl(
+      webAppBaseUrl,
+      linkToken,
+      exerciseVersionId,
+      "end",
+    ),
   };
 }
 
@@ -46,6 +55,7 @@ export function buildPublicShareLinkRowMediaUrls(
 export async function resolvePublicShareLinkRowMedia(
   sql: SqlStoragePort,
   webAppBaseUrl: string,
+  linkToken: string,
   exerciseVersionId: string,
 ): Promise<PublicShareLinkRowMedia | null> {
   const versions = new ExerciseVersionMediaRepository(sql);
@@ -58,5 +68,5 @@ export async function resolvePublicShareLinkRowMedia(
   if (!set || set.visibility !== "public") {
     return null;
   }
-  return buildPublicShareLinkRowMediaUrls(webAppBaseUrl, exerciseVersionId);
+  return buildPublicShareLinkRowMediaUrls(webAppBaseUrl, linkToken, exerciseVersionId);
 }
