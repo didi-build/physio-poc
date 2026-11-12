@@ -440,7 +440,14 @@ Program sheet, in order:
 
 When the last affected exercise is removed, the heading switches to the check icon (text-teal-700) and "No exercises without images left. You can publish.", and the body and list go away.
 
-Routine sheet ("Publish this routine?"), resolved per CTO (Nov 10, 2026): the heading, the list with "Remove {name}" and the cleared line "No exercises without images left. You can publish." show, exactly as on the program sheet. There is no routine body copy; the approved program body strings are not reworded and no new copy is added. Diadem can ask for more later as a new product call.
+Routine sheet ("Publish this routine?"), Diadem, Nov 11, 2026, 7:13 PM EST (CTO chat), verbatim, locked on DIDI-594 as **G update 6**: "Match the program sheet, with 'routine' wording".
+
+Routine sheet, in order (same structure as the program sheet):
+1. Heading with the alert icon: "Remove exercises without images to publish".
+2. Body: "{n} exercises are missing their start or end image. Remove them from this routine, then publish." For one: "One exercise is missing its start or end image. Remove it from this routine, then publish."
+3. One list item per affected exercise: the exercise name and the Remove icon button ("Remove {name}"). No badge and no Review draft, because these exercises are approved.
+
+When the last affected exercise is removed, the heading switches to the check icon (text-teal-700) and "No exercises without images left. You can publish.", and the body and list go away.
 
 ### 390 px and 1280 px
 
@@ -457,13 +464,13 @@ Every token is the DIDI-1186 one ("Publish blocked by placeholders (DIDI-1186)",
 - The notice is a section with `role="status"` and `aria-labelledby` on its heading, as in DIDI-1186, so it is announced politely after the sheet title.
 - Publish now is `disabled` while any affected exercise remains, with `aria-describedby` pointing at this notice's id. When both notices show, `aria-describedby` lists both ids, placeholders first. Once this list is empty, its id is removed.
 - Program sheet: after a removal the polite live region says "Removed {name} from this program."; when the list empties it also says "No exercises without images left. You can publish."
-- Routine sheet: when the list empties the live region says "No exercises without images left. You can publish.". There is no per-removal read-out on the routine sheet (resolved per CTO, Nov 10, 2026).
+- Routine sheet: after a removal the polite live region says "Removed {name} from this routine." (DIDI-594 G update 6, Diadem, Nov 11, 2026, 7:13 PM EST); when the list empties it also says "No exercises without images left. You can publish."
 - Focus after Remove: moves to the next row's Remove (or the previous one if it was the last row). When the list empties, focus moves to the notice heading (`tabIndex={-1}`).
 - If the server rejects Publish now: focus moves to the notice heading.
 
 ### Open items
 
-None for DIDI-1192. Resolved per CTO (Nov 10, 2026): DIDI-1015 print-footer (no existing print-footer assertion to change; see Acceptance for DIDI-1191 above). Resolved per CTO (Nov 10, 2026): routine sheet wording (heading, list with "Remove {name}", cleared line only; no routine body; program strings unchanged; no new copy).
+None for DIDI-1192. Resolved per CTO (Nov 10, 2026): DIDI-1015 print-footer (no existing print-footer assertion to change; see Acceptance for DIDI-1191 above). Routine sheet wording closed: Diadem, Nov 11, 2026, 7:13 PM EST (CTO chat), verbatim, DIDI-594 G update 6: "Match the program sheet, with 'routine' wording".
 
 ## Mockups
 
@@ -770,6 +777,8 @@ Mockups 38 to 41 (DIDI-1192): MagicPath E7 https://designs.magicpath.ai/v1/keen-
 > **G update 4.** Diadem, Nov 10, 2026, 12:05 AM EST: "E6c sentences, but put "3x a week"/"everyday" on its own new line"
 
 > **G update 5.** CTO locked (is/was comment b0a593dc on DIDI-594). Diadem, Nov 10, 2026, 12:08 AM ET: "Yes, approve E7"; 12:09 AM ET: "yes I approve. and one more minor detail. on the print version, "images didn't load" should go on the images column (a merged column 2 and 3)". Together these approve the E7 layout and the strings "Video", "Previous" and "Next". The final E7 design is https://designs.magicpath.ai/v1/keen-current-4842, revision 470770451010957312.
+>
+> **G update 6.** Diadem, Nov 11, 2026, 7:13 PM EST (CTO chat): "Match the program sheet, with 'routine' wording"
 
 | Topic | Was | Is |
 | -- | -- | -- |
@@ -1043,6 +1052,12 @@ Every user-facing string in the parts of the approved source that render this fe
 - {n} exercises are missing their start or end image. Remove them from this program, then publish.
 - One exercise is missing its start or end image. Remove it from this program, then publish.
 - No exercises without images left. You can publish.
+
+### Approved Nov 11, 2026, 7:13 PM EST (DIDI-1192, DIDI-594 G update 6)
+
+- {n} exercises are missing their start or end image. Remove them from this routine, then publish.
+- One exercise is missing its start or end image. Remove it from this routine, then publish.
+- Removed {name} from this routine. (screen reader read-out after removal on "Publish this routine?")
 
 ### Approved Nov 10, 2026, 12:09 AM ET (DIDI-1192)
 
