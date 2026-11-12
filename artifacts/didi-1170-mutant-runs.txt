@@ -1,4 +1,4 @@
-baseline_sha=1b22991
+baseline_sha=a132870
 === baseline npm run test ===
  FAIL  test/mcp-oauth-consent-layout.browser.test.ts > MCP OAuth consent layout (real browser, DIDI-1161) > keeps the Self-reported tag inside the card content box at 1280 px
  FAIL  test/mcp-oauth-consent-layout.browser.test.ts > MCP OAuth consent layout (real browser, DIDI-1161) > requires Inter 700 to be loaded for the Self-reported tag
@@ -73,7 +73,7 @@ baseline_sha=1b22991
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  10 failed | 234 passed (244)
-      Tests  72 failed | 2560 passed | 4 skipped (2636)
+      Tests  72 failed | 2562 passed | 4 skipped (2638)
 
 === M1 ===
  src/services/programs/program-builder-service.ts | 3 ---
@@ -167,7 +167,7 @@ index 16c58d8..5057a1e 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  12 failed | 232 passed (244)
-      Tests  74 failed | 2558 passed | 4 skipped (2636)
+      Tests  74 failed | 2560 passed | 4 skipped (2638)
 clean: yes
 
 === M2 ===
@@ -260,7 +260,7 @@ index 72d465e..fd6db79 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  11 failed | 233 passed (244)
-      Tests  73 failed | 2559 passed | 4 skipped (2636)
+      Tests  73 failed | 2561 passed | 4 skipped (2638)
 clean: yes
 
 === M3a ===
@@ -357,7 +357,7 @@ index 6f5eb36..40df06d 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  12 failed | 232 passed (244)
-      Tests  77 failed | 2555 passed | 4 skipped (2636)
+      Tests  77 failed | 2557 passed | 4 skipped (2638)
 clean: yes
 
 === M3b ===
@@ -455,7 +455,7 @@ index 6f5eb36..124a95e 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  12 failed | 232 passed (244)
-      Tests  78 failed | 2554 passed | 4 skipped (2636)
+      Tests  78 failed | 2556 passed | 4 skipped (2638)
 clean: yes
 
 === M4a ===
@@ -552,7 +552,7 @@ index 2427eba..d034211 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  11 failed | 233 passed (244)
-      Tests  76 failed | 2556 passed | 4 skipped (2636)
+      Tests  76 failed | 2558 passed | 4 skipped (2638)
 clean: yes
 
 === M4b ===
@@ -654,7 +654,7 @@ index 30faf5e..558dd12 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  13 failed | 231 passed (244)
-      Tests  81 failed | 2551 passed | 4 skipped (2636)
+      Tests  81 failed | 2553 passed | 4 skipped (2638)
 clean: yes
 
 === M5 ===
@@ -684,6 +684,8 @@ index faef9ca..b168a38 100644
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > publish: concurrent HTTP publishes return one 200 and one 409 stale_write without partial publish
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > save_community_version: competing version save before batch returns 409 stale_write with no extra published row
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > save_community_version: competing version save before batch returns 409 stale_write with no extra published row
+ FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > POST my-routines save succeeds without a concurrent race
+ FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > POST my-routines save succeeds without a concurrent race
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > POST my-routines save: competing publish bump before saveFrozenCopy batch returns 409 stale_write with no copy row
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > POST my-routines save: competing publish bump before saveFrozenCopy batch returns 409 stale_write with no copy row
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > adopt_community_version: real batch guard failure returns 409 stale_write without adopting
@@ -967,7 +969,7 @@ index faef9ca..b168a38 100644
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > remove → Undo with HTTP 401 dismisses toast and leaves post-remove state
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > adopt → Undo with HTTP 409 uses the same applyUndo failure surface
  Test Files  35 failed | 209 passed (244)
-      Tests  286 failed | 2346 passed | 4 skipped (2636)
+      Tests  288 failed | 2346 passed | 4 skipped (2638)
 clean: yes
 
 === M6 ===
@@ -1109,7 +1111,7 @@ index faef9ca..d2b104f 100644
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > remove → Undo with HTTP 401 dismisses toast and leaves post-remove state
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > adopt → Undo with HTTP 409 uses the same applyUndo failure surface
  Test Files  23 failed | 221 passed (244)
-      Tests  122 failed | 2510 passed | 4 skipped (2636)
+      Tests  122 failed | 2512 passed | 4 skipped (2638)
 clean: yes
 
 === M7 ===
@@ -1128,6 +1130,8 @@ index faef9ca..38bad69 100644
        },
        ...input.rowStatements,
      ];
+ FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > POST my-routines save succeeds without a concurrent race
+ FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > POST my-routines save succeeds without a concurrent race
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (BetterSqliteStorage) > adopt_community_version: real batch guard failure returns 409 stale_write without adopting
  FAIL  test/didi-1170-routines-stale-write-http.test.ts > DIDI-1170 stale_write HTTP races (D1SqlStorage fake) > adopt_community_version: real batch guard failure returns 409 stale_write without adopting
  FAIL  test/didi-1217-routine-conditions.test.ts > 0009 routine conditions migration (integration) > leaves routines, versions, saved copies, and program origin unchanged (0008 → 0009)
@@ -1267,7 +1271,7 @@ index faef9ca..38bad69 100644
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > remove → Undo with HTTP 401 dismisses toast and leaves post-remove state
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > adopt → Undo with HTTP 409 uses the same applyUndo failure surface
  Test Files  27 failed | 217 passed (244)
-      Tests  138 failed | 2494 passed | 4 skipped (2636)
+      Tests  140 failed | 2494 passed | 4 skipped (2638)
 clean: yes
 
 === M8 ===
@@ -1362,7 +1366,7 @@ index faef9ca..794b0ff 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  FAIL  test/ui/routines-undo-mutation-http.test.tsx > Routines Undo rejection (HTTP → real Toast Undo) > adopt → Undo with HTTP 409 uses the same applyUndo failure surface
  Test Files  13 failed | 231 passed (244)
-      Tests  75 failed | 2557 passed | 4 skipped (2636)
+      Tests  75 failed | 2559 passed | 4 skipped (2638)
 clean: yes
 
 === M9 ===
@@ -1464,7 +1468,7 @@ index 6f5eb36..b3bbf68 100644
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-my-copy-direct direct entry at 390 and 1280 px
  FAIL  test/ui/routines-direct-entry.browser.test.ts > Routines direct entry (browser, DIDI-1022) > routines-detail-load-failed direct entry at 390 and 1280 px
  Test Files  12 failed | 232 passed (244)
-      Tests  79 failed | 2553 passed | 4 skipped (2636)
+      Tests  79 failed | 2555 passed | 4 skipped (2638)
 clean: yes
 
 done
