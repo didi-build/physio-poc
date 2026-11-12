@@ -121,6 +121,33 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     expect(screen.queryByTestId("public-link-exercise-carousel")).toBeNull();
   });
 
+  it("does not show Pause video on slide 1 when reduced motion is preferred", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes("prefers-reduced-motion"),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      })),
+    );
+    mockOpenLink([
+      {
+        position: 0,
+        title: "Heel slide",
+        prescription_type: "stretching",
+        params: { hold_s: 30 },
+        note: null,
+        media: MEDIA,
+      },
+    ]);
+    await waitFor(() => {
+      expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: ARIA_PAUSE_EXERCISE_VIDEO })).toBeNull();
+    expect(screen.getByTestId("exercise-motion-loop")).toBeNull();
+  });
+
   it("marks the expiry footer as screen-only chrome", async () => {
     mockOpenLink([
       {
