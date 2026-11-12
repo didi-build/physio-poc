@@ -158,6 +158,9 @@ export function ExerciseLibraryPage({
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
   const [reqNote, setReqNote] = useState("");
+  const [reqExerciseName, setReqExerciseName] = useState(() =>
+    (searchParams.get("q") ?? "").trim(),
+  );
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
@@ -256,6 +259,9 @@ export function ExerciseLibraryPage({
     if (q.trim()) {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setReqExerciseName(q.trim());
+    } else {
+      setReqExerciseName("");
     }
   }, [searchParams]);
 
@@ -325,6 +331,7 @@ export function ExerciseLibraryPage({
     if (tab === "all") {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setReqExerciseName(value.trim());
       if (value.trim()) {
         setSearchParams({ q: value.trim() });
       } else {
@@ -334,13 +341,14 @@ export function ExerciseLibraryPage({
   };
 
   const submitRequest = async () => {
-    if (!trimmedQuery || submittingRequest) {
+    const requestedName = reqExerciseName.trim();
+    if (!requestedName || submittingRequest) {
       return;
     }
     setSubmittingRequest(true);
     try {
       const result = await requestsClient.submitRequest({
-        requested_name: trimmedQuery,
+        requested_name: requestedName,
         exercise_note: reqNote.trim() || null,
         form_opened_at: formOpenedAtRef.current,
         resolution: "submit",
@@ -356,7 +364,7 @@ export function ExerciseLibraryPage({
         return;
       }
       if (result.outcome === "created") {
-        setSubmittedRequestName(trimmedQuery);
+        setSubmittedRequestName(requestedName);
         onRequestsChanged?.();
         void refreshInProgressCount();
       }
@@ -366,8 +374,13 @@ export function ExerciseLibraryPage({
   };
 
   const hasSimilar = allExercises.length > 0 || similarDrafts.length > 0;
+  const showLeadInCard = showNoExactMatch && !hasSimilar;
 
   const showListContent = !loading && !loadFailed;
+  const showRequestCard =
+    showListContent &&
+    tab === "all" &&
+    (showNoExactMatch || (trimmedQuery.length === 0 && allExercises.length === 0));
 
   return (
     <section className="ex-page ex-library-page" aria-labelledby="ex-lib-heading">
@@ -537,10 +550,10 @@ export function ExerciseLibraryPage({
 
         {showListContent && tab === "all" ? (
           <>
-            {showNoExactMatch ? (
+            {showNoExactMatch && hasSimilar ? (
               <div className="ex-no-exact">
                 <h2>{noExactMatchHeading(trimmedQuery)}</h2>
-                <p>{hasSimilar ? SIMILAR_INTRO : NOT_IN_LIBRARY_YET}</p>
+                <p>{SIMILAR_INTRO}</p>
               </div>
             ) : null}
             {!showNoExactMatch && allExercises.length > 0 ? (
@@ -627,28 +640,31 @@ export function ExerciseLibraryPage({
                 </ul>
               </section>
             ) : null}
-            {showNoExactMatch ? (
-              <div className="ex-request-shell">
-                {submittedRequestName ? (
-                  <RequestSubmittedPanel
-                    exerciseName={submittedRequestName}
-                    onViewRequest={() => {
-                      navigate(fillPhysioAppRoutePattern("requests"));
-                    }}
-                  />
-                ) : (
-                  <RequestForm
-                    exerciseName={trimmedQuery}
-                    showNoneHeading={hasSimilar}
-                    note={reqNote}
-                    onNoteChange={setReqNote}
-                    onSubmit={() => {
-                      void submitRequest();
-                    }}
-                    submitting={submittingRequest}
-                  />
-                )}
-              </div>
+            {showRequestCard ? (
+              submittedRequestName ? (
+                <RequestSubmittedPanel
+                  exerciseName={submittedRequestName}
+                  onViewRequest={() => {
+                    navigate(fillPhysioAppRoutePattern("requests"));
+                  }}
+                />
+              ) : (
+                <RequestForm
+                  exerciseName={reqExerciseName}
+                  onExerciseNameChange={setReqExerciseName}
+                  showNoneHeading={hasSimilar}
+                  leadHeading={
+                    showLeadInCard ? noExactMatchHeading(trimmedQuery) : undefined
+                  }
+                  leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
+                  note={reqNote}
+                  onNoteChange={setReqNote}
+                  onSubmit={() => {
+                    void submitRequest();
+                  }}
+                  submitting={submittingRequest}
+                />
+              )
             ) : null}
           </>
         ) : null}

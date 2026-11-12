@@ -29,7 +29,7 @@ import {
 function RequestSubmittedScreen() {
   return (
     <section className="ex-page" data-layout-screen="request-submitted">
-      <div className="ex-request-shell">
+      <div className="ex-request-card">
         <RequestSubmittedPanel
           exerciseName="Heel slide"
           onViewRequest={() => {
