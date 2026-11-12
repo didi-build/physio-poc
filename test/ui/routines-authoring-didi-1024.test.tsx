@@ -4,8 +4,14 @@
 import "./setup.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+function LocationSpy({ pathnameRef }: { pathnameRef: { current: string } }) {
+  const { pathname } = useLocation();
+  pathnameRef.current = pathname;
+  return null;
+}
 import { PhysioApp } from "../../src/ui/App.js";
 import { ExerciseLibraryClient } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-client.js";
@@ -272,6 +278,7 @@ describe("Routine authoring UI (DIDI-1024)", () => {
   });
 
   it("cancels an untouched draft when only body region was selected", async () => {
+    const pathnameRef = { current: "/routines/new" };
     const storage = await openMigratedDatabase();
     try {
       const author = await seedPractitioner(
@@ -287,7 +294,17 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       const client = new RoutinesClient({
         fetchFn: createRoutinesHttpFetch(deps, cookie),
       });
-      renderApp("/routines/new", client);
+      render(
+        <MemoryRouter initialEntries={["/routines/new"]}>
+          <LocationSpy pathnameRef={pathnameRef} />
+          <PhysioApp
+            exerciseLibraryClient={stubLibraryClient()}
+            exerciseRequestsClient={stubRequestsClient()}
+            programsClient={stubProgramsClient()}
+            routinesClient={client}
+          />
+        </MemoryRouter>,
+      );
       await waitFor(() => {
         expect(screen.getByRole("group", { name: BODY_REGION })).toBeTruthy();
       });
@@ -296,12 +313,14 @@ describe("Routine authoring UI (DIDI-1024)", () => {
       await waitFor(async () => {
         const list = await client.listMyRoutines();
         expect(list.drafts.length).toBe(1);
+        const routineId = list.drafts[0]!.routine_id;
+        expect(pathnameRef.current).toBe(`/routines/${routineId}/edit`);
       });
       const cancel = await screen.findByRole("button", { name: "Cancel" });
       await userEvent.click(cancel);
-      expect(
-        await screen.findByTestId("routines-page", {}, { timeout: 5000 }),
-      ).toBeTruthy();
+      await waitFor(() => {
+        expect(screen.getByTestId("routines-page")).toBeTruthy();
+      });
       const afterCancel = await client.listMyRoutines();
       expect(afterCancel.drafts.length).toBe(0);
     } finally {
