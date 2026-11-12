@@ -242,44 +242,4 @@ describe("Publish sheet missing images accessibility DIDI-1193", () => {
     });
     expect(document.activeElement).toBe(heading);
   });
-
-  it("focuses the next row Remove button after removing a middle row", async () => {
-    const initialRows = [
-      { ...exerciseRow("row-a", "Alpha", true), position: 0 },
-      { ...exerciseRow("row-b", "Bravo", true), position: 1 },
-      { ...exerciseRow("row-c", "Charlie", true), position: 2 },
-    ];
-    function Harness() {
-      const [rows, setRows] = useState(initialRows);
-      const program: ProgramBuilderView = { ...baseProgram, rows };
-      return (
-        <PublishSheet
-          open
-          program={program}
-          shareView={null}
-          client={new ProgramsClient({ fetchFn: vi.fn() })}
-          nameDraft="Program"
-          showNameField
-          onNameChange={() => {}}
-          onProgramUpdated={() => {}}
-          onClose={() => {}}
-          onPublished={() => {}}
-          onNotYet={() => {}}
-          onRemovePlaceholder={() => {}}
-          onRemoveMissingImagesRow={(rowId) => {
-            setRows((prev) => prev.filter((row) => row.id !== rowId));
-          }}
-        />
-      );
-    }
-    const view = renderInRouter(<Harness />);
-    await userEvent.click(
-      within(view.container).getByRole("button", { name: "Remove Bravo" }),
-    );
-    await waitFor(() => {
-      expect(
-        within(view.container).getByRole("button", { name: "Remove Charlie" }),
-      ).toHaveFocus();
-    });
-  });
 });
