@@ -28,6 +28,11 @@ export const SESSION_PUBLIC_ROUTE_SAMPLES: readonly SessionPublicRouteSample[] =
     samplePath: "/api/public/share-links/demo-token",
     method: "GET",
   },
+  {
+    ruleId: "public-share-link-media-api",
+    samplePath: "/api/public/share-links/demo-token/media/ver-1/start",
+    method: "GET",
+  },
   { ruleId: "better-auth-api", samplePath: "/api/auth/sign-in/social", method: "POST" },
   { ruleId: "sign-in", samplePath: "/sign-in", method: "GET" },
   { ruleId: "build-assets", samplePath: "/assets/index.js", method: "GET" },

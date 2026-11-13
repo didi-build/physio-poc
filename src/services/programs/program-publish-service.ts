@@ -50,6 +50,10 @@ import type { ProgramBuilderView, ShareLinkStatus } from "./types.js";
 import type { GetProgramDisplayState } from "../../mcp-connector/get-program-contract.js";
 import type { PublishedProgramSnapshot } from "../../domain/program-types.js";
 import { formatShareLinkExpiryDisplayDate } from "../../copy/programs-share.js";
+import {
+  resolvePublicShareLinkRowMedia,
+  type PublicShareLinkRowMedia,
+} from "./public-share-link-row-media.js";
 
 export class ProgramPublishServiceError extends Error {
   constructor(
@@ -103,7 +107,10 @@ export type PublicShareLinkOpenRow = {
   prescription_type: PublishedProgramSnapshot["rows"][number]["prescriptionType"];
   params: PublishedProgramSnapshot["rows"][number]["params"];
   note: string | null;
+  media: PublicShareLinkRowMedia | null;
 };
+
+export type { PublicShareLinkRowMedia };
 
 export type PublicShareLinkOpenView = {
   availability: "open";
@@ -461,20 +468,34 @@ export class ProgramPublishService {
     }
 
     const expiryLine = this.buildExpiryLine(openLink);
-    return {
-      availability: "open",
-      program_name: snapshot.name,
-      published_at: snapshot.publishedAt,
-      expiry_line: expiryLine,
-      rows: snapshot.rows
-        .filter((row) => row.exerciseId !== null && row.exerciseVersionId !== null)
-        .map((row) => ({
+    const openRows = snapshot.rows.filter(
+      (row) => row.exerciseId !== null && row.exerciseVersionId !== null,
+    );
+    const rows: PublicShareLinkOpenRow[] = await Promise.all(
+      openRows.map(async (row) => {
+        const exerciseVersionId = row.exerciseVersionId!;
+        const media = await resolvePublicShareLinkRowMedia(
+          this.sql,
+          this.webAppBaseUrl,
+          trimmed,
+          exerciseVersionId,
+        );
+        return {
           position: row.position,
           title: row.textSnapshot.title,
           prescription_type: row.prescriptionType,
           params: row.params,
           note: row.note,
-        })),
+          media,
+        };
+      }),
+    );
+    return {
+      availability: "open",
+      program_name: snapshot.name,
+      published_at: snapshot.publishedAt,
+      expiry_line: expiryLine,
+      rows,
     };
   }
 

@@ -36,7 +36,13 @@ describe("exercise visual placements", () => {
 
   it("renders PublicLinkExerciseVideo with Play video toggle and consistent image alts", async () => {
     const user = userEvent.setup();
-    render(<PublicLinkExerciseVideo alt="Bridge" />);
+    render(
+      <PublicLinkExerciseVideo
+        alt="Bridge"
+        startSrc="/test-start.png"
+        endSrc="/test-end.png"
+      />,
+    );
 
     expect(screen.getByTestId("public-link-static-start")).toHaveAttribute(
       "alt",

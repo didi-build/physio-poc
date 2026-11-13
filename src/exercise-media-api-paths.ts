@@ -10,7 +10,7 @@ export function exerciseMediaRegeneratePath(exerciseVersionId: string): string {
   return `/api/me/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media/regenerate`;
 }
 
-/** Public or internal media serve (not under /api/me). */
+/** Public or internal media serve metadata (not under /api/me). */
 export function exerciseMediaServePath(exerciseVersionId: string): string {
   return `/api/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media`;
 }

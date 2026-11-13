@@ -83,3 +83,13 @@ export function programShareLinkPath(programId: string): string {
 export function publicShareLinkApiPath(token: string): string {
   return `/api/public/share-links/${encodeURIComponent(token.trim())}`;
 }
+
+export type PublicShareLinkMediaPhase = "start" | "end";
+
+export function publicShareLinkMediaApiPath(
+  token: string,
+  exerciseVersionId: string,
+  phase: PublicShareLinkMediaPhase,
+): string {
+  return `/api/public/share-links/${encodeURIComponent(token.trim())}/media/${encodeURIComponent(exerciseVersionId)}/${phase}`;
+}

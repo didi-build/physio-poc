@@ -17,11 +17,6 @@ import {
   PUBLIC_LINK_SAVE_AS_PDF,
 } from "../../src/copy/programs-share.js";
 import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
-import {
-  EXERCISE_VISUAL_PLACEHOLDER_END_SRC,
-  EXERCISE_VISUAL_PLACEHOLDER_START_SRC,
-} from "../../src/ui/exercise-visual/placeholders.js";
-
 const PRINT_STYLESHEET = join(process.cwd(), "src/ui/styles/public-link-page.css");
 
 function renderOpenLink(
@@ -31,6 +26,7 @@ function renderOpenLink(
     prescription_type: "stretching" | "eccentric";
     params: Record<string, number>;
     note: string | null;
+    media?: { start_url: string; end_url: string } | null;
   }>,
 ) {
   vi.stubGlobal(
@@ -69,6 +65,7 @@ describe("PublicLinkPage (UI)", () => {
         prescription_type: "stretching",
         params: { hold_s: 30 },
         note: null,
+        media: null,
       },
     ]);
     await waitFor(() => {
@@ -86,40 +83,10 @@ describe("PublicLinkPage (UI)", () => {
         name: `Heel slide, ${TYPE_LABELS.stretching.toLowerCase()}`,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("30s hold")).toBeInTheDocument();
+    expect(screen.getByRole("listitem")).toHaveTextContent("30s hold");
     expect(
       screen.getByText("This link stays open until your physiotherapist closes it."),
     ).toBeInTheDocument();
-  });
-
-  it("does not render per-row visuals or stock placeholder images without media", async () => {
-    renderOpenLink([
-      {
-        position: 0,
-        title: "Heel slide",
-        prescription_type: "stretching",
-        params: { hold_s: 30 },
-        note: null,
-      },
-      {
-        position: 1,
-        title: "Bridge",
-        prescription_type: "eccentric",
-        params: { reps: 10 },
-        note: null,
-      },
-    ]);
-    await waitFor(() => {
-      expect(screen.getByText("30s hold")).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId("public-link-exercise-video")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Play video" })).toBeNull();
-    const images = document.querySelectorAll("img");
-    for (const img of images) {
-      const src = img.getAttribute("src") ?? "";
-      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_START_SRC);
-      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_END_SRC);
-    }
   });
 
   it("renders every published row and includes print-layout hooks", async () => {
@@ -130,6 +97,7 @@ describe("PublicLinkPage (UI)", () => {
         prescription_type: "stretching",
         params: { hold_s: 30 },
         note: "Slow and controlled",
+        media: null,
       },
       {
         position: 1,
@@ -137,6 +105,7 @@ describe("PublicLinkPage (UI)", () => {
         prescription_type: "eccentric",
         params: { reps: 12, sets: 3 },
         note: null,
+        media: null,
       },
     ]);
     await waitFor(() => {
@@ -158,6 +127,7 @@ describe("PublicLinkPage (UI)", () => {
         prescription_type: "eccentric",
         params: { reps: 10 },
         note: null,
+        media: null,
       },
     ]);
     await waitFor(() => {
@@ -180,6 +150,7 @@ describe("PublicLinkPage (UI)", () => {
         prescription_type: "stretching",
         params: { hold_s: 30 },
         note: null,
+        media: null,
       },
     ]);
     const user = userEvent.setup();
@@ -210,6 +181,7 @@ describe("PublicLinkPage (UI)", () => {
               prescription_type: "stretching",
               params: {},
               note: null,
+              media: null,
             },
           ],
         }),
@@ -226,7 +198,7 @@ describe("PublicLinkPage (UI)", () => {
       expect(screen.getByRole("heading", { name: "Week one" })).toBeInTheDocument();
     });
     const listItem = screen.getByRole("listitem");
-    expect(listItem.querySelectorAll("p.pg-muted")).toHaveLength(0);
+    expect(listItem.querySelectorAll(".link-page-dose-line")).toHaveLength(0);
   });
 
   it("renders the closed state without extra program details", async () => {

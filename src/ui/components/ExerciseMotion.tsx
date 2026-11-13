@@ -20,6 +20,13 @@ export type ExerciseMotionProps = {
   endSrc: string;
   alt: string;
   className?: string;
+  /** Parent supplies focus, keyboard, and the pause control (public link carousel). */
+  embedded?: boolean;
+  playing?: boolean;
+  onPlayingChange?: (playing: boolean) => void;
+  onImageError?: () => void;
+  /** Fires when the start still image loads (carousel retry success). */
+  onStartImageLoad?: () => void;
 };
 
 function PauseIcon() {
@@ -44,14 +51,31 @@ export function ExerciseMotion({
   endSrc,
   alt,
   className = "",
+  embedded = false,
+  playing: playingProp,
+  onPlayingChange,
+  onImageError,
+  onStartImageLoad,
 }: ExerciseMotionProps) {
-  const [playing, setPlaying] = useState(true);
+  const [internalPlaying, setInternalPlaying] = useState(true);
+  const playing = playingProp ?? internalPlaying;
   const staticRegionId = useId();
   const prefersReducedMotion = usePrefersReducedMotion();
 
+  const setPlaying = useCallback(
+    (next: boolean | ((current: boolean) => boolean)) => {
+      const resolved = typeof next === "function" ? next(playing) : next;
+      if (playingProp === undefined) {
+        setInternalPlaying(resolved);
+      }
+      onPlayingChange?.(resolved);
+    },
+    [onPlayingChange, playing, playingProp],
+  );
+
   const togglePlaying = useCallback(() => {
     setPlaying((current) => !current);
-  }, []);
+  }, [setPlaying]);
 
   const onRootClick = useCallback(() => {
     togglePlaying();
@@ -95,11 +119,11 @@ export function ExerciseMotion({
     <div
       className={rootClassName}
       style={loopDurationStyle}
-      onClick={onRootClick}
-      onKeyDown={onRootKeyDown}
-      role="group"
-      aria-label={alt}
-      tabIndex={0}
+      onClick={embedded ? undefined : onRootClick}
+      onKeyDown={embedded ? undefined : onRootKeyDown}
+      role={embedded ? undefined : "group"}
+      aria-label={embedded ? undefined : alt}
+      tabIndex={embedded ? undefined : 0}
     >
       <div className="exercise-motion-loop" data-testid="exercise-motion-loop">
         <div className="exercise-motion-stage">
@@ -108,53 +132,60 @@ export function ExerciseMotion({
             alt={exerciseMotionStartAlt(alt)}
             className="exercise-motion-start-img"
             data-testid="exercise-motion-start"
+            onError={onImageError}
+            onLoad={onStartImageLoad}
           />
           <img
             src={endSrc}
             alt={exerciseMotionEndAlt(alt)}
             className="exercise-motion-end-img"
             data-testid="exercise-motion-end"
+            onError={onImageError}
           />
         </div>
         <div className="exercise-motion-progress-track" aria-hidden>
           <div className="exercise-motion-progress-bar" />
         </div>
-        <button
-          type="button"
-          className="exercise-motion-pause-btn"
-          aria-label={playing ? ARIA_PAUSE_EXERCISE_VIDEO : ARIA_PLAY_EXERCISE_VIDEO}
-          onClick={onPauseClick}
-        >
-          {playing ? <PauseIcon /> : <PlayIcon />}
-        </button>
+        {embedded ? null : (
+          <button
+            type="button"
+            className="exercise-motion-pause-btn"
+            aria-label={playing ? ARIA_PAUSE_EXERCISE_VIDEO : ARIA_PLAY_EXERCISE_VIDEO}
+            onClick={onPauseClick}
+          >
+            {playing ? <PauseIcon /> : <PlayIcon />}
+          </button>
+        )}
       </div>
 
-      <div
-        className="exercise-motion-static"
-        data-testid="exercise-motion-reduced-static"
-        aria-labelledby={staticRegionId}
-      >
-        <figure className="exercise-motion-static-figure">
-          <img
-            src={startSrc}
-            alt={exerciseMotionStartAlt(alt)}
-            className="exercise-motion-static-img"
-            data-testid="exercise-motion-static-start"
-          />
-          <figcaption className="exercise-motion-static-caption" id={staticRegionId}>
-            Start
-          </figcaption>
-        </figure>
-        <figure className="exercise-motion-static-figure">
-          <img
-            src={endSrc}
-            alt={exerciseMotionEndAlt(alt)}
-            className="exercise-motion-static-img"
-            data-testid="exercise-motion-static-end"
-          />
-          <figcaption className="exercise-motion-static-caption">End</figcaption>
-        </figure>
-      </div>
+      {embedded ? null : (
+        <div
+          className="exercise-motion-static"
+          data-testid="exercise-motion-reduced-static"
+          aria-labelledby={staticRegionId}
+        >
+          <figure className="exercise-motion-static-figure">
+            <img
+              src={startSrc}
+              alt={exerciseMotionStartAlt(alt)}
+              className="exercise-motion-static-img"
+              data-testid="exercise-motion-static-start"
+            />
+            <figcaption className="exercise-motion-static-caption" id={staticRegionId}>
+              Start
+            </figcaption>
+          </figure>
+          <figure className="exercise-motion-static-figure">
+            <img
+              src={endSrc}
+              alt={exerciseMotionEndAlt(alt)}
+              className="exercise-motion-static-img"
+              data-testid="exercise-motion-static-end"
+            />
+            <figcaption className="exercise-motion-static-caption">End</figcaption>
+          </figure>
+        </div>
+      )}
     </div>
   );
 }
