@@ -17,7 +17,7 @@ export const myDefaultsPendingCopySlots: MyDefaultsPendingCopySlots = {
   readoutTwiceADay: undefined,
   readoutPerDayTimes: undefined,
   readoutPerDayRange: undefined,
-  readoutOneSet: "1 set",
-  readoutNSets: (n) => `${n} sets`,
+  readoutOneSet: undefined,
+  readoutNSets: undefined,
   readoutSecondsUp: undefined,
 };

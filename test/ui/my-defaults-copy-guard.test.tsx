@@ -162,9 +162,9 @@ describe("My defaults pending copy slots (integration, jsdom)", () => {
     }
   });
 
-  it("does not render undefined readout segments when optional slots stay undefined", () => {
+  it("does not render readout phrases when readout slots are undefined", () => {
     const readout = formatExerciseParams(GUARD_FIXTURE_PARAMS);
-    expect(readout).toBe("10 reps, 2s hold, 1 set, 3x a week");
+    expect(readout).toBe("10 reps, 2s hold, 3x a week");
     expect(readout).not.toMatch(/undefined/);
     expect(readout).not.toContain(FIXTURE_PER_DAY_ONCE);
     expect(readout).not.toContain(FIXTURE_ONE_SET);
@@ -178,7 +178,7 @@ describe("My defaults pending copy slots (integration, jsdom)", () => {
     });
     const readsAs = container.querySelector(".md-reads-as");
     const readsAsText = readsAs?.textContent ?? "";
-    expect(readsAsText).toContain("10 reps, 2s hold, 1 set, 3x a week");
+    expect(readsAsText).toContain("10 reps, 2s hold, 3x a week");
     expect(readsAsText).not.toMatch(/undefined/);
     expect(readsAsText).not.toContain(FIXTURE_PER_DAY_RANGE);
   });
