@@ -188,17 +188,19 @@ describe("DIDI-1191 public share link media (integration)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       const programId = id("prog-1191-missing");
-      const programs = new ProgramsRepository(storage);
-      await programs.create({
-        id: programId,
-        createdBy: practitionerId,
-        createdAt: TS,
-        name: "Missing media",
-      });
-      await seedExerciseRow(storage, programId, practitionerId);
-      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
-      const result = await publish.publishProgram(practitionerId, programId);
-      const token = decodeURIComponent(result.share_link.split("/l/")[1]!);
+      const token = await publishOpenProgram(
+        storage,
+        programId,
+        practitionerId,
+        objects,
+      );
+      await storage.run(
+        `UPDATE exercise_media_sets SET visibility = 'draft'
+         WHERE id = (
+           SELECT media_set_id FROM exercise_versions WHERE id = ? LIMIT 1
+         )`,
+        [FIXTURE_VERSION_ID],
+      );
       const deps = apiDeps(storage, objects, practitionerId);
       const response = await handleRequest(
         new Request(`${BASE}${publicShareLinkApiPath(token)}`),
@@ -511,33 +513,19 @@ describe("DIDI-1191 public share link media (integration)", () => {
     try {
       const practitionerId = await seedPractitioner(storage);
       const programId = id("prog-1191-private-media");
-      const programs = new ProgramsRepository(storage);
-      await programs.create({
-        id: programId,
-        createdBy: practitionerId,
-        createdAt: TS,
-        name: "Private media",
-      });
-      await seedExerciseRow(storage, programId, practitionerId);
-      const mediaSetId = id("ms-1191-private");
-      const startKey = `media-sets/${mediaSetId}/start.png`;
-      const endKey = `media-sets/${mediaSetId}/end.png`;
-      await storage.run(
-        `INSERT INTO exercise_media_sets (
-          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-        [mediaSetId, startKey, endKey, null, "draft", TS],
+      const token = await publishOpenProgram(
+        storage,
+        programId,
+        practitionerId,
+        objects,
       );
-      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
-        mediaSetId,
-        FIXTURE_VERSION_ID,
-      ]);
-      const media = new PrefixMediaStorage(objects);
-      await media.putImage(startKey, PNG_BYTES, "image/png", "public");
-      await media.putImage(endKey, PNG_BYTES, "image/png", "public");
-      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
-      const result = await publish.publishProgram(practitionerId, programId);
-      const token = decodeURIComponent(result.share_link.split("/l/")[1]!);
+      await storage.run(
+        `UPDATE exercise_media_sets SET visibility = 'draft'
+         WHERE id = (
+           SELECT media_set_id FROM exercise_versions WHERE id = ? LIMIT 1
+         )`,
+        [FIXTURE_VERSION_ID],
+      );
       const json = await handleRequest(
         new Request(`${BASE}${publicShareLinkApiPath(token)}`),
         apiDeps(storage, objects, practitionerId),
