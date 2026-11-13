@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -321,6 +321,89 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     } finally {
       window.matchMedia = originalMatchMedia;
     }
+  });
+
+  it("renders singular dose 1 set (CTO 1f0292ec-B)", async () => {
+    mockOpenLink([
+      {
+        position: 0,
+        title: "Heel slide",
+        prescription_type: "stretching",
+        params: { reps: 10, sets: 1, days_per_week: 3 },
+        note: null,
+        media: MEDIA,
+      },
+    ]);
+    await waitFor(() => {
+      expect(screen.getByRole("listitem")).toBeInTheDocument();
+    });
+    const row = screen.getByRole("listitem");
+    expect(row).toHaveTextContent("1 set");
+    expect(row).not.toHaveTextContent("1 sets");
+  });
+
+  it("shows Images didn't load. without stock placeholders for null media and image load failure (acceptance criterion 3)", async () => {
+    const token = "demo-token";
+    const versionId = "ev-row-two";
+    const shareStart = `https://app.example/api/public/share-links/${token}/media/${versionId}/start`;
+    const shareEnd = `https://app.example/api/public/share-links/${token}/media/${versionId}/end`;
+    const allowedMediaSrc = new RegExp(
+      String.raw`/api/public/share-links/${token}/media/`,
+    );
+
+    mockOpenLink([
+      {
+        position: 0,
+        title: "Heel slide",
+        prescription_type: "stretching",
+        params: { hold_s: 30 },
+        note: null,
+        media: null,
+      },
+      {
+        position: 1,
+        title: "Bridge",
+        prescription_type: "stretching",
+        params: { hold_s: 20 },
+        note: null,
+        media: {
+          start_url: shareStart,
+          end_url: shareEnd,
+        },
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)).toHaveLength(1);
+    });
+    expect(screen.getByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD).textContent).toBe(
+      PUBLIC_LINK_IMAGES_DIDNT_LOAD,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
+    });
+    const rowTwoImg = document.querySelector(
+      `img[src="${shareStart}"]`,
+    ) as HTMLImageElement | null;
+    expect(rowTwoImg).not.toBeNull();
+    fireEvent.error(rowTwoImg!);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)).toHaveLength(2);
+    });
+    for (const node of screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)) {
+      expect(node.textContent).toBe(PUBLIC_LINK_IMAGES_DIDNT_LOAD);
+    }
+
+    for (const img of document.querySelectorAll("img")) {
+      const src = img.getAttribute("src") ?? "";
+      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_START_SRC);
+      expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_END_SRC);
+      expect(src).not.toBe("");
+      expect(src).toMatch(allowedMediaSrc);
+    }
+    expect(screen.queryByTestId("public-link-exercise-carousel")).toBeNull();
   });
 
   it("marks the expiry footer as screen-only chrome", async () => {

@@ -15,7 +15,9 @@ Serve link-page exercise media only under the public share-link API prefix:
 
 `GET /api/public/share-links/{token}/media/{exerciseVersionId}/{start|end}`
 
-The share-link JSON embeds link-scoped `start_url` and `end_url` using that shape. The link token is the only credential; there are no signed URLs and no alternate public media route.
+The share-link JSON embeds link-scoped `start_url` and `end_url` using that shape. The link token is the only credential for those bytes. There are no signed URLs.
+
+**Node vs Worker:** On the **Worker** production entry, anonymous recipients receive exercise image bytes only through this share-link prefix. On the **Node** entry (development, test, and `extraRouteHandlers`), [DIDI-1013](https://linear.app/didi-build/issue/DIDI-1013) still exposes `GET /api/exercise-versions/{id}/media?access=public`: anonymous callers get **401**, and an authenticated practitioner session (including another practitioner) can get **200** JSON with `mediaSetId`, `startObjectKey`, `endObjectKey`, and `visibility`. DIDI-1191 does not remove that Node route.
 
 Every request is evaluated fail-closed:
 
@@ -41,6 +43,7 @@ Successful and failed GET responses use the correct `Content-Type`, `Cache-Contr
 
 ## Consequences
 
-- The global `GET /api/exercise-versions/{versionId}/media/{start|end}?access=public` route and its session-guard exemption are removed.
+- The **Worker** does not register a global version-scoped public media byte route; link-page production bytes use the share-link prefix above. The Node `GET /api/exercise-versions/{id}/media?access=public` JSON route from DIDI-1013 remains unchanged on Node.
+- DIDI-1191 removes use of that global route (and any session-guard exemption) for **public share-link page** media URLs; rows expose only link-scoped `start_url` / `end_url`.
 - Tests and mutants must cover each fail-closed branch, response headers, Worker wiring, and no-write-on-GET for media fetches.
 - Future object storage bindings on the Worker must back the same `ObjectStoragePort` used to persist generated media.
