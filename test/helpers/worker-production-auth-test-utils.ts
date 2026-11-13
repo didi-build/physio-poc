@@ -11,6 +11,7 @@ import {
   seedPractitioner,
 } from "./worker-auth-d1-fixture.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./physio-test-auth-secret.js";
+import { createFakeR2Bucket } from "./fake-r2-bucket.js";
 
 export const WORKER_PRODUCTION_TEST_BASE = "https://example.workers.dev";
 const FIXTURE_GOOGLE_CLIENT_ID = "fixture-worker-google-client-id";
@@ -25,6 +26,7 @@ export function buildWorkerProductionAuthEnv(
     GOOGLE_CLIENT_ID: FIXTURE_GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: FIXTURE_GOOGLE_CLIENT_SECRET,
     PHYSIO_ALLOWED_GOOGLE_EMAILS: FAKE_GOOGLE_ALLOWED_EMAIL,
+    PHYSIO_MEDIA: createFakeR2Bucket(),
     ...overrides,
   };
 }

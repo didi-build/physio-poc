@@ -7,7 +7,7 @@ Area: app · Backend services for [DIDI-1013](https://linear.app/didi-build/issu
 - **Images only** (start and end stills). No video generation in this POC slice (product direction update on DIDI-594, Oct 30, 2026).
 - **FLUX.2 klein 4B on fal** behind `ImageGenerationPort`; **fake image adapter by default** in tests and local wiring.
 - **fal CDN downloads:** only `https` URLs on `fal.media` and subdomains (for example `v3b.fal.media`); `redirect: manual` with allowlisted redirect targets; 10 MiB size cap (`FAL_IMAGE_DOWNLOAD_MAX_BYTES` in `fal-flux-klein-image-generation.ts`).
-- **Object storage** behind `MediaStoragePort` (draft vs public visibility). In-memory fakes in this PR; R2 wiring is **DIDI-1040**.
+- **Object storage** behind `MediaStoragePort` (draft vs public visibility). In-memory fakes for local dev and tests; production uses the **R2** `PHYSIO_MEDIA` binding (**DIDI-1040**).
 - **HTTP (dev and test entries only):** exercise media routes are registered through `AppDependencies.extraRouteHandlers` on the Node entry when `NODE_ENV` is `development` or `test`, and through the test harness helper `exerciseMediaExtraRouteHandlers()`. They are not imported into the Worker entry route table; those paths return 404 on Workers until session auth lands in **DIDI-1001**.
 
 ## Layers

@@ -7,6 +7,7 @@ import type { AppDependencies } from "../../http/app.js";
 import { isWorkerProductionAuthEnvComplete } from "../../auth/worker-production-auth-env.js";
 import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-object-storage.js";
 import { D1SqlStorage, type PhysioD1Database } from "./d1-sql-storage.js";
+import type { PhysioR2Bucket } from "./r2-object-storage.js";
 import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
 import { resolveWorkerFailClosedPhysioServerConfig } from "./resolve-worker-config.js";
 
@@ -30,6 +31,7 @@ export type WorkerEnv = {
   PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS?: string;
   PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
   PHYSIO_DB?: PhysioD1Database;
+  PHYSIO_MEDIA?: PhysioR2Bucket;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 
