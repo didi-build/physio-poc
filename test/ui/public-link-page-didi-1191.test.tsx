@@ -346,10 +346,12 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     const token = "demo-token";
     const versionId = "ev-row-two";
     const shareStart = `https://app.example/api/public/share-links/${token}/media/${versionId}/start`;
-    const shareEnd = `https://app.example/api/public/share-links/${token}/media/${versionId}/end`;
     const allowedMediaSrc = new RegExp(
       String.raw`/api/public/share-links/${token}/media/`,
     );
+
+    const shareStartRowThree = `https://app.example/api/public/share-links/${token}/media/ev-row-three/start`;
+    const shareEndRowThree = `https://app.example/api/public/share-links/${token}/media/ev-row-three/end`;
 
     mockOpenLink([
       {
@@ -362,13 +364,24 @@ describe("Public link page media carousel (DIDI-1191)", () => {
       },
       {
         position: 1,
+        title: "Calf raise",
+        prescription_type: "stretching",
+        params: { hold_s: 15 },
+        note: null,
+        media: {
+          start_url: shareStart,
+          end_url: undefined as unknown as string,
+        },
+      },
+      {
+        position: 2,
         title: "Bridge",
         prescription_type: "stretching",
         params: { hold_s: 20 },
         note: null,
         media: {
-          start_url: shareStart,
-          end_url: shareEnd,
+          start_url: shareStartRowThree,
+          end_url: shareEndRowThree,
         },
       },
     ]);
@@ -376,6 +389,15 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     await waitFor(() => {
       expect(screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)).toHaveLength(1);
     });
+
+    const assertNoStockPlaceholderImgs = () => {
+      for (const img of document.querySelectorAll("img")) {
+        const src = img.getAttribute("src") ?? "";
+        expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_START_SRC);
+        expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_END_SRC);
+      }
+    };
+    assertNoStockPlaceholderImgs();
     expect(screen.getByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD).textContent).toBe(
       PUBLIC_LINK_IMAGES_DIDNT_LOAD,
     );
@@ -383,8 +405,9 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("public-link-exercise-carousel")).toBeInTheDocument();
     });
+    assertNoStockPlaceholderImgs();
     const rowTwoImg = document.querySelector(
-      `img[src="${shareStart}"]`,
+      `img[src="${shareStartRowThree}"]`,
     ) as HTMLImageElement | null;
     expect(rowTwoImg).not.toBeNull();
     fireEvent.error(rowTwoImg!);
@@ -392,6 +415,7 @@ describe("Public link page media carousel (DIDI-1191)", () => {
     await waitFor(() => {
       expect(screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)).toHaveLength(2);
     });
+    assertNoStockPlaceholderImgs();
     for (const node of screen.getAllByText(PUBLIC_LINK_IMAGES_DIDNT_LOAD)) {
       expect(node.textContent).toBe(PUBLIC_LINK_IMAGES_DIDNT_LOAD);
     }
@@ -403,6 +427,7 @@ describe("Public link page media carousel (DIDI-1191)", () => {
       expect(src).not.toBe("");
       expect(src).toMatch(allowedMediaSrc);
     }
+    assertNoStockPlaceholderImgs();
     expect(screen.queryByTestId("public-link-exercise-carousel")).toBeNull();
   });
 
