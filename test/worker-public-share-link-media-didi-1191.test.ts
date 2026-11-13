@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/entry/worker.js";
+import { PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY } from "../src/services/programs/public-share-link-media.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import { ProgramPublishService } from "../src/services/programs/program-publish-service.js";
@@ -50,6 +51,28 @@ describe("Worker public share link media (DIDI-1191)", () => {
     vi.restoreAllMocks();
     resetWorkerProductionAuthCacheForTests();
     resetWorkerProductionModuleImportForTests();
+  });
+
+  it("returns not_found JSON for unknown link media on the Worker", async () => {
+    const { storage } = await openWorkerAuthTestDatabase();
+    try {
+      const d1 = d1DatabaseFromSqlite(storage.nativeDatabase());
+      const env = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 });
+      const response = await worker.fetch(
+        new Request(
+          `${WORKER_PRODUCTION_TEST_BASE}${publicShareLinkMediaApiPath(
+            "not-a-real-token",
+            FIXTURE_VERSION_ID,
+            "start",
+          )}`,
+        ),
+        env,
+      );
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
   });
 
   it("serves link-scoped media bytes on the Worker entry without a session", async () => {
@@ -109,6 +132,75 @@ describe("Worker public share link media (DIDI-1191)", () => {
             token,
             FIXTURE_VERSION_ID,
             "start",
+          )}`,
+        ),
+        env,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("image/png");
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(PNG_BYTES);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("serves end-phase bytes on the Worker entry", async () => {
+    const { storage } = await openWorkerAuthTestDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-worker-1191-end");
+      const programs = new ProgramsRepository(storage);
+      await programs.create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Worker media end",
+      });
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      await new ProgramRowsRepository(storage).replaceRow({
+        id: id("row-worker-1191-end"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30, sets: 3, days_per_week: 3 },
+        textSnapshot: { title: "Heel slide" },
+        draftUpdatedAt: TS,
+      });
+      const mediaSetId = id("ms-worker-1191-end");
+      const startKey = `media-sets/${mediaSetId}/start.png`;
+      const endKey = `media-sets/${mediaSetId}/end.png`;
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [mediaSetId, startKey, endKey, null, "public", TS],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        mediaSetId,
+        FIXTURE_VERSION_ID,
+      ]);
+      const media = new PrefixMediaStorage(workerObjects);
+      await media.putImage(startKey, PNG_BYTES, "image/png", "public");
+      await media.putImage(endKey, PNG_BYTES, "image/png", "public");
+
+      const publish = new ProgramPublishService(
+        storage,
+        WORKER_PRODUCTION_TEST_BASE,
+        () => TS,
+      );
+      const published = await publish.publishProgram(practitionerId, programId);
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const d1 = d1DatabaseFromSqlite(storage.nativeDatabase());
+      const env = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 });
+
+      const response = await worker.fetch(
+        new Request(
+          `${WORKER_PRODUCTION_TEST_BASE}${publicShareLinkMediaApiPath(
+            token,
+            FIXTURE_VERSION_ID,
+            "end",
           )}`,
         ),
         env,

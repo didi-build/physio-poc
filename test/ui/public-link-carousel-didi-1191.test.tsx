@@ -38,11 +38,36 @@ describe("PublicLinkExerciseCarousel unit (DIDI-1191)", () => {
       expect(screen.getByTestId("public-link-media-failed")).toBeInTheDocument();
     });
     expect(document.activeElement).not.toHaveClass("link-page-carousel-frame");
-    await user.click(
-      screen.getByRole("button", { name: "Try loading images for Heel slide again" }),
-    );
+    const tryAgain = screen.getByRole("button", {
+      name: "Try loading images for Heel slide again",
+    });
+    await user.click(tryAgain);
+    const startAgain = await screen.findByTestId("exercise-motion-start");
+    fireEvent.load(startAgain);
     await waitFor(() => {
       expect(document.activeElement).toHaveClass("link-page-carousel-frame");
+    });
+  });
+
+  it("keeps focus on Try again when retry fails again (spec 3g)", async () => {
+    const user = userEvent.setup();
+    render(<PublicLinkExerciseCarousel title="Heel slide" media={MEDIA} />);
+    const start = await screen.findByTestId("exercise-motion-start");
+    fireEvent.error(start);
+    await waitFor(() => {
+      expect(screen.getByTestId("public-link-media-failed")).toBeInTheDocument();
+    });
+    const tryAgain = screen.getByRole("button", {
+      name: "Try loading images for Heel slide again",
+    });
+    await user.click(tryAgain);
+    const startAgain = await screen.findByTestId("exercise-motion-start");
+    fireEvent.error(startAgain);
+    const tryAgainAfter = await screen.findByRole("button", {
+      name: "Try loading images for Heel slide again",
+    });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(tryAgainAfter);
     });
   });
 

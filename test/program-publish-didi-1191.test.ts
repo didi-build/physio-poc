@@ -627,6 +627,36 @@ describe("DIDI-1191 public share link media (integration)", () => {
     }
   });
 
+  it("returns 404 for closed link media when a practitioner session cookie is present", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const programId = id("prog-1191-closed-session");
+      const token = await publishOpenProgram(
+        storage,
+        programId,
+        practitionerId,
+        objects,
+      );
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      await publish.closeShareLink(practitionerId, programId);
+      const deps = apiDeps(storage, objects, practitionerId);
+      const cookie = deps.auth.createSessionCookieHeader();
+      const response = await handleRequest(
+        new Request(
+          `${BASE}${publicShareLinkMediaApiPath(token, FIXTURE_VERSION_ID, "start")}`,
+          { headers: { cookie } },
+        ),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("performs no writes on public share link media GET", async () => {
     const storage = await openMigratedDatabase();
     const objects = new InMemoryObjectStorage();

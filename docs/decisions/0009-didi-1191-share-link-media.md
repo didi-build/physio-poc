@@ -27,6 +27,8 @@ Any failure returns **404** with a **code-only** JSON body that does not disting
 
 Production serves these bytes on the **Worker** through `handleRequest` and the shared program/media service layer (not Node-only `extraRouteHandlers`). Image bytes are read from the same object storage port used elsewhere for media.
 
+**Production Worker object storage today:** `createWorkerProductionAppDependencies` wires `objects: new InMemoryObjectStorage()`. D1-backed share links and SQL gates work on the deployed Worker, but **persisted media bytes are not available** in that in-memory store across requests or isolates. Live `GET …/media/…` therefore tends to return **404** and the link page shows **Images didn't load.** until a persistent `ObjectStoragePort` binding exists. That binding is **out of scope for this change**; routing awaits CTO ruling on production storage ([DIDI-1191 comment 9ac2b301](https://linear.app/didi-build/issue/DIDI-1191#comment-9ac2b301)).
+
 Successful and failed GET responses use the correct `Content-Type`, `Cache-Control: private, max-age=300` (300 seconds or less), and `X-Content-Type-Options: nosniff`. No public or CDN caching. GET performs no writes and no view counting.
 
 ## Reasons

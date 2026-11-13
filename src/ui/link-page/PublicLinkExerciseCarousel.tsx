@@ -97,6 +97,7 @@ export function PublicLinkExerciseCarousel({
   const trackRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const tryAgainRef = useRef<HTMLButtonElement>(null);
+  const awaitingRetryOutcomeRef = useRef(false);
   const [activeSlide, setActiveSlide] = useState(0);
   const missingMedia = media === null;
   const [loadFailed, setLoadFailed] = useState(missingMedia);
@@ -183,17 +184,31 @@ export function PublicLinkExerciseCarousel({
 
   const markLoadFailed = useCallback(() => {
     setLoadFailed(true);
+    if (awaitingRetryOutcomeRef.current) {
+      awaitingRetryOutcomeRef.current = false;
+      queueMicrotask(() => {
+        tryAgainRef.current?.focus();
+      });
+    }
+  }, []);
+
+  const markRetryLoadSucceeded = useCallback(() => {
+    if (!awaitingRetryOutcomeRef.current) {
+      return;
+    }
+    awaitingRetryOutcomeRef.current = false;
+    queueMicrotask(() => {
+      frameRef.current?.focus();
+    });
   }, []);
 
   const onRetry = useCallback(() => {
     if (missingMedia || !startSrc || !endSrc) {
       return;
     }
+    awaitingRetryOutcomeRef.current = true;
     setLoadFailed(false);
     setRetryKey((key) => key + 1);
-    queueMicrotask(() => {
-      frameRef.current?.focus();
-    });
   }, [endSrc, missingMedia, startSrc]);
 
   if (loadFailed) {
@@ -259,6 +274,7 @@ export function PublicLinkExerciseCarousel({
                   alt={exerciseMotionStartAlt(title)}
                   className="link-page-carousel-still"
                   onError={markLoadFailed}
+                  onLoad={markRetryLoadSucceeded}
                 />
               ) : activeSlide === 0 ? (
                 <ExerciseMotion
@@ -270,6 +286,7 @@ export function PublicLinkExerciseCarousel({
                   embedded
                   playing={loopPlaying}
                   onImageError={markLoadFailed}
+                  onStartImageLoad={markRetryLoadSucceeded}
                   onPlayingChange={(playing) => {
                     setUserPaused(!playing);
                   }}

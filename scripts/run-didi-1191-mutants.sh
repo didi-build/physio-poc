@@ -28,9 +28,9 @@ run_suite() {
   npm run test >"$suite_log" 2>&1
   local exit_code=$?
   set -e
-  rg "^ FAIL " "$suite_log" || true
-  rg "^Test Files" "$suite_log" || true
-  rg "^Tests  " "$suite_log" || true
+  rg "^\s*FAIL " "$suite_log" || true
+  rg "^\s*Test Files" "$suite_log" || true
+  rg "^\s*Tests\s" "$suite_log" || true
   echo "SUITE_EXIT:${exit_code}"
   rm -f "$suite_log"
 }
@@ -38,11 +38,13 @@ run_suite() {
 record() {
   local id="$1"
   local description="$2"
-  if ! git diff --quiet -- "${FILES[@]}"; then
-    echo "WARN: dirty tree before $id" >&2
-  fi
   echo "=== $id ===" >>"$OUT"
   echo "description: $description" >>"$OUT"
+  if ! git diff --quiet -- "${FILES[@]}"; then
+    echo "mutant_applied: yes" >>"$OUT"
+  else
+    echo "mutant_applied: NO" >>"$OUT"
+  fi
   echo "--- diff stat ---" >>"$OUT"
   git diff --stat -- "${FILES[@]}" >>"$OUT" || true
   echo "--- diff ---" >>"$OUT"

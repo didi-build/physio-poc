@@ -25,6 +25,8 @@ export type ExerciseMotionProps = {
   playing?: boolean;
   onPlayingChange?: (playing: boolean) => void;
   onImageError?: () => void;
+  /** Fires when the start still image loads (carousel retry success). */
+  onStartImageLoad?: () => void;
 };
 
 function PauseIcon() {
@@ -53,6 +55,7 @@ export function ExerciseMotion({
   playing: playingProp,
   onPlayingChange,
   onImageError,
+  onStartImageLoad,
 }: ExerciseMotionProps) {
   const [internalPlaying, setInternalPlaying] = useState(true);
   const playing = playingProp ?? internalPlaying;
@@ -130,6 +133,7 @@ export function ExerciseMotion({
             className="exercise-motion-start-img"
             data-testid="exercise-motion-start"
             onError={onImageError}
+            onLoad={onStartImageLoad}
           />
           <img
             src={endSrc}
