@@ -23,6 +23,7 @@ for (let i = 0; i < blocks.length; i += 2) {
 
   const description =
     body.match(/^description: (.+)$/m)?.[1]?.trim() ?? "(missing description)";
+  const mutantApplied = body.match(/^mutant_applied: (yes|NO)$/m)?.[1] ?? "?";
   const diffNonempty = body.match(/^diff_nonempty: (yes|NO)$/m)?.[1] ?? "?";
   const suiteExit = body.match(/^suite_exit: (\d+)$/m)?.[1] ?? "?";
   const revertExit = body.match(/^revert_exit: (\d+)$/m)?.[1] ?? "?";
@@ -74,6 +75,7 @@ for (let i = 0; i < blocks.length; i += 2) {
       `| Field | Value |`,
       `| --- | --- |`,
       `| Result | ${result} |`,
+      `| mutant_applied | ${mutantApplied} |`,
       `| diff_nonempty | ${diffNonempty} |`,
       `| suite_exit | ${suiteExit} |`,
       `| test_files | ${testFilesLine || "(n/a)"} |`,
