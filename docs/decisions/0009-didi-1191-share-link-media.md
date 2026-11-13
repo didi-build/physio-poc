@@ -29,6 +29,8 @@ Any failure returns **404** with a **code-only** JSON body that does not disting
 
 Production serves these bytes on the **Worker** through `handleRequest` and the shared program/media service layer (not Node-only `extraRouteHandlers`). Image bytes are read from the same object storage port used elsewhere for media.
 
+**Known limitation — production Worker object storage (until deploy):** [DIDI-1040](https://linear.app/didi-build/issue/DIDI-1040) lands the private `physio-media` R2 binding on the Worker, but deploy stays blocked until [DIDI-1208](https://linear.app/didi-build/issue/DIDI-1208) steps C and D (bucket, token, Workers Paid). Until that deploy, production still uses in-memory object storage per isolate. Even after R2 deploy, **no Worker path writes generated media bytes** until [DIDI-1212](https://linear.app/didi-build/issue/DIDI-1212) registers authenticated media routes; share-link reads can work, but live link pages still cannot show newly generated images until bytes are uploaded through a Worker write path.
+
 Successful and failed GET responses use the correct `Content-Type`, `Cache-Control: private, max-age=300` (300 seconds or less), and `X-Content-Type-Options: nosniff`. No public or CDN caching. GET performs no writes and no view counting.
 
 ## Reasons

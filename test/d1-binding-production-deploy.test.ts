@@ -503,7 +503,7 @@ describe("Worker entry SQL adapter wiring (DIDI-1031)", () => {
     });
     try {
       await server.listen();
-      const worker = server.getWorker<{ PHYSIO_DB: unknown }>();
+      const worker = server.getWorker();
       await worker.applyD1Migrations("PHYSIO_DB");
       const env = await worker.getEnv();
       const deps = await createWorkerAppDependencies({

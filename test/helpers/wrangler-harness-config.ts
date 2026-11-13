@@ -11,6 +11,29 @@ import { PHYSIO_PRODUCTION_R2_BUCKETS } from "../../scripts/lib/wrangler-r2-bind
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
 
+/** Test harness only: simulated local R2 — never remote buckets or account credentials. */
+export function assertHarnessR2BucketsAreLocalOnly(
+  buckets: readonly Record<string, unknown>[],
+): void {
+  for (const entry of buckets) {
+    if (entry.remote === true) {
+      throw new Error("harness wrangler config must not set r2_buckets.remote: true");
+    }
+    if ("account_id" in entry && entry.account_id !== undefined) {
+      throw new Error("harness wrangler config must not set r2_buckets.account_id");
+    }
+    if (
+      "preview_bucket_name" in entry &&
+      entry.preview_bucket_name !== undefined &&
+      entry.preview_bucket_name !== entry.bucket_name
+    ) {
+      throw new Error(
+        "harness wrangler config must not point at a remote preview bucket",
+      );
+    }
+  }
+}
+
 export type WranglerHarnessConfigFixture = {
   configPath: string;
   cleanup: () => void;
@@ -48,6 +71,9 @@ export function writeHarnessWranglerConfigWithProductionBindings(): WranglerHarn
   if (assets && typeof assets === "object" && !Array.isArray(assets)) {
     (assets as Record<string, unknown>).directory = join(REPO_ROOT, "dist/ui");
   }
+  assertHarnessR2BucketsAreLocalOnly(
+    PHYSIO_PRODUCTION_R2_BUCKETS as readonly Record<string, unknown>[],
+  );
   config.r2_buckets = PHYSIO_PRODUCTION_R2_BUCKETS;
   const configPath = join(tempDir, "wrangler.harness.jsonc");
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");

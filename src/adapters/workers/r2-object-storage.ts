@@ -1,42 +1,15 @@
+import type { R2Bucket } from "@cloudflare/workers-types";
 import type {
   ObjectHeadResult,
   ObjectStoragePort,
   StoredObject,
 } from "../../storage/ports/object-storage.js";
 
-export type PhysioR2HttpMetadata = {
-  contentType?: string;
-};
-
-export type PhysioR2PutOptions = {
-  httpMetadata?: PhysioR2HttpMetadata;
-};
-
-export type PhysioR2ObjectBody = {
-  arrayBuffer(): Promise<ArrayBuffer>;
-};
-
-export type PhysioR2Object = {
-  body: PhysioR2ObjectBody | null;
-  httpMetadata?: PhysioR2HttpMetadata;
-  size?: number;
-};
-
-/** Minimal R2 bucket binding surface used by the Workers entry. */
-export type PhysioR2Bucket = {
-  put(
-    key: string,
-    value: Uint8Array | ArrayBuffer,
-    options?: PhysioR2PutOptions,
-  ): Promise<unknown>;
-  get(key: string): Promise<PhysioR2Object | null>;
-  head(key: string): Promise<PhysioR2Object | null>;
-  delete(key: string): Promise<void>;
-};
+export type PhysioR2Bucket = R2Bucket;
 
 const DEFAULT_OBJECT_CONTENT_TYPE = "application/octet-stream";
 
-function readContentType(metadata: PhysioR2HttpMetadata | undefined): string {
+function readContentType(metadata: { contentType?: string } | undefined): string {
   const contentType = metadata?.contentType?.trim();
   if (!contentType) {
     return DEFAULT_OBJECT_CONTENT_TYPE;
@@ -55,10 +28,10 @@ export class R2ObjectStorage implements ObjectStoragePort {
 
   async get(key: string): Promise<StoredObject | null> {
     const object = await this.bucket.get(key);
-    if (!object?.body) {
+    if (object === null) {
       return null;
     }
-    const buffer = new Uint8Array(await object.body.arrayBuffer());
+    const buffer = new Uint8Array(await object.arrayBuffer());
     return {
       body: buffer,
       contentType: readContentType(object.httpMetadata),

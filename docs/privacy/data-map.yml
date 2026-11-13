@@ -1238,6 +1238,6 @@ other_items:
     binding: PHYSIO_MEDIA
     whose: operational
     data: Private exercise media blobs (draft and public prefixed keys); no patient information in object keys
-    purpose: persist generated exercise start/end images for the physio-poc Worker
+    purpose: persist generated exercise start/end images for the physio-poc Worker; POC retention is indefinite with no draft/blob cleanup — revisit before any real-user rollout
     processors: [Cloudflare]
     retention: indefinite

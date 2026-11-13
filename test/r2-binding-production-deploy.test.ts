@@ -110,10 +110,13 @@ describe("non-deploy workflows never reference production R2 (DIDI-1040)", () =>
 });
 
 describe("Worker production object storage wiring (DIDI-1040)", () => {
-  it("requires PHYSIO_MEDIA and wires R2ObjectStorage in production deps", () => {
+  it("wires R2 when PHYSIO_MEDIA is present and a fail-closed media stub when it is missing", () => {
     const source = readFileSync(CREATE_PRODUCTION_DEPS_PATH, "utf8");
     expect(source).toContain("PHYSIO_MEDIA");
-    expect(source).toContain("new R2ObjectStorage");
+    expect(source).toContain("MediaBindingMissingObjectStorage");
+    expect(source).not.toMatch(
+      /throw new Error\(\s*[\s\S]*PHYSIO_MEDIA binding is required/,
+    );
     expect(source).not.toMatch(/objects:\s*new InMemoryObjectStorage\(\)/);
   });
 });

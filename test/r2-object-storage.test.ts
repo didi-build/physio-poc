@@ -28,6 +28,42 @@ describe("R2ObjectStorage (unit)", () => {
     expect(await storage.head("missing")).toBeNull();
   });
 
+  it("reads via object.arrayBuffer() when body is only a ReadableStream", async () => {
+    const bytes = new TextEncoder().encode("stream-body");
+    let bodyArrayBufferCalled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes);
+        controller.close();
+      },
+    });
+    const body = Object.assign(stream, {
+      arrayBuffer: async () => {
+        bodyArrayBufferCalled = true;
+        return bytes.buffer.slice(
+          bytes.byteOffset,
+          bytes.byteOffset + bytes.byteLength,
+        );
+      },
+    });
+    const bucket = {
+      put: async () => {},
+      get: async () => ({
+        body,
+        arrayBuffer: async () =>
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        httpMetadata: { contentType: "text/plain" },
+        size: bytes.byteLength,
+      }),
+      head: async () => null,
+      delete: async () => {},
+    };
+    const storage = new R2ObjectStorage(bucket as never);
+    const roundTrip = await storage.get("public/stream-only");
+    expect(new TextDecoder().decode(roundTrip?.body)).toBe("stream-body");
+    expect(bodyArrayBufferCalled).toBe(false);
+  });
+
   it("delete removes stored objects", async () => {
     const storage = new R2ObjectStorage(createFakeR2Bucket());
     const body = new TextEncoder().encode("demo-bytes");
