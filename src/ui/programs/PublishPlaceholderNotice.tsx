@@ -13,7 +13,10 @@ import {
 } from "../copy/program-publish.js";
 import { PENDING_REVIEW_BADGE, removeRowAriaLabel } from "../copy/programs.js";
 import { notLiveStillPublishedHelper } from "../copy/program-publish.js";
-import { nextRemoveButtonIndex } from "./publish-notice-remove-focus.js";
+import {
+  focusPlaceholderReviewDraftInNotice,
+  nextRemoveButtonIndex,
+} from "./publish-notice-remove-focus.js";
 
 export type PublishPlaceholderNoticeProps = {
   placeholders: readonly ProgramBuilderRow[];
@@ -101,11 +104,10 @@ export function PublishPlaceholderNotice({
                       removedIndex,
                       remaining.length,
                     );
-                    const rowEl =
-                      noticeRef.current?.querySelectorAll(".pg-placeholder-row")[
-                        focusIndex
-                      ];
-                    rowEl?.querySelector<HTMLAnchorElement>("a.pg-link-btn")?.focus();
+                    focusPlaceholderReviewDraftInNotice(
+                      noticeRef.current,
+                      remaining[focusIndex]!.text_snapshot.title,
+                    );
                   }
                 }}
               >

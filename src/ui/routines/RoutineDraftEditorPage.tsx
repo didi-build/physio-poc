@@ -496,11 +496,14 @@ export function RoutineDraftEditorPage({
           error instanceof RoutinesAuthoringError &&
           error.code === "missing_images_block_publish"
         ) {
-          void client.getRoutineDetails(effectiveRoutineId).then((refreshed) => {
-            if (refreshed.is_draft) {
-              setRows(refreshed.draft.rows);
-            }
-          });
+          void client
+            .getRoutineDetails(effectiveRoutineId)
+            .then((refreshed) => {
+              if (refreshed.is_draft) {
+                setRows(refreshed.draft.rows);
+              }
+            })
+            .catch(() => {});
           setServerMissingImagesBlock(true);
           setMissingImagesFocusHeading(true);
           return;

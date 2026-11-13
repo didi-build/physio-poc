@@ -198,6 +198,42 @@ describe("Publish sheet missing images accessibility DIDI-1193", () => {
     expect(placeholderIdx).toBeLessThan(missingIdx);
   });
 
+  it("focuses the next row Remove button after removing a middle row", async () => {
+    const initialRows = [
+      { ...exerciseRow("row-a", "Alpha", true), position: 0 },
+      { ...exerciseRow("row-b", "Beta", true), position: 1 },
+      { ...exerciseRow("row-c", "Gamma", true), position: 2 },
+    ];
+    function Harness() {
+      const [rows, setRows] = useState(initialRows);
+      const program: ProgramBuilderView = { ...baseProgram, rows };
+      return (
+        <PublishSheet
+          open
+          program={program}
+          shareView={null}
+          client={new ProgramsClient({ fetchFn: vi.fn() })}
+          nameDraft="Program"
+          showNameField
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+          onRemoveMissingImagesRow={(rowId) => {
+            setRows((prev) => prev.filter((row) => row.id !== rowId));
+          }}
+        />
+      );
+    }
+    const view = renderInRouter(<Harness />);
+    const notice = within(view.container).getByTestId("publish-missing-images-notice");
+    const nextRemove = within(notice).getByRole("button", { name: "Remove Gamma" });
+    await userEvent.click(within(notice).getByRole("button", { name: "Remove Beta" }));
+    expect(document.activeElement).toBe(nextRemove);
+  });
+
   it("moves focus to the missing-images heading on server rejection", async () => {
     const programWithMedia = {
       ...baseProgram,

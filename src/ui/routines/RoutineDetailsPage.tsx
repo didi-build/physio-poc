@@ -250,7 +250,12 @@ export function RoutineDetailsPage() {
             error instanceof RoutinesAuthoringError &&
             error.code === "missing_images_block_publish"
           ) {
-            load();
+            void client
+              .getRoutineDetails(routineId)
+              .then(() => {
+                load();
+              })
+              .catch(() => {});
             setDraftServerMissingImagesBlock(true);
             setDraftMissingImagesFocusHeading(true);
             return;
@@ -276,7 +281,8 @@ export function RoutineDetailsPage() {
         })
         .then(() => {
           load();
-        });
+        })
+        .catch(() => {});
     };
 
     return (
