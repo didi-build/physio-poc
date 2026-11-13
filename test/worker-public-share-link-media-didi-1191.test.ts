@@ -34,6 +34,10 @@ import * as workerProductionDeps from "../src/adapters/workers/create-worker-pro
 const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 describe("Worker public share link media (DIDI-1191)", () => {
+  it("pins the link media 404 JSON body to not_found", () => {
+    expect(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY).toBe('{"error":"not_found"}');
+  });
+
   let workerObjects: InMemoryObjectStorage;
 
   beforeEach(() => {
