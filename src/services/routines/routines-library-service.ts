@@ -39,6 +39,8 @@ import {
   savedBaselineVersionIsAvailable,
   type RoutineRowComparable,
 } from "./routine-personal-change-projection.js";
+import { exerciseVersionLacksStartOrEndImage } from "../../domain/exercise-publish-media.js";
+import { ExerciseMediaSetsRepository } from "../../storage/repositories/exercise-media.js";
 import { findUnapprovedRoutineRow } from "./validate-approved-rows.js";
 import type {
   BodyRegionListItem,
@@ -1053,6 +1055,24 @@ export class RoutinesLibraryService {
         (await this.exerciseRead.getLatestApprovedByExerciseId(exerciseId(row)))
           ?.title ??
         "Exercise";
+      let lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage({
+        media_set_id: version?.media_set_id ?? null,
+      });
+      if (version?.media_set_id) {
+        const mediaSet = await new ExerciseMediaSetsRepository(this.sql).findById(
+          version.media_set_id,
+        );
+        lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage(
+          mediaSet
+            ? {
+                media_set_id: version.media_set_id,
+                start_object_key: mediaSet.start_object_key,
+                end_object_key: mediaSet.end_object_key,
+                visibility: mediaSet.visibility,
+              }
+            : { media_set_id: version.media_set_id },
+        );
+      }
       items.push({
         position: core.position,
         exercise_id: core.exercise_id,
@@ -1060,6 +1080,7 @@ export class RoutinesLibraryService {
         exercise_name: title,
         prescription_type: core.prescription_type,
         params: parseExerciseParamsJson(core.params_json),
+        lacks_start_or_end_image: lacksStartOrEndImage,
       });
     }
     return items;

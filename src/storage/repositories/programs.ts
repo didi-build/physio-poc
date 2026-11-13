@@ -30,6 +30,10 @@ import {
 } from "../../domain/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE,
+  PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+} from "../../domain/exercise-publish-media.js";
 import { likeContainsPattern } from "../../domain/sql-like.js";
 import { SqlBatchGuardError } from "../errors/sql-batch-error.js";
 import { isSqlDuplicateIdError } from "../errors/sql-duplicate-id-error.js";
@@ -91,6 +95,8 @@ export const PROGRAM_RESTORE_AND_PURGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 /** design/app/programs/spec.md Publish blocked by placeholders (DIDI-1186). */
 export const PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE =
   "Approve or remove placeholders to publish";
+
+export { PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE };
 
 /** Internal publish-batch guard result; same token as HTTP `stale_draft_retry` (not user-facing copy). */
 export const PUBLISH_STALE_DRAFT_SIGNAL = "stale_draft_retry";
@@ -539,6 +545,12 @@ export class ProgramsRepository {
          AND NOT EXISTS (
            SELECT 1 FROM program_rows
            WHERE program_id = ? AND exercise_request_id IS NOT NULL
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM program_rows pr
+           INNER JOIN exercise_versions ev ON ev.id = pr.exercise_version_id
+           WHERE pr.program_id = ? AND pr.exercise_request_id IS NULL
+             AND ${EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE}
          )`,
       bindings: [
         input.publishName,
@@ -547,6 +559,7 @@ export class ProgramsRepository {
         input.publishedAt,
         input.programId,
         input.draftVersion,
+        input.programId,
         input.programId,
       ],
       minRowsAffected: 1,
@@ -636,6 +649,9 @@ export class ProgramsRepository {
     if (currentRows.some((row) => row.exercise_request_id !== null)) {
       throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
     }
+    if (await this.programHasExerciseRowsLackingPublishMedia(programId)) {
+      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE);
+    }
     if (!current || current.deleted_at) {
       throw new ProgramRepositoryError("Program not found");
     }
@@ -659,6 +675,17 @@ export class ProgramsRepository {
       throw guardError;
     }
     throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+  }
+
+  async programHasExerciseRowsLackingPublishMedia(programId: string): Promise<boolean> {
+    const row = await this.sql.first<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM program_rows pr
+       INNER JOIN exercise_versions ev ON ev.id = pr.exercise_version_id
+       WHERE pr.program_id = ? AND pr.exercise_request_id IS NULL
+         AND ${EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE}`,
+      [programId],
+    );
+    return (row?.c ?? 0) > 0;
   }
 
   async publish(
@@ -685,6 +712,9 @@ export class ProgramsRepository {
     const rows = await new ProgramRowsRepository(this.sql).listForProgram(programId);
     if (rows.some((row) => row.exercise_request_id !== null)) {
       throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+    }
+    if (await this.programHasExerciseRowsLackingPublishMedia(programId)) {
+      throw new ProgramRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE);
     }
     const snapshotRows = rows.map(rowToSnapshot);
     const payload: PublishedProgramSnapshot = {

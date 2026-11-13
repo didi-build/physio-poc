@@ -59,9 +59,75 @@ type WherePredicate =
       kind: "exists_exercise_request";
       requestBindingIndex: number;
       exerciseBindingIndex: number;
+    }
+  | {
+      kind: "not_exists_routine_rows_lack_publish_media";
+      routineVersionBindingIndex: number;
+    }
+  | {
+      kind: "not_exists_exercise_versions_lack_publish_media_in";
+      versionIdBindingIndexes: number[];
     };
 
+const ROUTINE_DRAFT_PUBLISH_MEDIA_WHERE =
+  /^id = \? AND status = \? AND NOT EXISTS \( SELECT 1 FROM routine_version_rows rvr INNER JOIN exercise_versions ev ON ev\.id = rvr\.exercise_version_id WHERE rvr\.routine_version_id = \? AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND ems\.visibility = 'public' AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
+
+const ROUTINE_SAVE_PUBLISHED_MEDIA_GUARD =
+  /^id = \? AND published_version = \? AND NOT EXISTS \( SELECT 1 FROM exercise_versions ev WHERE ev\.id IN \((?:\?, )*\?\) AND \( ev\.media_set_id IS NULL OR NOT EXISTS \( SELECT 1 FROM exercise_media_sets ems WHERE ems\.id = ev\.media_set_id AND ems\.visibility = 'public' AND length\(trim\(ems\.start_object_key\)\) > 0 AND length\(trim\(ems\.end_object_key\)\) > 0 \) \) \)$/i;
+
+function exerciseVersionLacksPublishMediaInMemory(
+  tables: Map<string, Row[]>,
+  versionId: SqlValue,
+): boolean {
+  const versions = tables.get("exercise_versions") ?? [];
+  const version = versions.find((row) => row.id === versionId);
+  if (!version) {
+    return true;
+  }
+  if (version.media_set_id === null || version.media_set_id === undefined) {
+    return true;
+  }
+  const mediaSets = tables.get("exercise_media_sets") ?? [];
+  const mediaSet = mediaSets.find((row) => row.id === version.media_set_id);
+  if (!mediaSet) {
+    return true;
+  }
+  const start = String(mediaSet.start_object_key ?? "").trim();
+  const end = String(mediaSet.end_object_key ?? "").trim();
+  return start.length === 0 || end.length === 0;
+}
+
 function parseWhereClause(whereClause: string): WherePredicate[] {
+  const publishDraftMatch = ROUTINE_DRAFT_PUBLISH_MEDIA_WHERE.exec(whereClause);
+  if (publishDraftMatch) {
+    return [
+      { kind: "eq", column: "id", bindingIndex: 0 },
+      { kind: "eq", column: "status", bindingIndex: 1 },
+      {
+        kind: "not_exists_routine_rows_lack_publish_media",
+        routineVersionBindingIndex: 2,
+      },
+    ];
+  }
+  const savePublishedMatch = ROUTINE_SAVE_PUBLISHED_MEDIA_GUARD.exec(whereClause);
+  if (savePublishedMatch) {
+    const inMatch = /ev\.id IN \(([^)]+)\)/i.exec(whereClause);
+    const placeholderCount = inMatch
+      ? inMatch[1].split(",").filter((part) => part.trim() === "?").length
+      : 0;
+    const versionIdBindingIndexes = Array.from(
+      { length: placeholderCount },
+      (_, index) => 2 + index,
+    );
+    return [
+      { kind: "eq", column: "id", bindingIndex: 0 },
+      { kind: "eq", column: "published_version", bindingIndex: 1 },
+      {
+        kind: "not_exists_exercise_versions_lack_publish_media_in",
+        versionIdBindingIndexes,
+      },
+    ];
+  }
   const parts = whereClause.split(/\s+AND\s+/i).map((part) => part.trim());
   const predicates: WherePredicate[] = [];
   let bindingIndex = 0;
@@ -236,6 +302,10 @@ export class InMemorySqlStorage implements SqlStoragePort {
       return { rowsAffected: 0 };
     }
 
+    if (/^CREATE (UNIQUE )?INDEX\b/i.test(normalized)) {
+      return { rowsAffected: 0 };
+    }
+
     const upsertMatch =
       /^INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\) ON CONFLICT\(([^)]+)\) DO UPDATE SET (.+)$/i.exec(
         normalized,
@@ -261,6 +331,36 @@ export class InMemorySqlStorage implements SqlStoragePort {
         insertMatch[1],
         insertMatch[2],
         insertMatch[3],
+        bindings,
+      );
+      this.lastRowsAffected = result.rowsAffected;
+      return result;
+    }
+
+    const routineDraftPublishUpdate =
+      /^UPDATE routine_versions SET status = \?, version_number = \?, name = \? WHERE (.+)$/i.exec(
+        normalized,
+      );
+    if (routineDraftPublishUpdate) {
+      const result = this.executeUpdate(
+        "routine_versions",
+        "status = ?, version_number = ?, name = ?",
+        routineDraftPublishUpdate[1],
+        bindings,
+      );
+      this.lastRowsAffected = result.rowsAffected;
+      return result;
+    }
+
+    const routineSavePublishedHeaderUpdate =
+      /^UPDATE routines SET published_version = \?, draft_updated_at = \?, condition_id = \?, body_region_id = \?, who_its_for = \? WHERE (.+)$/i.exec(
+        normalized,
+      );
+    if (routineSavePublishedHeaderUpdate) {
+      const result = this.executeUpdate(
+        "routines",
+        "published_version = ?, draft_updated_at = ?, condition_id = ?, body_region_id = ?, who_its_for = ?",
+        routineSavePublishedHeaderUpdate[1],
         bindings,
       );
       this.lastRowsAffected = result.rowsAffected;
@@ -380,6 +480,35 @@ export class InMemorySqlStorage implements SqlStoragePort {
         }
         continue;
       }
+      if (predicate.kind === "not_exists_routine_rows_lack_publish_media") {
+        const routineVersionId =
+          bindings[bindingOffset + predicate.routineVersionBindingIndex];
+        const rows = this.tables.get("routine_version_rows") ?? [];
+        const lacksMedia = rows
+          .filter((row) => row.routine_version_id === routineVersionId)
+          .some((row) =>
+            exerciseVersionLacksPublishMediaInMemory(
+              this.tables,
+              row.exercise_version_id,
+            ),
+          );
+        if (lacksMedia) {
+          return false;
+        }
+        continue;
+      }
+      if (predicate.kind === "not_exists_exercise_versions_lack_publish_media_in") {
+        const lacksMedia = predicate.versionIdBindingIndexes.some((index) =>
+          exerciseVersionLacksPublishMediaInMemory(
+            this.tables,
+            bindings[bindingOffset + index],
+          ),
+        );
+        if (lacksMedia) {
+          return false;
+        }
+        continue;
+      }
       if (predicate.kind === "is_null") {
         if (row[predicate.column] !== null && row[predicate.column] !== undefined) {
           return false;
@@ -428,7 +557,20 @@ export class InMemorySqlStorage implements SqlStoragePort {
     const existsCount = wherePredicates.filter(
       (p) => p.kind === "exists_exercise_request",
     ).length;
-    if (bindings.length !== setBindingCount + eqWhereCount + existsCount * 2) {
+    const routinePublishMediaCount = wherePredicates.filter(
+      (p) => p.kind === "not_exists_routine_rows_lack_publish_media",
+    ).length;
+    const versionInMediaCount = wherePredicates
+      .filter((p) => p.kind === "not_exists_exercise_versions_lack_publish_media_in")
+      .reduce((sum, predicate) => sum + predicate.versionIdBindingIndexes.length, 0);
+    if (
+      bindings.length !==
+      setBindingCount +
+        eqWhereCount +
+        existsCount * 2 +
+        routinePublishMediaCount +
+        versionInMediaCount
+    ) {
       throw new Error("UPDATE binding count must match SET and WHERE placeholders");
     }
 

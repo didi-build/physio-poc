@@ -1132,6 +1132,17 @@ export function ProgramBuilderPage({
               setRowMutationBusy(false);
             });
         }}
+        onRemoveMissingImagesRow={(rowId) => {
+          setRowMutationBusy(true);
+          void client
+            .deleteRow(displayProgram.program_id, rowId)
+            .then((result) => {
+              applyProgram(result.program);
+            })
+            .finally(() => {
+              setRowMutationBusy(false);
+            });
+        }}
       />
 
       <LeaveWithoutSavingSheet

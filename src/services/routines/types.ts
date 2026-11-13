@@ -67,6 +67,7 @@ export type RoutineExerciseRow = {
   exercise_name: string;
   prescription_type: PrescriptionType;
   params: ExerciseParams;
+  lacks_start_or_end_image?: boolean;
 };
 
 export type RoutinePersonalChanges = {

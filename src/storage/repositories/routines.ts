@@ -17,6 +17,10 @@ import {
   type ExerciseParams,
 } from "../../domain/exercise-params.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import {
+  EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE,
+  PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+} from "../../domain/exercise-publish-media.js";
 import { SqlBatchGuardError } from "../errors/sql-batch-error.js";
 
 export class RoutineRepositoryError extends Error {
@@ -44,6 +48,24 @@ async function runRoutineWriteBatch(
     }
     throw error;
   }
+}
+
+function exerciseVersionLacksPublishMediaInClause(
+  exerciseVersionIds: readonly string[],
+): { sql: string; bindings: string[] } | null {
+  const unique = [...new Set(exerciseVersionIds)];
+  if (unique.length === 0) {
+    return null;
+  }
+  const placeholders = unique.map(() => "?").join(", ");
+  return {
+    sql: `NOT EXISTS (
+      SELECT 1 FROM exercise_versions ev
+      WHERE ev.id IN (${placeholders})
+        AND ${EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE}
+    )`,
+    bindings: unique,
+  };
 }
 
 export type ConditionRow = {
@@ -714,6 +736,62 @@ export class RoutineVersionsRepository {
     );
   }
 
+  async exerciseVersionsLackPublishMedia(
+    exerciseVersionIds: readonly string[],
+  ): Promise<boolean> {
+    const clause = exerciseVersionLacksPublishMediaInClause(exerciseVersionIds);
+    if (!clause) {
+      return false;
+    }
+    const row = await this.sql.first<{ c: number }>(
+      `SELECT COUNT(*) AS c FROM exercise_versions ev
+       WHERE ev.id IN (${clause.bindings.map(() => "?").join(", ")})
+         AND ${EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE}`,
+      clause.bindings,
+    );
+    return (row?.c ?? 0) > 0;
+  }
+
+  private async throwRoutinePublishGuardFailure(
+    input: {
+      routineId: string;
+      draftVersionId: string;
+      authorId: string;
+      exerciseVersionIds: readonly string[];
+      expectedPublishedVersion: number | null;
+    },
+    guardError?: SqlBatchGuardError,
+  ): Promise<never> {
+    if (await this.exerciseVersionsLackPublishMedia(input.exerciseVersionIds)) {
+      throw new RoutineRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE, {
+        code: "missing_images_block_publish",
+      });
+    }
+    const routine = await new RoutinesRepository(this.sql).findById(input.routineId);
+    const stale = (message = "Stale write") =>
+      new RoutineRepositoryError(message, {
+        code: "stale_write",
+        ...(guardError ? { cause: guardError } : {}),
+      });
+    if (input.expectedPublishedVersion === null) {
+      if (!routine || routine.published_version !== null) {
+        throw stale();
+      }
+      const draft = await this.sql.first<{ status: string }>(
+        `SELECT status FROM routine_versions WHERE id = ? LIMIT 1`,
+        [input.draftVersionId],
+      );
+      if (draft?.status !== "draft") {
+        throw stale();
+      }
+      throw stale();
+    }
+    if (!routine || routine.published_version !== input.expectedPublishedVersion) {
+      throw stale();
+    }
+    throw stale("Save published version failed");
+  }
+
   async publishDraft(input: {
     routineId: string;
     authorId: string;
@@ -741,17 +819,40 @@ export class RoutineVersionsRepository {
     if (rows.length === 0) {
       throw new RoutineRepositoryError("Add at least one exercise before publish");
     }
+    if (
+      await this.exerciseVersionsLackPublishMedia(
+        rows.map((row) => row.exercise_version_id),
+      )
+    ) {
+      throw new RoutineRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE, {
+        code: "missing_images_block_publish",
+      });
+    }
 
-    await runRoutineWriteBatch(
-      this.sql,
-      this.buildPublishDraftBatchStatements({
-        draftVersionId: draft.id,
-        name,
-        routineId: input.routineId,
-        publishedAt: input.publishedAt,
-        authorId: input.authorId,
-      }),
-    );
+    const statements = this.buildPublishDraftBatchStatements({
+      draftVersionId: draft.id,
+      name,
+      routineId: input.routineId,
+      publishedAt: input.publishedAt,
+      authorId: input.authorId,
+    });
+    try {
+      await this.sql.batch(statements);
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        await this.throwRoutinePublishGuardFailure(
+          {
+            routineId: input.routineId,
+            draftVersionId: draft.id,
+            authorId: input.authorId,
+            exerciseVersionIds: rows.map((row) => row.exercise_version_id),
+            expectedPublishedVersion: null,
+          },
+          error,
+        );
+      }
+      throw error;
+    }
     const published = await this.findPublishedVersion(input.routineId, 1);
     if (!published) {
       throw new RoutineRepositoryError("Publish failed");
@@ -776,8 +877,14 @@ export class RoutineVersionsRepository {
     return [
       {
         sql: `UPDATE routine_versions SET status = ?, version_number = ?, name = ?
-       WHERE id = ? AND status = ?`,
-        bindings: ["published", 1, name, draftVersionId, "draft"],
+       WHERE id = ? AND status = ?
+         AND NOT EXISTS (
+           SELECT 1 FROM routine_version_rows rvr
+           INNER JOIN exercise_versions ev ON ev.id = rvr.exercise_version_id
+           WHERE rvr.routine_version_id = ?
+             AND ${EXERCISE_VERSION_LACKS_PUBLISH_MEDIA_WHERE}
+         )`,
+        bindings: ["published", 1, name, draftVersionId, "draft", draftVersionId],
         minRowsAffected: 1,
       },
       {
@@ -869,26 +976,50 @@ export class RoutineVersionsRepository {
         }),
       );
     }
-    await runRoutineWriteBatch(
-      this.sql,
-      this.buildSavePublishedVersionBatchStatements({
-        versionId,
-        routineId: input.routineId,
-        nextVersion,
-        expectedPublishedVersion: routine.published_version,
-        name,
-        changeSummary,
-        restoredFrom,
-        createdBy: input.createdBy,
-        createdAt: input.createdAt,
-        rowStatements,
-        conditionId:
-          input.conditionId === undefined ? routine.condition_id : input.conditionId,
-        bodyRegionId: input.bodyRegionId ?? routine.body_region_id,
-        whoItsFor:
-          input.whoItsFor === undefined ? routine.who_its_for : input.whoItsFor,
-      }),
-    );
+    const exerciseVersionIds = input.rows
+      ? input.rows.map((row) => row.exerciseVersionId)
+      : (await rowRepo.listForVersion(input.copyFromVersionId)).map(
+          (row) => row.exercise_version_id,
+        );
+    if (await this.exerciseVersionsLackPublishMedia(exerciseVersionIds)) {
+      throw new RoutineRepositoryError(PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE, {
+        code: "missing_images_block_publish",
+      });
+    }
+    const statements = this.buildSavePublishedVersionBatchStatements({
+      versionId,
+      routineId: input.routineId,
+      nextVersion,
+      expectedPublishedVersion: routine.published_version,
+      name,
+      changeSummary,
+      restoredFrom,
+      createdBy: input.createdBy,
+      createdAt: input.createdAt,
+      rowStatements,
+      exerciseVersionIds,
+      conditionId:
+        input.conditionId === undefined ? routine.condition_id : input.conditionId,
+      bodyRegionId: input.bodyRegionId ?? routine.body_region_id,
+      whoItsFor: input.whoItsFor === undefined ? routine.who_its_for : input.whoItsFor,
+    });
+    try {
+      await this.sql.batch(statements);
+    } catch (error) {
+      if (error instanceof SqlBatchGuardError) {
+        await this.throwRoutinePublishGuardFailure(
+          {
+            routineId: input.routineId,
+            draftVersionId: versionId,
+            authorId: input.createdBy,
+            exerciseVersionIds,
+            expectedPublishedVersion: routine.published_version,
+          },
+          error,
+        );
+      }
+      throw error;
+    }
     const saved = await this.findPublishedVersion(input.routineId, nextVersion);
     if (!saved) {
       throw new RoutineRepositoryError("Save published version failed");
@@ -907,17 +1038,23 @@ export class RoutineVersionsRepository {
     createdBy: string;
     createdAt: string;
     rowStatements: SqlBatchStatement[];
+    exerciseVersionIds: readonly string[];
     conditionId: string | null;
     bodyRegionId: string;
     whoItsFor: string | null;
   }): SqlBatchStatement[] {
     const versionId = validateOpaqueEntityId(input.versionId, "Routine version id");
     const routineId = validateOpaqueEntityId(input.routineId, "Routine id");
+    const mediaGuard = exerciseVersionLacksPublishMediaInClause(
+      input.exerciseVersionIds,
+    );
+    const mediaGuardSql = mediaGuard ? ` AND ${mediaGuard.sql}` : "";
+    const mediaGuardBindings = mediaGuard?.bindings ?? [];
     return [
       {
         sql: `UPDATE routines SET published_version = ?, draft_updated_at = ?,
             condition_id = ?, body_region_id = ?, who_its_for = ?
-            WHERE id = ? AND published_version = ?`,
+            WHERE id = ? AND published_version = ?${mediaGuardSql}`,
         bindings: [
           input.nextVersion,
           input.createdAt,
@@ -926,6 +1063,7 @@ export class RoutineVersionsRepository {
           input.whoItsFor,
           routineId,
           input.expectedPublishedVersion,
+          ...mediaGuardBindings,
         ],
         minRowsAffected: 1,
       },

@@ -29,6 +29,7 @@ import {
 } from "../../copy/programs-share.js";
 import { buildPublicShareLinkUrl } from "../../app-routes.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
+import { PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE } from "../../domain/exercise-publish-media.js";
 import {
   PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
   PUBLISH_OPEN_LINK_CLOSED_RACE_SIGNAL,
@@ -62,6 +63,7 @@ export class ProgramPublishServiceError extends Error {
       | "program_not_found"
       | "name_required"
       | "placeholders_block_publish"
+      | "missing_images_block_publish"
       | "stale_draft_retry"
       | "publish_open_link_closed_race"
       | "invalid_input",
@@ -226,6 +228,15 @@ export class ProgramPublishService {
       throw new ProgramPublishServiceError(
         PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
         "placeholders_block_publish",
+      );
+    }
+
+    if (
+      await this.programs.programHasExerciseRowsLackingPublishMedia(validatedProgramId)
+    ) {
+      throw new ProgramPublishServiceError(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+        "missing_images_block_publish",
       );
     }
 
@@ -587,6 +598,12 @@ export class ProgramPublishService {
         throw new ProgramPublishServiceError(
           PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE,
           "placeholders_block_publish",
+        );
+      }
+      if (err.message === PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE) {
+        throw new ProgramPublishServiceError(
+          PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+          "missing_images_block_publish",
         );
       }
       if (err.message === "Program not found" || err.message === "Program is deleted") {

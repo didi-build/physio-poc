@@ -745,6 +745,11 @@ describe("DIDI-1011 program publish HTTP (integration)", () => {
       const row = await new ProgramRowsRepository(storage).findById(rowId);
       expect(row?.exercise_request_id).toBeNull();
       expect(row?.exercise_version_id).not.toBeNull();
+      const { attachPublishableMediaToVersion } =
+        await import("./helpers/exercise-sqlite-fixture.js");
+      if (row?.exercise_version_id) {
+        await attachPublishableMediaToVersion(storage, row.exercise_version_id);
+      }
 
       const { deps, cookie } = apiDeps(storage, owner);
       const publishUrl = `${BASE}${programPublishPath(programId)}`;
