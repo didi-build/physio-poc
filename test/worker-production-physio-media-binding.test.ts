@@ -4,6 +4,11 @@ import { WORKER_PRODUCTION_AUTH_MISCONFIG_LOG } from "../src/auth/worker-product
 import { WORKER_MEDIA_BINDING_MISSING_LOG } from "../src/adapters/workers/media-binding-missing-object-storage.js";
 import { PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY } from "../src/services/programs/public-share-link-media.js";
 import { publicShareLinkMediaApiPath } from "../src/programs-api-paths.js";
+import { ProgramPublishService } from "../src/services/programs/program-publish-service.js";
+import {
+  ProgramRowsRepository,
+  ProgramsRepository,
+} from "../src/storage/repositories/programs.js";
 import {
   resetWorkerProductionAuthCacheForTests,
   resetWorkerProductionModuleImportForTests,
@@ -18,12 +23,19 @@ import {
   openWorkerAuthTestDatabase,
   seedPractitioner,
 } from "./helpers/worker-auth-d1-fixture.js";
-import { FIXTURE_VERSION_ID } from "./helpers/exercise-sqlite-fixture.js";
+import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
+  seedApprovedExerciseVersion,
+  TS,
+} from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
+
 const WORKER_BASE = WORKER_PRODUCTION_TEST_BASE;
 
 describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
-  it("missing PHYSIO_MEDIA keeps auth and non-media routes up; share-link media fails code-only 404", async () => {
+  it("missing PHYSIO_MEDIA keeps auth and non-media routes up; published link media 404s via storage stub", async () => {
     resetWorkerProductionAuthCacheForTests();
     resetWorkerProductionModuleImportForTests();
     resetWorkerMediaBindingMissingLogForTests();
@@ -31,7 +43,50 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
     try {
       const { storage } = await openWorkerAuthTestDatabase();
       try {
-        await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+        const practitionerId = await seedPractitioner(
+          storage,
+          undefined,
+          FAKE_GOOGLE_ALLOWED_EMAIL,
+        );
+        const programId = id("prog-b2-missing-media");
+        await new ProgramsRepository(storage).create({
+          id: programId,
+          createdBy: practitionerId,
+          createdAt: TS,
+          name: "B2 missing PHYSIO_MEDIA",
+        });
+        await seedApprovedExerciseVersion(storage, practitionerId);
+        await new ProgramRowsRepository(storage).replaceRow({
+          id: id("row-b2-missing-media"),
+          programId,
+          position: 0,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          exerciseVersionId: FIXTURE_VERSION_ID,
+          prescriptionType: "stretching",
+          params: { hold_s: 30, sets: 3, days_per_week: 3 },
+          textSnapshot: { title: "Heel slide" },
+          draftUpdatedAt: TS,
+        });
+        const mediaSetId = id("ms-b2-missing-media");
+        const startKey = `media-sets/${mediaSetId}/start.png`;
+        const endKey = `media-sets/${mediaSetId}/end.png`;
+        await storage.run(
+          `INSERT INTO exercise_media_sets (
+            id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [mediaSetId, startKey, endKey, null, "public", TS],
+        );
+        await storage.run(
+          "UPDATE exercise_versions SET media_set_id = ? WHERE id = ?",
+          [mediaSetId, FIXTURE_VERSION_ID],
+        );
+        const published = await new ProgramPublishService(
+          storage,
+          WORKER_BASE,
+          () => TS,
+        ).publishProgram(practitionerId, programId);
+        const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+
         const d1 = d1DatabaseFromSqlite(storage.nativeDatabase());
         const env = buildWorkerProductionAuthEnv({
           PHYSIO_DB: d1,
@@ -45,12 +100,12 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
           new Request(`${WORKER_BASE}/api/auth/sign-in/social`, { method: "POST" }),
           env,
         );
-        expect(signIn.status).not.toBe(503);
+        expect(signIn.status).toBe(400);
 
         const media = await worker.fetch(
           new Request(
             `${WORKER_BASE}${publicShareLinkMediaApiPath(
-              "not-a-real-token",
+              token,
               FIXTURE_VERSION_ID,
               "start",
             )}`,
@@ -61,11 +116,12 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
         expect(await media.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
 
         await worker.fetch(new Request(`${WORKER_BASE}/health`), env);
+        expect(logSpy.mock.calls).toContainEqual([WORKER_MEDIA_BINDING_MISSING_LOG]);
         expect(
           logSpy.mock.calls.filter(
             (call) => call[0] === WORKER_MEDIA_BINDING_MISSING_LOG,
           ),
-        ).toHaveLength(1);
+        ).toEqual([[WORKER_MEDIA_BINDING_MISSING_LOG]]);
       } finally {
         storage.close();
       }

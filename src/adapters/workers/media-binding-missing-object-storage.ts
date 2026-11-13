@@ -3,9 +3,14 @@ import type {
   ObjectStoragePort,
   StoredObject,
 } from "../../storage/ports/object-storage.js";
+import { MediaStorageUnavailableError } from "../../storage/errors/media-storage-unavailable.js";
 
-/** Code-only JSON body for authenticated media when PHYSIO_MEDIA is absent (DIDI-1212 routes). */
-export const MEDIA_STORAGE_UNAVAILABLE_BODY = '{"error":"media_storage_unavailable"}';
+export {
+  MEDIA_STORAGE_UNAVAILABLE_BODY,
+  MEDIA_STORAGE_UNAVAILABLE_CODE,
+  MediaStorageUnavailableError,
+  isMediaStorageUnavailableError,
+} from "../../storage/errors/media-storage-unavailable.js";
 
 export const WORKER_MEDIA_BINDING_MISSING_LOG = "physio_worker_media_binding_missing";
 
@@ -28,11 +33,12 @@ export class MediaBindingMissingObjectStorage implements ObjectStoragePort {
     void key;
     void body;
     void contentType;
+    throw new MediaStorageUnavailableError();
   }
 
   async get(key: string): Promise<StoredObject | null> {
     void key;
-    return null;
+    throw new MediaStorageUnavailableError();
   }
 
   async head(key: string): Promise<ObjectHeadResult | null> {
@@ -42,6 +48,7 @@ export class MediaBindingMissingObjectStorage implements ObjectStoragePort {
 
   async delete(key: string): Promise<void> {
     void key;
+    throw new MediaStorageUnavailableError();
   }
 }
 

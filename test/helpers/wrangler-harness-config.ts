@@ -6,7 +6,11 @@ import {
   printParseErrorCode,
   type ParseError,
 } from "jsonc-parser";
-import { PHYSIO_PRODUCTION_R2_BUCKETS } from "../../scripts/lib/wrangler-r2-binding.mjs";
+import { PHYSIO_R2_BUCKET_NAME } from "../../scripts/lib/wrangler-r2-binding.mjs";
+import {
+  PHYSIO_HARNESS_R2_BUCKETS,
+  PHYSIO_HARNESS_R2_BUCKET_NAME,
+} from "../../scripts/lib/wrangler-harness-r2-binding.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
@@ -34,12 +38,26 @@ export function assertHarnessR2BucketsAreLocalOnly(
   }
 }
 
+export function assertHarnessR2BucketsAreNotProductionBucketNames(
+  buckets: readonly { bucket_name?: string }[],
+  productionBucketNames: readonly string[] = [PHYSIO_R2_BUCKET_NAME],
+): void {
+  for (const entry of buckets) {
+    const name = entry.bucket_name;
+    if (name !== undefined && productionBucketNames.includes(name)) {
+      throw new Error(
+        "harness wrangler config must not reuse a production bucket name",
+      );
+    }
+  }
+}
+
 export type WranglerHarnessConfigFixture = {
   configPath: string;
   cleanup: () => void;
 };
 
-export function writeHarnessWranglerConfigWithProductionBindings(): WranglerHarnessConfigFixture {
+export function writeHarnessWranglerConfigWithHarnessBindings(): WranglerHarnessConfigFixture {
   const tempDir = mkdtempSync(join(tmpdir(), "physio-wrangler-harness-"));
   const errors: ParseError[] = [];
   const parsed = parseJsonc(readFileSync(WRANGLER_PATH, "utf8"), errors, {
@@ -72,9 +90,10 @@ export function writeHarnessWranglerConfigWithProductionBindings(): WranglerHarn
     (assets as Record<string, unknown>).directory = join(REPO_ROOT, "dist/ui");
   }
   assertHarnessR2BucketsAreLocalOnly(
-    PHYSIO_PRODUCTION_R2_BUCKETS as readonly Record<string, unknown>[],
+    PHYSIO_HARNESS_R2_BUCKETS as readonly Record<string, unknown>[],
   );
-  config.r2_buckets = PHYSIO_PRODUCTION_R2_BUCKETS;
+  assertHarnessR2BucketsAreNotProductionBucketNames(PHYSIO_HARNESS_R2_BUCKETS);
+  config.r2_buckets = PHYSIO_HARNESS_R2_BUCKETS;
   const configPath = join(tempDir, "wrangler.harness.jsonc");
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   return {
@@ -82,3 +101,9 @@ export function writeHarnessWranglerConfigWithProductionBindings(): WranglerHarn
     cleanup: () => rmSync(tempDir, { recursive: true, force: true }),
   };
 }
+
+export { PHYSIO_HARNESS_R2_BUCKET_NAME };
+
+/** @deprecated Use writeHarnessWranglerConfigWithHarnessBindings */
+export const writeHarnessWranglerConfigWithProductionBindings =
+  writeHarnessWranglerConfigWithHarnessBindings;

@@ -1,3 +1,4 @@
+import { isMediaStorageUnavailableError } from "../../storage/errors/media-storage-unavailable.js";
 import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
 import type { ObjectStoragePort } from "../../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
@@ -88,7 +89,15 @@ export async function servePublicShareLinkMediaBytes(
     return publicShareLinkMediaNotFoundResponse();
   }
   const storage = new PrefixMediaStorage(objects);
-  const image = await storage.getPublicImage(objectKey);
+  let image;
+  try {
+    image = await storage.getPublicImage(objectKey);
+  } catch (error) {
+    if (isMediaStorageUnavailableError(error)) {
+      return publicShareLinkMediaNotFoundResponse();
+    }
+    throw error;
+  }
   if (!image) {
     return publicShareLinkMediaNotFoundResponse();
   }
