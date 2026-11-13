@@ -42,6 +42,8 @@ export type ProgramBuilderRow = {
   note: string | null;
   library_update: ProgramLibraryUpdatePrompt | null;
   exercise_version_choices: readonly ProgramExerciseVersionChoice[];
+  /** False when media is complete; advisory for publish sheet (DIDI-1193). */
+  lacks_start_or_end_image?: boolean;
 };
 
 export type ProgramRoutineOriginView = {

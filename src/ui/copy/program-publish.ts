@@ -4,6 +4,7 @@ import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.j
 import { SHARE_LINK_EXPIRY_CHOICE_LABELS } from "./my-defaults.js";
 import { formatProgramPublishedAt } from "./programs.js";
 import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../../copy/programs-share.js";
+import { PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE } from "../../domain/exercise-publish-media.js";
 
 export { PROGRAM_PUBLISH_NAME_REQUIRED };
 
@@ -105,6 +106,22 @@ export function placeholderRemovedLive(name: string): string {
 }
 
 export const PLACEHOLDER_NONE_LEFT = "No placeholders left. You can publish.";
+
+export const MISSING_IMAGES_BLOCK_HEADING = PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE;
+
+export function missingImagesBlockBodyManyProgram(count: number): string {
+  return `${count} exercises are missing their start or end image. Remove them from this program, then publish.`;
+}
+
+export const MISSING_IMAGES_BLOCK_BODY_ONE_PROGRAM =
+  "One exercise is missing its start or end image. Remove it from this program, then publish.";
+
+export const MISSING_IMAGES_NONE_LEFT =
+  "No exercises without images left. You can publish.";
+
+export function missingImagesRemovedLiveProgram(name: string): string {
+  return `Removed ${name} from this program.`;
+}
 
 export const SHARE_PROGRAM_TITLE = "Share program";
 export const SHARE_LINK_SECTION = "Share link";

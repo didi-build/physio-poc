@@ -1,5 +1,23 @@
 /** Verbatim strings from design/app/routines/spec.md Copy inventory unless noted. */
 
+import { PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE } from "../../domain/exercise-publish-media.js";
+
+export const MISSING_IMAGES_BLOCK_HEADING = PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE;
+
+export function missingImagesBlockBodyManyRoutine(count: number): string {
+  return `${count} exercises are missing their start or end image. Remove them from this routine, then publish.`;
+}
+
+export const MISSING_IMAGES_BLOCK_BODY_ONE_ROUTINE =
+  "One exercise is missing its start or end image. Remove it from this routine, then publish.";
+
+export const MISSING_IMAGES_NONE_LEFT =
+  "No exercises without images left. You can publish.";
+
+export function missingImagesRemovedLiveRoutine(name: string): string {
+  return `Removed ${name} from this routine.`;
+}
+
 export const ROUTINES_PAGE_TITLE = "Routines";
 export const ROUTINES_TAB_MY = "My routines";
 export const ROUTINES_TAB_ALL = "All routines";

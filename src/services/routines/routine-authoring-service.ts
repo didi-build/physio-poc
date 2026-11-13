@@ -17,6 +17,7 @@ import {
   PractitionerNotFoundError,
   requirePractitionerRecord,
 } from "../practitioner-access.js";
+import { PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE } from "../../domain/exercise-publish-media.js";
 import { findUnapprovedRoutineRow } from "./validate-approved-rows.js";
 import type {
   PublishValidationIssue,
@@ -38,6 +39,7 @@ export class RoutineAuthoringServiceError extends Error {
       | "draft_not_touchable"
       | "undo_mismatch"
       | "stale_write"
+      | "missing_images_block_publish"
       | "exercise_not_found",
     readonly validation_issues?: PublishValidationIssue[],
   ) {
@@ -56,6 +58,12 @@ type AuthoringRowInput = {
 
 function mapRepoError(err: unknown): never {
   if (err instanceof RoutineRepositoryError) {
+    if (err.code === "missing_images_block_publish") {
+      throw new RoutineAuthoringServiceError(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+        "missing_images_block_publish",
+      );
+    }
     if (err.code === "stale_write") {
       throw new RoutineAuthoringServiceError("Stale write", "stale_write");
     }
@@ -555,6 +563,16 @@ export class RoutineAuthoringService {
       );
     }
     await this.validateApprovedRows(this.versionRowsToAuthoringInput(rows));
+    if (
+      await this.versions.exerciseVersionsLackPublishMedia(
+        rows.map((row) => row.exercise_version_id),
+      )
+    ) {
+      throw new RoutineAuthoringServiceError(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+        "missing_images_block_publish",
+      );
+    }
     try {
       const published = await this.versions.publishDraft({
         routineId,
@@ -616,6 +634,16 @@ export class RoutineAuthoringService {
       );
     }
     await this.validateApprovedRows(input.rows);
+    if (
+      await this.versions.exerciseVersionsLackPublishMedia(
+        input.rows.map((row) => row.exerciseVersionId),
+      )
+    ) {
+      throw new RoutineAuthoringServiceError(
+        PUBLISH_BLOCKED_BY_MISSING_IMAGES_MESSAGE,
+        "missing_images_block_publish",
+      );
+    }
     const live = await this.versions.findPublishedVersion(
       routineId,
       input.expectedPublishedVersion,

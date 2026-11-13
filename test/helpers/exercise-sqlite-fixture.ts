@@ -161,6 +161,15 @@ export async function seedApprovedExerciseVersion(
   storage: SqlStoragePort,
   practitionerId: string,
 ): Promise<{ exerciseId: string; versionId: string }> {
+  const result = await seedApprovedExerciseVersionWithMedia(storage, practitionerId);
+  return { exerciseId: result.exerciseId, versionId: result.versionId };
+}
+
+/** Approved exercise without a media set (missing-images failsafe scenarios). */
+export async function seedApprovedExerciseVersionWithoutMedia(
+  storage: SqlStoragePort,
+  practitionerId: string,
+): Promise<{ exerciseId: string; versionId: string }> {
   const exerciseId = await seedExercise(storage, practitionerId);
   await storage.run(
     VERSION_INSERT_SQL,
@@ -171,4 +180,111 @@ export async function seedApprovedExerciseVersion(
     }),
   );
   return { exerciseId, versionId: FIXTURE_VERSION_ID };
+}
+
+export async function insertExerciseMediaSet(
+  storage: SqlStoragePort,
+  input: {
+    id: string;
+    startObjectKey: string;
+    endObjectKey: string;
+    visibility?: "draft" | "public";
+  },
+): Promise<void> {
+  await storage.run(
+    `INSERT INTO exercise_media_sets (
+      id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      input.id,
+      input.startObjectKey,
+      input.endObjectKey,
+      null,
+      input.visibility ?? "public",
+      TS,
+    ],
+  );
+}
+
+export async function attachMediaSetToVersion(
+  storage: SqlStoragePort,
+  versionId: string,
+  mediaSetId: string,
+): Promise<void> {
+  await storage.run(`UPDATE exercise_versions SET media_set_id = ? WHERE id = ?`, [
+    mediaSetId,
+    versionId,
+  ]);
+}
+
+export async function attachPublishableMediaToVersion(
+  storage: SqlStoragePort,
+  versionId: string,
+  mediaSetId?: string,
+): Promise<void> {
+  const version = await storage.first<{ media_set_id: string | null }>(
+    `SELECT media_set_id FROM exercise_versions WHERE id = ? LIMIT 1`,
+    [versionId],
+  );
+  if (version?.media_set_id) {
+    const set = await storage.first<{
+      start_object_key: string;
+      end_object_key: string;
+      visibility: string;
+    }>(
+      `SELECT start_object_key, end_object_key, visibility FROM exercise_media_sets WHERE id = ? LIMIT 1`,
+      [version.media_set_id],
+    );
+    if (
+      set &&
+      set.visibility === "public" &&
+      set.start_object_key.trim().length > 0 &&
+      set.end_object_key.trim().length > 0
+    ) {
+      return;
+    }
+  }
+  const setId = mediaSetId ?? `media-${versionId}`;
+  await insertExerciseMediaSet(storage, {
+    id: setId,
+    startObjectKey: `media-sets/${setId}/start.png`,
+    endObjectKey: `media-sets/${setId}/end.png`,
+  });
+  await attachMediaSetToVersion(storage, versionId, setId);
+}
+
+/** Approved exercise with both start and end object keys set (publishable media). */
+export async function seedApprovedExerciseVersionWithMedia(
+  storage: SqlStoragePort,
+  practitionerId: string,
+  options: {
+    exerciseId?: string;
+    versionId?: string;
+    mediaSetId?: string;
+    title?: string;
+  } = {},
+): Promise<{ exerciseId: string; versionId: string; mediaSetId: string }> {
+  const exerciseId = options.exerciseId ?? FIXTURE_EXERCISE_ID;
+  const versionId = options.versionId ?? FIXTURE_VERSION_ID;
+  const mediaSetId = options.mediaSetId ?? "44444444-4444-4444-8444-444444444444";
+  await seedExercise(storage, practitionerId, exerciseId);
+  await storage.run(
+    VERSION_INSERT_SQL,
+    versionInsertBindings({
+      id: versionId,
+      exercise_id: exerciseId,
+      status: "approved",
+      approved_by: practitionerId,
+      approved_at: TS,
+      title: options.title ?? "Heel slide",
+      media_set_id: null,
+    }),
+  );
+  await insertExerciseMediaSet(storage, {
+    id: mediaSetId,
+    startObjectKey: `media-sets/${mediaSetId}/start.png`,
+    endObjectKey: `media-sets/${mediaSetId}/end.png`,
+  });
+  await attachMediaSetToVersion(storage, versionId, mediaSetId);
+  return { exerciseId, versionId, mediaSetId };
 }

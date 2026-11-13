@@ -38,6 +38,8 @@ import {
   ExerciseLibraryReadRepository,
   type LatestApprovedVersionRow,
 } from "../../storage/repositories/exercise-library-read.js";
+import { ExerciseMediaSetsRepository } from "../../storage/repositories/exercise-media.js";
+import { exerciseVersionLacksStartOrEndImage } from "../../domain/exercise-publish-media.js";
 import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
@@ -1036,6 +1038,7 @@ export class ProgramBuilderService {
         note: row.note,
         library_update: null,
         exercise_version_choices: [],
+        lacks_start_or_end_image: false,
       };
     }
     const pinned = await this.libraryRead.getApprovedVersionById(
@@ -1069,6 +1072,24 @@ export class ProgramBuilderService {
       );
     }
     const paramsMatchResolved = exerciseParamsEqual(params, resolvedParamsFiltered);
+    let lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage({
+      media_set_id: pinned?.media_set_id ?? null,
+    });
+    if (pinned?.media_set_id) {
+      const mediaSet = await new ExerciseMediaSetsRepository(this.sql).findById(
+        pinned.media_set_id,
+      );
+      lacksStartOrEndImage = exerciseVersionLacksStartOrEndImage(
+        mediaSet
+          ? {
+              media_set_id: pinned.media_set_id,
+              start_object_key: mediaSet.start_object_key,
+              end_object_key: mediaSet.end_object_key,
+              visibility: mediaSet.visibility,
+            }
+          : { media_set_id: pinned.media_set_id },
+      );
+    }
     return {
       id: row.id,
       position: row.position,
@@ -1089,6 +1110,7 @@ export class ProgramBuilderService {
         exercise_version_id: choice.id,
         version_number: choice.version_number,
       })),
+      lacks_start_or_end_image: lacksStartOrEndImage,
     };
   }
 

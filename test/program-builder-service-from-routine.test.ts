@@ -1961,6 +1961,11 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
         params: paramsC,
         draftUpdatedAt: TS,
       });
+      const { attachPublishableMediaToVersion } =
+        await import("./helpers/exercise-sqlite-fixture.js");
+      for (const versionId of [verA1, verA2, verB1, verB2, verC1, verC2]) {
+        await attachPublishableMediaToVersion(storage, versionId);
+      }
       const v1 = await versions.publishDraft({
         routineId: id("tri-routine"),
         authorId: practitionerA,
@@ -2071,6 +2076,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             latest_version_number: 2,
           },
           exercise_version_choices: choicesA,
+          lacks_start_or_end_image: false,
         });
         expect(view.rows[1]).toEqual({
           id: rowIds[1],
@@ -2095,6 +2101,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             latest_version_number: 2,
           },
           exercise_version_choices: choicesB,
+          lacks_start_or_end_image: false,
         });
         expect(view.rows[2]).toEqual({
           id: rowIds[2],
@@ -2119,6 +2126,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
             latest_version_number: 2,
           },
           exercise_version_choices: choicesC,
+          lacks_start_or_end_image: false,
         });
       };
 
@@ -2163,6 +2171,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           note: null,
           library_update: null,
           exercise_version_choices: choicesA,
+          lacks_start_or_end_image: false,
         });
         expect(view.rows[1]).toEqual({
           id: rowIds[1],
@@ -2181,6 +2190,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           note: null,
           library_update: null,
           exercise_version_choices: choicesB,
+          lacks_start_or_end_image: false,
         });
         expect(view.rows[2]).toEqual({
           id: rowIds[2],
@@ -2199,6 +2209,7 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
           note: null,
           library_update: null,
           exercise_version_choices: choicesC,
+          lacks_start_or_end_image: false,
         });
       };
 
