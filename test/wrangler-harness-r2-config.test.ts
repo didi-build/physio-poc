@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PHYSIO_PRODUCTION_R2_BUCKETS } from "../scripts/lib/wrangler-r2-binding.mjs";
-import { PHYSIO_HARNESS_R2_BUCKETS } from "../scripts/lib/wrangler-harness-r2-binding.mjs";
+import { PHYSIO_HARNESS_R2_BUCKETS } from "./fixtures/wrangler-harness-r2-binding.mjs";
 import {
   assertHarnessR2BucketsAreLocalOnly,
   assertHarnessR2BucketsAreNotProductionBucketNames,

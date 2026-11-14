@@ -10,7 +10,7 @@ import { PHYSIO_R2_BUCKET_NAME } from "../../scripts/lib/wrangler-r2-binding.mjs
 import {
   PHYSIO_HARNESS_R2_BUCKETS,
   PHYSIO_HARNESS_R2_BUCKET_NAME,
-} from "../../scripts/lib/wrangler-harness-r2-binding.mjs";
+} from "../fixtures/wrangler-harness-r2-binding.mjs";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
@@ -103,7 +103,3 @@ export function writeHarnessWranglerConfigWithHarnessBindings(): WranglerHarness
 }
 
 export { PHYSIO_HARNESS_R2_BUCKET_NAME };
-
-/** @deprecated Use writeHarnessWranglerConfigWithHarnessBindings */
-export const writeHarnessWranglerConfigWithProductionBindings =
-  writeHarnessWranglerConfigWithHarnessBindings;

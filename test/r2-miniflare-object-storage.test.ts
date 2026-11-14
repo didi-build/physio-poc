@@ -3,7 +3,7 @@ import { createTestHarness, type TestHarness } from "wrangler";
 import { join } from "node:path";
 import { R2ObjectStorage } from "../src/adapters/workers/r2-object-storage.js";
 import { PHYSIO_R2_BINDING } from "../scripts/lib/wrangler-r2-binding.mjs";
-import { writeHarnessWranglerConfigWithProductionBindings } from "./helpers/wrangler-harness-config.js";
+import { writeHarnessWranglerConfigWithHarnessBindings } from "./helpers/wrangler-harness-config.js";
 import { ensureWranglerUiAssetsDirectory } from "./helpers/wrangler-ui-assets-fixture.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -11,7 +11,7 @@ const REPO_ROOT = join(import.meta.dirname, "..");
 describe("R2ObjectStorage (miniflare harness)", () => {
   let server: TestHarness | undefined;
   let harnessConfig:
-    ReturnType<typeof writeHarnessWranglerConfigWithProductionBindings> | undefined;
+    ReturnType<typeof writeHarnessWranglerConfigWithHarnessBindings> | undefined;
 
   afterEach(async () => {
     if (server) {
@@ -24,7 +24,7 @@ describe("R2ObjectStorage (miniflare harness)", () => {
 
   it("reads bytes via arrayBuffer() on the R2 object, not body.arrayBuffer()", async () => {
     ensureWranglerUiAssetsDirectory();
-    harnessConfig = writeHarnessWranglerConfigWithProductionBindings();
+    harnessConfig = writeHarnessWranglerConfigWithHarnessBindings();
     server = createTestHarness({
       root: REPO_ROOT,
       workers: [{ configPath: harnessConfig.configPath }],

@@ -43,7 +43,7 @@ export class MediaBindingMissingObjectStorage implements ObjectStoragePort {
 
   async head(key: string): Promise<ObjectHeadResult | null> {
     void key;
-    return null;
+    throw new MediaStorageUnavailableError();
   }
 
   async delete(key: string): Promise<void> {

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/entry/worker.js";
 import { WORKER_PRODUCTION_AUTH_MISCONFIG_LOG } from "../src/auth/worker-production-auth-config.js";
-import { WORKER_MEDIA_BINDING_MISSING_LOG } from "../src/adapters/workers/media-binding-missing-object-storage.js";
+import {
+  MediaBindingMissingObjectStorage,
+  MediaStorageUnavailableError,
+  WORKER_MEDIA_BINDING_MISSING_LOG,
+} from "../src/adapters/workers/media-binding-missing-object-storage.js";
 import { PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY } from "../src/services/programs/public-share-link-media.js";
 import { publicShareLinkMediaApiPath } from "../src/programs-api-paths.js";
 import { ProgramPublishService } from "../src/services/programs/program-publish-service.js";
@@ -40,6 +44,7 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
     resetWorkerProductionModuleImportForTests();
     resetWorkerMediaBindingMissingLogForTests();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stubGetSpy = vi.spyOn(MediaBindingMissingObjectStorage.prototype, "get");
     try {
       const { storage } = await openWorkerAuthTestDatabase();
       try {
@@ -115,6 +120,11 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
         expect(media.status).toBe(404);
         expect(await media.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
 
+        expect(stubGetSpy).toHaveBeenCalled();
+        for (const { value } of stubGetSpy.mock.results) {
+          await expect(value).rejects.toThrow(MediaStorageUnavailableError);
+        }
+
         await worker.fetch(new Request(`${WORKER_BASE}/health`), env);
         expect(logSpy.mock.calls).toContainEqual([WORKER_MEDIA_BINDING_MISSING_LOG]);
         expect(
@@ -126,6 +136,7 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
         storage.close();
       }
     } finally {
+      stubGetSpy.mockRestore();
       logSpy.mockRestore();
       resetWorkerProductionAuthCacheForTests();
       resetWorkerProductionModuleImportForTests();

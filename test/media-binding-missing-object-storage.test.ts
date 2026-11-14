@@ -8,13 +8,14 @@ import {
 } from "../src/adapters/workers/media-binding-missing-object-storage.js";
 
 describe("MediaBindingMissingObjectStorage (DIDI-1040 B2)", () => {
-  it("rejects put/get/delete with a typed media_storage_unavailable error (no env in message)", async () => {
+  it("rejects put/get/head/delete with a typed media_storage_unavailable error (no env in message)", async () => {
     const storage = new MediaBindingMissingObjectStorage();
     expect(isMediaBindingMissingObjectStorage(storage)).toBe(true);
     await expect(
       storage.put("any/key", new Uint8Array([1]), "image/png"),
     ).rejects.toThrow(MediaStorageUnavailableError);
     await expect(storage.get("any/key")).rejects.toThrow(MediaStorageUnavailableError);
+    await expect(storage.head("any/key")).rejects.toThrow(MediaStorageUnavailableError);
     await expect(storage.delete("any/key")).rejects.toThrow(
       MediaStorageUnavailableError,
     );
