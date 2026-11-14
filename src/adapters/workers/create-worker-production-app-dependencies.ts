@@ -1,7 +1,12 @@
 import type { D1Database } from "@better-auth/core";
 import type { AppDependencies } from "../../http/app.js";
-import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-object-storage.js";
 import { D1SqlStorage } from "./d1-sql-storage.js";
+import {
+  logWorkerMediaBindingMissingOnce,
+  MediaBindingMissingObjectStorage,
+} from "./media-binding-missing-object-storage.js";
+import { R2ObjectStorage } from "./r2-object-storage.js";
+import type { ObjectStoragePort } from "../../storage/ports/object-storage.js";
 import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
 import {
   createMcpBearerAuthHandler,
@@ -30,9 +35,10 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
   const uiStatic = env.ASSETS
     ? createWorkerAssetsUiStaticPort(env.ASSETS, config.webAppBaseUrl)
     : undefined;
+  const objects = resolveProductionObjectStorage(env);
   return {
     sql,
-    objects: new InMemoryObjectStorage(),
+    objects,
     config,
     auth: authBundle.auth,
     mcp: createPhysioMcpHttpHandler({ config, sql }),
@@ -40,4 +46,12 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     guardedAppWithoutSession: "redirect",
     uiStatic,
   };
+}
+
+function resolveProductionObjectStorage(env: WorkerEnv): ObjectStoragePort {
+  if (env.PHYSIO_MEDIA) {
+    return new R2ObjectStorage(env.PHYSIO_MEDIA);
+  }
+  logWorkerMediaBindingMissingOnce();
+  return new MediaBindingMissingObjectStorage();
 }

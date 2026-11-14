@@ -2,12 +2,19 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useProgramAutoSave } from "../../src/ui/programs/use-program-auto-save.js";
 
 describe("useProgramAutoSave (unit)", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    cleanup();
+    if (vi.isFakeTimers()) {
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+      vi.clearAllTimers();
+    }
     vi.useRealTimers();
   });
 
