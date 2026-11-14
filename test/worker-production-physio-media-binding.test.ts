@@ -1,12 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "../src/entry/worker.js";
-import { WORKER_PRODUCTION_AUTH_MISCONFIG_LOG } from "../src/auth/worker-production-auth-config.js";
 import {
   MediaBindingMissingObjectStorage,
   MediaStorageUnavailableError,
-  WORKER_MEDIA_BINDING_MISSING_LOG,
 } from "../src/adapters/workers/media-binding-missing-object-storage.js";
-import { PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY } from "../src/services/programs/public-share-link-media.js";
 import { publicShareLinkMediaApiPath } from "../src/programs-api-paths.js";
 import { ProgramPublishService } from "../src/services/programs/program-publish-service.js";
 import {
@@ -118,7 +115,7 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
           env,
         );
         expect(media.status).toBe(404);
-        expect(await media.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+        expect(await media.text()).toBe('{"error":"not_found"}');
 
         expect(stubGetSpy).toHaveBeenCalled();
         for (const { value } of stubGetSpy.mock.results) {
@@ -126,12 +123,11 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
         }
 
         await worker.fetch(new Request(`${WORKER_BASE}/health`), env);
-        expect(logSpy.mock.calls).toContainEqual([WORKER_MEDIA_BINDING_MISSING_LOG]);
         expect(
           logSpy.mock.calls.filter(
-            (call) => call[0] === WORKER_MEDIA_BINDING_MISSING_LOG,
+            (call) => call[0] === "physio_worker_media_binding_missing",
           ),
-        ).toEqual([[WORKER_MEDIA_BINDING_MISSING_LOG]]);
+        ).toEqual([["physio_worker_media_binding_missing"]]);
       } finally {
         storage.close();
       }
@@ -163,8 +159,10 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
           env,
         );
         expect(auth.status).toBe(503);
-        expect(logSpy).toHaveBeenCalledWith(WORKER_PRODUCTION_AUTH_MISCONFIG_LOG);
-        expect(logSpy).not.toHaveBeenCalledWith(WORKER_MEDIA_BINDING_MISSING_LOG);
+        expect(logSpy).toHaveBeenCalledWith(
+          "physio_worker_production_auth_misconfigured",
+        );
+        expect(logSpy).not.toHaveBeenCalledWith("physio_worker_media_binding_missing");
       } finally {
         storage.close();
       }
