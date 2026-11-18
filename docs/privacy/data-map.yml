@@ -1234,3 +1234,10 @@ other_items:
     purpose: persist and query app state for the physio-poc Worker
     processors: [Cloudflare]
     retention: indefinite
+  - id: r2.physio_media
+    binding: PHYSIO_MEDIA
+    whose: operational
+    data: Private exercise media blobs (draft and public prefixed keys); no patient information in object keys
+    purpose: persist generated exercise start/end images for the physio-poc Worker; POC retention is indefinite with no draft/blob cleanup — revisit before any real-user rollout
+    processors: [Cloudflare]
+    retention: indefinite

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Substitute the production D1 database_id placeholder and write a deploy-ready Wrangler config.
+ * Substitute the production D1 database_id placeholder, attach the production R2
+ * binding, and write a deploy-ready Wrangler config.
  *
  * Environment:
  *   PHYSIO_D1_DATABASE_ID — production D1 database id (GitHub production environment secret)
@@ -13,6 +14,8 @@ import {
   isExactHttpsOrigin,
 } from "./lib/wrangler-d1-placeholders.mjs";
 import { LOWERCASE_CANONICAL_UUID_RE } from "./lib/lowercase-canonical-uuid.mjs";
+import { PHYSIO_PRODUCTION_R2_BUCKETS } from "./lib/wrangler-r2-binding.mjs";
+import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 
 const SOURCE = resolve("wrangler.jsonc");
 
@@ -81,6 +84,33 @@ function readProductionId() {
   return trimmed;
 }
 
+function parseWranglerConfig(text) {
+  const errors = [];
+  const parsed = parseJsonc(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) {
+    const message = errors.map((entry) => printParseErrorCode(entry.error)).join(", ");
+    console.error(`Failed to parse wrangler.jsonc: ${message}`);
+    process.exit(1);
+  }
+  if (
+    parsed === undefined ||
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    console.error("Expected wrangler.jsonc root object.");
+    process.exit(1);
+  }
+  return parsed;
+}
+
+function assertCommittedConfigHasNoR2Binding(config) {
+  if (config.r2_buckets !== undefined) {
+    console.error("Committed wrangler.jsonc must not declare r2_buckets.");
+    process.exit(1);
+  }
+}
+
 function main() {
   const { output } = parseArgs(process.argv.slice(2));
   const productionId = readProductionId();
@@ -88,7 +118,10 @@ function main() {
   assertCommittedWebAppBaseUrlInSource(sourceText);
   const text = sourceText.replaceAll(D1_PLACEHOLDER_PRODUCTION, productionId);
   assertNoPlaceholderLeft(text);
-  writeFileSync(output, text, "utf8");
+  const config = parseWranglerConfig(text);
+  assertCommittedConfigHasNoR2Binding(config);
+  config.r2_buckets = PHYSIO_PRODUCTION_R2_BUCKETS;
+  writeFileSync(output, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }
 
 main();
