@@ -14,7 +14,10 @@ import {
   resetWorkerProductionAuthCacheForTests,
   resetWorkerProductionModuleImportForTests,
 } from "../src/adapters/workers/create-app-dependencies.js";
-import { resetWorkerMediaBindingMissingLogForTests } from "../src/adapters/workers/media-binding-missing-object-storage.js";
+import {
+  logWorkerMediaBindingMissingOnce,
+  resetWorkerMediaBindingMissingLogForTests,
+} from "../src/adapters/workers/media-binding-missing-object-storage.js";
 import {
   buildWorkerProductionAuthEnv,
   WORKER_PRODUCTION_TEST_BASE,
@@ -133,6 +136,59 @@ describe("Worker production PHYSIO_MEDIA binding (DIDI-1040)", () => {
       }
     } finally {
       stubGetSpy.mockRestore();
+      logSpy.mockRestore();
+      resetWorkerProductionAuthCacheForTests();
+      resetWorkerProductionModuleImportForTests();
+      resetWorkerMediaBindingMissingLogForTests();
+    }
+  });
+
+  it("invokes logWorkerMediaBindingMissingOnce at most one console line per isolate", () => {
+    resetWorkerMediaBindingMissingLogForTests();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      logWorkerMediaBindingMissingOnce();
+      logWorkerMediaBindingMissingOnce();
+      logWorkerMediaBindingMissingOnce();
+      expect(
+        logSpy.mock.calls.filter(
+          (call) => call[0] === "physio_worker_media_binding_missing",
+        ),
+      ).toEqual([["physio_worker_media_binding_missing"]]);
+    } finally {
+      logSpy.mockRestore();
+      resetWorkerMediaBindingMissingLogForTests();
+    }
+  });
+
+  it("logs physio_worker_media_binding_missing exactly once across several requests", async () => {
+    resetWorkerProductionAuthCacheForTests();
+    resetWorkerProductionModuleImportForTests();
+    resetWorkerMediaBindingMissingLogForTests();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { storage } = await openWorkerAuthTestDatabase();
+      try {
+        const d1 = d1DatabaseFromSqlite(storage.nativeDatabase());
+        const env = buildWorkerProductionAuthEnv({
+          PHYSIO_DB: d1,
+          PHYSIO_MEDIA: undefined,
+        });
+
+        for (let i = 0; i < 5; i++) {
+          const health = await worker.fetch(new Request(`${WORKER_BASE}/health`), env);
+          expect(health.status).toBe(200);
+        }
+
+        expect(
+          logSpy.mock.calls.filter(
+            (call) => call[0] === "physio_worker_media_binding_missing",
+          ),
+        ).toEqual([["physio_worker_media_binding_missing"]]);
+      } finally {
+        storage.close();
+      }
+    } finally {
       logSpy.mockRestore();
       resetWorkerProductionAuthCacheForTests();
       resetWorkerProductionModuleImportForTests();

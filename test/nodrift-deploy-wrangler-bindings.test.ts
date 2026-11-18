@@ -10,6 +10,7 @@ import {
 } from "jsonc-parser";
 import { resolveNodriftCli } from "../scripts/lib/resolve-nodrift-cli.mjs";
 import { PHYSIO_R2_BINDING } from "../scripts/lib/wrangler-r2-binding.mjs";
+import { minimalChildProcessEnv } from "./helpers/minimal-child-process-env.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const PREPARE_SCRIPT = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
@@ -19,10 +20,9 @@ function writePreparedDeployWranglerConfig(outputPath: string): void {
   const result = spawnSync(process.execPath, [PREPARE_SCRIPT, "--output", outputPath], {
     cwd: REPO_ROOT,
     encoding: "utf8",
-    env: {
-      ...process.env,
+    env: minimalChildProcessEnv({
       PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
-    },
+    }),
   });
   expect(result.status, result.stderr || result.stdout).toBe(0);
 }
@@ -87,7 +87,7 @@ describe("nodrift check 2 vs production deploy wrangler (DIDI-1040)", () => {
         {
           cwd: REPO_ROOT,
           encoding: "utf8",
-          env: process.env,
+          env: minimalChildProcessEnv(),
         },
       );
       expect(check.status, check.stderr || check.stdout).toBe(0);

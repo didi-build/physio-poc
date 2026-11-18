@@ -18,6 +18,7 @@ import {
   nonDeployWorkflowFilenames,
 } from "./helpers/production-deploy-workflow-guards.js";
 import { D1_PLACEHOLDER_PRODUCTION } from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { minimalChildProcessEnv } from "./helpers/minimal-child-process-env.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
@@ -56,6 +57,27 @@ describe("R2 binding stays out of committed wrangler.jsonc (DIDI-1040)", () => {
 
 describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", () => {
   const FIXTURE_DATABASE_ID = "00000000-0000-0000-0000-000000000002";
+  const ENV_LEAK_PROBE = "PHYSIO_DIDI_1240_SPAWN_ENV_PROBE";
+
+  it("spawn for prepare uses minimal env without unrelated process.env entries", () => {
+    process.env[ENV_LEAK_PROBE] = "must-not-leak";
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["-e", `process.stdout.write(process.env.${ENV_LEAK_PROBE} ?? "absent")`],
+        {
+          encoding: "utf8",
+          env: minimalChildProcessEnv({
+            PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
+          }),
+        },
+      );
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("absent");
+    } finally {
+      delete process.env[ENV_LEAK_PROBE];
+    }
+  });
 
   it("adds the physio-media R2 bucket binding to the deploy config output", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-r2-"));
@@ -71,10 +93,9 @@ describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", ()
         {
           cwd: REPO_ROOT,
           encoding: "utf8",
-          env: {
-            ...process.env,
+          env: minimalChildProcessEnv({
             PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
-          },
+          }),
         },
       );
       expect(result.status, result.stderr).toBe(0);

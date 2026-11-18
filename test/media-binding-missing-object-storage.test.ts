@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   MEDIA_STORAGE_UNAVAILABLE_BODY,
   MediaBindingMissingObjectStorage,
@@ -34,13 +35,16 @@ describe("MediaBindingMissingObjectStorage (DIDI-1040 B2)", () => {
     );
   });
 
-  it("put rejects and stores nothing", async () => {
+  it("put rejects without writing to any backing store", async () => {
     const storage = new MediaBindingMissingObjectStorage();
-    await expect(
-      storage.put("public/obj.png", new Uint8Array([9, 9, 9]), "image/png"),
-    ).rejects.toThrow(MediaStorageUnavailableError);
-    await expect(storage.get("public/obj.png")).rejects.toThrow(
-      MediaStorageUnavailableError,
-    );
+    const backingPutSpy = vi.spyOn(InMemoryObjectStorage.prototype, "put");
+    try {
+      await expect(
+        storage.put("public/obj.png", new Uint8Array([9, 9, 9]), "image/png"),
+      ).rejects.toThrow(MediaStorageUnavailableError);
+      expect(backingPutSpy).not.toHaveBeenCalled();
+    } finally {
+      backingPutSpy.mockRestore();
+    }
   });
 });
