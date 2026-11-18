@@ -8,7 +8,7 @@ When exercise save forms wire the approved template field (`design/reference/web
 
 **Today:** `src/ui/exercise-requests/DraftReviewPage.tsx` does **not** render a body region field. No exercise library editor in `src/ui/exercise-library/` renders a body region input today.
 
-**Matches Product direction: yes.** Checked against DIDI-594 lock Nov 18, 2026, 2:58 PM EST and Diadem approvals Nov 18, 2026 on [DIDI-1253](https://linear.app/didi-build/issue/DIDI-1253).
+**Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) locks `6b4144fd` and `ef0be2a4`, Nov 18, 2026 product direction and approvals on [DIDI-1253](https://linear.app/didi-build/issue/DIDI-1253).
 
 ## Body region field in the app today
 
@@ -16,7 +16,7 @@ Only one screen in `src/ui` renders an editable **Body region** control:
 
 | File | What it shows |
 | -- | -- |
-| `src/ui/routines/RoutineDraftEditorPage.tsx` | Label **Body region** (`src/ui/copy/routines.ts` `BODY_REGION`) with pill buttons from `listBodyRegions()` (`bodyRegionOptions`), not this chip plus typeahead control |
+| `src/ui/routines/RoutineDraftEditorPage.tsx` | Label **Body region** (`src/ui/copy/routines.ts` `BODY_REGION`) with pill buttons from `listMeBodyRegions()` (`bodyRegionOptions` via `src/ui/routines/RoutineDraftEditorPage.tsx` line 171, `src/ui/api/routines-client.ts` lines 175 to 178), not this chip plus typeahead control |
 
 Exercises and Routines **filter** panels use the label **Body region** for pill filters only (`src/ui/exercise-library/FiltersSortPanel.tsx`, `src/ui/routines/RoutinesFiltersSortPanel.tsx`). Those pills are fixed lists in code (`src/ui/exercise-library/library-filters.ts` `BODY_REGION_PILLS`, `src/ui/routines/routine-library-filters.ts` `ROUTINE_BODY_REGION_PILLS`), not live region catalogs and not exercise form fields.
 
@@ -41,8 +41,8 @@ When the AI drafter returns several regions, **keep all of them**: pre-fill one 
 | -- | -- | -- | -- | -- |
 | A+B r4: typing hint (final) | https://designs.magicpath.ai/v1/wondrously-tide-3357 | 473932751381368832 | 473932751381368833 | Approved 5:49 PM ET |
 | Variant A, Inline Add row | https://designs.magicpath.ai/v1/friendly-pond-1383 | 473895725248430080 | 473895725248430081 | Approved 3:14 PM ET (add row) |
-| Variant B, Chips | https://designs.magicpath.ai/v1/eager-winter-5934 | 473894671903518720 | (see MagicPath) | Chip shell |
-| r3 typing hint | https://designs.magicpath.ai/v1/safe-morning-6698 | 473931095931523072 | (see MagicPath) | Superseded by r4 |
+| Variant B, Chips | https://designs.magicpath.ai/v1/eager-winter-5934 | 473894671903518720 | 473894671903518721 | Chip shell |
+| r3 typing hint | https://designs.magicpath.ai/v1/safe-morning-6698 | 473931095931523072 | 473931652574371840 | Superseded by r4 |
 
 **Diadem, Nov 18, 2026, 5:26 PM ET**, verbatim:
 
@@ -68,54 +68,68 @@ No standalone region management page.
 
 ## Layout
 
-Mobile first (390 px). Desktop: field block `max-width: 40rem`, centered on `slate-50` (`#f8fafc`) page background. Font: Inter.
+Derived from MagicPath `ABR4TypingHint` (revision `473932751381368833`). Mobile first (390 px column `max-w-[390px]`). Desktop: same field block `lg:max-w-[40rem]`, centered on `#f8fafc`. Font: Inter.
 
 ### Label
 
-**Body region**: `text-xs font-semibold uppercase tracking-wide text-slate-500`, linked to the typeahead input.
+**Body region**: `text-xs font-semibold uppercase tracking-[0.04em] text-[#64748b]`, `htmlFor` on the typeahead input id.
 
 ### Selected chips (variant B)
 
-Row below the label: `flex flex-wrap gap-2` (8 px gap), `min-h-11` (44 px) touch area per chip.
+When `selections.length > 0`: `mt-2 flex flex-wrap items-center gap-2` below the label.
 
 | Chip kind | Style |
 | -- | -- |
-| Existing catalog region | `rounded-full`, fill `#0f766e` (teal-700), white text, semibold `text-sm` |
-| New region (not in catalog or AI-new) | `rounded-full`, fill `#f0fdfa`, border `#0f766e`, text `#115e59`, plus white pill **New** tag (`TAG_NEW`) on the chip |
-| Remove control | Visible text button **Clear** on each chip: `h-8`, `min-w-8`, `rounded-full`, `text-xs` semibold; `white/90` on existing chips, `#115e59` on New chips (reuses `CLEAR`, `src/ui/copy/exercise-library.ts` line 12) |
+| Existing catalog region | `rounded-full`, `border-[#0f766e]`, fill `#0f766e`, white text, semibold `text-sm`, `min-h-11` |
+| New region (not in catalog or AI-new) | `rounded-full`, `border-[#0f766e]`, fill `#f0fdfa`, text `#115e59`, white pill **New** (`TAG_NEW`), `min-h-11` |
+| Remove control | Visible text button **Clear** on each chip: `h-8`, `min-w-8`, `rounded-full`, `text-xs` font-semibold; `text-white/90` with `hover:bg-white/15` on existing chips, `text-[#115e59]` with `hover:bg-white` on New chips (`CLEAR`, `src/ui/copy/exercise-library.ts` line 12) |
 
 ### Typeahead field
 
-Below the chip row: `relative`, full width of the field block.
+`relative mt-2`, full width.
 
-- Input container: `rounded-xl`, `min-h-11`, white background, border `slate-300`; focused border and ring `teal-700` / `teal-700/30`.
-- Left: search magnifier icon, `slate-400`, decorative (`aria-hidden`).
-- Right: chevron toggles list open (decorative control; `tabIndex={-1}`).
-- Placeholder (empty, unfocused or focused with no text): **Type to search or add a region**, `slate-400`.
-- While focused: show a teal-700 **|** caret after typed text, or before the placeholder when empty; blink `1s` steps (mockups freeze caret visible in stills).
+- Container: `flex min-h-11`, `rounded-xl`, white background, border `#cbd5e1`; when focused `#0f766e` border and `ring-2 ring-[#0f766e]/30`.
+- Left: search icon `#94a3b8`, decorative (`aria-hidden`).
+- Visible text layer: typed query in `#0f172a`; focused **|** caret `#0f766e` (class `abr4-caret`, blink `1s` `steps(1, end)`; mockups use frozen `abr4-caret-static`); placeholder **Type to search or add a region** in `#94a3b8` when query is empty (shown with caret when focused and empty).
+- Transparent `<input>` overlay: `role="combobox"`, `caret-transparent`, `pl-10 pr-10`, captures typing and focus.
+- Right: chevron button `tabIndex={-1}`, `aria-label` **Body region** (`BODY_REGION`), toggles list and refocuses input.
+- Placeholder string: N4 **Type to search or add a region**.
 
 ### Dropdown list
 
-`absolute`, full width, `max-h-72`, `rounded-2xl`, border `slate-200`, shadow; `z-20`.
+`absolute left-0 top-full`, full width, `max-h-96`, `overflow-auto`, `rounded-2xl`, border `#e2e8f0`, shadow `0 12px 32px rgb(15 23 42 / 0.12)`, `z-20`, `py-1`. Shown when open and `options.length > 0`.
 
-- Catalog rows: `min-h-11`, semibold `text-sm`; keyboard/hover highlight `#f0fdfa`.
-- Filter: case-insensitive substring match on the typeahead value; **exclude regions already on chips**.
-- Add row (add-new-exercise flows only): only when **no** catalog row matches **and** typed text (after trim and `capitalizeBodyRegionLabel`) is not equal to an existing catalog region and not already selected. Plus icon, **Add {region}** semibold `#115e59`, **New** pill on the right (variant A row).
+- Catalog rows: `min-h-11`, `px-3.5`, semibold `text-sm` `#0f172a`. Active keyboard/hover row: `bg-[rgb(240_253_250_/_0.8)]`. Inactive row hover: `bg-[#f8fafc]`.
+- Filter: case-insensitive substring (`includes` on lowercased strings); exclude regions already on chips (`isSelected` via `sameRegion`).
+- Add row (add-new-exercise flows only): when `filtered.length === 0` and normalized typed name is non-empty, not selected, and not an exact catalog match (`isExactExisting`). Optional `border-t border-[#f1f5f9]` when catalog rows exist above. Plus icon, **Add {region}** `#115e59`; active or hover `bg-[#f0fdfa]`; trailing **New** pill.
 
 ### After a pick
 
 Choosing a list row or the add row: append chip (existing or new styling), clear typeahead text, close list, **keep focus** in the typeahead so another region can be added. **Clear** on a chip removes that chip only.
 
-## Region label casing (one rule)
+## Region labels: display and matching
 
-`capitalizeBodyRegionLabel` in `src/ui/routines/body-region-display.ts`: if length is 0 return as-is; else `charAt(0).toUpperCase() + slice(1)` (first character uppercased, **rest unchanged**). Examples: `knee` to `Knee`, `acl` to `Acl`, `ACL` stays `ACL`. Use for chip labels, list rows, add-row `{region}`, and values stored in `body_regions`.
+**Display:** `capitalizeBodyRegionLabel` in `src/ui/routines/body-region-display.ts` (same as r4): first character uppercased, rest unchanged. Examples: `knee` to `Knee`, `ACL` stays `ACL`. Use on chips, list rows, and **Add {region}** (`typedName = capitalizeBodyRegionLabel(query.trim())`).
+
+**Matching (r4 `sameRegion`):** `a.trim().toLowerCase() === b.trim().toLowerCase()` for duplicate checks (`isSelected`), catalog exact match (`isExactExisting`), and add-row eligibility. Substring filter uses `matchesRegion` (case-insensitive `includes`).
+
+**Storage:** `body_regions: string[]` on the exercise. Seeded catalog labels in the database are lowercase (for example `knee` in `migrations/0001_exercise_data_model.sql`). Column `body_regions.label` is `TEXT NOT NULL UNIQUE` (case-sensitive uniqueness in SQLite). How new region labels are normalized when persisted is for the build ticket and CTO, not locked in this design spec.
+
+## Combobox behaviour
+
+| Behaviour | Rule |
+| -- | -- |
+| `canAdd` | `typedName.length > 0` and `filtered.length === 0` and not `isSelected(typedName)` and not `isExactExisting(typedName)` (add-new-exercise flows only) |
+| After pick | `addSelection`: append chip, clear query, close list, `requestAnimationFrame` refocus input |
+| Remove chip | Filter selections with `sameRegion`; refocus input |
+| Chevron | Toggles `open`; does not steal focus from typeahead long term |
 
 ## States (mockups)
 
 | # | State | What it shows |
 | -- | -- | -- |
 | 01 | Matches | Typeahead `ne`; list shows **Knee** (highlighted) and **Neck** |
-| 02 | Add row | Typeahead `Quads`; list shows only **Add Quads** with **New** pill |
+| 02 | Add row | Typeahead `Quads` (from typed `quads`); list shows only **Add Quads** with **New** pill |
 | 03 | Chips | **Glutes** existing chip plus **Quads** new chip; typeahead empty, unfocused, placeholder visible |
 | 04 | Empty | Typeahead focused, caret visible, placeholder visible, full catalog list: Knee, Hip, Ankle, Shoulder, Lower back, Neck, Glutes |
 
@@ -131,16 +145,17 @@ All AI-returned regions arrive as pre-filled chips. Catalog matches use existing
 
 | Input | Behaviour |
 | -- | -- |
-| ArrowDown | Open if needed; move highlight (clamped). |
-| ArrowUp | Move highlight (clamped). |
-| Enter | Activate highlighted option (catalog or add row). |
-| Escape | Close list. |
+| ArrowDown | `preventDefault`; set `open` true; move highlight down (clamped). |
+| ArrowUp | `preventDefault`; move highlight up (clamped). |
+| Enter | `preventDefault`; `activateOption(highlight)` for the highlighted catalog row or add row **whether or not the list is open** (r4: Enter does not gate on `open`). |
+| Escape | Close list (`setOpen(false)`). |
 
-- Typeahead: `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant` on highlighted option when open.
-- List: `role="listbox"`, `aria-label` **Body region**.
-- Options: `role="option"`.
-- Chip remove: visible text button **Clear** (`CLEAR`, `src/ui/copy/exercise-library.ts` line 12).
-- Icons: `aria-hidden` where decorative.
+- Typeahead input: `role="combobox"`, `aria-expanded`, `aria-controls` (list id), `aria-autocomplete="list"`, `aria-activedescendant` when open and a highlighted option exists.
+- List: `role="listbox"`, `aria-label` **Body region** (`BODY_REGION`).
+- Options: `role="option"`, `aria-selected` when applicable; add row `aria-selected={false}`.
+- Chevron: `aria-label` **Body region** (`BODY_REGION`), `tabIndex={-1}`.
+- Chip remove: visible text **Clear** only (no region name in the control label).
+- Icons: `aria-hidden`.
 
 ## Loading, errors, and validation
 
@@ -158,6 +173,7 @@ All AI-returned regions arrive as pre-filled chips. Catalog matches use existing
 - User-visible copy if the region catalog fails to load inside an otherwise loaded exercise form (described need only; no proposed wording).
 - User-visible copy for invalid or duplicate region name on add (described need only; no proposed wording).
 - User-visible copy for exercise save failure attributable to body region (described need only; no proposed wording).
+- Each chip remove control exposes only **Clear** to assistive tech, so screen reader users cannot tell which region they are removing. Accessible names that distinguish chips need new copy from Diadem (described need only; no proposed wording).
 
 ### Open: needs Diadem decision
 
@@ -206,6 +222,7 @@ Phone 390 by 844 px; desktop 1280 by 900 px. No preview chrome. Caret frozen vis
 
 ## Changes
 
+- **Nov 18, 2026**: DIDI-1253 QA R2: mockups from r4 source `473932751381368833`; `max-h-96`; display vs storage casing; `listMeBodyRegions`; a11y open item for chip **Clear**. https://linear.app/didi-build/issue/DIDI-1253
 - **Nov 18, 2026**: DIDI-1253 r4 (A+B typing hint) approved 5:49 PM ET; multi-region chips; N4 placeholder; mockups 01 to 04. CTO withdrew single-choice ruling. https://linear.app/didi-build/issue/DIDI-1253
 - **Nov 18, 2026**: QA and interim CTO scope on edit and `body_regions` array. https://linear.app/didi-build/issue/DIDI-1253
 - **Nov 18, 2026**: Variant A strings approved 3:14 PM ET; product direction lock 2:58 PM EST. https://linear.app/didi-build/issue/DIDI-1253
