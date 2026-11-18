@@ -137,10 +137,13 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       }
       if (url.endsWith("/v1/images/edits")) {
         editCalls.push(url);
-        return new Response(JSON.stringify({ detail: [{ msg: "field required", type: "value_error" }] }), {
-          status: 422,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ detail: [{ msg: "field required", type: "value_error" }] }),
+          {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }
       throw new Error(`unexpected url ${url}`);
     });
@@ -222,11 +225,15 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
 
   it("rejects image JSON payloads over the response size cap", async () => {
     const overCap = "x".repeat(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1);
-    const fetchImpl = vi.fn(async () =>
-      new Response(overCap, {
-        status: 200,
-        headers: { "content-type": "application/json", "content-length": String(overCap.length) },
-      }),
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(overCap, {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": String(overCap.length),
+          },
+        }),
     );
     const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
     await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
