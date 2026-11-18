@@ -1,6 +1,6 @@
 import type { AppDependencies } from "../app.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
-import { FalImageGenerationError } from "../../storage/ports/image-generation.js";
+import { ImageGenerationError } from "../../storage/ports/image-generation.js";
 import {
   ExerciseMediaService,
   ExerciseMediaServiceError,
@@ -98,8 +98,14 @@ function routeErrorResponse(error: unknown): Response | null {
   if (error instanceof ExerciseMediaServiceError) {
     return serviceErrorResponse(error);
   }
-  if (error instanceof FalImageGenerationError) {
-    return Response.json({ error: error.code }, { status: 502, headers: JSON_HEADERS });
+  if (error instanceof ImageGenerationError) {
+    const status =
+      error.code === "start_reference_required"
+        ? 400
+        : error.statusCode >= 400 && error.statusCode < 600
+          ? error.statusCode
+          : 502;
+    return Response.json({ error: error.code }, { status, headers: JSON_HEADERS });
   }
   return null;
 }
