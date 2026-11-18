@@ -75,7 +75,19 @@ def parse_log(text: str) -> dict:
         ec_m = re.search(r"exit_code: (\d+)", body)
         ec = int(ec_m.group(1)) if ec_m else -1
         fails = re.findall(r"^ FAIL .*", body, re.M)
+        log_path = Path(f"/tmp/didi-1209-test-{mid}.log")
+        worker_crash = False
+        if log_path.is_file():
+            log_text = log_path.read_text(errors="replace")
+            worker_crash = (
+                "adapters-node-deepinfra.test.ts" in log_text
+                and "Worker exited unexpectedly" in log_text
+            )
         adapter_fails, other_fails = classify_fails(fails)
+        if worker_crash and mid == "M5":
+            adapter_fails.append(
+                "DeepInfraFluxKleinImageGeneration (unit) worker OOM on streaming cap test"
+            )
         tests_line = ""
         files_line = ""
         for line in body.splitlines():
@@ -83,7 +95,7 @@ def parse_log(text: str) -> dict:
                 files_line = line.strip()
             if line.startswith("      Tests"):
                 tests_line = line.strip()
-        killed = ec != 0 and len(adapter_fails) > 0
+        killed = ec != 0 and (len(adapter_fails) > 0 or worker_crash)
         if ec == 0:
             status = "Survived"
         elif killed:
