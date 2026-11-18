@@ -224,9 +224,10 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
     expect(findSchemaAtPath(create.inputSchema, ["program_title"])).toMatchObject({
       maxLength: MAX_LENGTH_PROGRAM_TITLE,
     });
+    const patientInformationSentence = "Do not pass patient information.";
     expect(
-      findSchemaAtPath(create.inputSchema, ["program_title"])?.description,
-    ).toBeUndefined();
+      String(findSchemaAtPath(create.inputSchema, ["program_title"])?.description),
+    ).toBe(patientInformationSentence);
 
     let rowNotesSeen = false;
     let rowExerciseNameSeen = false;
@@ -235,12 +236,14 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
       if (props?.row_notes?.maxLength !== undefined) {
         rowNotesSeen = true;
         expect(props.row_notes.maxLength).toBe(MAX_LENGTH_ROW_NOTES);
-        expect(props.row_notes.description).toBeUndefined();
+        expect(String(props.row_notes.description)).toBe(patientInformationSentence);
       }
       if (props?.exercise_name?.maxLength !== undefined) {
         rowExerciseNameSeen = true;
         expect(props.exercise_name.maxLength).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
-        expect(props.exercise_name.description).toBeUndefined();
+        expect(String(props.exercise_name.description)).toBe(
+          patientInformationSentence,
+        );
       }
     });
     expect(rowNotesSeen).toBe(true);
@@ -251,13 +254,17 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
         .requested_exercise_name,
     ).toMatchObject({ maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME });
     expect(
-      (exerciseNotFoundSchema.properties as Record<string, JsonSchemaLike>)
-        .requested_exercise_name?.description,
-    ).toBeUndefined();
+      String(
+        (exerciseNotFoundSchema.properties as Record<string, JsonSchemaLike>)
+          .requested_exercise_name?.description,
+      ),
+    ).toBe(patientInformationSentence);
     expect(
-      (exerciseNotFoundCandidateSchema.properties as Record<string, JsonSchemaLike>)
-        .exercise_name?.description,
-    ).toBeUndefined();
+      String(
+        (exerciseNotFoundCandidateSchema.properties as Record<string, JsonSchemaLike>)
+          .exercise_name?.description,
+      ),
+    ).toBe(patientInformationSentence);
   });
 
   it("has no patient-like names in tool or field descriptions", () => {

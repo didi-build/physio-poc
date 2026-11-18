@@ -19,7 +19,7 @@ Write tools use per-tool MCP annotations: `create_or_edit_program` is non-destru
 
 ## Privacy
 
-Enforcement is structural, not full content scanning: JSON Schema maxLength caps on free-text fields, property names must not match patient-info patterns (unit test), each tool's property set is pinned, **read-tool** field descriptions forbid patient details, write-tool free-text fields omit v13 copy until DIDI-1251 (patient-detail guidance held per CTO comment `e1b1cb2d`), and `validateFreeTextForPatientDetails` in the contract rejects obvious emails, phone numbers, Ontario health-card-shaped numbers, and date-of-birth-like dates (DIDI-991 runs this on wired read tools on the server; write tools pin the same validator over every capped free-text input path in tests). This is a regression guard, not a privacy guarantee.
+Enforcement is structural, not full content scanning: JSON Schema maxLength caps on free-text fields, property names must not match patient-info patterns (unit test), each tool's property set is pinned, **read-tool** field descriptions forbid patient details, **write-tool** free-text field descriptions are the DIDI-594 comment `5d59df38` sentence only (`Do not pass patient information.`), and `validateFreeTextForPatientDetails` in the contract rejects obvious emails, phone numbers, Ontario health-card-shaped numbers, and date-of-birth-like dates (DIDI-991 runs this on wired read tools on the server; write tools pin the same validator over every capped free-text input path in tests). This is a regression guard, not a privacy guarantee.
 
 ## Platform
 
@@ -27,4 +27,4 @@ The contract module must not import Node, Cloudflare Workers, or other runtime-s
 
 ## Write-tool schema fields without v13 `description` (DIDI-1251)
 
-Until CTO approves assistant-facing copy, write-tool JSON Schema fields listed in [`docs/mcp-connector/write-schema-omitted-descriptions.md`](../mcp-connector/write-schema-omitted-descriptions.md) (regenerate with `npx tsx scripts/list-mcp-write-schema-omissions.ts`) have **no** `description` — type and constraints only, including HELD confirm instruction and HELD patient-detail guidance. Output `source_routine_id` keeps `routineIdProperty` text from the read-tool spec. Mechanics are noted in `src/mcp-connector/json-schema.ts` comments.
+Until CTO approves assistant-facing copy, write-tool JSON Schema fields listed in [`docs/mcp-connector/write-schema-omitted-descriptions.md`](../mcp-connector/write-schema-omitted-descriptions.md) (regenerate with `npx tsx scripts/list-mcp-write-schema-omissions.ts`) have **no** `description` — type and constraints only; **free-text write fields** are excluded and instead use the `5d59df38` sentence. HELD confirm instruction remains **DIDI-1251**. Output `source_routine_id` keeps `routineIdProperty` text from the read-tool spec. Mechanics are noted in `src/mcp-connector/json-schema.ts` comments.

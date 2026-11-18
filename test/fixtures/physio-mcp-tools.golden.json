@@ -557,7 +557,8 @@
         },
         "program_title": {
           "type": "string",
-          "maxLength": 80
+          "maxLength": 80,
+          "description": "Do not pass patient information."
         },
         "from_routine_id": {
           "type": "string",
@@ -748,7 +749,8 @@
                   },
                   "row_notes": {
                     "type": "string",
-                    "maxLength": 300
+                    "maxLength": 300,
+                    "description": "Do not pass patient information."
                   }
                 }
               },
@@ -760,7 +762,8 @@
                   "exercise_name": {
                     "type": "string",
                     "minLength": 1,
-                    "maxLength": 100
+                    "maxLength": 100,
+                    "description": "Do not pass patient information."
                   },
                   "prescription_type": {
                     "type": "string",
@@ -934,7 +937,8 @@
                   },
                   "row_notes": {
                     "type": "string",
-                    "maxLength": 300
+                    "maxLength": 300,
+                    "description": "Do not pass patient information."
                   }
                 }
               }
@@ -993,7 +997,8 @@
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80
+          "maxLength": 80,
+          "description": "Do not pass patient information."
         },
         "source_routine_id": {
           "type": "string",
@@ -1022,7 +1027,8 @@
                 "type": "string"
               },
               "exercise_name": {
-                "type": "string"
+                "type": "string",
+                "description": "Do not pass patient information."
               },
               "prescription_type": {
                 "type": "string",
@@ -1196,7 +1202,8 @@
               },
               "row_notes": {
                 "type": "string",
-                "maxLength": 300
+                "maxLength": 300,
+                "description": "Do not pass patient information."
               }
             }
           }
@@ -1210,7 +1217,8 @@
             "properties": {
               "requested_exercise_name": {
                 "type": "string",
-                "maxLength": 100
+                "maxLength": 100,
+                "description": "Do not pass patient information."
               },
               "candidate_matches": {
                 "type": "array",
@@ -1224,7 +1232,8 @@
                       "type": "string"
                     },
                     "exercise_name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Do not pass patient information."
                     }
                   }
                 }
@@ -1357,7 +1366,8 @@
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80
+          "maxLength": 80,
+          "description": "Do not pass patient information."
         },
         "draft_state": {
           "type": "string",
@@ -1504,7 +1514,8 @@
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80
+          "maxLength": 80,
+          "description": "Do not pass patient information."
         },
         "share_link_state": {
           "type": "string",
@@ -1583,7 +1594,8 @@
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80
+          "maxLength": 80,
+          "description": "Do not pass patient information."
         },
         "restore_until": {
           "type": "string",

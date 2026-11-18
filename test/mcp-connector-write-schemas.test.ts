@@ -49,14 +49,6 @@ describe("Physio MCP write tool schemas (DIDI-1242)", () => {
     expect(candidates?.maxItems).toBe(3);
   });
 
-  it("omits description on create_or_edit program_title input", () => {
-    const tool = writeTool("create_or_edit_program");
-    expectNoDescription(
-      findSchemaAtPath(tool.inputSchema, ["program_title"]),
-      "create_or_edit_program.input.program_title",
-    );
-  });
-
   it("pins create_or_edit input from_routine_id and output source_routine_id shapes", () => {
     const tool = writeTool("create_or_edit_program");
     expect(findSchemaAtPath(tool.inputSchema, ["from_routine_id"])).toMatchObject({
@@ -152,11 +144,6 @@ describe("Physio MCP write tool schemas (DIDI-1242)", () => {
       "exercises_not_found",
     );
     expectNoDescription(
-      (exerciseNotFoundSchema.properties as Record<string, unknown>)
-        .requested_exercise_name,
-      "requested_exercise_name",
-    );
-    expectNoDescription(
       (exerciseNotFoundSchema.properties as Record<string, unknown>).candidate_matches,
       "candidate_matches",
     );
@@ -169,11 +156,6 @@ describe("Physio MCP write tool schemas (DIDI-1242)", () => {
       (exerciseNotFoundCandidateSchema.properties as Record<string, unknown>)
         .exercise_version_id,
       "candidate exercise_version_id",
-    );
-    expectNoDescription(
-      (exerciseNotFoundCandidateSchema.properties as Record<string, unknown>)
-        .exercise_name,
-      "candidate exercise_name",
     );
 
     const publish = writeTool("publish_program");
@@ -201,12 +183,7 @@ describe("Physio MCP write tool schemas (DIDI-1242)", () => {
     visitSchemaNodesWithPath(create.inputSchema, [], (node, path) => {
       const props = node.properties as Record<string, unknown> | undefined;
       if (!props) return;
-      for (const key of [
-        "exercise_version_id",
-        "prescription_type",
-        "params",
-        "row_notes",
-      ]) {
+      for (const key of ["exercise_version_id", "prescription_type", "params"]) {
         if (props[key] !== undefined) {
           const label = `${path.join(".")}.${key}`;
           expectNoDescription(props[key], `create row ${label}`);

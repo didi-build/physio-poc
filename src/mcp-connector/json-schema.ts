@@ -21,6 +21,10 @@ export type JsonSchema = {
   readonly [key: string]: unknown;
 };
 
+/** Write free-text fields only (DIDI-594 comment 5d59df38). */
+export const WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION =
+  "Do not pass patient information." as const;
+
 export const uriOrEmptyStringSchema: JsonSchema = {
   oneOf: [
     { type: "string", format: "uri" },
@@ -175,7 +179,10 @@ export const exerciseNotFoundCandidateSchema: JsonSchema = {
   required: ["exercise_version_id", "exercise_name"],
   properties: {
     exercise_version_id: { type: "string" },
-    exercise_name: { type: "string" },
+    exercise_name: {
+      type: "string",
+      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
+    },
   },
 };
 
@@ -188,6 +195,7 @@ export const exerciseNotFoundSchema: JsonSchema = {
     requested_exercise_name: {
       type: "string",
       maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
     },
     candidate_matches: {
       type: "array",
@@ -265,10 +273,11 @@ export const programTitleProperty: JsonSchema = {
   description: `Non-identifying program title the practitioner uses to recognise this program later. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
-/** Write tools: same cap as programTitleProperty, no description until DIDI-1251. */
+/** Write tools: program title input cap; patient-information line only (no other copy). */
 export const writeProgramTitleInputProperty: JsonSchema = {
   type: "string",
   maxLength: MAX_LENGTH_PROGRAM_TITLE,
+  description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
 };
 
 export const nullableProgramTitleProperty: JsonSchema = {
@@ -277,10 +286,11 @@ export const nullableProgramTitleProperty: JsonSchema = {
   description: `Non-identifying program title, or null when unset. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
-/** Write tool outputs: nullable title without v13 field copy. */
+/** Write tool outputs: nullable program title; patient-information line only. */
 export const writeNullableProgramTitleOutputProperty: JsonSchema = {
   type: ["string", "null"],
   maxLength: MAX_LENGTH_PROGRAM_TITLE,
+  description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
 };
 
 export const matchCountOutputProperty: JsonSchema = {
@@ -370,6 +380,7 @@ const programRowSharedPropertiesWrite: Record<string, JsonSchema> = {
   row_notes: {
     type: "string",
     maxLength: MAX_LENGTH_ROW_NOTES,
+    description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
   },
 };
 
@@ -396,6 +407,7 @@ export const programRowInputSchema: JsonSchema = {
           type: "string",
           minLength: 1,
           maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+          description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
         },
         ...programRowSharedPropertiesWrite,
       },
@@ -414,6 +426,7 @@ export const programRowOutputSchema: JsonSchema = {
     },
     exercise_name: {
       type: "string",
+      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
     },
     ...programRowSharedPropertiesWrite,
   },

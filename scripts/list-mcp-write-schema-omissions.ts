@@ -24,11 +24,6 @@ const HELD = [
     kind: "confirm_instruction",
     note: "Assistant-facing confirm instruction (ask and wait for explicit yes) before publish, delete, or set expiry — no CTO-approved wording (CTO comment e1b1cb2d). User-facing v13 sample lines stay in tool descriptions only.",
   },
-  {
-    id: "DIDI-1251",
-    kind: "patient_detail_guidance",
-    note: "Patient-detail guidance on write free-text fields (program_title, row_notes, row exercise_name, requested_exercise_name, etc.) — held; read-tool field text is not v13-approved for write schemas (CTO comment e1b1cb2d).",
-  },
 ] as const;
 
 type Row = { tool: string; side: string; path: string };
