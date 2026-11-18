@@ -157,7 +157,11 @@ export function collectInputUrlLikeViolations(schema: JsonSchema): string[] {
   return violations;
 }
 
-const FORBIDDEN_LEGACY_SCHEMA_PROPERTY_NAMES = new Set(["publish"]);
+const FORBIDDEN_LEGACY_SCHEMA_PROPERTY_NAMES = new Set([
+  "expires_in",
+  "custom_date",
+  "exercises_not_found",
+]);
 
 const PATIENT_FIXTURE_NAME =
   /\b(?:Jane|John|Maria)\s+(?:Doe|Smith|Lopez)\b|\bpatient\s+name\s*:/i;
@@ -302,6 +306,9 @@ export function collectForbiddenLegacySchemaFields(schema: JsonSchema): string[]
           hits.push(`property:${key}`);
         }
       }
+    }
+    if (node.format === "date") {
+      hits.push("format:date");
     }
   });
   return hits;

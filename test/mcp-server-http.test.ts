@@ -169,16 +169,49 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("lists wired tool annotations matching the contract", async () => {
+  it("lists read-only tool annotations on every wired tool", async () => {
+    const readOnlyAnnotations = {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    };
     await withMcpClient(async (client) => {
       const { tools } = await client.listTools();
       expect(tools?.map((t) => t.name)).toEqual(
         goldenWiredTools.map((t: { name: string }) => t.name),
       );
       for (const tool of tools ?? []) {
-        const contract = PHYSIO_MCP_WIRED_TOOLS.find((t) => t.name === tool.name);
-        expect(contract?.annotations).toBeDefined();
-        expect(tool.annotations).toEqual(contract!.annotations);
+        expect(tool.annotations).toEqual(readOnlyAnnotations);
+      }
+    });
+  });
+
+  const UNWIRED_WRITE_TOOL_NAMES = [
+    "create_or_edit_program",
+    "publish_program",
+    "set_program_link_expiry",
+    "delete_program",
+  ] as const;
+
+  it("does not expose unwired write tools on tools/list", async () => {
+    await withMcpClient(async (client) => {
+      const { tools } = await client.listTools();
+      const names = new Set(tools?.map((t) => t.name));
+      for (const name of UNWIRED_WRITE_TOOL_NAMES) {
+        expect(names.has(name), name).toBe(false);
+      }
+    });
+  });
+
+  it("rejects unwired write tool calls with Unknown tool text and isError", async () => {
+    await withMcpClient(async (client) => {
+      for (const name of UNWIRED_WRITE_TOOL_NAMES) {
+        const result = await client.callTool({
+          name,
+          arguments: { program_code: "PRG-7K3Q" },
+        });
+        expect(result.isError, name).toBe(true);
+        expect(toolErrorText(result), name).toBe(`Unknown tool: ${name}`);
       }
     });
   });

@@ -25,8 +25,35 @@ import {
 
 export const CREATE_OR_EDIT_PROGRAM_TOOL_NAME = "create_or_edit_program" as const;
 
-export const createOrEditProgramDescription =
-  "Create or replace a program. Omit program_code to create; pass program_code to replace that program's full rows list (no incremental ops). Create from a routine with from_routine_id in one call; optional rows replaces the copied rows. Records source_routine_id on the program. Each row uses exercise_version_id or exercise_name, not both; the server resolves names and omits unresolved rows (no placeholder rows). Unresolved names appear in exercises_not_found with up to three candidates and a prefilled web app search link (built from server config). Never publishes. Do not pass patient information in program_title or row_notes.";
+export const createOrEditProgramDescription = [
+  "create or edit a program, create from a routine via create_or_edit_program with from_routine_id.",
+  "exercises_not_found partial result:",
+  "{name} isn't in your exercise library yet, and I can't create new exercises from here.",
+  "You can request it in the web app. The search is already filled in:",
+  "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged.",
+].join(" ");
+
+export const publishProgramDescription = [
+  "Before calling, read the program with get_program_share_link_or_pdf so the question has the real name, code, exercise count, link state and expiry.",
+  "Publish {name}?",
+  "Creates the share link. Anyone with it sees this version.",
+  "Expires in {expiry} ({date}), your default.",
+  "Reply yes to publish, or tell me a different expiry. No keeps it as a draft.",
+  "A separate copy of {routine}, v{n}. Later routine edits won't change it.",
+  "Code {code}. Creates the share link.",
+  "Publish changes to {name}?",
+  "One line per change from publish_change_lines.",
+  "Your patient sees this on the same link right away.",
+  "Reply yes to publish, or no to keep the changes as a draft.",
+  "This isn't live yet.",
+  "{name} has draft changes that aren't live yet. Do you want the link to the published version, or should I publish the draft first?",
+  "I can set any date from tomorrow, with no latest date, or make it never expire.",
+  "Expires in {expiry} ({date}).",
+  "Never expires.",
+].join(" ");
+
+const routineIdWithoutDescription: JsonSchema = { ...routineIdProperty };
+delete (routineIdWithoutDescription as { description?: string }).description;
 
 export const createOrEditProgramInputSchema: JsonSchema = {
   type: "object",
@@ -34,15 +61,10 @@ export const createOrEditProgramInputSchema: JsonSchema = {
   properties: {
     program_code: programCodeProperty,
     program_title: programTitleProperty,
-    from_routine_id: {
-      ...routineIdProperty,
-      description:
-        "When creating a new program, copy rows from this routine id. Optional rows replaces the copy in the same call.",
-    },
+    from_routine_id: routineIdWithoutDescription,
     rows: {
       type: "array",
       items: programRowInputSchema,
-      description: "Full rows list that replaces the program contents on save.",
     },
   },
 };
@@ -73,16 +95,11 @@ export const createOrEditProgramOutputSchema: JsonSchema = {
     exercises_not_found: {
       type: "array",
       items: exerciseNotFoundSchema,
-      description:
-        "Exercise names that were not resolved to exactly one approved exercise.",
     },
   },
 };
 
 export const PUBLISH_PROGRAM_TOOL_NAME = "publish_program" as const;
-
-export const publishProgramDescription =
-  "Publish the current program draft to the live share link (republishing updates the live version on the same link). Requires program_code. Before calling, read the program with get_program_share_link_or_pdf so you know the program name, whether a published version exists, draft_state, and current expiry. Call only after the user explicitly confirms in the conversation: say which version they want when draft changes exist (published link vs publishing the draft first), then confirm publish with default expiry or the overrides you will send. Optional overrides.expires_in sets expiry (1_week, 30_days, 90_days, 1_year, never, or custom_date with overrides.custom_date); omit overrides to use the practitioner default. Do not pass patient information.";
 
 export const publishProgramInputSchema: JsonSchema = {
   type: "object",
@@ -124,8 +141,14 @@ export const publishProgramOutputSchema: JsonSchema = {
 
 export const SET_PROGRAM_LINK_EXPIRY_TOOL_NAME = "set_program_link_expiry" as const;
 
-export const setProgramLinkExpiryDescription =
-  "Change when one program's published share link expires. Requires program_code and expires_in (1_week, 30_days, 90_days, 1_year, never, or custom_date with custom_date). Call directly when the user's message already names the date or expiry; otherwise get explicit confirmation in the conversation first. Do not pass patient information.";
+export const setProgramLinkExpiryDescription = [
+  "Call directly when the user's message names the date or expiry; otherwise confirm first.",
+  "Change the link for {name} to expire on {date}?",
+  "Change the link for {name} to never expire?",
+  "It's the same link. Right now it expires on {current_date}.",
+  "It's the same link. Right now it never expires.",
+  "Reply yes to change it, or no to leave it.",
+].join(" ");
 
 export const setProgramLinkExpiryInputSchema: JsonSchema = {
   type: "object",
@@ -155,8 +178,13 @@ export const setProgramLinkExpiryOutputSchema: JsonSchema = {
 
 export const DELETE_PROGRAM_TOOL_NAME = "delete_program" as const;
 
-export const deleteProgramDescription =
-  "Delete a program by program_code. This closes its share link when open. The program moves to Recently deleted in the web app and can be restored for 30 days. Call only after the user explicitly confirms in the conversation. Do not pass patient information.";
+export const deleteProgramDescription = [
+  "Delete {name}?",
+  "{code}, {n} exercises. It moves to Recently deleted.",
+  'Closes its share link, so anyone who opens it sees "This link was closed".',
+  "You can restore it in the web app for 30 days.",
+  "Reply yes to delete it, or no to keep it.",
+].join(" ");
 
 export const deleteProgramInputSchema: JsonSchema = {
   type: "object",

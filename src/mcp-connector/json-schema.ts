@@ -128,6 +128,7 @@ export const nullableProgramVersionRefSchema: JsonSchema = {
   description: "Null when that side (draft or published) does not exist.",
 };
 
+/** Publish overrides: expires_in + optional custom_date when expires_in is custom_date (v13). */
 export const publishOverridesInputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -135,14 +136,10 @@ export const publishOverridesInputSchema: JsonSchema = {
     expires_in: {
       type: "string",
       enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
-      description:
-        "Share link expiry for this publish. Omit overrides entirely to use the practitioner default.",
     },
     custom_date: {
       type: "string",
       pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-      description:
-        "Required when expires_in is custom_date. Calendar date YYYY-MM-DD from tomorrow onward per product rules.",
     },
   },
   allOf: [
@@ -160,18 +157,16 @@ export const publishOverridesInputSchema: JsonSchema = {
   ],
 };
 
+/** Enum values locked in share-link-expiry.ts (invalid_expiry uses v13 REUSED copy at runtime). */
 export const shareLinkExpiresInInputProperty: JsonSchema = {
   type: "string",
   enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
-  description:
-    "Share link expiry choice. Use custom_date with custom_date when expires_in is custom_date.",
 };
 
+/** YYYY-MM-DD when expires_in is custom_date; validated server-side (DIDI-1244). */
 export const shareLinkCustomDateInputProperty: JsonSchema = {
   type: "string",
   pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-  description:
-    "Required when expires_in is custom_date. Calendar date YYYY-MM-DD from tomorrow onward per product rules.",
 };
 
 export const exerciseNotFoundCandidateSchema: JsonSchema = {
@@ -184,6 +179,7 @@ export const exerciseNotFoundCandidateSchema: JsonSchema = {
   },
 };
 
+/** Partial-result row when an exercise name does not resolve (DIDI-989 #6). */
 export const exerciseNotFoundSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -192,36 +188,29 @@ export const exerciseNotFoundSchema: JsonSchema = {
     requested_exercise_name: {
       type: "string",
       maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
-      description: `Exercise name that could not be resolved to exactly one approved exercise. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
     },
     candidate_matches: {
       type: "array",
       maxItems: 3,
       items: exerciseNotFoundCandidateSchema,
-      description:
-        "Up to three similar approved exercises when the name was ambiguous.",
     },
     web_app_exercise_search_url: {
       type: "string",
       format: "uri",
-      description:
-        "Web app exercise search URL with the query prefilled, built from server-configured web app base URL and the requested name.",
     },
   },
 };
 
+/** Republish confirm: one line per change (v13 publish republish REUSED). */
 export const publishChangeLinesOutputProperty: JsonSchema = {
   type: "array",
   items: { type: "string" },
-  description:
-    "Human-readable lines describing draft changes against the last published version, for assistant confirm wording.",
 };
 
+/** Delete output: last restore day (v13 delete after-yes REUSED). */
 export const restoreUntilOutputProperty: JsonSchema = {
   type: "string",
   format: "date",
-  description:
-    "Last calendar date the program can be restored from Recently deleted in the web app.",
 };
 
 export const exerciseCategorySchema: JsonSchema = {
@@ -333,10 +322,10 @@ const programRowSharedProperties: Record<string, JsonSchema> = {
   row_notes: {
     type: "string",
     maxLength: MAX_LENGTH_ROW_NOTES,
-    description: `Optional notes about the exercise prescription on this row only. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
   },
 };
 
+/** Row input: exercise_version_id XOR exercise_name (DIDI-989 #6). */
 export const programRowInputSchema: JsonSchema = {
   oneOf: [
     {
@@ -346,7 +335,6 @@ export const programRowInputSchema: JsonSchema = {
       properties: {
         exercise_version_id: {
           type: "string",
-          description: "Pinned approved exercise version id for this row.",
         },
         ...programRowSharedProperties,
       },
@@ -360,16 +348,14 @@ export const programRowInputSchema: JsonSchema = {
           type: "string",
           minLength: 1,
           maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
-          description: `Approved exercise display name or alias; server resolves case-insensitively. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
         },
         ...programRowSharedProperties,
       },
     },
   ],
-  description:
-    "One row in a program request. Provide exercise_version_id or exercise_name, not both. Same exercise may appear more than once.",
 };
 
+/** Saved row shape after write (DIDI-1244). */
 export const programRowOutputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -377,16 +363,12 @@ export const programRowOutputSchema: JsonSchema = {
   properties: {
     exercise_version_id: {
       type: "string",
-      description: "Pinned approved exercise version id saved on this row.",
     },
     exercise_name: {
       type: "string",
-      description: "Display name snapshot for this row.",
     },
     ...programRowSharedProperties,
   },
-  description:
-    "One saved program row. Snapshots params and text; unresolved names are omitted from rows and listed under exercises_not_found.",
 };
 
 export const approvedExerciseSummarySchema: JsonSchema = {

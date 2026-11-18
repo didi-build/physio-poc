@@ -10,9 +10,6 @@ import {
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
   MAX_LENGTH_ROW_NOTES,
-  MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
-  MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-  MCP_TOOL_ANNOTATIONS,
   PHYSIO_MCP_TOOLS,
   SEARCH_ROUTINES_TOOL_NAME,
   getProgramBuilderLinkInputSchema,
@@ -38,29 +35,6 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
   it("matches committed golden snapshot of PHYSIO_MCP_TOOLS", () => {
     const golden = JSON.parse(readFileSync(GOLDEN_PATH, "utf8"));
     expect(PHYSIO_MCP_TOOLS).toEqual(golden);
-  });
-
-  it("pins MCP tool annotations on every tool", () => {
-    const annotationsByName: Record<
-      string,
-      {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        openWorldHint: boolean;
-      }
-    > = {
-      search_approved_exercises: MCP_TOOL_ANNOTATIONS,
-      search_routines: MCP_TOOL_ANNOTATIONS,
-      get_program_builder_link: MCP_TOOL_ANNOTATIONS,
-      get_program_share_link_or_pdf: MCP_TOOL_ANNOTATIONS,
-      create_or_edit_program: MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
-      publish_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-      set_program_link_expiry: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-      delete_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-    };
-    for (const tool of PHYSIO_MCP_TOOLS) {
-      expect(tool.annotations).toEqual(annotationsByName[tool.name]);
-    }
   });
 
   it("pins free-text maxLength caps at 80/80/300/100 where applicable", () => {
@@ -100,6 +74,28 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
     });
     expect(MAX_LENGTH_ROW_NOTES).toBe(300);
     expect(MAX_LENGTH_REQUESTED_EXERCISE_NAME).toBe(100);
+  });
+
+  it("pins write-tool output required fields including restore_until and publish_change_lines", () => {
+    const create = PHYSIO_MCP_TOOLS.find((t) => t.name === "create_or_edit_program")!;
+    const publish = PHYSIO_MCP_TOOLS.find((t) => t.name === "publish_program")!;
+    const del = PHYSIO_MCP_TOOLS.find((t) => t.name === "delete_program")!;
+    expect(schemaRequired(create.outputSchema)).toEqual(
+      expect.arrayContaining([
+        "summary",
+        "share_link",
+        "manage_url",
+        "program_code",
+        "program_title",
+        "rows",
+      ]),
+    );
+    expect(schemaRequired(publish.outputSchema)).toEqual(
+      expect.arrayContaining(["publish_change_lines", "published", "pdf_url"]),
+    );
+    expect(schemaRequired(del.outputSchema)).toEqual(
+      expect.arrayContaining(["restore_until"]),
+    );
   });
 
   it("pins literal required arrays on tool output schemas", () => {

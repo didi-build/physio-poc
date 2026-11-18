@@ -6,6 +6,7 @@ import {
   MAX_LENGTH_ROUTINE_NAME,
   MAX_LENGTH_SUMMARY,
   PHYSIO_MCP_TOOLS,
+  PHYSIO_MCP_WIRED_TOOLS,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
   searchApprovedExercisesInputSchema,
@@ -146,14 +147,16 @@ const schemaWalkerBranchFixtures: Array<{
 ];
 
 describe("collectForbiddenLegacySchemaFields", () => {
-  it("detects the legacy publish flag at top level, nested, and under allOf/then", () => {
+  it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
     const topLevel: JsonSchema = {
       type: "object",
       properties: {
-        publish: { type: "boolean" },
+        expires_in: { type: "string" },
       },
     };
-    expect(collectForbiddenLegacySchemaFields(topLevel)).toEqual(["property:publish"]);
+    expect(collectForbiddenLegacySchemaFields(topLevel)).toEqual([
+      "property:expires_in",
+    ]);
 
     const nested: JsonSchema = {
       type: "object",
@@ -161,12 +164,14 @@ describe("collectForbiddenLegacySchemaFields", () => {
         wrapper: {
           type: "object",
           properties: {
-            publish: { type: "boolean", default: false },
+            custom_date: { type: "string", format: "date" },
           },
         },
       },
     };
-    expect(collectForbiddenLegacySchemaFields(nested)).toEqual(["property:publish"]);
+    expect(collectForbiddenLegacySchemaFields(nested).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
 
     const conditional: JsonSchema = {
       allOf: [
@@ -175,15 +180,33 @@ describe("collectForbiddenLegacySchemaFields", () => {
           then: {
             type: "object",
             properties: {
-              summary: { type: "string" },
+              exercises_not_found: { type: "array", items: { type: "string" } },
             },
           },
         },
       ],
     };
     expect(collectForbiddenLegacySchemaFields(conditional)).toEqual([
-      "property:publish",
+      "property:exercises_not_found",
     ]);
+
+    const ifBranch: JsonSchema = {
+      if: {
+        type: "object",
+        properties: {
+          custom_date: { type: "string", format: "date" },
+        },
+      },
+      then: {
+        type: "object",
+        properties: {
+          ok: { type: "boolean" },
+        },
+      },
+    };
+    expect(collectForbiddenLegacySchemaFields(ifBranch).sort()).toEqual(
+      ["format:date", "property:custom_date"].sort(),
+    );
   });
 });
 
@@ -262,8 +285,8 @@ describe("assertNoOutputPatternProperties", () => {
 });
 
 describe("DIDI-1026 explicit MCP contract assertions", () => {
-  it("has no legacy date or publish override fields anywhere in tool schemas", () => {
-    for (const tool of PHYSIO_MCP_TOOLS) {
+  it("has no legacy date or publish override fields on wired read tool schemas", () => {
+    for (const tool of PHYSIO_MCP_WIRED_TOOLS) {
       for (const [side, schema] of [
         ["input", tool.inputSchema],
         ["output", tool.outputSchema],

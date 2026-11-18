@@ -18,10 +18,10 @@ Deep links are built from the shared route table in `src/app-routes.ts` (also us
 | `get_program_share_link_or_pdf` | read-only          | Lookup by `program_code` or `program_title`. Returns published `share_link` and `pdf_url` when live; `publish_link` when a draft needs publishing; `manage_link` for expiry, close link, and delete on the share page. Never publishes. |
 | `create_or_edit_program`        | write              | Create a program or replace rows on an existing draft. Optional `from_routine_id` copies a routine. Never publishes.                                                                                                                    |
 | `publish_program`               | write, destructive | Publish the current draft after explicit user confirmation in the conversation (assistant-side only). Optional `overrides.expires_in` and `overrides.custom_date`.                                                                      |
-| `set_program_link_expiry`       | write, destructive | Change one program's link expiry after confirmation when the user did not already name the date or expiry.                                                                                                                              |
+| `set_program_link_expiry`       | write, destructive | Change one program's link expiry. Call directly when the user's message already names the date or expiry; otherwise confirm first (assistant-side only).                                                                                |
 | `delete_program`                | write, destructive | Delete a program after explicit confirmation; closes an open share link; restorable for 30 days in the web app.                                                                                                                         |
 
-The live MCP server currently registers only the four read tools (`PHYSIO_MCP_WIRED_TOOLS`). Write tools are contract-only until DIDI-1244–1247 wire handlers; calling an unwired write tool name returns `unknown_tool`.
+The live MCP server currently registers only the four read tools (`PHYSIO_MCP_WIRED_TOOLS`). Write tools are contract-only until DIDI-1244–1247 wire handlers. Calling an unwired write tool name returns text `Unknown tool: <name>` with `isError: true` (validation rejects the name before handlers run).
 
 ## Shared data shapes
 

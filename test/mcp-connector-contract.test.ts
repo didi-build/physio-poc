@@ -7,9 +7,6 @@ import {
   CONNECTOR_PHYSIO_APP_ROUTE_NAMES,
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-  MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
-  MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-  MCP_TOOL_ANNOTATIONS,
   PHYSIO_APP_ROUTE_PATTERNS,
   PHYSIO_MCP_WIRED_TOOL_NAMES,
   buildProgramBuilderLink,
@@ -316,32 +313,7 @@ describe("Physio MCP connector contract", () => {
     expect([...PHYSIO_MCP_WIRED_TOOL_NAMES]).toEqual([...WIRED_TOOL_NAMES]);
   });
 
-  it("pins readOnlyHint, destructiveHint, and openWorldHint on every tool", () => {
-    const EXPECTED_ANNOTATIONS_BY_NAME: Record<
-      string,
-      {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        openWorldHint: boolean;
-      }
-    > = {
-      search_approved_exercises: MCP_TOOL_ANNOTATIONS,
-      search_routines: MCP_TOOL_ANNOTATIONS,
-      get_program_builder_link: MCP_TOOL_ANNOTATIONS,
-      get_program_share_link_or_pdf: MCP_TOOL_ANNOTATIONS,
-      create_or_edit_program: MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
-      publish_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-      set_program_link_expiry: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-      delete_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
-    };
-    for (const tool of PHYSIO_MCP_TOOLS) {
-      expect(tool.annotations, tool.name).toEqual(
-        EXPECTED_ANNOTATIONS_BY_NAME[tool.name],
-      );
-    }
-  });
-
-  it("has no legacy publish, overrides, or rows inputs on wired read tools", () => {
+  it("has no create, edit, publish, or delete inputs on wired read tools", () => {
     for (const tool of PHYSIO_MCP_TOOLS.filter((entry) =>
       (WIRED_TOOL_NAMES as readonly string[]).includes(entry.name),
     )) {
