@@ -48,7 +48,9 @@ When the AI drafter returns several regions, **keep all of them**: pre-fill one 
 
 > hmm I think technically an exercise can target multiple areas (for example, glutes and quads). so it should be a text field that as you type it shows suggestions. if there are no suggestions then add row (variant a). once they click that, it becomes a chip (variant b)
 
-**Diadem, Nov 18, 2026, 5:34 PM ET** (on r3): mostly good; asked for a hint and `|` marker while typing.
+**Diadem, Nov 18, 2026, 5:34 PM ET** (on r3), verbatim:
+
+> mostly good, however it's not clear that a use can type there. maybe add a hint and the | marker while they're typing
 
 **Diadem, Nov 18, 2026, 5:49 PM ET**, verbatim:
 
@@ -80,7 +82,7 @@ Row below the label: `flex flex-wrap gap-2` (8 px gap), `min-h-11` (44 px) touch
 | -- | -- |
 | Existing catalog region | `rounded-full`, fill `#0f766e` (teal-700), white text, semibold `text-sm` |
 | New region (not in catalog or AI-new) | `rounded-full`, fill `#f0fdfa`, border `#0f766e`, text `#115e59`, plus white pill **New** tag (`TAG_NEW`) on the chip |
-| Remove control | Icon button on each chip, `aria-label` **Clear** (reuses `CLEAR` string) |
+| Remove control | Visible text button **Clear** on each chip: `h-8`, `min-w-8`, `rounded-full`, `text-xs` semibold; `white/90` on existing chips, `#115e59` on New chips (reuses `CLEAR`, `src/ui/copy/exercise-library.ts` line 12) |
 
 ### Typeahead field
 
@@ -137,7 +139,7 @@ All AI-returned regions arrive as pre-filled chips. Catalog matches use existing
 - Typeahead: `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-autocomplete="list"`, `aria-activedescendant` on highlighted option when open.
 - List: `role="listbox"`, `aria-label` **Body region**.
 - Options: `role="option"`.
-- Chip remove: `aria-label` **Clear**.
+- Chip remove: visible text button **Clear** (`CLEAR`, `src/ui/copy/exercise-library.ts` line 12).
 - Icons: `aria-hidden` where decorative.
 
 ## Loading, errors, and validation
@@ -179,10 +181,7 @@ All AI-returned regions arrive as pre-filled chips. Catalog matches use existing
 | -- | -- | -- |
 | Body region | `Body region` | `src/ui/copy/exercise-library.ts` line 16 (`BODY_REGION`) |
 | New | `New` | `src/ui/copy/exercise-library.ts` line 49 (`TAG_NEW`) |
-| Clear | `Clear` | `src/ui/copy/exercise-library.ts` line 12 (`CLEAR`); chip remove `aria-label` and visible affordance reuse this verbatim (variant B) |
-| Save | `Save` | `src/ui/copy/exercise-requests.ts` line 83 (`SAVE`) |
-| Cancel | `Cancel` | `src/ui/copy/exercise-requests.ts` line 84 (`CANCEL`) |
-| Basics | `Basics` | `src/ui/copy/exercise-requests.ts` line 54 (`BASICS`) |
+| Clear | `Clear` | `src/ui/copy/exercise-library.ts` line 12 (`CLEAR`); visible chip remove button (variant B) |
 
 ## Decisions
 
