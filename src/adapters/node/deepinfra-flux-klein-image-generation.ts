@@ -20,7 +20,6 @@ export const DEEPINFRA_OPENAI_IMAGES_GENERATIONS_PATH = "/v1/openai/images/gener
 export const DEEPINFRA_IMAGES_EDITS_PATH = "/v1/images/edits";
 export const DEEPINFRA_FLUX_KLEIN_4B_MODEL_ID = "black-forest-labs/FLUX-2-klein-4b";
 export const DEEPINFRA_FLUX_KLEIN_IMAGE_SIZE = "1024x1024";
-export const DEEPINFRA_FLUX_KLEIN_IMAGE_SEED = 4_209_1209;
 export const DEEPINFRA_IMAGE_RESPONSE_FORMAT = "b64_json";
 export const DEEPINFRA_GENERATED_CONTENT_TYPE = "image/png";
 
@@ -31,7 +30,6 @@ export type DeepInfraFluxKleinImageGenerationConfig = {
   apiKey: string;
   modelId?: string;
   imageSize?: string;
-  seed?: number;
   requestTimeoutMs?: number;
   fetchImpl?: typeof fetch;
 };
@@ -48,30 +46,6 @@ function concatChunks(chunks: Uint8Array[], totalLength: number): Uint8Array {
     offset += chunk.length;
   }
   return out;
-}
-
-/**
- * True only when the provider explicitly says edits are unsupported for this model.
- * Does not treat generic 422 validation or auth/quota failures as unsupported edits.
- */
-export function isModelEditUnsupportedResponse(bodyText: string): boolean {
-  const lower = bodyText.toLowerCase();
-  if (
-    lower.includes("does not support edit") ||
-    lower.includes("does not support edits")
-  ) {
-    return true;
-  }
-  if (lower.includes("edits not supported") || lower.includes("edit not supported")) {
-    return true;
-  }
-  if (
-    lower.includes("unsupported for edit") ||
-    lower.includes("not supported for edit")
-  ) {
-    return true;
-  }
-  return lower.includes("unsupported") && lower.includes("edit");
 }
 
 function decodeBase64Image(b64: string): Uint8Array {
@@ -108,46 +82,83 @@ function authorizationHeader(apiKey: string): Record<string, string> {
   };
 }
 
+function isAbortOrTimeoutError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "TimeoutError" || error.name === "AbortError";
+  }
+  if (error instanceof Error) {
+    return error.name === "TimeoutError" || error.name === "AbortError";
+  }
+  return false;
+}
+
+function mapBodyReadError(error: unknown): never {
+  if (isAbortOrTimeoutError(error)) {
+    networkFailed();
+  }
+  networkFailed();
+}
+
 async function readBoundedResponseText(
   response: Response,
   maxBytes: number,
 ): Promise<string> {
-  const contentLength = response.headers.get("content-length");
-  if (contentLength) {
-    const len = Number(contentLength);
-    if (Number.isFinite(len) && len > maxBytes) {
-      invalidResponse();
+  try {
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+      const len = Number(contentLength);
+      if (Number.isFinite(len) && len > maxBytes) {
+        invalidResponse();
+      }
     }
-  }
 
-  const body = response.body;
-  if (!body) {
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > maxBytes) {
-      invalidResponse();
+    const body = response.body;
+    if (!body) {
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > maxBytes) {
+        invalidResponse();
+      }
+      return new TextDecoder().decode(buffer);
     }
-    return new TextDecoder().decode(buffer);
-  }
 
-  const reader = body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
+    const reader = body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        total += value.length;
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => undefined);
+          invalidResponse();
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
     }
-    total += value.length;
-    if (total > maxBytes) {
-      invalidResponse();
+    return new TextDecoder().decode(concatChunks(chunks, total));
+  } catch (error: unknown) {
+    if (error instanceof ImageGenerationError) {
+      throw error;
     }
-    chunks.push(value);
+    mapBodyReadError(error);
   }
-  return new TextDecoder().decode(concatChunks(chunks, total));
 }
 
 async function readJsonBody(response: Response, maxBytes: number): Promise<unknown> {
-  const text = await readBoundedResponseText(response, maxBytes);
+  let text: string;
+  try {
+    text = await readBoundedResponseText(response, maxBytes);
+  } catch (error: unknown) {
+    if (error instanceof ImageGenerationError) {
+      throw error;
+    }
+    mapBodyReadError(error);
+  }
   if (text.trim().length === 0) {
     invalidResponse();
   }
@@ -171,20 +182,9 @@ function imageFromPayload(payload: unknown): GeneratedImage {
   };
 }
 
-function isAbortOrTimeoutError(error: unknown): boolean {
-  if (error instanceof DOMException) {
-    return error.name === "TimeoutError" || error.name === "AbortError";
-  }
-  if (error instanceof Error) {
-    return error.name === "TimeoutError" || error.name === "AbortError";
-  }
-  return false;
-}
-
 export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
   private readonly modelId: string;
   private readonly imageSize: string;
-  private readonly seed: number;
   private readonly requestTimeoutMs: number;
   private readonly fetchImpl: typeof fetch;
 
@@ -194,7 +194,6 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
     }
     this.modelId = config.modelId ?? DEEPINFRA_FLUX_KLEIN_4B_MODEL_ID;
     this.imageSize = config.imageSize ?? DEEPINFRA_FLUX_KLEIN_IMAGE_SIZE;
-    this.seed = config.seed ?? DEEPINFRA_FLUX_KLEIN_IMAGE_SEED;
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEEPINFRA_IMAGE_REQUEST_TIMEOUT_MS;
     this.fetchImpl = config.fetchImpl ?? fetch;
@@ -204,7 +203,7 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
     input: GenerateExerciseImagesInput,
   ): Promise<{ start: GeneratedImage; end: GeneratedImage }> {
     const start = await this.generateFromTextToImage(input.startPrompt);
-    const end = await this.generateEndWithOptionalEdit(input.endPrompt, {
+    const end = await this.generateFromEdit(input.endPrompt, {
       bytes: start.bytes,
       contentType: start.contentType,
     });
@@ -227,14 +226,11 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
     if (!reference) {
       throw new ImageGenerationError("start_reference_required", 400);
     }
-    return this.generateEndWithOptionalEdit(endPrompt, reference);
+    return this.generateFromEdit(endPrompt, reference);
   }
 
-  private requestSignal(): AbortSignal | undefined {
-    if (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) {
-      return AbortSignal.timeout(this.requestTimeoutMs);
-    }
-    return undefined;
+  private requestSignal(): AbortSignal {
+    return AbortSignal.timeout(this.requestTimeoutMs);
   }
 
   private async deepInfraFetch(input: string, init: RequestInit): Promise<Response> {
@@ -255,7 +251,6 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
       size: this.imageSize,
       n: 1,
       response_format: DEEPINFRA_IMAGE_RESPONSE_FORMAT,
-      seed: this.seed,
     });
   }
 
@@ -285,7 +280,7 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
   private async generateFromEdit(
     prompt: string,
     reference: StartReferenceImage,
-  ): Promise<GeneratedImage | "unsupported"> {
+  ): Promise<GeneratedImage> {
     const form = new FormData();
     const imageBytes = new Uint8Array(reference.bytes);
     const blob = new Blob([imageBytes], { type: reference.contentType });
@@ -300,27 +295,12 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
       signal: this.requestSignal(),
     });
     if (!response.ok) {
-      const bodyText = await readBoundedResponseText(
-        response,
-        DEEPINFRA_IMAGE_JSON_MAX_BYTES,
-      ).catch(() => "");
-      if (isModelEditUnsupportedResponse(bodyText)) {
-        return "unsupported";
-      }
+      await readBoundedResponseText(response, DEEPINFRA_IMAGE_JSON_MAX_BYTES).catch(
+        () => "",
+      );
       requestFailed(response.status);
     }
     const payload = await readJsonBody(response, DEEPINFRA_IMAGE_JSON_MAX_BYTES);
     return imageFromPayload(payload);
-  }
-
-  private async generateEndWithOptionalEdit(
-    endPrompt: string,
-    reference: StartReferenceImage,
-  ): Promise<GeneratedImage> {
-    const editResult = await this.generateFromEdit(endPrompt, reference);
-    if (editResult !== "unsupported") {
-      return editResult;
-    }
-    return this.generateFromTextToImage(endPrompt);
   }
 }

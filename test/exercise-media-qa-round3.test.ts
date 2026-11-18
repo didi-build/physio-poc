@@ -222,7 +222,10 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
           note: REGEN_NOTE,
         }),
       ).rejects.toSatisfy((err: unknown) => {
-        expect(err).toMatchObject({ code: "image_generation_request_failed" });
+        expect(err).toMatchObject({
+          code: "image_generation_request_failed",
+          statusCode: 403,
+        });
         expectThrownErrorLeakFree(err, {
           note: REGEN_NOTE,
           jsonBody,
@@ -269,6 +272,10 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
           note: REGEN_NOTE,
         }),
       ).rejects.toSatisfy((err: unknown) => {
+        expect(err).toMatchObject({
+          code: "image_generation_request_failed",
+          statusCode: 401,
+        });
         expectThrownErrorLeakFree(err, {
           note: REGEN_NOTE,
           jsonBody,

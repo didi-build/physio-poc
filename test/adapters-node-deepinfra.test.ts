@@ -1,13 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createImageGenerationPort } from "../src/adapters/node/create-image-generation-port.js";
 import {
-  DEEPINFRA_FLUX_KLEIN_IMAGE_SEED,
   DEEPINFRA_IMAGE_JSON_MAX_BYTES,
-  DEEPINFRA_IMAGES_EDITS_URL,
-  DEEPINFRA_OPENAI_IMAGES_GENERATIONS_URL,
   DeepInfraFluxKleinImageGeneration,
-  isModelEditUnsupportedResponse,
 } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
+import { ImageGenerationError } from "../src/storage/ports/image-generation.js";
 import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import {
@@ -18,19 +15,72 @@ import {
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
 
+const GENERATIONS_URL = "https://api.deepinfra.com/v1/openai/images/generations";
+const EDITS_URL = "https://api.deepinfra.com/v1/images/edits";
+const REQUEST_TIMEOUT_MS = 120_000;
+
 function b64Png(payload: string): string {
   return btoa(payload);
+}
+
+function buildOversizeValidJsonBody(): string {
+  const buildBody = (padLen: number) =>
+    JSON.stringify({
+      data: [{ b64_json: b64Png("OK") }],
+      pad: "p".repeat(padLen),
+    });
+  let padLen = DEEPINFRA_IMAGE_JSON_MAX_BYTES;
+  let body = buildBody(padLen);
+  while (body.length <= DEEPINFRA_IMAGE_JSON_MAX_BYTES) {
+    padLen += 4096;
+    body = buildBody(padLen);
+  }
+  return body;
+}
+
+function jsonBodyWithExactByteLength(targetBytes: number): string {
+  const shell = (padLen: number) =>
+    JSON.stringify({
+      data: [{ b64_json: b64Png("OK") }],
+      pad: "p".repeat(padLen),
+    });
+  let lo = 0;
+  let hi = targetBytes;
+  let best = shell(0);
+  while (lo <= hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    const body = shell(mid);
+    if (body.length === targetBytes) {
+      return body;
+    }
+    if (body.length < targetBytes) {
+      best = body;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  if (best.length === targetBytes) {
+    return best;
+  }
+  throw new Error(
+    `could not build JSON of byte length ${targetBytes} (closest ${best.length})`,
+  );
 }
 
 async function expectLeakFreeProviderError(
   run: () => Promise<unknown>,
   expectations: { note?: string; jsonBody?: string; apiKey: string },
   code: string,
+  providerBodyAttachedAsCause?: string | object,
 ): Promise<void> {
   const consoleSpies = spyAllConsoleLevels();
   try {
     await expect(run()).rejects.toSatisfy((err: unknown) => {
       expect(err).toMatchObject({ code, message: code });
+      if (providerBodyAttachedAsCause !== undefined) {
+        (err as ImageGenerationError).cause = providerBodyAttachedAsCause;
+      }
       expectThrownErrorLeakFree(err, expectations);
       console.error(err);
       return true;
@@ -41,36 +91,11 @@ async function expectLeakFreeProviderError(
   }
 }
 
-describe("isModelEditUnsupportedResponse (unit)", () => {
-  it("matches explicit model-does-not-support-edits wording", () => {
-    expect(isModelEditUnsupportedResponse("FLUX model does not support edits")).toBe(
-      true,
-    );
-    expect(isModelEditUnsupportedResponse("edit not supported for this model")).toBe(
-      true,
-    );
-    expect(isModelEditUnsupportedResponse('{"detail":"unsupported for edit"}')).toBe(
-      true,
-    );
-  });
-
-  it("rejects generic validation and auth bodies", () => {
-    expect(
-      isModelEditUnsupportedResponse(
-        JSON.stringify({ detail: [{ msg: "field required", type: "value_error" }] }),
-      ),
-    ).toBe(false);
-    expect(isModelEditUnsupportedResponse("Unauthorized")).toBe(false);
-    expect(isModelEditUnsupportedResponse("Payment required")).toBe(false);
-    expect(isModelEditUnsupportedResponse('{"detail":"unsupported"}')).toBe(false);
-    expect(isModelEditUnsupportedResponse("feature unsupported")).toBe(false);
-  });
-});
-
 describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
   const apiKey = "deepinfra-sentinel-key-must-not-appear-in-errors";
 
-  it("POSTs start image to OpenAI-compatible generations with literal body and URL", async () => {
+  it("POSTs start image to OpenAI-compatible generations with literal body, URL, and timeout", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const seen: Array<{ url: string; init?: RequestInit }> = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -90,7 +115,7 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
 
     expect(image.contentType).toBe("image/png");
     expect(seen).toHaveLength(1);
-    expect(seen[0]?.url).toBe(DEEPINFRA_OPENAI_IMAGES_GENERATIONS_URL);
+    expect(seen[0]?.url).toBe(GENERATIONS_URL);
     expect(String(seen[0]?.init?.body)).toBe(
       JSON.stringify({
         model: "black-forest-labs/FLUX-2-klein-4b",
@@ -98,17 +123,19 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
         size: "1024x1024",
         n: 1,
         response_format: "b64_json",
-        seed: DEEPINFRA_FLUX_KLEIN_IMAGE_SEED,
       }),
     );
+    expect(timeoutSpy).toHaveBeenCalledWith(REQUEST_TIMEOUT_MS);
+    expect(seen[0]?.init?.signal).toBeDefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    timeoutSpy.mockRestore();
   });
 
   it("generates end image via multipart edits with literal edit URL and start bytes", async () => {
     const startBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0a]);
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      expect(url).toBe(DEEPINFRA_IMAGES_EDITS_URL);
+      expect(url).toBe(EDITS_URL);
       expect(init?.body).toBeInstanceOf(FormData);
       const form = init?.body as FormData;
       expect([...form.keys()].sort()).toEqual([
@@ -137,22 +164,22 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
-  it("falls back to prompt-only end generation when edit body explicitly says edits unsupported", async () => {
-    const generationsBodies: string[] = [];
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  it("does not call generations when edit fails even if the body claims edits are unsupported", async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === DEEPINFRA_OPENAI_IMAGES_GENERATIONS_URL) {
-        generationsBodies.push(String(init?.body));
-        return new Response(JSON.stringify({ data: [{ b64_json: b64Png("GEN") }] }), {
+      calls.push(url);
+      if (url === GENERATIONS_URL) {
+        return new Response(JSON.stringify({ data: [{ b64_json: b64Png("START") }] }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
       }
-      if (url === DEEPINFRA_IMAGES_EDITS_URL) {
+      if (url === EDITS_URL) {
         return new Response(
           JSON.stringify({ detail: "model does not support edits" }),
           {
-            status: 400,
+            status: 401,
             headers: { "content-type": "application/json" },
           },
         );
@@ -161,23 +188,21 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
 
     const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
-    await generator.generateStartAndEndImages({
-      startPrompt: "start only",
-      endPrompt: "fallback end prompt",
+    await expect(
+      generator.generateStartAndEndImages({ startPrompt: "start", endPrompt: "end" }),
+    ).rejects.toMatchObject({
+      code: "image_generation_request_failed",
+      statusCode: 401,
     });
-
-    expect(generationsBodies).toHaveLength(2);
-    expect(generationsBodies[0]).toContain(`"seed":${DEEPINFRA_FLUX_KLEIN_IMAGE_SEED}`);
-    expect(generationsBodies[1]).toContain("fallback end prompt");
-    expect(generationsBodies[1]).toContain(`"seed":${DEEPINFRA_FLUX_KLEIN_IMAGE_SEED}`);
+    expect(calls).toEqual([GENERATIONS_URL, EDITS_URL]);
   });
 
-  it("does not fall back when the body only says unsupported without edit context", async () => {
+  it("does not treat generic unsupported bodies on edit failures as a reason to call generations", async () => {
     const calls: string[] = [];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       calls.push(url);
-      if (url === DEEPINFRA_IMAGES_EDITS_URL) {
+      if (url === EDITS_URL) {
         return new Response(JSON.stringify({ detail: "unsupported" }), { status: 400 });
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -191,13 +216,13 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       code: "image_generation_request_failed",
       statusCode: 400,
     });
-    expect(calls).toEqual([DEEPINFRA_IMAGES_EDITS_URL]);
+    expect(calls).toEqual([EDITS_URL]);
   });
 
-  it("does not fall back on edit HTTP 422 validation errors", async () => {
+  it("surfaces edit HTTP 422 validation errors without a generations call", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === DEEPINFRA_OPENAI_IMAGES_GENERATIONS_URL) {
+      if (url === GENERATIONS_URL) {
         return new Response(JSON.stringify({ data: [{ b64_json: b64Png("START") }] }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -217,6 +242,10 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       statusCode: 422,
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.map((c) => String(c[0]))).toEqual([
+      GENERATIONS_URL,
+      EDITS_URL,
+    ]);
   });
 
   it("does not include provider bodies, API keys, or regeneration notes in thrown errors", async () => {
@@ -262,20 +291,16 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       ConstructorParameters<typeof DeepInfraFluxKleinImageGeneration>[0]["fetchImpl"]
     >,
     run: (g: DeepInfraFluxKleinImageGeneration) => Promise<unknown>,
+    code: string,
+    providerBodyAttachedAsCause?: string | object,
   ) {
     const note = `leak probe ${label}`;
-    const jsonBody = JSON.stringify({
-      detail: note,
-      Authorization: `Bearer ${apiKey}`,
-    });
+    const jsonBody = JSON.stringify({ detail: note, echo: note });
     await expectLeakFreeProviderError(
       () => run(new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl })),
       { note, jsonBody, apiKey },
-      label.startsWith("invalid") || label.startsWith("oversize")
-        ? "image_generation_response_invalid"
-        : label.startsWith("timeout") || label.startsWith("network")
-          ? "image_generation_network_failed"
-          : "image_generation_request_failed",
+      code,
+      providerBodyAttachedAsCause,
     );
   }
 
@@ -285,51 +310,85 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     const startBytes = new Uint8Array([1, 2, 3]);
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === DEEPINFRA_IMAGES_EDITS_URL) {
+      if (url === EDITS_URL) {
         return new Response(jsonBody, { status: 403 });
       }
       throw new Error(`unexpected ${url}`);
     });
     const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
-    await expectLeakFreeProviderError(
-      () =>
-        generator.generateEndImage("end", {
-          startReferenceImage: { bytes: startBytes, contentType: "image/png" },
-        }),
-      { note, jsonBody, apiKey },
-      "image_generation_request_failed",
-    );
+    await expect(
+      generator.generateEndImage("end", {
+        startReferenceImage: { bytes: startBytes, contentType: "image/png" },
+      }),
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toMatchObject({
+        code: "image_generation_request_failed",
+        statusCode: 403,
+        message: "image_generation_request_failed",
+      });
+      expectThrownErrorLeakFree(err, { note, jsonBody, apiKey });
+      return true;
+    });
   });
 
   it("does not leak the sentinel key on 429 and 5xx generation failures", async () => {
     for (const status of [429, 500] as const) {
-      const jsonBody = JSON.stringify({ detail: "rate limited" });
-      const fetchImpl = vi.fn(async () => new Response(jsonBody, { status }));
-      await leakCase(String(status), fetchImpl, (g) => g.generateStartImage("prompt"));
+      const providerJson = JSON.stringify({ detail: "rate limited" });
+      const fetchImpl = vi.fn(async () => new Response(providerJson, { status }));
+      await leakCase(
+        String(status),
+        fetchImpl,
+        (g) => g.generateStartImage("prompt"),
+        "image_generation_request_failed",
+        JSON.parse(providerJson) as object,
+      );
     }
   });
 
-  it("does not leak the sentinel key on invalid JSON, oversize JSON, or bad base64", async () => {
-    const jsonBody = '{"data":[{"b64_json":"!!!not-base64!!!"}]}';
+  it("does not leak the sentinel key on non-timeout fetch failures", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    await leakCase(
+      "fetch-type-error",
+      fetchImpl,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_network_failed",
+    );
+  });
+
+  it("does not leak the sentinel key on invalid JSON, oversize JSON, bad base64, or parsed cause", async () => {
+    const invalidJsonBody = "{not-json";
     const invalidJsonFetch = vi.fn(
       async () =>
-        new Response("{not-json", {
+        new Response(invalidJsonBody, {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
     );
-    await leakCase("invalid-json", invalidJsonFetch, (g) =>
-      g.generateStartImage("prompt"),
+    await leakCase(
+      "invalid-json",
+      invalidJsonFetch,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_response_invalid",
+      invalidJsonBody,
     );
 
+    const badB64Json = JSON.stringify({ data: [{ b64_json: "!!!not-base64!!!" }] });
     const badB64Fetch = vi.fn(
       async () =>
-        new Response(jsonBody, {
+        new Response(badB64Json, {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
     );
-    await leakCase("invalid-b64", badB64Fetch, (g) => g.generateStartImage("prompt"));
+    await leakCase(
+      "invalid-b64",
+      badB64Fetch,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_response_invalid",
+      JSON.parse(badB64Json) as object,
+    );
 
     const over = DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1;
     const oversizeFetch = vi.fn(
@@ -342,24 +401,140 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
           },
         }),
     );
-    await leakCase("oversize-json", oversizeFetch, (g) =>
-      g.generateStartImage("prompt"),
+    await leakCase(
+      "oversize-json",
+      oversizeFetch,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_response_invalid",
     );
   });
 
+  it("does not leak the sentinel key when the response body stalls past timeout while streaming", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull() {
+              throw new DOMException("signal timed out", "TimeoutError");
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    await leakCase(
+      "body-read-timeout",
+      fetchImpl,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_network_failed",
+    );
+  });
+
+  it("does not leak the sentinel key when the response body stream resets mid-read", async () => {
+    let pulls = 0;
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              pulls += 1;
+              if (pulls === 1) {
+                controller.enqueue(new Uint8Array([123]));
+                return;
+              }
+              throw new TypeError("Failed to fetch");
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    await leakCase(
+      "body-read-reset",
+      fetchImpl,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_network_failed",
+    );
+  });
+
+  it("does not leak the sentinel key on streaming oversize JSON without content-length", async () => {
+    const body = buildOversizeValidJsonBody();
+    const bytes = new TextEncoder().encode(body);
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(bytes);
+              controller.close();
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    await leakCase(
+      "streaming-oversize",
+      fetchImpl,
+      (g) => g.generateStartImage("prompt"),
+      "image_generation_response_invalid",
+    );
+  });
+
+  it("maps stalled body read past timeout to image_generation_network_failed", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull() {
+              throw new DOMException("signal timed out", "TimeoutError");
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_network_failed",
+      statusCode: 504,
+    });
+  });
+
+  it("maps mid-body stream reset to image_generation_network_failed", async () => {
+    let pulls = 0;
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              pulls += 1;
+              if (pulls === 1) {
+                controller.enqueue(new Uint8Array([1, 2, 3]));
+                return;
+              }
+              throw new TypeError("network error");
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_network_failed",
+      statusCode: 504,
+    });
+  });
+
+  it("maps non-timeout fetch errors to image_generation_network_failed", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("failed to fetch");
+    });
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_network_failed",
+      statusCode: 504,
+    });
+  });
+
   it("enforces the JSON size cap while streaming without content-length", async () => {
-    const buildBody = (padLen: number) =>
-      JSON.stringify({
-        data: [{ b64_json: b64Png("OK") }],
-        pad: "p".repeat(padLen),
-      });
-    let padLen = DEEPINFRA_IMAGE_JSON_MAX_BYTES;
-    let body = buildBody(padLen);
-    while (body.length <= DEEPINFRA_IMAGE_JSON_MAX_BYTES) {
-      padLen += 4096;
-      body = buildBody(padLen);
-    }
-    expect(body.length).toBeGreaterThan(DEEPINFRA_IMAGE_JSON_MAX_BYTES);
+    const body = buildOversizeValidJsonBody();
     const bytes = new TextEncoder().encode(body);
     const chunkSize = 256 * 1024;
     const fetchImpl = vi.fn(
@@ -383,16 +558,14 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
-  it("accepts a response whose content-length is exactly at the cap and rejects one byte over", async () => {
-    const body = JSON.stringify({ data: [{ b64_json: b64Png("OK") }] });
+  it("accepts a JSON body whose byte length is exactly the cap and rejects one byte over", async () => {
+    const atCapBody = jsonBodyWithExactByteLength(DEEPINFRA_IMAGE_JSON_MAX_BYTES);
+    const overBody = jsonBodyWithExactByteLength(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1);
     const atCapFetch = vi.fn(
       async () =>
-        new Response(body, {
+        new Response(atCapBody, {
           status: 200,
-          headers: {
-            "content-type": "application/json",
-            "content-length": String(DEEPINFRA_IMAGE_JSON_MAX_BYTES),
-          },
+          headers: { "content-type": "application/json" },
         }),
     );
     const generatorAtCap = new DeepInfraFluxKleinImageGeneration({
@@ -405,12 +578,9 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
 
     const overCapFetch = vi.fn(
       async () =>
-        new Response(body, {
+        new Response(overBody, {
           status: 200,
-          headers: {
-            "content-type": "application/json",
-            "content-length": String(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1),
-          },
+          headers: { "content-type": "application/json" },
         }),
     );
     const generatorOver = new DeepInfraFluxKleinImageGeneration({
@@ -464,7 +634,7 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
-  it("maps timeout aborts to image_generation_network_failed", async () => {
+  it("maps timeout aborts on fetch to image_generation_network_failed", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new DOMException("The operation was aborted.", "TimeoutError");
     });

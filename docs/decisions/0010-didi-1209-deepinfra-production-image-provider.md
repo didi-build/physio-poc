@@ -22,7 +22,7 @@ Text inference for later features picks DeepInfra per [DIDI-1008](https://linear
 | Step        | HTTP endpoint                                                 | Notes                                                                          |
 | ----------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Start still | `POST https://api.deepinfra.com/v1/openai/images/generations` | OpenAI-compatible JSON; `response_format: b64_json`; size pinned **1024x1024** |
-| End still   | `POST https://api.deepinfra.com/v1/images/edits`              | Multipart: start PNG bytes + end prompt; same model and size                   |
+| End still   | `POST https://api.deepinfra.com/v1/images/edits`              | Multipart: start PNG bytes + end prompt + model (`response_format: b64_json`)  |
 
 - **Adapter:** `DeepInfraFluxKleinImageGeneration` (`src/adapters/node/deepinfra-flux-klein-image-generation.ts`), plain `fetch`, no SDK; selected when `PHYSIO_DEEPINFRA_API_KEY` is set (`create-image-generation-port.ts`). Otherwise **fake** adapter (local dev, tests, PR CI).
 - **Secrets:** API key name `PHYSIO_DEEPINFRA_API_KEY` only; never logged or returned on errors.
@@ -35,9 +35,9 @@ Sources:
 - [FLUX 2 Klein 4b model page](https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b) states: "Unified generation & editing — Text-to-image, image editing, and multi-reference in one model" and lists **Editing examples**.
 - [OpenAI Images Edits API](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) documents `POST /v1/images/edits` with required multipart fields `image`, `prompt`, and `model`.
 
-**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter calls edits first for end stills. It falls back to **prompt-only** text-to-image for the end pose only when the error body **explicitly** states the model does not support edits (generic 422 validation, auth, quota, and billing failures do **not** trigger fallback).
+**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter uses **edits only** for end stills (multipart with stored start bytes). It does **not** fall back to a second text-to-image call on edit failure: the [OpenAI Images Generations](https://docs.deepinfra.com/api-reference/image-generation/openai-images-generations) and [Images Edits](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) references do not document an HTTP status or response shape for “edits unsupported”, so a prompt-only fallback would be guesswork.
 
-**Seed:** The [model page](https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b) lists a **Seed** parameter. Text-to-image requests (start still and fallback end still) send a pinned `seed` in the JSON body so start and fallback end can stay aligned; the edits multipart schema does not document `seed`, so edit requests omit it.
+**Seed:** The model page lists a **Seed** parameter for the native [Inference API](https://docs.deepinfra.com/docs/advanced-schema-guide) (`POST /v1/inference/{model}`), not for `POST /v1/openai/images/generations`. OpenAI-compatible generation requests therefore omit `seed`; aligned end stills come from the start image passed into `/v1/images/edits`.
 
 ### Data handling (DeepInfra)
 
