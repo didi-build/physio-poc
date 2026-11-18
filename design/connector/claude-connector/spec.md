@@ -78,7 +78,7 @@ DIDI-594 comment 1d16df1a, Diadem, Nov 17, 2026, 8:35 PM EST (Designer chat widg
 | Exercises and routines | Can't create or edit (unchanged) | Same |
 | Consent page | One write page (#21 to #24). The Oct 31 read-only consent page is retired in v1 | One read-only page |
 | Removed with ca41ca4d | #13 and `write_not_allowed` removed; #20 and read-tool description append removed; read-only assistant behaviour removed; per-client gating and DIDI-1243 canceled; two-version consent table removed | In the intermediate v13 draft before ca41ca4d |
-| MVP priority (DIDI-594 comment 85cf8fbe, Nov 17, 2026, 10:48 PM EST) | Claude and Muse come first for the MVP; concept copy "ChatGPT and Copilot come first for the MVP" removed. Verbatim: "Claude and Muse come first for the MVP; remove the ChatGPT and Copilot line" | ChatGPT and Copilot remain MVP priority (Oct 24 lock); concept copy "ChatGPT and Copilot come first for the MVP" approved |
+| MVP priority (DIDI-594 comment 85cf8fbe, Nov 17, 2026, 10:48 PM EST) | Claude and Muse come first for the MVP; concept copy "ChatGPT and Copilot come first for the MVP" removed. Verbatim: "Claude and Muse come first for the MVP; remove the ChatGPT and Copilot line". Concept copy "MVP first" and "All four must work. ChatGPT and Copilot are built, tested and polished first." removed (DIDI-594 comment 7a9f5122, Nov 17, 2026, 11:01 PM EST, verbatim: "Delete both lines with no replacement") | ChatGPT and Copilot remain MVP priority (Oct 24 lock); concept copy "ChatGPT and Copilot come first for the MVP" approved |
 | v12 spec (Oct 25) | Restored as the source for Build, From a routine, Edit and publish, Set expiry, Delete. Confirm cards become questions the assistant asks (the inline card stays optional) | Superseded by the Oct 29 lock for writes |
 
 Muse is not added to the concept's "Where it works" or any other user-facing string; the only place the user sees Muse named is the consent page, through the app's self-reported `{name}` (Diadem: "Muse named only on the consent page"). Naming Muse in spec prose and config is fine.
@@ -561,9 +561,7 @@ Every user-facing string in the connector concept, in source order. `{...}` mark
 - Every edit saves as a draft right away. There is no save step. Your patient sees changes only after you publish, on the same link. Publish and Delete always show a card you have to confirm. It works the same in the web app.
 - Where it works
 - Microsoft Copilot
-- MVP first
 - Supported
-- All four must work. ChatGPT and Copilot are built, tested and polished first.
 - Two reply levels
 - Text reply:
 - every assistant shows this. Program summary, link and PDF. Confirm cards fall back to a typed yes or no.
