@@ -78,6 +78,13 @@ describe("console-log-leak-assertions", () => {
       expect(() => expectThrownErrorLeakFree(err, expectations)).toThrow();
     });
 
+    it("fails when the response body is the thrown error cause (parsed JSON)", () => {
+      const expectations = invalid502Expectations();
+      const err = new ImageGenerationError("image_generation_response_invalid", 502);
+      err.cause = JSON.parse(expectations.jsonBody) as object;
+      expect(() => expectThrownErrorLeakFree(err, expectations)).toThrow();
+    });
+
     it("fails when the regeneration note is attached as an error property", () => {
       const expectations = invalid502Expectations();
       const err = new ImageGenerationError("image_generation_response_invalid", 502);

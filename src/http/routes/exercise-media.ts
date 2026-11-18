@@ -99,13 +99,7 @@ function routeErrorResponse(error: unknown): Response | null {
     return serviceErrorResponse(error);
   }
   if (error instanceof ImageGenerationError) {
-    const status =
-      error.code === "start_reference_required"
-        ? 400
-        : error.statusCode >= 400 && error.statusCode < 600
-          ? error.statusCode
-          : 502;
-    return Response.json({ error: error.code }, { status, headers: JSON_HEADERS });
+    return Response.json({ error: error.code }, { status: 502, headers: JSON_HEADERS });
   }
   return null;
 }

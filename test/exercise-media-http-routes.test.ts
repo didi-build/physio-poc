@@ -253,7 +253,7 @@ describe("Exercise media HTTP routes (integration)", () => {
         ),
         deps,
       );
-      expect(response.status).toBe(401);
+      expect(response.status).toBe(502);
       const text = await response.text();
       expect(text).not.toContain(apiKey);
       expect(text).not.toContain(note);

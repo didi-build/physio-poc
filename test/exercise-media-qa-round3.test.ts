@@ -195,6 +195,53 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
     }
   });
 
+  it("does not leak the regeneration note when DeepInfra edit returns 403", async () => {
+    const storage = await openMigratedDatabase();
+    const jsonBody = JSON.stringify({ detail: REGEN_NOTE, echo: REGEN_NOTE });
+    const consoleSpies = spyAllConsoleLevels();
+    try {
+      const { practitionerId, versionId, objects } =
+        await seedDraftVersionWithGeneratedMedia(storage);
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/v1/images/edits")) {
+          return new Response(jsonBody, { status: 403 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+      const deepinfra = new DeepInfraFluxKleinImageGeneration({
+        apiKey: DEEPINFRA_API_KEY,
+        fetchImpl,
+      });
+      const service = new ExerciseMediaService(storage, deepinfra, objects);
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "end",
+          note: REGEN_NOTE,
+        }),
+      ).rejects.toSatisfy((err: unknown) => {
+        expect(err).toMatchObject({ code: "image_generation_request_failed" });
+        expectThrownErrorLeakFree(err, {
+          note: REGEN_NOTE,
+          jsonBody,
+          apiKey: DEEPINFRA_API_KEY,
+        });
+        console.error(err);
+        return true;
+      });
+      expectConsoleCallsLeakFree(consoleSpies, {
+        note: REGEN_NOTE,
+        jsonBody,
+        apiKey: DEEPINFRA_API_KEY,
+      });
+    } finally {
+      restoreConsoleSpies(consoleSpies);
+      storage.close();
+    }
+  });
+
   it("does not leak the regeneration note when DeepInfra edit returns 401", async () => {
     const storage = await openMigratedDatabase();
     const jsonBody = JSON.stringify({ detail: REGEN_NOTE, echo: REGEN_NOTE });
@@ -251,7 +298,7 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
           exerciseMediaImages: deepinfra,
         },
       );
-      expect(httpResponse.status).toBe(401);
+      expect(httpResponse.status).toBe(502);
       const responseText = await httpResponse.text();
       assertLeakFreeText(responseText, {
         note: REGEN_NOTE,

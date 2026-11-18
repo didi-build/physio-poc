@@ -22,6 +22,7 @@ export type ImageGenerationCallOptions = {
 export type ImageGenerationErrorCode =
   | "image_generation_request_failed"
   | "image_generation_response_invalid"
+  | "image_generation_network_failed"
   | "start_reference_required";
 
 export class ImageGenerationError extends Error {

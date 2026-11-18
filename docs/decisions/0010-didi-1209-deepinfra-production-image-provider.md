@@ -33,9 +33,11 @@ Text inference for later features picks DeepInfra per [DIDI-1008](https://linear
 Sources:
 
 - [FLUX 2 Klein 4b model page](https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b) states: "Unified generation & editing — Text-to-image, image editing, and multi-reference in one model" and lists **Editing examples**.
-- [OpenAI Images Edits API](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) documents `POST /v1/images/edits` with required multipart fields `image`, `prompt`, and `model`; example ecosystem clients default `model` to `black-forest-labs/FLUX-2-klein-4b` for edits.
+- [OpenAI Images Edits API](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) documents `POST /v1/images/edits` with required multipart fields `image`, `prompt`, and `model`.
 
-**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter calls edits first for end stills. On an unsupported-edit HTTP response (for example 422), it falls back to **prompt-only** text-to-image for the end pose using the same end prompt template.
+**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter calls edits first for end stills. It falls back to **prompt-only** text-to-image for the end pose only when the error body **explicitly** states the model does not support edits (generic 422 validation, auth, quota, and billing failures do **not** trigger fallback).
+
+**Seed:** The [model page](https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b) lists a **Seed** parameter. Text-to-image requests (start still and fallback end still) send a pinned `seed` in the JSON body so start and fallback end can stay aligned; the edits multipart schema does not document `seed`, so edit requests omit it.
 
 ### Data handling (DeepInfra)
 
