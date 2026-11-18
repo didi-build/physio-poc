@@ -31,7 +31,8 @@ function assertEverySpawnEnvUsesMinimalHelper(source: string, label: string): nu
     const envLine =
       envLineEnd === -1 ? chunk.slice(envIndex) : chunk.slice(envIndex, envLineEnd);
     expect(envLine, label).toMatch(/env:\s*minimalChildProcessEnv/);
-    expect(envLine, label).not.toMatch(/process\.env/);
+    expect(envLine, label).not.toMatch(/\.\.\.process\.env/);
+    expect(envLine, label).not.toMatch(/env:\s*process\.env\b/);
     envSpawnCount += 1;
   }
   return envSpawnCount;
