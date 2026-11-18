@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { FAKE_GOOGLE_ALLOWED_EMAIL } from "../src/auth/fake-google-http.js";
 import { PHYSIO_TEST_BETTER_AUTH_SECRET } from "./helpers/physio-test-auth-secret.js";
 import { ensureWranglerUiAssetsDirectory } from "./helpers/wrangler-ui-assets-fixture.js";
+import { writeHarnessWranglerConfigWithHarnessBindings } from "./helpers/wrangler-harness-config.js";
 import {
   FIXTURE_GOOGLE_CLIENT_SECRET,
   WORKER_PRODUCTION_TEST_BASE,
@@ -35,12 +36,13 @@ describe("Worker health-first better-auth stall regression (DIDI-1187 M3)", () =
 
   it("answers /api/auth/ok within 2s after /health in a fresh isolate", async () => {
     const assetsFixture = ensureWranglerUiAssetsDirectory();
+    const harnessConfig = writeHarnessWranglerConfigWithHarnessBindings();
     try {
       server = createTestHarness({
         root: REPO_ROOT,
         workers: [
           {
-            configPath: "wrangler.jsonc",
+            configPath: harnessConfig.configPath,
             vars: WORKER_TEST_VARS,
           },
         ],
@@ -65,6 +67,7 @@ describe("Worker health-first better-auth stall regression (DIDI-1187 M3)", () =
       expect(authOk.status).toBe(200);
       expect(elapsedMs).toBeLessThan(MAX_AUTH_OK_MS);
     } finally {
+      harnessConfig.cleanup();
       assetsFixture.cleanup();
     }
   }, 120_000);
