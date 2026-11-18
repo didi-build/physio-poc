@@ -609,9 +609,10 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
   });
 
   it("rejects when content-length exceeds the cap before reading the body", async () => {
+    const validSmall = JSON.stringify({ data: [{ b64_json: b64Png("OK") }] });
     const fetchImpl = vi.fn(
       async () =>
-        new Response("{}", {
+        new Response(validSmall, {
           status: 200,
           headers: {
             "content-type": "application/json",
