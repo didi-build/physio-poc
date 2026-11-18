@@ -1,5 +1,4 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -11,20 +10,30 @@ import {
 import { resolveNodriftCli } from "../scripts/lib/resolve-nodrift-cli.mjs";
 import { PHYSIO_R2_BINDING } from "../scripts/lib/wrangler-r2-binding.mjs";
 import { minimalChildProcessEnv } from "./helpers/minimal-child-process-env.js";
+import {
+  resetRecordedSpawnEnvsForTests,
+  recordedSpawnEnvs,
+  spawnSyncRecording,
+} from "./helpers/spawn-sync-recording-for-tests.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const PREPARE_SCRIPT = join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs");
 const FIXTURE_DATABASE_ID = "00000000-0000-0000-0000-000000000002";
+const ENV_LEAK_PROBE = "PHYSIO_DIDI_1240_SPAWN_ENV_PROBE";
 
 function writePreparedDeployWranglerConfig(outputPath: string): void {
-  const result = spawnSync(process.execPath, [PREPARE_SCRIPT, "--output", outputPath], {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    env: minimalChildProcessEnv({
-      PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
-    }),
-  });
-  expect(result.status, result.stderr || result.stdout).toBe(0);
+  const result = spawnSyncRecording(
+    process.execPath,
+    [PREPARE_SCRIPT, "--output", outputPath],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: minimalChildProcessEnv({
+        PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
+      }),
+    },
+  );
+  expect(result.status, String(result.stderr || result.stdout || "")).toBe(0);
 }
 
 function parseWranglerJsonc(text: string): Record<string, unknown> {
@@ -43,6 +52,53 @@ function parseWranglerJsonc(text: string): Record<string, unknown> {
   }
   return parsed as Record<string, unknown>;
 }
+
+describe("nodrift deploy wrangler spawn env (DIDI-1240)", () => {
+  it("passes minimalChildProcessEnv to prepare-wrangler-config and nodrift check spawns", () => {
+    process.env[ENV_LEAK_PROBE] = "must-not-leak";
+    resetRecordedSpawnEnvsForTests();
+    try {
+      const tempDir = mkdtempSync(join(tmpdir(), "physio-nodrift-spawn-env-"));
+      try {
+        const outputPath = join(tempDir, "wrangler.jsonc");
+        writePreparedDeployWranglerConfig(outputPath);
+        const resolved = resolveNodriftCli(REPO_ROOT);
+        expect(resolved.ok).toBe(true);
+        if (!resolved.ok) {
+          return;
+        }
+        const nodriftConfigPath = join(tempDir, "nodrift.config.json");
+        writeFileSync(
+          nodriftConfigPath,
+          `${JSON.stringify({ map: "docs/privacy/data-map.yml", wrangler: tempDir }, null, 2)}\n`,
+          "utf8",
+        );
+        spawnSyncRecording(
+          process.execPath,
+          [resolved.cliPath, "check", "--config", nodriftConfigPath],
+          {
+            cwd: REPO_ROOT,
+            encoding: "utf8",
+            env: minimalChildProcessEnv(),
+          },
+        );
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    } finally {
+      delete process.env[ENV_LEAK_PROBE];
+    }
+
+    expect(recordedSpawnEnvs).toHaveLength(2);
+    expect(recordedSpawnEnvs[0]).toEqual(
+      minimalChildProcessEnv({ PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID }),
+    );
+    expect(recordedSpawnEnvs[1]).toEqual(minimalChildProcessEnv());
+    for (const env of recordedSpawnEnvs) {
+      expect(env[ENV_LEAK_PROBE]).toBeUndefined();
+    }
+  });
+});
 
 /**
  * nodrift check 2 only reads bindings from the Wrangler config under `wrangler` in
@@ -81,7 +137,7 @@ describe("nodrift check 2 vs production deploy wrangler (DIDI-1040)", () => {
         return;
       }
 
-      const check = spawnSync(
+      const check = spawnSyncRecording(
         process.execPath,
         [resolved.cliPath, "check", "--config", nodriftConfigPath],
         {
@@ -90,7 +146,7 @@ describe("nodrift check 2 vs production deploy wrangler (DIDI-1040)", () => {
           env: minimalChildProcessEnv(),
         },
       );
-      expect(check.status, check.stderr || check.stdout).toBe(0);
+      expect(check.status, String(check.stderr || check.stdout || "")).toBe(0);
       expect(check.stdout).toContain("check 2 (data stores vs map): ok (2 bindings)");
       expect(check.stdout).toContain("nodrift: ok");
     } finally {
