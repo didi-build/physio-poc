@@ -314,9 +314,40 @@
   font-weight: 600;
 }
 
+.link-page-only-print {
+  display: none;
+}
+
+.link-page-print-caption {
+  margin: 0 0 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.link-page-print-still {
+  margin: 0;
+}
+
+.link-page-print-still-img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+  border-radius: 0.75rem;
+}
+
+.link-page-print-media-failed {
+  margin: 0;
+}
+
 @media print {
   .link-page-no-print {
     display: none !important;
+  }
+
+  .link-page-only-print {
+    display: contents;
   }
 
   .link-page-root {
@@ -326,8 +357,66 @@
   }
 
   .link-page-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 11rem 11rem;
+    grid-template-areas: none;
+    gap: 0.75rem;
     break-inside: avoid;
     page-break-inside: avoid;
     border-color: #cbd5e1;
+  }
+
+  .link-page-row-title,
+  .link-page-dose,
+  .link-page-row-note {
+    grid-column: 1;
+  }
+
+  .link-page-row-title {
+    font-size: 15px;
+  }
+
+  .link-page-dose-line {
+    font-size: 13px;
+  }
+
+  .link-page-row-note {
+    font-size: 12px;
+    line-height: 1.625;
+  }
+
+  .link-page-print-still--start {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+  }
+
+  .link-page-print-still--end {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: start;
+  }
+
+  .link-page-media-failed {
+    grid-column: 2 / 4;
+    grid-row: 1;
+    align-self: start;
+    margin-top: 0;
+    min-height: 8.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #cbd5e1;
+    border-radius: 0.75rem;
+    font-size: 13px;
+    color: #64748b;
+    background: transparent;
+    text-align: center;
+  }
+
+  .link-page-media-failed .link-page-print-media-failed {
+    margin: 0;
+    font-size: 13px;
+    color: #64748b;
   }
 }

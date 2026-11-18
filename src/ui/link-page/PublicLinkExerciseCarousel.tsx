@@ -25,6 +25,7 @@ import { useMinWidth1024 } from "../hooks/useMinWidth1024.js";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion.js";
 import type { PublicShareLinkRowMedia } from "../../services/programs/program-publish-service.js";
 import { ARIA_PAUSE_EXERCISE_VIDEO, ARIA_PLAY_EXERCISE_VIDEO } from "../copy/a11y.js";
+import { PublicLinkExercisePrintMedia } from "./PublicLinkExercisePrintMedia.js";
 
 function CarouselPlayIcon() {
   return (
@@ -213,15 +214,12 @@ export function PublicLinkExerciseCarousel({
 
   if (loadFailed) {
     return (
-      <div
-        className="link-page-media-failed link-page-no-print"
-        data-testid="public-link-media-failed"
-      >
-        <p>{PUBLIC_LINK_IMAGES_DIDNT_LOAD}</p>
+      <div className="link-page-media-failed" data-testid="public-link-media-failed">
+        <p className="link-page-print-media-failed">{PUBLIC_LINK_IMAGES_DIDNT_LOAD}</p>
         <button
           ref={tryAgainRef}
           type="button"
-          className="link-page-media-retry"
+          className="link-page-media-retry link-page-no-print"
           aria-label={publicLinkTryLoadingImagesAgainLabel(title)}
           onClick={onRetry}
         >
@@ -244,168 +242,171 @@ export function PublicLinkExerciseCarousel({
         : null;
 
   return (
-    <div
-      className={`link-page-carousel link-page-no-print${
-        prefersReducedMotion ? " link-page-carousel--reduced-motion" : ""
-      }`}
-      data-testid="public-link-exercise-carousel"
-    >
-      <div className="link-page-carousel-stage">
-        <div
-          ref={frameRef}
-          className="link-page-carousel-frame"
-          role="group"
-          aria-label={title}
-          tabIndex={0}
-          onKeyDown={onFrameKeyDown}
-        >
-          <div ref={trackRef} className="link-page-carousel-track">
-            <div
-              className="link-page-carousel-slide"
-              role="group"
-              aria-label={SLIDE_NAMES[0]}
-              aria-hidden={activeSlide !== 0}
-              inert={activeSlide !== 0 ? true : undefined}
-            >
-              {prefersReducedMotion ? (
+    <>
+      <div
+        className={`link-page-carousel link-page-no-print${
+          prefersReducedMotion ? " link-page-carousel--reduced-motion" : ""
+        }`}
+        data-testid="public-link-exercise-carousel"
+      >
+        <div className="link-page-carousel-stage">
+          <div
+            ref={frameRef}
+            className="link-page-carousel-frame"
+            role="group"
+            aria-label={title}
+            tabIndex={0}
+            onKeyDown={onFrameKeyDown}
+          >
+            <div ref={trackRef} className="link-page-carousel-track">
+              <div
+                className="link-page-carousel-slide"
+                role="group"
+                aria-label={SLIDE_NAMES[0]}
+                aria-hidden={activeSlide !== 0}
+                inert={activeSlide !== 0 ? true : undefined}
+              >
+                {prefersReducedMotion ? (
+                  <img
+                    key={`start-${retryKey}`}
+                    src={startSrc}
+                    alt={exerciseMotionStartAlt(title)}
+                    className="link-page-carousel-still"
+                    onError={markLoadFailed}
+                    onLoad={markRetryLoadSucceeded}
+                  />
+                ) : activeSlide === 0 ? (
+                  <ExerciseMotion
+                    key={`motion-${retryKey}`}
+                    startSrc={startSrc}
+                    endSrc={endSrc}
+                    alt={title}
+                    className="link-page-carousel-motion"
+                    embedded
+                    playing={loopPlaying}
+                    onImageError={markLoadFailed}
+                    onStartImageLoad={markRetryLoadSucceeded}
+                    onPlayingChange={(playing) => {
+                      setUserPaused(!playing);
+                    }}
+                  />
+                ) : (
+                  <img
+                    src={startSrc}
+                    alt={exerciseMotionStartAlt(title)}
+                    className="link-page-carousel-still"
+                    onError={markLoadFailed}
+                  />
+                )}
+              </div>
+              <div
+                className="link-page-carousel-slide"
+                role="group"
+                aria-label={SLIDE_NAMES[1]}
+                aria-hidden={activeSlide !== 1}
+                inert={activeSlide !== 1 ? true : undefined}
+              >
                 <img
-                  key={`start-${retryKey}`}
+                  key={`start-still-${retryKey}`}
                   src={startSrc}
                   alt={exerciseMotionStartAlt(title)}
                   className="link-page-carousel-still"
                   onError={markLoadFailed}
-                  onLoad={markRetryLoadSucceeded}
                 />
-              ) : activeSlide === 0 ? (
-                <ExerciseMotion
-                  key={`motion-${retryKey}`}
-                  startSrc={startSrc}
-                  endSrc={endSrc}
-                  alt={title}
-                  className="link-page-carousel-motion"
-                  embedded
-                  playing={loopPlaying}
-                  onImageError={markLoadFailed}
-                  onStartImageLoad={markRetryLoadSucceeded}
-                  onPlayingChange={(playing) => {
-                    setUserPaused(!playing);
-                  }}
-                />
-              ) : (
+              </div>
+              <div
+                className="link-page-carousel-slide"
+                role="group"
+                aria-label={SLIDE_NAMES[2]}
+                aria-hidden={activeSlide !== 2}
+                inert={activeSlide !== 2 ? true : undefined}
+              >
                 <img
-                  src={startSrc}
-                  alt={exerciseMotionStartAlt(title)}
+                  key={`end-still-${retryKey}`}
+                  src={endSrc}
+                  alt={exerciseMotionEndAlt(title)}
                   className="link-page-carousel-still"
                   onError={markLoadFailed}
                 />
-              )}
-            </div>
-            <div
-              className="link-page-carousel-slide"
-              role="group"
-              aria-label={SLIDE_NAMES[1]}
-              aria-hidden={activeSlide !== 1}
-              inert={activeSlide !== 1 ? true : undefined}
-            >
-              <img
-                key={`start-still-${retryKey}`}
-                src={startSrc}
-                alt={exerciseMotionStartAlt(title)}
-                className="link-page-carousel-still"
-                onError={markLoadFailed}
-              />
-            </div>
-            <div
-              className="link-page-carousel-slide"
-              role="group"
-              aria-label={SLIDE_NAMES[2]}
-              aria-hidden={activeSlide !== 2}
-              inert={activeSlide !== 2 ? true : undefined}
-            >
-              <img
-                key={`end-still-${retryKey}`}
-                src={endSrc}
-                alt={exerciseMotionEndAlt(title)}
-                className="link-page-carousel-still"
-                onError={markLoadFailed}
-              />
+              </div>
             </div>
           </div>
+          {showLoopControl ? (
+            <button
+              type="button"
+              className="link-page-carousel-loop-btn exercise-motion-pause-btn"
+              aria-label={
+                loopPlaying ? ARIA_PAUSE_EXERCISE_VIDEO : ARIA_PLAY_EXERCISE_VIDEO
+              }
+              onClick={toggleUserPaused}
+            >
+              {loopPlaying ? <LoopPauseIcon /> : <LoopPlayIcon />}
+            </button>
+          ) : null}
+          {desktop ? (
+            <>
+              <button
+                type="button"
+                className="link-page-carousel-chevron link-page-carousel-chevron--prev"
+                aria-label={PUBLIC_LINK_CAROUSEL_PREVIOUS}
+                disabled={activeSlide === 0}
+                hidden={activeSlide === 0}
+                onClick={() => {
+                  scrollToSlide(activeSlide - 1);
+                }}
+              >
+                <ChevronLeft />
+              </button>
+              <button
+                type="button"
+                className="link-page-carousel-chevron link-page-carousel-chevron--next"
+                aria-label={PUBLIC_LINK_CAROUSEL_NEXT}
+                disabled={activeSlide === 2}
+                hidden={activeSlide === 2}
+                onClick={() => {
+                  scrollToSlide(activeSlide + 1);
+                }}
+              >
+                <ChevronRight />
+              </button>
+            </>
+          ) : null}
         </div>
-        {showLoopControl ? (
-          <button
-            type="button"
-            className="link-page-carousel-loop-btn exercise-motion-pause-btn"
-            aria-label={
-              loopPlaying ? ARIA_PAUSE_EXERCISE_VIDEO : ARIA_PLAY_EXERCISE_VIDEO
-            }
-            onClick={toggleUserPaused}
-          >
-            {loopPlaying ? <LoopPauseIcon /> : <LoopPlayIcon />}
-          </button>
-        ) : null}
-        {desktop ? (
-          <>
+        <div className="link-page-carousel-indicators">
+          {SLIDE_NAMES.map((name, index) => (
             <button
+              key={name}
               type="button"
-              className="link-page-carousel-chevron link-page-carousel-chevron--prev"
-              aria-label={PUBLIC_LINK_CAROUSEL_PREVIOUS}
-              disabled={activeSlide === 0}
-              hidden={activeSlide === 0}
+              className={[
+                "link-page-carousel-indicator",
+                index === 0
+                  ? "link-page-carousel-indicator--video"
+                  : "link-page-carousel-indicator--dot",
+                activeSlide === index ? "link-page-carousel-indicator--current" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              aria-label={name}
+              aria-current={activeSlide === index ? true : undefined}
               onClick={() => {
-                scrollToSlide(activeSlide - 1);
+                scrollToSlide(index);
               }}
             >
-              <ChevronLeft />
+              {index === 0 ? (
+                <CarouselPlayIcon />
+              ) : (
+                <span className="link-page-carousel-dot" />
+              )}
             </button>
-            <button
-              type="button"
-              className="link-page-carousel-chevron link-page-carousel-chevron--next"
-              aria-label={PUBLIC_LINK_CAROUSEL_NEXT}
-              disabled={activeSlide === 2}
-              hidden={activeSlide === 2}
-              onClick={() => {
-                scrollToSlide(activeSlide + 1);
-              }}
-            >
-              <ChevronRight />
-            </button>
-          </>
+          ))}
+        </div>
+        {slideCaption ? (
+          <p className="link-page-carousel-caption" id={captionId}>
+            {slideCaption}
+          </p>
         ) : null}
       </div>
-      <div className="link-page-carousel-indicators">
-        {SLIDE_NAMES.map((name, index) => (
-          <button
-            key={name}
-            type="button"
-            className={[
-              "link-page-carousel-indicator",
-              index === 0
-                ? "link-page-carousel-indicator--video"
-                : "link-page-carousel-indicator--dot",
-              activeSlide === index ? "link-page-carousel-indicator--current" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            aria-label={name}
-            aria-current={activeSlide === index ? true : undefined}
-            onClick={() => {
-              scrollToSlide(index);
-            }}
-          >
-            {index === 0 ? (
-              <CarouselPlayIcon />
-            ) : (
-              <span className="link-page-carousel-dot" />
-            )}
-          </button>
-        ))}
-      </div>
-      {slideCaption ? (
-        <p className="link-page-carousel-caption" id={captionId}>
-          {slideCaption}
-        </p>
-      ) : null}
-    </div>
+      <PublicLinkExercisePrintMedia title={title} startSrc={startSrc} endSrc={endSrc} />
+    </>
   );
 }
