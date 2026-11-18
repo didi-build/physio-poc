@@ -348,12 +348,28 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
   });
 
   it("enforces the JSON size cap while streaming without content-length", async () => {
+    const buildBody = (padLen: number) =>
+      JSON.stringify({
+        data: [{ b64_json: b64Png("OK") }],
+        pad: "p".repeat(padLen),
+      });
+    let padLen = DEEPINFRA_IMAGE_JSON_MAX_BYTES;
+    let body = buildBody(padLen);
+    while (body.length <= DEEPINFRA_IMAGE_JSON_MAX_BYTES) {
+      padLen += 4096;
+      body = buildBody(padLen);
+    }
+    expect(body.length).toBeGreaterThan(DEEPINFRA_IMAGE_JSON_MAX_BYTES);
+    const bytes = new TextEncoder().encode(body);
+    const chunkSize = 256 * 1024;
     const fetchImpl = vi.fn(
       async () =>
         new Response(
           new ReadableStream({
             start(controller) {
-              controller.enqueue(new Uint8Array(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1));
+              for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+                controller.enqueue(bytes.subarray(offset, offset + chunkSize));
+              }
               controller.close();
             },
           }),
