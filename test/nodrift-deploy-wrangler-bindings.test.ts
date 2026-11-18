@@ -9,10 +9,10 @@ import {
 } from "jsonc-parser";
 import { resolveNodriftCli } from "../scripts/lib/resolve-nodrift-cli.mjs";
 import { PHYSIO_R2_BINDING } from "../scripts/lib/wrangler-r2-binding.mjs";
+import { assertRecordedSpawnEnvIsMinimalCheck } from "./helpers/assert-recorded-minimal-spawn-env.js";
 import { minimalChildProcessEnv } from "./helpers/minimal-child-process-env.js";
 import {
   resetRecordedSpawnEnvsForTests,
-  recordedSpawnEnvs,
   spawnSyncRecording,
 } from "./helpers/spawn-sync-recording-for-tests.js";
 
@@ -53,53 +53,6 @@ function parseWranglerJsonc(text: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-describe("nodrift deploy wrangler spawn env (DIDI-1240)", () => {
-  it("passes minimalChildProcessEnv to prepare-wrangler-config and nodrift check spawns", () => {
-    process.env[ENV_LEAK_PROBE] = "must-not-leak";
-    resetRecordedSpawnEnvsForTests();
-    try {
-      const tempDir = mkdtempSync(join(tmpdir(), "physio-nodrift-spawn-env-"));
-      try {
-        const outputPath = join(tempDir, "wrangler.jsonc");
-        writePreparedDeployWranglerConfig(outputPath);
-        const resolved = resolveNodriftCli(REPO_ROOT);
-        expect(resolved.ok).toBe(true);
-        if (!resolved.ok) {
-          return;
-        }
-        const nodriftConfigPath = join(tempDir, "nodrift.config.json");
-        writeFileSync(
-          nodriftConfigPath,
-          `${JSON.stringify({ map: "docs/privacy/data-map.yml", wrangler: tempDir }, null, 2)}\n`,
-          "utf8",
-        );
-        spawnSyncRecording(
-          process.execPath,
-          [resolved.cliPath, "check", "--config", nodriftConfigPath],
-          {
-            cwd: REPO_ROOT,
-            encoding: "utf8",
-            env: minimalChildProcessEnv(),
-          },
-        );
-      } finally {
-        rmSync(tempDir, { recursive: true, force: true });
-      }
-    } finally {
-      delete process.env[ENV_LEAK_PROBE];
-    }
-
-    expect(recordedSpawnEnvs).toHaveLength(2);
-    expect(recordedSpawnEnvs[0]).toEqual(
-      minimalChildProcessEnv({ PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID }),
-    );
-    expect(recordedSpawnEnvs[1]).toEqual(minimalChildProcessEnv());
-    for (const env of recordedSpawnEnvs) {
-      expect(env[ENV_LEAK_PROBE]).toBeUndefined();
-    }
-  });
-});
-
 /**
  * nodrift check 2 only reads bindings from the Wrangler config under `wrangler` in
  * nodrift.config.json (defaults to repo root, where committed wrangler.jsonc has no R2).
@@ -137,18 +90,27 @@ describe("nodrift check 2 vs production deploy wrangler (DIDI-1040)", () => {
         return;
       }
 
-      const check = spawnSyncRecording(
-        process.execPath,
-        [resolved.cliPath, "check", "--config", nodriftConfigPath],
-        {
-          cwd: REPO_ROOT,
-          encoding: "utf8",
-          env: minimalChildProcessEnv(),
-        },
-      );
-      expect(check.status, String(check.stderr || check.stdout || "")).toBe(0);
-      expect(check.stdout).toContain("check 2 (data stores vs map): ok (2 bindings)");
-      expect(check.stdout).toContain("nodrift: ok");
+      process.env[ENV_LEAK_PROBE] = "must-not-leak";
+      process.env.CLOUDFLARE_API_TOKEN = "must-not-leak";
+      resetRecordedSpawnEnvsForTests();
+      try {
+        const check = spawnSyncRecording(
+          process.execPath,
+          [resolved.cliPath, "check", "--config", nodriftConfigPath],
+          {
+            cwd: REPO_ROOT,
+            encoding: "utf8",
+            env: minimalChildProcessEnv(),
+          },
+        );
+        expect(check.status, String(check.stderr || check.stdout || "")).toBe(0);
+        expect(check.stdout).toContain("check 2 (data stores vs map): ok (2 bindings)");
+        expect(check.stdout).toContain("nodrift: ok");
+        assertRecordedSpawnEnvIsMinimalCheck();
+      } finally {
+        delete process.env[ENV_LEAK_PROBE];
+        delete process.env.CLOUDFLARE_API_TOKEN;
+      }
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
