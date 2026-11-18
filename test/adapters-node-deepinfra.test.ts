@@ -62,6 +62,8 @@ describe("isModelEditUnsupportedResponse (unit)", () => {
     ).toBe(false);
     expect(isModelEditUnsupportedResponse("Unauthorized")).toBe(false);
     expect(isModelEditUnsupportedResponse("Payment required")).toBe(false);
+    expect(isModelEditUnsupportedResponse('{"detail":"unsupported"}')).toBe(false);
+    expect(isModelEditUnsupportedResponse("feature unsupported")).toBe(false);
   });
 });
 
@@ -168,6 +170,28 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     expect(generationsBodies[0]).toContain(`"seed":${DEEPINFRA_FLUX_KLEIN_IMAGE_SEED}`);
     expect(generationsBodies[1]).toContain("fallback end prompt");
     expect(generationsBodies[1]).toContain(`"seed":${DEEPINFRA_FLUX_KLEIN_IMAGE_SEED}`);
+  });
+
+  it("does not fall back when the body only says unsupported without edit context", async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      calls.push(url);
+      if (url === DEEPINFRA_IMAGES_EDITS_URL) {
+        return new Response(JSON.stringify({ detail: "unsupported" }), { status: 400 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(
+      generator.generateEndImage("end", {
+        startReferenceImage: { bytes: new Uint8Array([1]), contentType: "image/png" },
+      }),
+    ).rejects.toMatchObject({
+      code: "image_generation_request_failed",
+      statusCode: 400,
+    });
+    expect(calls).toEqual([DEEPINFRA_IMAGES_EDITS_URL]);
   });
 
   it("does not fall back on edit HTTP 422 validation errors", async () => {
@@ -324,13 +348,19 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
   });
 
   it("enforces the JSON size cap while streaming without content-length", async () => {
-    const overCap = DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1;
+    const padding = "A".repeat(DEEPINFRA_IMAGE_JSON_MAX_BYTES);
+    const body = JSON.stringify({ data: [{ b64_json: padding }] });
+    const bytes = new TextEncoder().encode(body);
+    expect(bytes.length).toBeGreaterThan(DEEPINFRA_IMAGE_JSON_MAX_BYTES);
+    const chunkSize = 64 * 1024;
     const fetchImpl = vi.fn(
       async () =>
         new Response(
           new ReadableStream({
             start(controller) {
-              controller.enqueue(new Uint8Array(overCap));
+              for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+                controller.enqueue(bytes.subarray(offset, offset + chunkSize));
+              }
               controller.close();
             },
           }),
