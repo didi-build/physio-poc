@@ -10,6 +10,8 @@ import {
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
   MAX_LENGTH_ROW_NOTES,
+  MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
+  MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   MCP_TOOL_ANNOTATIONS,
   PHYSIO_MCP_TOOLS,
   SEARCH_ROUTINES_TOOL_NAME,
@@ -39,8 +41,25 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
   });
 
   it("pins MCP tool annotations on every tool", () => {
+    const annotationsByName: Record<
+      string,
+      {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        openWorldHint: boolean;
+      }
+    > = {
+      search_approved_exercises: MCP_TOOL_ANNOTATIONS,
+      search_routines: MCP_TOOL_ANNOTATIONS,
+      get_program_builder_link: MCP_TOOL_ANNOTATIONS,
+      get_program_share_link_or_pdf: MCP_TOOL_ANNOTATIONS,
+      create_or_edit_program: MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
+      publish_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+      set_program_link_expiry: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+      delete_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+    };
     for (const tool of PHYSIO_MCP_TOOLS) {
-      expect(tool.annotations).toEqual(MCP_TOOL_ANNOTATIONS);
+      expect(tool.annotations).toEqual(annotationsByName[tool.name]);
     }
   });
 
@@ -146,10 +165,14 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
   });
 
   it("requires FREE_TEXT_NO_PATIENT_DETAILS on every capped free-text field description", () => {
+    const createOrEdit = PHYSIO_MCP_TOOLS.find(
+      (t) => t.name === "create_or_edit_program",
+    )!;
     const paths: Array<{ root: JsonSchemaLike; path: string[] }> = [
       { root: searchApprovedExercisesInputSchema, path: ["query"] },
       { root: searchRoutinesInputSchema, path: ["query"] },
       { root: getProgramShareLinkOrPdfInputSchema, path: ["program_title"] },
+      { root: createOrEdit.inputSchema, path: ["program_title"] },
     ];
     for (const { root, path } of paths) {
       const field = findSchemaAtPath(root, path);

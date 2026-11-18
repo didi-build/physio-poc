@@ -1,6 +1,6 @@
 # MCP connector tool contract
 
-Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements DIDI-989; stub hosting is DIDI-991 (`docs/architecture/mcp-server-stub-hosting.md`).
+Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements DIDI-989 and DIDI-1242 write-tool additions; stub hosting is DIDI-991 (`docs/architecture/mcp-server-stub-hosting.md`).
 
 ## Location
 
@@ -9,7 +9,13 @@ Runtime-neutral JSON Schema definitions for the Physio MCP connector. Implements
 
 ## Tools (locked product direction)
 
-Exactly four read-only tools; no exercise creation; no patient-identifying field names in any schema. Program writes (build, edit, publish, delete, link expiry) open the matching web app page via deep links.
+Eight tools in `PHYSIO_MCP_TOOLS`: four read tools and four write tools (`create_or_edit_program`, `publish_program`, `set_program_link_expiry`, `delete_program`). No exercise creation; no patient-identifying field names in any schema.
+
+The Worker MCP server lists only `PHYSIO_MCP_WIRED_TOOLS` (the four read tools) until DIDI-1244–1247 implement write handlers. The full contract and golden fixture include write tools for codegen and review.
+
+Write tools use per-tool MCP annotations: `create_or_edit_program` is non-destructive write (`readOnlyHint: false`, `destructiveHint: false`); publish, set expiry, and delete are destructive writes (`destructiveHint: true`). All tools keep `openWorldHint: false`.
+
+Publish, set expiry, and delete require explicit user confirmation in the assistant conversation before the tool is called. There is no server confirm token.
 
 ## Privacy
 

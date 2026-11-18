@@ -35,7 +35,11 @@ export const MCP_TOOL_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-export type PhysioMcpToolAnnotations = typeof MCP_TOOL_ANNOTATIONS;
+export type PhysioMcpToolAnnotations = {
+  readonly readOnlyHint: boolean;
+  readonly destructiveHint: boolean;
+  readonly openWorldHint: boolean;
+};
 
 export const SEARCH_APPROVED_EXERCISES_TOOL_NAME = "search_approved_exercises" as const;
 

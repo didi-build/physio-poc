@@ -1,6 +1,6 @@
 # Physio MCP connector tools
 
-Contract-only definitions in `src/mcp-connector/`. Each tool has a name, description, input JSON Schema, output JSON Schema, and read-only MCP annotations (`readOnlyHint: true`, `destructiveHint: false`, `openWorldHint: false`).
+Contract-only definitions in `src/mcp-connector/`. Each tool has a name, description, input JSON Schema, output JSON Schema, and MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`).
 
 Every tool response includes a plain text `summary`, a `share_link` (HTTPS URL or empty string), and usually a `manage_url` or deep link field. Search tools include `search_link` when there are zero results (prefilled web app search URL from server config).
 
@@ -10,18 +10,25 @@ Deep links are built from the shared route table in `src/app-routes.ts` (also us
 
 ## Tools
 
-| Tool name                       | Purpose                                                                                                                                                                                                                                           |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_approved_exercises`     | Read-only search over approved exercises visible to the connector.                                                                                                                                                                                |
-| `search_routines`               | Read-only search over community and personal routine copies.                                                                                                                                                                                      |
-| `get_program_builder_link`      | Read-only deep link to the web app program builder. Optional `program_code`, optional `from_routine_id` (UUID v4 opaque id), or neither for a new blank program. When both are given, `program_code` wins. Returns `builder_link`.                |
-| `get_program_share_link_or_pdf` | Read-only lookup by `program_code` or `program_title`. Returns published `share_link` and `pdf_url` when live; `publish_link` when a draft needs publishing; `manage_link` for expiry, close link, and delete on the share page. Never publishes. |
+| Tool name                       | Annotations        | Purpose                                                                                                                                                                                                                                 |
+| ------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_approved_exercises`     | read-only          | Search over approved exercises visible to the connector.                                                                                                                                                                                |
+| `search_routines`               | read-only          | Search over community and personal routine copies.                                                                                                                                                                                      |
+| `get_program_builder_link`      | read-only          | Deep link to the web app program builder. Optional `program_code`, optional `from_routine_id` (UUID v4 opaque id), or neither for a new blank program. When both are given, `program_code` wins. Returns `builder_link`.                |
+| `get_program_share_link_or_pdf` | read-only          | Lookup by `program_code` or `program_title`. Returns published `share_link` and `pdf_url` when live; `publish_link` when a draft needs publishing; `manage_link` for expiry, close link, and delete on the share page. Never publishes. |
+| `create_or_edit_program`        | write              | Create a program or replace rows on an existing draft. Optional `from_routine_id` copies a routine. Never publishes.                                                                                                                    |
+| `publish_program`               | write, destructive | Publish the current draft after explicit user confirmation in the conversation (assistant-side only). Optional `overrides.expires_in` and `overrides.custom_date`.                                                                      |
+| `set_program_link_expiry`       | write, destructive | Change one program's link expiry after confirmation when the user did not already name the date or expiry.                                                                                                                              |
+| `delete_program`                | write, destructive | Delete a program after explicit confirmation; closes an open share link; restorable for 30 days in the web app.                                                                                                                         |
+
+The live MCP server currently registers only the four read tools (`PHYSIO_MCP_WIRED_TOOLS`). Write tools are contract-only until DIDI-1244–1247 wire handlers; calling an unwired write tool name returns `unknown_tool`.
 
 ## Shared data shapes
 
 - Exercise categories: `Stretching`, `Strengthening`.
 - Prescription types (program rows in the web app): `stretching`, `isometric`, `concentric`, `eccentric`.
-- Free-text caps: query 100, program_title 80, routine_name 80.
+- Free-text caps: query 100, program_title 80, routine_name 80, row_notes 300, requested exercise name 100.
+- Share link expiry choices: `1_week`, `30_days`, `90_days`, `1_year`, `never`, `custom_date` (see `src/mcp-connector/share-link-expiry.ts`).
 - Programs are identified by `program_code` and optional non-identifying `program_title`.
 - App route names include `exerciseSearch`, `programBuilder`, `programPublish`, and `programShare` (see `src/app-routes.ts`).
 

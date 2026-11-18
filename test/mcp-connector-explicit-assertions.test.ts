@@ -146,16 +146,14 @@ const schemaWalkerBranchFixtures: Array<{
 ];
 
 describe("collectForbiddenLegacySchemaFields", () => {
-  it("detects legacy publish and date fields at top level, nested, and under allOf/then", () => {
+  it("detects the legacy publish flag at top level, nested, and under allOf/then", () => {
     const topLevel: JsonSchema = {
       type: "object",
       properties: {
-        expires_in: { type: "string" },
+        publish: { type: "boolean" },
       },
     };
-    expect(collectForbiddenLegacySchemaFields(topLevel)).toEqual([
-      "property:expires_in",
-    ]);
+    expect(collectForbiddenLegacySchemaFields(topLevel)).toEqual(["property:publish"]);
 
     const nested: JsonSchema = {
       type: "object",
@@ -163,14 +161,12 @@ describe("collectForbiddenLegacySchemaFields", () => {
         wrapper: {
           type: "object",
           properties: {
-            custom_date: { type: "string", format: "date" },
+            publish: { type: "boolean", default: false },
           },
         },
       },
     };
-    expect(collectForbiddenLegacySchemaFields(nested).sort()).toEqual(
-      ["format:date", "property:custom_date"].sort(),
-    );
+    expect(collectForbiddenLegacySchemaFields(nested)).toEqual(["property:publish"]);
 
     const conditional: JsonSchema = {
       allOf: [
@@ -179,33 +175,15 @@ describe("collectForbiddenLegacySchemaFields", () => {
           then: {
             type: "object",
             properties: {
-              exercises_not_found: { type: "array", items: { type: "string" } },
+              summary: { type: "string" },
             },
           },
         },
       ],
     };
     expect(collectForbiddenLegacySchemaFields(conditional)).toEqual([
-      "property:exercises_not_found",
+      "property:publish",
     ]);
-
-    const ifBranch: JsonSchema = {
-      if: {
-        type: "object",
-        properties: {
-          custom_date: { type: "string", format: "date" },
-        },
-      },
-      then: {
-        type: "object",
-        properties: {
-          ok: { type: "boolean" },
-        },
-      },
-    };
-    expect(collectForbiddenLegacySchemaFields(ifBranch).sort()).toEqual(
-      ["format:date", "property:custom_date"].sort(),
-    );
   });
 });
 

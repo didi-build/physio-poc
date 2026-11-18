@@ -15,6 +15,7 @@ import {
   MAX_LENGTH_ROW_NOTES,
   MAX_LENGTH_SUMMARY,
 } from "./text-limits.js";
+import { SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM } from "./share-link-expiry.js";
 
 export type JsonSchema = {
   readonly [key: string]: unknown;
@@ -125,6 +126,102 @@ export const programVersionRefSchema: JsonSchema = {
 export const nullableProgramVersionRefSchema: JsonSchema = {
   oneOf: [{ type: "null" }, programVersionRefSchema],
   description: "Null when that side (draft or published) does not exist.",
+};
+
+export const publishOverridesInputSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    expires_in: {
+      type: "string",
+      enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
+      description:
+        "Share link expiry for this publish. Omit overrides entirely to use the practitioner default.",
+    },
+    custom_date: {
+      type: "string",
+      pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+      description:
+        "Required when expires_in is custom_date. Calendar date YYYY-MM-DD from tomorrow onward per product rules.",
+    },
+  },
+  allOf: [
+    {
+      if: {
+        properties: {
+          expires_in: { const: "custom_date" },
+        },
+        required: ["expires_in"],
+      },
+      then: {
+        required: ["custom_date"],
+      },
+    },
+  ],
+};
+
+export const shareLinkExpiresInInputProperty: JsonSchema = {
+  type: "string",
+  enum: SHARE_LINK_EXPIRES_IN_SCHEMA_ENUM,
+  description:
+    "Share link expiry choice. Use custom_date with custom_date when expires_in is custom_date.",
+};
+
+export const shareLinkCustomDateInputProperty: JsonSchema = {
+  type: "string",
+  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+  description:
+    "Required when expires_in is custom_date. Calendar date YYYY-MM-DD from tomorrow onward per product rules.",
+};
+
+export const exerciseNotFoundCandidateSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["exercise_version_id", "exercise_name"],
+  properties: {
+    exercise_version_id: { type: "string" },
+    exercise_name: { type: "string" },
+  },
+};
+
+export const exerciseNotFoundSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["requested_exercise_name", "web_app_exercise_search_url"],
+  properties: {
+    requested_exercise_name: {
+      type: "string",
+      maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
+      description: `Exercise name that could not be resolved to exactly one approved exercise. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+    },
+    candidate_matches: {
+      type: "array",
+      maxItems: 3,
+      items: exerciseNotFoundCandidateSchema,
+      description:
+        "Up to three similar approved exercises when the name was ambiguous.",
+    },
+    web_app_exercise_search_url: {
+      type: "string",
+      format: "uri",
+      description:
+        "Web app exercise search URL with the query prefilled, built from server-configured web app base URL and the requested name.",
+    },
+  },
+};
+
+export const publishChangeLinesOutputProperty: JsonSchema = {
+  type: "array",
+  items: { type: "string" },
+  description:
+    "Human-readable lines describing draft changes against the last published version, for assistant confirm wording.",
+};
+
+export const restoreUntilOutputProperty: JsonSchema = {
+  type: "string",
+  format: "date",
+  description:
+    "Last calendar date the program can be restored from Recently deleted in the web app.",
 };
 
 export const exerciseCategorySchema: JsonSchema = {

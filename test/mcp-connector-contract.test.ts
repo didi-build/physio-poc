@@ -7,8 +7,11 @@ import {
   CONNECTOR_PHYSIO_APP_ROUTE_NAMES,
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+  MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
+  MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   MCP_TOOL_ANNOTATIONS,
   PHYSIO_APP_ROUTE_PATTERNS,
+  PHYSIO_MCP_WIRED_TOOL_NAMES,
   buildProgramBuilderLink,
   buildWebAppExerciseSearchUrl,
   getProgramShareLinkOrPdfInputSchema,
@@ -40,6 +43,17 @@ const MCP_CONNECTOR_DIR = join(process.cwd(), "src/mcp-connector");
 const APP_ROUTES_PATH = join(process.cwd(), "src/app-routes.ts");
 
 const LOCKED_TOOL_NAMES = [
+  "search_approved_exercises",
+  "search_routines",
+  "get_program_builder_link",
+  "get_program_share_link_or_pdf",
+  "create_or_edit_program",
+  "publish_program",
+  "set_program_link_expiry",
+  "delete_program",
+] as const;
+
+const WIRED_TOOL_NAMES = [
   "search_approved_exercises",
   "search_routines",
   "get_program_builder_link",
@@ -96,6 +110,101 @@ const ALLOWED_SCHEMA_PROPERTY_NAMES: Record<
       "program_title",
       "exercise_count",
       "from_routine_id",
+    ],
+  },
+  create_or_edit_program: {
+    input: [
+      "program_code",
+      "program_title",
+      "from_routine_id",
+      "rows",
+      "exercise_version_id",
+      "exercise_name",
+      "prescription_type",
+      "params",
+      "reps",
+      "sets",
+      "hold_s",
+      "ascent_s",
+      "descent_s",
+      "rest_s",
+      "per_day",
+      "days_per_week",
+      "row_notes",
+      "min",
+      "max",
+    ],
+    output: [
+      "summary",
+      "share_link",
+      "manage_url",
+      "program_code",
+      "program_title",
+      "source_routine_id",
+      "exercise_count",
+      "rows",
+      "exercises_not_found",
+      "requested_exercise_name",
+      "candidate_matches",
+      "web_app_exercise_search_url",
+      "exercise_name",
+      "exercise_version_id",
+      "prescription_type",
+      "params",
+      "reps",
+      "sets",
+      "hold_s",
+      "ascent_s",
+      "descent_s",
+      "rest_s",
+      "per_day",
+      "days_per_week",
+      "row_notes",
+      "min",
+      "max",
+    ],
+  },
+  publish_program: {
+    input: ["program_code", "overrides", "expires_in", "custom_date"],
+    output: [
+      "summary",
+      "share_link",
+      "manage_url",
+      "pdf_url",
+      "expires_at",
+      "program_code",
+      "program_title",
+      "draft_state",
+      "draft",
+      "published",
+      "version",
+      "updated_at",
+      "share_link_state",
+      "publish_change_lines",
+    ],
+  },
+  set_program_link_expiry: {
+    input: ["program_code", "expires_in", "custom_date"],
+    output: [
+      "summary",
+      "share_link",
+      "manage_url",
+      "expires_at",
+      "program_code",
+      "program_title",
+      "share_link_state",
+    ],
+  },
+  delete_program: {
+    input: ["program_code"],
+    output: [
+      "summary",
+      "share_link",
+      "manage_url",
+      "program_code",
+      "program_title",
+      "restore_until",
+      "share_link_state",
     ],
   },
   get_program_share_link_or_pdf: {
@@ -202,18 +311,40 @@ addFormats(ajv);
 
 describe("Physio MCP connector contract", () => {
   it("pins tool names against locked literals", () => {
-    expect(PHYSIO_MCP_TOOLS).toHaveLength(4);
+    expect(PHYSIO_MCP_TOOLS).toHaveLength(8);
     expect(PHYSIO_MCP_TOOLS.map((t) => t.name)).toEqual([...LOCKED_TOOL_NAMES]);
+    expect([...PHYSIO_MCP_WIRED_TOOL_NAMES]).toEqual([...WIRED_TOOL_NAMES]);
   });
 
   it("pins readOnlyHint, destructiveHint, and openWorldHint on every tool", () => {
+    const EXPECTED_ANNOTATIONS_BY_NAME: Record<
+      string,
+      {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        openWorldHint: boolean;
+      }
+    > = {
+      search_approved_exercises: MCP_TOOL_ANNOTATIONS,
+      search_routines: MCP_TOOL_ANNOTATIONS,
+      get_program_builder_link: MCP_TOOL_ANNOTATIONS,
+      get_program_share_link_or_pdf: MCP_TOOL_ANNOTATIONS,
+      create_or_edit_program: MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
+      publish_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+      set_program_link_expiry: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+      delete_program: MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+    };
     for (const tool of PHYSIO_MCP_TOOLS) {
-      expect(tool.annotations, tool.name).toEqual(MCP_TOOL_ANNOTATIONS);
+      expect(tool.annotations, tool.name).toEqual(
+        EXPECTED_ANNOTATIONS_BY_NAME[tool.name],
+      );
     }
   });
 
-  it("has no create, edit, publish, or delete inputs on any tool", () => {
-    for (const tool of PHYSIO_MCP_TOOLS) {
+  it("has no legacy publish, overrides, or rows inputs on wired read tools", () => {
+    for (const tool of PHYSIO_MCP_TOOLS.filter((entry) =>
+      (WIRED_TOOL_NAMES as readonly string[]).includes(entry.name),
+    )) {
       const found = new Set<string>();
       collectPropertyNames(tool.inputSchema, found);
       for (const forbidden of FORBIDDEN_WRITE_INPUT_PROPERTY_NAMES) {
