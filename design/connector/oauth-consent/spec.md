@@ -10,6 +10,8 @@ When an AI assistant (ChatGPT first) asks to connect to Didi Physio's `/mcp` ser
 
 **Matches Product direction: yes.** Checked against the live DIDI-594 description and comments on Oct 31, 2026 (read after the 2:28 to 2:35 AM ET answers): "Connector is read-only in V1", "Sign-in is Google, through Better Auth" and "OAuth consent page for the connector" (quoted under Locked Product direction below).
 
+**v13 (DIDI-594 ca41ca4d):** The Oct 31 read-only consent page in this spec is retired in v1. The only consent page is the write page in `design/connector/claude-connector/spec.md` (strings #21 to #24).
+
 ## Design source (Diadem's pick, Oct 31, 2026, 2:28 AM ET: "Go with C plus A's safety line")
 
 Final designs (these are what the mockups and this spec follow):
