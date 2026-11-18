@@ -86,9 +86,9 @@ record M7
 sed -i 's/512 \* 1024/1024 \* 1024/' src/adapters/deepinfra/exercise-draft-ai-config.ts
 record M8
 
-# M9 skip server-side schema validation (always accept)
-sed -i 's/return null;/return record as ExerciseDraftAiPayload;/' \
-  src/adapters/deepinfra/exercise-draft-ai-schema.ts
+# M9 skip cue shape guard after schema parse
+sed -i 's/!cueShapeValid(validated)/false/' \
+  src/adapters/deepinfra/deepinfra-exercise-draft-generator.ts
 record M9
 
 # M10 draft status approved instead of draft in SQL insert
@@ -99,9 +99,18 @@ record M10
 sed -i 's/\[redacted\]/REDACT-OPEN/g' src/adapters/deepinfra/redact-deepinfra-api-key.ts
 record M11
 
-# M12 factory always returns fake generator
-sed -i 's/return createDeepInfraExerciseDraftGenerator/return fakeExerciseDraftGenerator; void createDeepInfraExerciseDraftGenerator/' \
-  src/adapters/deepinfra/resolve-exercise-draft-generator.ts
+# M12 factory ignores configured API key
+python3 <<'PY'
+from pathlib import Path
+p = Path("src/adapters/deepinfra/resolve-exercise-draft-generator.ts")
+p.write_text(
+    p.read_text().replace(
+        "  if (!apiKey) {",
+        "  if (true || !apiKey) {",
+        1,
+    )
+)
+PY
 record M12
 
 echo "done" >>"$OUT"

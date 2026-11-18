@@ -3,7 +3,9 @@ import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra
 import {
   DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
   DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL,
+  DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID,
 } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
+import { EXERCISE_DRAFT_SYSTEM_PROMPT } from "../src/adapters/deepinfra/exercise-draft-system-prompt.js";
 import { readHttpResponseTextWithByteCap } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { resolveExerciseDraftGenerator } from "../src/adapters/deepinfra/resolve-exercise-draft-generator.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
@@ -458,5 +460,61 @@ describe("pinned URL constant (guard)", () => {
     expect(DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL).toBe(
       "https://api.deepinfra.com/v1/openai/chat/completions",
     );
+  });
+
+  it("pins the default model id constant", () => {
+    expect(DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID).toBe(
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    );
+  });
+
+  it("pins the streaming response cap constant", () => {
+    expect(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES).toBe(512 * 1024);
+  });
+});
+
+describe("DeepInfra request metadata guards", () => {
+  it("sends response_format json_schema with strict true and the full system prompt", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = createDeepInfraExerciseDraftGenerator({ apiKey: "k", fetchImpl });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-meta"),
+        "meta@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await generator(
+        {
+          sql: storage,
+          requestId: id("req-meta"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      const body = requestBodyFromCall(
+        (fetchImpl.mock.calls[0] as unknown as [string, RequestInit?])[1],
+      );
+      const responseFormat = body.response_format as {
+        type: string;
+        json_schema: { strict: boolean };
+      };
+      expect(responseFormat.type).toBe("json_schema");
+      expect(responseFormat.json_schema.strict).toBe(true);
+      const messages = body.messages as Array<{ role: string; content: string }>;
+      expect(messages[0]?.content).toBe(EXERCISE_DRAFT_SYSTEM_PROMPT);
+      expect(messages[0]?.content).toContain("Never include patient-identifying");
+    } finally {
+      storage.close();
+    }
   });
 });
