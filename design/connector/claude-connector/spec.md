@@ -6,7 +6,7 @@ Area: connector · Feature: claude-connector
 
 One remote MCP server that lets a practitioner build and manage programs from their own AI assistant (Muse, Claude, ChatGPT, Grok and Copilot). Every tool returns a plain text summary plus a share link that works in every assistant; an inline program card (MCP Apps) is an optional enhancement. The concept shows it in a Claude-style chat.
 
-**Matches Product direction: yes.** Checked against DIDI-594 comment bf5c77d7 and DIDI-594 comment 1d16df1a (Diadem, Nov 17, 2026).
+**Matches Product direction: yes.** Checked against DIDI-594 comment bf5c77d7, DIDI-594 comment 1d16df1a and DIDI-594 comment ca41ca4d (Diadem, Nov 17, 2026).
 
 ## Design source (approved Oct 25, 2026, 7:22 PM ET)
 
@@ -33,13 +33,12 @@ The connector did not change in v12. Its final revision is the v11 one above.
 
 ## What the connector can and can't do
 
-- Can (Muse and Claude): everything in v12 "Can": search approved exercises; search routines and create a program from one; build a program, or find one by its name or code; add, remove, reorder exercises and set parameters; set expiry; publish (with confirm); delete (with confirm); get the share link or PDF.
-- Can (ChatGPT, Grok, Copilot): search approved exercises; search routines; find a program by name or code; get the share link or PDF; links to the web app for every change.
-- Can't (all): create or edit exercises (web app request and review); create or edit routines (web app).
+- Can: search approved exercises; search routines and create a program from one; build a program, or find one by its name or code; add, remove, reorder exercises and set parameters; set expiry; publish (with confirm); delete (with confirm); get the share link or PDF.
+- Can't: create or edit exercises (web app request and review); create or edit routines (web app).
 
 ## Decisions
 
-1. All five assistants should work (Muse, Claude, ChatGPT, Grok and Copilot). Muse and Claude get the write tools. ChatGPT, Grok and Copilot are read-only and use deep links for changes. ChatGPT and Copilot remain MVP priority (build, test and polish first).
+1. All five assistants should work (Muse, Claude, ChatGPT, Grok and Copilot). Every assistant gets the write tools in v1 (DIDI-594 ca41ca4d). ChatGPT and Copilot remain MVP priority (build, test and polish first).
 2. The connector creates and edits programs and share links (the old "read-only" wording was a misalignment). It can't create or edit exercises or routines.
 3. Save and publish are separate; edits save automatically. Publish, delete and set expiry (when the user did not already give the date or expiry in the same message) need an explicit user confirm in the conversation. The server does not check. Confirm lines are reference wording; the assistant may reword them if it covers the same facts.
 4. Default expiry 1 year, shown on the publish confirm.
@@ -54,16 +53,15 @@ DIDI-594 comment bf5c77d7, Diadem, Nov 17, 2026 (CTO chat, times EST):
 
 **CTO, same chat (bf5c77d7), without Diadem objection:** creating or editing exercises and routines stays out, and ChatGPT stays read-only (ChatGPT and Grok were not picked).
 
-The **Is** lines from the same lock (Muse and Claude write, ChatGPT, Grok and Copilot read-only, write set, confirmations, and the rest) are in the Locked Product direction block under comment bf5c77d7, not paraphrased here.
+The **Is** lines from the same lock are in the Locked Product direction block under comment bf5c77d7 (assistant scope superseded for v1 by ca41ca4d).
 
 DIDI-594 comment 1d16df1a, Diadem, Nov 17, 2026, 8:35 PM EST (Designer chat widget, answering "DIDI-1241 connector wording"):
 
 | Question | Diadem's answer, verbatim | Applied in |
 | -- | -- | -- |
-| The 24 proposed strings | "approve however don't hardcode "Kojo"." | #1 to #24 approved; #20 says "the user"; no string or tool description names Kojo |
+| The 24 proposed strings | "approve however don't hardcode "Kojo"." | #1 to #24 approved; #13 and #20 removed per ca41ca4d; no string or tool description names Kojo |
 | Should Muse and Claude use the confirm lines word for word? | "Confirm lines can be reworded if they cover the same facts" | Confirm wording, tool description rule |
 | If the expiry date was already given, should it still ask before changing it? | "Skip confirm when he already gave the date" | Set expiry (section below) |
-| Can ChatGPT, Grok and Copilot answer change requests in their own words with the link? | "Read-only assistants can use their own words plus the link" | Read-only assistants |
 | Which patient-details warning? | "Use the shorter patient-details line (#18)" | Error codes; the old line on main is retired |
 | Should Muse be named anywhere besides the consent page? | "Muse named only on the consent page" | Consent page; Muse is not added to the concept's "Where it works" or any other user-facing string |
 
@@ -71,21 +69,18 @@ DIDI-594 comment 1d16df1a, Diadem, Nov 17, 2026, 8:35 PM EST (Designer chat widg
 
 | Topic | Is (v13) | Was (Oct 29, 2026 lock, DIDI-594 comment 6b866ab0: 7:16 PM ET "ok v1 connector can be read only , and any "write" use cases will send a link that opens the exact page that he needs to do the action on"; 7:26 PM ET "for v1 we will do read only tools") |
 | -- | -- | -- |
-| Which assistants write | Muse and Claude get the write tools | No assistant writes |
-| ChatGPT, Grok, Copilot | Read tools plus deep links; they answer change requests in their own words plus the link | Read tools plus deep links |
+| Which assistants write | Every assistant gets the write tools (DIDI-594 ca41ca4d, Nov 17, 2026): 10:34 PM EST "I'm not building for Claude code right now. regular Claude (UI) and Muse are the v1 targets"; 10:36 PM EST "v1 make it a write connector. this tool is closed/not open to the public/only me and Kojo have access so I'm not worried about other people attempting to use the wrong platforms" | No assistant writes |
+| Which assistants write (intermediate v13 draft) | (superseded by ca41ca4d) | Muse and Claude only; ChatGPT, Grok, Copilot read-only (bf5c77d7) |
 | Write set | Create or edit a program (rows, parameters, rename), from a routine, publish (defaults or overrides), set one program's link expiry, delete | Every write was a deep link to the web app |
 | Confirm | The assistant asks in the conversation before publish and delete, and before set expiry unless the user already gave the date or expiry in the same message. No server confirm step. The confirm lines are reference wording; the assistant may reword them if it covers the same facts | Not applicable |
 | Set expiry confirm | Skipped when the user gave the date or expiry in the same message; asked otherwise | v12 (Oct 25): always "with a confirm" |
 | Patient-details warning | #18 | An unapproved line on main ("Remove patient details (names, contact information, health card numbers, and dates of birth) from this text before sending it to the connector."), now retired |
 | Exercises and routines | Can't create or edit (unchanged) | Same |
-| Consent page | Two versions: the approved read-only page for every other client, and a write version for Muse and Claude (Consent page, below) | One read-only page |
+| Consent page | One write page (#21 to #24). The Oct 31 read-only consent page is retired in v1 | One read-only page |
+| Removed with ca41ca4d | #13 and `write_not_allowed` removed; #20 and read-tool description append removed; read-only assistant behaviour removed; per-client gating and DIDI-1243 canceled; two-version consent table removed | In the intermediate v13 draft before ca41ca4d |
 | v12 spec (Oct 25) | Restored as the source for Build, From a routine, Edit and publish, Set expiry, Delete. Confirm cards become questions the assistant asks (the inline card stays optional) | Superseded by the Oct 29 lock for writes |
 
 Muse is not added to the concept's "Where it works" or any other user-facing string; the only place the user sees Muse named is the consent page, through the app's self-reported `{name}` (Diadem: "Muse named only on the consent page"). Naming Muse in spec prose and config is fine.
-
-## OPEN: gating for Claude Code and custom or self-registered Claude clients
-
-Waiting on Diadem's answer to CTO (asked Nov 17, 2026). CTO recommends read-only for both. If Diadem picks read-only, they get the read-only page and tools, and #20 covers them; no new string is needed. This spec adds no string for it. DIDI-1243 must not ship write access to these clients until Diadem answers.
 
 ## Mockups
 
@@ -241,7 +236,7 @@ Rendered from the approved connector source (revision 465211305146613760, unchan
 
 **DIDI-594 comment 6b866ab0** (https://linear.app/didi-build/issue/DIDI-594)
 
-v13 reading: still applies to ChatGPT, Grok, Copilot and every client not granted write in allowed-client config. Superseded for Muse and Claude by bf5c77d7.
+v13 reading: superseded for v1 write tools by bf5c77d7 and ca41ca4d.
 
 > **Product direction update: the V1 connector is read-only** (Diadem, verbatim)
 >
@@ -313,6 +308,14 @@ v13 reading: still applies to ChatGPT, Grok, Copilot and every client not grante
 > | Muse naming | Named only on the consent page | — |
 >
 > This adds to lock bf5c77d7 and doesn't conflict with it. The spec of record will be Designer's v13 PR.
+
+**DIDI-594 comment ca41ca4d** (https://linear.app/didi-build/issue/DIDI-594)
+
+v13 reading: DIDI-1243 is canceled. Every assistant gets write tools in v1. Read-only tier, #13, #20 and the read-only consent page are removed from this spec.
+
+> Diadem, Nov 17, 2026 (verbatim, EST):
+> - 10:34 PM EST: "I'm not building for Claude code right now. regular Claude (UI) and Muse are the v1 targets"
+> - 10:36 PM EST: "v1 make it a write connector. this tool is closed/not open to the public/only me and Kojo have access so I'm not worried about other people attempting to use the wrong platforms"
 
 ## Confirm wording (assistant-side, before publish, set expiry and delete)
 
@@ -394,11 +397,10 @@ Rule: every error is a stable `error_code` the assistant can act on. Where the u
 | error_code | Tools | When | Message to the user |
 | -- | -- | -- | -- |
 | `auth_required` (exists) | all | No or invalid token | Code-only (401 with WWW-Authenticate; the assistant reconnects) |
-| `write_not_allowed` (new, DIDI-1243) | write tools | A read-only client calls a write tool directly | APPROVED #13: "This assistant can only look things up in Didi Physio. Use the link to make the change in the web app." plus the matching deep link |
 | `program_not_found` (exists) | all program tools | Missing, another practitioner's, or deleted (identical) | APPROVED #14: "I couldn't find a program with that name or code." |
 | `ambiguous_title` (exists) | lookups by title | More than one program has that name | APPROVED #15: "More than one program is called {name}. Which one do you mean?" plus each candidate's code |
 | `routine_not_found` (exists) | create from routine | Missing or not the owner's published routine | APPROVED #16: "I couldn't find that routine." |
-| `not_supported_v1` (exists) | `get_program_builder_link` | `from_routine_id` only (no `program_code`) and the practitioner owns a published routine head for that id (main) | Code-only. Per client: see `get_program_builder_link` with `from_routine_id` under Tools and descriptions by client |
+| `not_supported_v1` (exists) | `get_program_builder_link` | `from_routine_id` only (no `program_code`) and the practitioner owns a published routine head for that id (main) | Code-only. See `get_program_builder_link` with `from_routine_id` under Tools (v13) |
 | `exercises_not_found` (partial result, not an error) | create or edit | Some names don't match an approved exercise; the rest saves | REUSED: "{name} isn't in your exercise library yet, and I can't create new exercises from here." + "You can request it in the web app. The search is already filled in:" + "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged." |
 | `name_required` (exists) | publish | No program name | REUSED: "Add a program name to publish. Use something you will recognise, not the patient's name." |
 | `placeholders_block_publish` (exists) | publish | Any placeholder row | REUSED: "Approve or remove placeholders to publish" + "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." / "One exercise is a placeholder. Approve each draft or remove it from this program, then publish." |
@@ -424,62 +426,20 @@ Rule: every error is a stable `error_code` the assistant can act on. Where the u
 | DIDI-1043 stub "Example response: …" summaries | Retired. Stub output is dev-only and must never reach the user; no approved copy |
 | Patient-detail validator line (found while reading) | Retired. Replaced by #18 |
 
-## Tools and descriptions by client (DIDI-1243)
+## Tools (v13)
 
-On main, all clients share the same four read tools and the same descriptions in `src/mcp-connector/tools.ts` (`search_approved_exercises`, `search_routines`, `get_program_builder_link`, `get_program_share_link_or_pdf`, lines 43, 105, 143, 178). v13 splits tool lists and description variants by the DIDI-1243 allowed-client config. Implementation detail stays in DIDI-1243; this section locks intent.
+Every assistant gets the same tool list and descriptions (DIDI-594 ca41ca4d; DIDI-1243 canceled).
 
-**Muse and Claude (write clients in allowed-client config):**
-- Tool list: the four read tools (write-client description variant, below) plus the v13 write tools (create or edit a program, create from a routine, publish, set program link expiry, delete).
-- Read-tool descriptions (write-client variant; clause deletions only from main `tools.ts`):
-  - `search_approved_exercises`: "Search approved exercises visible to the connector. Only approved exercises are returned. Supports limit (default 10, max 25) and an opaque cursor; responses include next_cursor when more results exist. When the query matches nothing, exercises is empty and search_link is the prefilled web app search URL (built from server config). Do not pass patient information."
-  - `search_routines`: "Search routines: cookie-cutter programs for common ailments. Includes community library entries and personal copies. Supports limit (default 10, max 25) and an opaque cursor. Do not pass patient information."
-  - `get_program_builder_link`: "Deep link to the program builder in the web app. Pass program_code to open that program, or from_routine_id (UUID v4 opaque id) to start a new program from that routine, or omit both for a new blank program. When both program_code and from_routine_id are given, program_code wins and from_routine_id is ignored. No rows are passed in the link. Do not pass patient information."
-  - `get_program_share_link_or_pdf`: "Program share link and PDF lookup. Provide program_code or program_title. When a published version exists, returns share_link, pdf_url, and expires_at when live, plus share_link_state. When only a draft exists, publish_link opens the publish page and draft_state is draft_only. When both draft and published exist, draft_state is published_with_draft_changes and has_newer_draft is true. manage_link opens the share page for expiry, close link, and delete. Lookup by program_title works only when exactly one program matches; otherwise the tool returns error_code ambiguous_title with candidates. Do not pass patient information."
-- Each write-client read description omits APPROVED #20.
-- `get_program_builder_link` with `from_routine_id` only (no `program_code`): DIDI-1241 comment 8697c1c0 (Nov 17, 2026, 9:26 PM EST): "get_program_builder_link behaves the same for every client, whether it can write or is read-only. It returns not_supported_v1 when a published head exists and routine_not_found otherwise, exactly as on main today.… DIDI-1243 gating only adds or removes write tools, in both tools/list and tools/call. It never changes what a read tool returns.… For Muse and Claude, create-from-routine is create_or_edit_program with from_routine_id (DIDI-1244)."
-- `get_program_builder_link` otherwise: same outputs as main; DIDI-1243 does not change read-tool outputs (CTO, 8697c1c0)
+- Tool list: the four read tools on main in `src/mcp-connector/tools.ts` plus the v13 write tools (create or edit a program, create from a routine via `create_or_edit_program` with `from_routine_id`, publish, set program link expiry, delete).
+- Read-tool descriptions: main `tools.ts` lines 43, 105, 143, 178 unchanged. No APPROVED #20 append (#20 removed per ca41ca4d).
+- `get_program_builder_link` with `from_routine_id` only (no `program_code`): DIDI-1241 comment 8697c1c0 (Nov 17, 2026, 9:26 PM EST): "get_program_builder_link behaves the same for every client… It returns not_supported_v1 when a published head exists and routine_not_found otherwise, exactly as on main today.… create-from-routine is create_or_edit_program with from_routine_id (DIDI-1244)." (DIDI-1243 sentence in that comment is obsolete.)
+- `get_program_builder_link` otherwise: same outputs as main (CTO, 8697c1c0).
 
-**ChatGPT, Grok, Copilot, and every other client not granted write in allowed-client config:**
-- Tool list: the four read tools only. Write tools are omitted from the list.
-- Read-tool descriptions: the four strings on main in `tools.ts` (lines 43, 105, 143, 178), unchanged, plus APPROVED #20 at the end of each description (model-facing, not shown to the user).
-- `get_program_builder_link` with `from_routine_id` only (no `program_code`): code-only `not_supported_v1` when a published routine head exists; code-only `routine_not_found` when it does not (main).
-- `get_program_builder_link`, `publish_link` and `manage_link` other outputs stay as on main for deep-link routing.
+## Consent page
 
-If a read-only client calls a write tool directly, the server returns `write_not_allowed` with #13.
+The Oct 31 read-only consent page is retired in v1 (ca41ca4d). One page for every assistant: Option C layout with APPROVED #21 to #24 (see `design/connector/oauth-consent/spec.md` for REUSED slots). The app's self-reported name (for example "Muse") shows in the existing "The app calls itself "{name}"" line; this is the only place the user sees Muse named.
 
-The OPEN Claude Code and custom Claude client question (above) uses this read-only branch if Diadem picks read-only; #20 covers them.
-
-## Read-only assistants (ChatGPT, Grok, Copilot)
-
-Read-only clients are those in the second group under Tools and descriptions by client.
-
-- The write tools are not in their tool list, so they never offer to publish, change expiry or delete. They use the read tools and deep links on main: `builder_link` to build or edit, `publish_link` to publish, `manage_link` for expiry, close link and delete.
-- They answer change requests in their own words plus the deep link (Diadem: "Read-only assistants can use their own words plus the link"). We don't script their reply.
-- Each read tool description uses the read-only variant with APPROVED #20 (see Tools and descriptions by client).
-- A direct write call gets `write_not_allowed` with #13.
-
-## Consent page (DIDI-1243)
-
-Read-only clients keep the approved Oct 31 page unchanged (heading "Allow read-only access to Didi Physio?", "It can't" "Create, edit, publish or delete anything", "For changes, it sends you a link to the right page here instead").
-
-Muse and Claude get a write version. Same layout, same Option C card. The app's self-reported name (for example "Muse") shows in the existing "The app calls itself "{name}"" line; this is the only place the user sees Muse named. Changes only:
-
-| Slot | Read-only page (approved, unchanged) | Write page |
-| -- | -- | -- |
-| Heading | "Allow read-only access to Didi Physio?" | APPROVED #21: "Allow access to Didi Physio?" |
-| It can, 1 | "Search your approved exercises" | REUSED |
-| It can, 2 | "Search your routines" | REUSED |
-| It can, 3 | "See your programs and their share links" | REUSED |
-| It can, 4 | (none) | APPROVED #22: "Build and edit your programs, including from a routine" |
-| It can, 5 | (none) | APPROVED #23: "Publish, change link expiry and delete programs, after you say yes in the chat" |
-| It can't, 1 | "Create, edit, publish or delete anything" | APPROVED #24: "Create or edit exercises or routines" |
-| It can't, 2 | "For changes, it sends you a link to the right page here instead" | Removed on the write page |
-| Patient line, safety line, Deny, Allow, Signed in as, Not you? Sign out, tab title, After Allow, After Deny, invalid client, expired | approved | REUSED unchanged |
-
-Re-consent (DIDI-1243 requirement): when an existing Muse or Claude connection gains write access, the user sees the write page once. No extra string. DIDI-1243 must implement this flow.
-Which page a client gets is decided by the server's allowed-client config (DIDI-1243), never by the self-reported name.
-
-Write consent mockups (390 px at 2x and 1280 px at 1x): follow-up on DIDI-1243. `src/auth/mcp-oauth/consent-html.ts` renders only the read-only page today; a clean swap to the write strings without implementation work was not available in this spec-only PR. Target layout: DIDI-1125 option C final revision (component 466932541740429312, revision 467169139593728000). Sample `{host}` claude.ai, `{name}` Claude, `{email}` practitioner@example.com.
+Write consent mockups (390 px at 2x and 1280 px at 1x): follow-up. `src/auth/mcp-oauth/consent-html.ts` renders only the read-only page today. Target layout: DIDI-1125 option C final revision (component 466932541740429312, revision 467169139593728000). Sample `{host}` claude.ai, `{name}` Claude, `{email}` practitioner@example.com.
 
 ## Copy inventory (verbatim from the approved source)
 
@@ -694,14 +654,14 @@ Every user-facing string in the connector concept, in source order. `{...}` mark
 10. "Okay, I didn't change it. The link still expires on {current_date}." / "Okay, I didn't change it. The link still never expires."
 11. "Deleted {name}. You can restore it from Recently deleted in the web app until {date}."
 12. "Okay, I kept {name}. Nothing changed."
-13. "This assistant can only look things up in Didi Physio. Use the link to make the change in the web app."
+13. Removed (ca41ca4d). Was: "This assistant can only look things up in Didi Physio. Use the link to make the change in the web app."
 14. "I couldn't find a program with that name or code."
 15. "More than one program is called {name}. Which one do you mean?"
 16. "I couldn't find that routine."
 17. "Publish it first, then I can change when the link expires."
 18. "That looks like patient details. Use a program name you'll recognise, not the patient's name."
 19. "Something went wrong on Didi Physio's side. Try again in a minute."
-20. "This assistant can't make changes. For any change, give the user the matching link." (approved with "Kojo"; changed to "the user" per Diadem's "don't hardcode "Kojo"")
+20. Removed (ca41ca4d). Was: "This assistant can't make changes. For any change, give the user the matching link." (approved with "Kojo"; changed to "the user" per Diadem's "don't hardcode "Kojo"")
 21. "Allow access to Didi Physio?"
 22. "Build and edit your programs, including from a routine"
 23. "Publish, change link expiry and delete programs, after you say yes in the chat"
@@ -714,4 +674,4 @@ Every user-facing string in the connector concept, in source order. `{...}` mark
 - **Oct 25, 2026**: v10: edits save automatically. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v11: From a routine, Find by code, 1 year default expiry. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-852
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change to the connector in v12. https://linear.app/didi-build/issue/DIDI-809
-- **Nov 17, 2026**: v13: write tools for Muse and Claude (create, edit, from routine, publish, set expiry, delete) with assistant-side confirms; error codes; read-only assistants; write consent page; DIDI-1196 strings covered or retired. Diadem, 8:22 PM EST (DIDI-594 bf5c77d7) and 8:35 PM EST (DIDI-594 1d16df1a). OPEN: gating for Claude Code and custom Claude clients. https://linear.app/didi-build/issue/DIDI-1241
+- **Nov 17, 2026**: v13: write tools for every assistant (create, edit, from routine, publish, set expiry, delete) with assistant-side confirms; error codes; write consent page; DIDI-1196 strings covered or retired. Diadem, 8:22 PM EST (DIDI-594 bf5c77d7), 8:35 PM EST (DIDI-594 1d16df1a), 10:34 and 10:36 PM EST (DIDI-594 ca41ca4d). Removed per ca41ca4d: #13, #20, read-only assistants, per-client gating, DIDI-1243, read-only consent page. https://linear.app/didi-build/issue/DIDI-1241
