@@ -83,7 +83,7 @@ The full verbatim copy is in the inventory at the end.
 
 ## Body region picker (DIDI-1253)
 
-**Edit for everyone**, **Edit my copy**, and other exercise save forms use the combobox in [body-region-picker/spec.md](../body-region-picker/spec.md) instead of a free-text body region field. Filter pills still reflect live catalog regions; adding a region happens only while saving an exercise.
+Combobox per [body-region-picker/spec.md](../body-region-picker/spec.md) when exercise save forms wire **Body region**. Add-new-exercise only: inline **Add {region}**. **Edit for everyone** and **Edit my copy**: pick-existing-only (Diadem decision [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256)). Filter pills remain fixed lists (`BODY_REGION_PILLS` in `library-filters.ts`). Saves `body_regions: [region]`.
 
 ## Mockups
 
@@ -548,9 +548,9 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
-* Nov 10, 2026, 2:09 PM ET, DIDI-1200: Diadem approved C2 ("Yes, approve C2"). The Request a new exercise card shows on every All exercises empty state (search with no exact match, no search with 0 exercises, filters that match nothing) as one container, with the empty message inside it when there are no similar results. Exercise is editable: prefilled from the search, empty with no search; Submit request is disabled until it has text. My exercises empty states are unchanged and have no card ("C, however, this should only display on the "all exercise" tab (not my exercises)", 2:07 PM ET). PROPOSED strings: 0. Matches Product direction: yes. https://linear.app/didi-build/issue/DIDI-1200, https://linear.app/didi-build/issue/DIDI-594
-
 * Nov 18, 2026: DIDI-1253 body region picker spec (variant A). Linked from this file and exercise-requests. https://linear.app/didi-build/issue/DIDI-1253
+
+* Nov 10, 2026, 2:09 PM ET, DIDI-1200: Diadem approved C2 ("Yes, approve C2"). The Request a new exercise card shows on every All exercises empty state (search with no exact match, no search with 0 exercises, filters that match nothing) as one container, with the empty message inside it when there are no similar results. Exercise is editable: prefilled from the search, empty with no search; Submit request is disabled until it has text. My exercises empty states are unchanged and have no card ("C, however, this should only display on the "all exercise" tab (not my exercises)", 2:07 PM ET). PROPOSED strings: 0. Matches Product direction: yes. https://linear.app/didi-build/issue/DIDI-1200, https://linear.app/didi-build/issue/DIDI-594
 
 * Nov 6, 2026, 1:52 AM ET (America/Toronto), DIDI-1173 final approval in Designer's chat. Diadem's three answers, verbatim:
   1. "I approve moving Requests into the Kojo menu with three bottom tabs"

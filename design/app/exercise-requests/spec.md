@@ -48,7 +48,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 ## Body region picker (DIDI-1253)
 
-The **Body region** field in draft review Basics (and the same field on other exercise save forms) is a combobox per [body-region-picker/spec.md](../body-region-picker/spec.md): existing catalog match, typed new inline **Add {region}**, AI-suggested value with **Keep** or **Change** before save, and empty list. Replaces free-text entry from `draftData.ts` `TEXT_META`. New regions go live with the exercise, not on a separate admin page.
+Combobox per [body-region-picker/spec.md](../body-region-picker/spec.md) when draft review and other exercise save forms wire **Body region** (`draftData.ts` `TEXT_META`). **Today** `DraftReviewPage.tsx` has no body region field. Add-new-exercise flows: catalog match, inline **Add {region}**, AI **Keep** / **Change** (placement open on [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256)). Edit flows: pick-existing-only. Saves `body_regions: [region]`.
 
 ## Mockups
 
@@ -316,7 +316,6 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
-- **Nov 18, 2026**: DIDI-1253 body region picker spec (variant A). https://linear.app/didi-build/issue/DIDI-1253
 - **Oct 23, 2026**: First concept: search, no result, request, draft review directions A, B and C; direction A kept. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Any practitioner can see and approve a request; requested by and approved by. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827
 - **Oct 24, 2026**: Similar exercises on submit, Merge my changes, no requester notification, regeneration cap. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-828, https://linear.app/didi-build/issue/DIDI-829
@@ -324,3 +323,4 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Oct 25, 2026**: v10 comment #18: Requests and drafts shows only work in progress; approved requests go straight into My exercises. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change to this feature in v11 or v12. https://linear.app/didi-build/issue/DIDI-809
 - **Nov 10, 2026**: DIDI-1200 C2 approved by Diadem (2:09 PM ET). The request card shows on every All exercises empty state, not only on a search with no match, as a single container. Exercise is editable: prefilled from the search, empty with no search. Not on My exercises. No new strings. https://linear.app/didi-build/issue/DIDI-1200
+- **Nov 18, 2026**: DIDI-1253 body region picker spec (variant A). https://linear.app/didi-build/issue/DIDI-1253
