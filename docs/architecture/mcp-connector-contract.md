@@ -15,23 +15,16 @@ The Worker MCP server lists only `PHYSIO_MCP_WIRED_TOOLS` (the four read tools) 
 
 Write tools use per-tool MCP annotations: `create_or_edit_program` is non-destructive write (`readOnlyHint: false`, `destructiveHint: false`); publish, set expiry, and delete are destructive writes (`destructiveHint: true`). All tools keep `openWorldHint: false`.
 
-Publish and delete require explicit user confirmation in the assistant conversation before the tool is called. Set expiry skips that confirm when the user's message already names the date or expiry. There is no server confirm token.
+**HELD (DIDI-1251):** There is no CTO-approved assistant-facing confirm instruction (ask and wait for explicit yes before publish, delete, or set expiry). Tool descriptions carry only user-facing v13 sample lines; behaviour prose in spec.md:338, 340–343, and 389 is out of scope for this PR. No server confirm token. See CTO comment `e1b1cb2d` on DIDI-1242.
 
 ## Privacy
 
-Enforcement is structural, not full content scanning: JSON Schema maxLength caps on free-text fields, property names must not match patient-info patterns (unit test), each tool's property set is pinned, field descriptions forbid patient details, and `validateFreeTextForPatientDetails` in the contract rejects obvious emails, phone numbers, Ontario health-card-shaped numbers, and date-of-birth-like dates (DIDI-991 runs this on the server). This is a regression guard, not a privacy guarantee.
+Enforcement is structural, not full content scanning: JSON Schema maxLength caps on free-text fields, property names must not match patient-info patterns (unit test), each tool's property set is pinned, **read-tool** field descriptions forbid patient details, write-tool free-text fields omit v13 copy until DIDI-1251 (patient-detail guidance held per CTO comment `e1b1cb2d`), and `validateFreeTextForPatientDetails` in the contract rejects obvious emails, phone numbers, Ontario health-card-shaped numbers, and date-of-birth-like dates (DIDI-991 runs this on wired read tools on the server; write tools pin the same validator over every capped free-text input path in tests). This is a regression guard, not a privacy guarantee.
 
 ## Platform
 
 The contract module must not import Node, Cloudflare Workers, or other runtime-specific packages. Verified by test.
 
-## Write-tool schema fields without v13 `description` (pending Designer)
+## Write-tool schema fields without v13 `description` (DIDI-1251)
 
-Until spec v13 supplies assistant-facing copy, these JSON Schema fields have **no** `description` (type and constraints only); mechanics are noted in `src/mcp-connector/json-schema.ts` comments:
-
-- `create_or_edit_program`: `rows`; `from_routine_id` (input; output `source_routine_id` keeps `routineIdProperty` text from read-tool spec)
-- `create_or_edit_program` output `exercises_not_found` items: `requested_exercise_name`, `candidate_matches`, `web_app_exercise_search_url`
-- `publish_program` input `overrides.expires_in`, `overrides.custom_date`; output `publish_change_lines`
-- `set_program_link_expiry` input `expires_in`, `custom_date`
-- `delete_program` output `restore_until`
-- Program row fragments added for writes: `programRowInputSchema` / `programRowOutputSchema` fields without v13 copy (including `row_notes`, `exercise_name` on rows)
+Until CTO approves assistant-facing copy, write-tool JSON Schema fields listed in [`docs/mcp-connector/write-schema-omitted-descriptions.md`](../mcp-connector/write-schema-omitted-descriptions.md) (regenerate with `npx tsx scripts/list-mcp-write-schema-omissions.ts`) have **no** `description` — type and constraints only, including HELD confirm instruction and HELD patient-detail guidance. Output `source_routine_id` keeps `routineIdProperty` text from the read-tool spec. Mechanics are noted in `src/mcp-connector/json-schema.ts` comments.

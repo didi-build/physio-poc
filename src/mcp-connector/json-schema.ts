@@ -265,10 +265,22 @@ export const programTitleProperty: JsonSchema = {
   description: `Non-identifying program title the practitioner uses to recognise this program later. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
+/** Write tools: same cap as programTitleProperty, no description until DIDI-1251. */
+export const writeProgramTitleInputProperty: JsonSchema = {
+  type: "string",
+  maxLength: MAX_LENGTH_PROGRAM_TITLE,
+};
+
 export const nullableProgramTitleProperty: JsonSchema = {
   type: ["string", "null"],
   maxLength: MAX_LENGTH_PROGRAM_TITLE,
   description: `Non-identifying program title, or null when unset. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
+};
+
+/** Write tool outputs: nullable title without v13 field copy. */
+export const writeNullableProgramTitleOutputProperty: JsonSchema = {
+  type: ["string", "null"],
+  maxLength: MAX_LENGTH_PROGRAM_TITLE,
 };
 
 export const matchCountOutputProperty: JsonSchema = {
@@ -316,9 +328,45 @@ export const routineIdProperty: JsonSchema = {
     "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000).",
 };
 
-const programRowSharedProperties: Record<string, JsonSchema> = {
-  prescription_type: prescriptionTypeSchema,
-  params: rowParamsSchema,
+/** Write program rows: same shapes as read/search schemas, no non-v13 descriptions. */
+const writeNumericOrRangeSchema: JsonSchema = {
+  oneOf: [
+    { type: "number" },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["min", "max"],
+      properties: {
+        min: { type: "number" },
+        max: { type: "number" },
+      },
+    },
+  ],
+};
+
+const writeRowParamsSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    reps: writeNumericOrRangeSchema,
+    sets: writeNumericOrRangeSchema,
+    hold_s: writeNumericOrRangeSchema,
+    ascent_s: writeNumericOrRangeSchema,
+    descent_s: writeNumericOrRangeSchema,
+    rest_s: writeNumericOrRangeSchema,
+    per_day: writeNumericOrRangeSchema,
+    days_per_week: writeNumericOrRangeSchema,
+  },
+};
+
+const writePrescriptionTypeSchema: JsonSchema = {
+  type: "string",
+  enum: ["stretching", "isometric", "concentric", "eccentric"],
+};
+
+const programRowSharedPropertiesWrite: Record<string, JsonSchema> = {
+  prescription_type: writePrescriptionTypeSchema,
+  params: writeRowParamsSchema,
   row_notes: {
     type: "string",
     maxLength: MAX_LENGTH_ROW_NOTES,
@@ -336,7 +384,7 @@ export const programRowInputSchema: JsonSchema = {
         exercise_version_id: {
           type: "string",
         },
-        ...programRowSharedProperties,
+        ...programRowSharedPropertiesWrite,
       },
     },
     {
@@ -349,7 +397,7 @@ export const programRowInputSchema: JsonSchema = {
           minLength: 1,
           maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
         },
-        ...programRowSharedProperties,
+        ...programRowSharedPropertiesWrite,
       },
     },
   ],
@@ -367,7 +415,7 @@ export const programRowOutputSchema: JsonSchema = {
     exercise_name: {
       type: "string",
     },
-    ...programRowSharedProperties,
+    ...programRowSharedPropertiesWrite,
   },
 };
 

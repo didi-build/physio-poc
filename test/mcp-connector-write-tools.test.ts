@@ -12,27 +12,23 @@ function toolDescription(name: string): string {
 }
 
 describe("Physio MCP write tool descriptions (DIDI-1242)", () => {
-  it("pins v13 create_or_edit partial-result copy", () => {
+  it("pins exercises_not_found REUSED copy only on create_or_edit_program", () => {
     const d = toolDescription(CREATE_OR_EDIT_PROGRAM_TOOL_NAME);
-    expect(d).toContain(
-      "create or edit a program, create from a routine via create_or_edit_program with from_routine_id.",
+    expect(d).toBe(
+      [
+        "{name} isn't in your exercise library yet, and I can't create new exercises from here.",
+        "You can request it in the web app. The search is already filled in:",
+        "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged.",
+      ].join(" "),
     );
-    expect(d).toContain(
-      "{name} isn't in your exercise library yet, and I can't create new exercises from here.",
-    );
-    expect(d).toContain(
-      "You can request it in the web app. The search is already filled in:",
-    );
-    expect(d).toContain(
-      "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged.",
-    );
+    expect(d).not.toContain("create from a routine");
+    expect(d).not.toContain("partial result");
   });
 
-  it("pins v13 publish confirm reference lines", () => {
+  it("pins exact v13 publish confirm sample lines", () => {
     const d = toolDescription(PUBLISH_PROGRAM_TOOL_NAME);
-    expect(d).toContain(
-      "Before calling, read the program with get_program_share_link_or_pdf so the question has the real name, code, exercise count, link state and expiry.",
-    );
+    expect(d).not.toContain("get_program_share_link_or_pdf");
+    expect(d).not.toContain("publish_change_lines");
     expect(d).toContain("Publish {name}?");
     expect(d).toContain("Creates the share link. Anyone with it sees this version.");
     expect(d).toContain("Expires in {expiry} ({date}), your default.");
@@ -43,7 +39,6 @@ describe("Physio MCP write tool descriptions (DIDI-1242)", () => {
       "A separate copy of {routine}, v{n}. Later routine edits won't change it.",
     );
     expect(d).toContain("Publish changes to {name}?");
-    expect(d).toContain("One line per change from publish_change_lines.");
     expect(d).toContain("Your patient sees this on the same link right away.");
     expect(d).toContain("Reply yes to publish, or no to keep the changes as a draft.");
     expect(d).toContain("This isn't live yet.");
@@ -57,11 +52,9 @@ describe("Physio MCP write tool descriptions (DIDI-1242)", () => {
     expect(d).toContain("Never expires.");
   });
 
-  it("pins v13 set_program_link_expiry confirm and skip-when-named rule", () => {
+  it("pins exact v13 set_program_link_expiry APPROVED #5–#7 only", () => {
     const d = toolDescription(SET_PROGRAM_LINK_EXPIRY_TOOL_NAME);
-    expect(d).toContain(
-      "Call directly when the user's message names the date or expiry; otherwise confirm first.",
-    );
+    expect(d).not.toContain("Call directly when");
     expect(d).toContain("Change the link for {name} to expire on {date}?");
     expect(d).toContain("Change the link for {name} to never expire?");
     expect(d).toContain("It's the same link. Right now it expires on {current_date}.");
@@ -69,7 +62,7 @@ describe("Physio MCP write tool descriptions (DIDI-1242)", () => {
     expect(d).toContain("Reply yes to change it, or no to leave it.");
   });
 
-  it("pins v13 delete confirm reference lines", () => {
+  it("pins exact v13 delete confirm reference lines", () => {
     const d = toolDescription(DELETE_PROGRAM_TOOL_NAME);
     expect(d).toContain("Delete {name}?");
     expect(d).toContain("{code}, {n} exercises. It moves to Recently deleted.");

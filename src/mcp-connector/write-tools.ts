@@ -4,13 +4,13 @@ import {
   exerciseCountOutputProperty,
   exerciseNotFoundSchema,
   expiresAtOutputProperty,
-  nullableProgramTitleProperty,
   nullableProgramVersionRefSchema,
   pdfUrlOutputProperty,
   programCodeProperty,
   programRowInputSchema,
   programRowOutputSchema,
-  programTitleProperty,
+  writeNullableProgramTitleOutputProperty,
+  writeProgramTitleInputProperty,
   publishChangeLinesOutputProperty,
   publishOverridesInputSchema,
   restoreUntilOutputProperty,
@@ -25,16 +25,15 @@ import {
 
 export const CREATE_OR_EDIT_PROGRAM_TOOL_NAME = "create_or_edit_program" as const;
 
+/** spec.md error table `exercises_not_found` REUSED strings only */
 export const createOrEditProgramDescription = [
-  "create or edit a program, create from a routine via create_or_edit_program with from_routine_id.",
-  "exercises_not_found partial result:",
   "{name} isn't in your exercise library yet, and I can't create new exercises from here.",
   "You can request it in the web app. The search is already filled in:",
   "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged.",
 ].join(" ");
 
+/** spec.md Confirm wording — APPROVED #1–#4 and REUSED publish lines only (no spec prose). */
 export const publishProgramDescription = [
-  "Before calling, read the program with get_program_share_link_or_pdf so the question has the real name, code, exercise count, link state and expiry.",
   "Publish {name}?",
   "Creates the share link. Anyone with it sees this version.",
   "Expires in {expiry} ({date}), your default.",
@@ -42,7 +41,6 @@ export const publishProgramDescription = [
   "A separate copy of {routine}, v{n}. Later routine edits won't change it.",
   "Code {code}. Creates the share link.",
   "Publish changes to {name}?",
-  "One line per change from publish_change_lines.",
   "Your patient sees this on the same link right away.",
   "Reply yes to publish, or no to keep the changes as a draft.",
   "This isn't live yet.",
@@ -60,7 +58,7 @@ export const createOrEditProgramInputSchema: JsonSchema = {
   additionalProperties: false,
   properties: {
     program_code: programCodeProperty,
-    program_title: programTitleProperty,
+    program_title: writeProgramTitleInputProperty,
     from_routine_id: routineIdWithoutDescription,
     rows: {
       type: "array",
@@ -85,7 +83,7 @@ export const createOrEditProgramOutputSchema: JsonSchema = {
     share_link: shareLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
     program_code: programCodeProperty,
-    program_title: nullableProgramTitleProperty,
+    program_title: writeNullableProgramTitleOutputProperty,
     source_routine_id: routineIdProperty,
     exercise_count: exerciseCountOutputProperty,
     rows: {
@@ -130,7 +128,7 @@ export const publishProgramOutputSchema: JsonSchema = {
     manage_url: manageUrlOutputProperty,
     expires_at: expiresAtOutputProperty,
     program_code: programCodeProperty,
-    program_title: nullableProgramTitleProperty,
+    program_title: writeNullableProgramTitleOutputProperty,
     draft_state: draftStateOutputProperty,
     draft: nullableProgramVersionRefSchema,
     published: nullableProgramVersionRefSchema,
@@ -141,8 +139,8 @@ export const publishProgramOutputSchema: JsonSchema = {
 
 export const SET_PROGRAM_LINK_EXPIRY_TOOL_NAME = "set_program_link_expiry" as const;
 
+/** spec.md APPROVED #5–#7 set-expiry confirm sample lines only. */
 export const setProgramLinkExpiryDescription = [
-  "Call directly when the user's message names the date or expiry; otherwise confirm first.",
   "Change the link for {name} to expire on {date}?",
   "Change the link for {name} to never expire?",
   "It's the same link. Right now it expires on {current_date}.",
@@ -171,13 +169,14 @@ export const setProgramLinkExpiryOutputSchema: JsonSchema = {
     manage_url: manageUrlOutputProperty,
     expires_at: expiresAtOutputProperty,
     program_code: programCodeProperty,
-    program_title: nullableProgramTitleProperty,
+    program_title: writeNullableProgramTitleOutputProperty,
     share_link_state: shareLinkStateOutputProperty,
   },
 };
 
 export const DELETE_PROGRAM_TOOL_NAME = "delete_program" as const;
 
+/** spec.md delete confirm REUSED + APPROVED #8. */
 export const deleteProgramDescription = [
   "Delete {name}?",
   "{code}, {n} exercises. It moves to Recently deleted.",
@@ -204,7 +203,7 @@ export const deleteProgramOutputSchema: JsonSchema = {
     share_link: shareLinkOutputProperty,
     manage_url: manageUrlOutputProperty,
     program_code: programCodeProperty,
-    program_title: nullableProgramTitleProperty,
+    program_title: writeNullableProgramTitleOutputProperty,
     restore_until: restoreUntilOutputProperty,
     share_link_state: shareLinkStateOutputProperty,
   },
