@@ -39,7 +39,7 @@ Clinical text you write is always a draft for practitioner review and approval. 
 
 Never include patient-identifying or patient-specific information (names, contact details, health card numbers, dates of birth, or similar).
 
-Use only the practitioner-supplied exercise name and their optional notes. Fill the template fields: title, aliases, category (stretch or strengthening), body_regions, description, equipment, starting_position, steps, common_mistakes, regressions, progressions, precautions, default_sets_and_reps, and cue lines.
+Use only the practitioner-supplied exercise name and their optional notes. Fill the template fields: title, aliases, category (stretch or strengthening), body_regions, description, equipment, starting_position, steps, common_mistakes, regressions, progressions, precautions, default_sets_and_reps, and cue lines. For body_regions, use free-text region names.
 
 For stretch exercises, provide cue_stretching and set cue_isometric, cue_concentric, and cue_eccentric to null. For strengthening exercises, provide cue_isometric, cue_concentric, and cue_eccentric and set cue_stretching to null.
 
@@ -520,6 +520,63 @@ describe("DeepInfra exercise draft generator", () => {
         DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
       ),
     ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+  });
+
+  it("persists unknown body region names as suggestions with one provider call", async () => {
+    const draftWithSuggestion = {
+      ...VALID_STRETCH_DRAFT,
+      body_regions: ["knee", "upper back"],
+    };
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(draftWithSuggestion)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const regionCountBefore = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM body_regions",
+      );
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-suggest"),
+        "suggest@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      const result = await generator(
+        {
+          sql: storage,
+          requestId: id("req-suggest"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const regionCountAfter = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM body_regions",
+      );
+      expect(regionCountAfter?.count).toBe(regionCountBefore?.count);
+      const linked = await storage.all<{ body_region_id: string }>(
+        "SELECT body_region_id FROM exercise_body_regions WHERE exercise_id = ?",
+        [result.exerciseId],
+      );
+      expect(linked.map((r) => r.body_region_id).sort()).toEqual(["br-knee"]);
+      const suggested = await storage.all<{ label: string }>(
+        "SELECT label FROM exercise_suggested_body_regions WHERE exercise_id = ?",
+        [result.exerciseId],
+      );
+      expect(suggested).toEqual([{ label: "upper back" }]);
+    } finally {
+      storage.close();
+    }
   });
 
   it("includes regeneration note in the user message when provided", async () => {

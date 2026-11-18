@@ -7,10 +7,11 @@ import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import type { SqlBatchStatement } from "../../storage/ports/sql-storage.js";
 import {
-  BodyRegionsRepository,
   ExerciseAliasesRepository,
   ExerciseBodyRegionsRepository,
+  ExerciseSuggestedBodyRegionsRepository,
 } from "../../storage/repositories/exercise-data.js";
+import { partitionExerciseDraftBodyRegions } from "./exercise-draft-body-regions.js";
 import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
 import { deepInfraExerciseDraftError } from "./deepinfra-draft-error-factory.js";
 import {
@@ -78,26 +79,6 @@ function cueShapeValid(payload: ExerciseDraftAiPayload): boolean {
   );
 }
 
-async function resolveBodyRegionIds(
-  sql: ExerciseDraftGeneratorInput["sql"],
-  labels: string[],
-): Promise<string[] | null> {
-  const regions = new BodyRegionsRepository(sql);
-  const all = await regions.listAll();
-  const ids: string[] = [];
-  for (const label of labels) {
-    const normalized = label.trim().toLowerCase();
-    const match = all.find((row) => row.label.toLowerCase() === normalized);
-    if (!match) {
-      return null;
-    }
-    if (!ids.includes(match.id)) {
-      ids.push(match.id);
-    }
-  }
-  return ids.length > 0 ? ids : null;
-}
-
 function draftDescription(payload: ExerciseDraftAiPayload): string {
   return payload.description.trim();
 }
@@ -112,11 +93,18 @@ type PreparedDraftBatch = {
 
 async function buildPersistBatchStatements(input: {
   payload: ExerciseDraftAiPayload;
-  regionIds: string[];
+  linkedRegionIds: string[];
+  suggestedRegionLabels: string[];
   generatorInput: ExerciseDraftGeneratorInput;
   deps: GeneratorDeps;
 }): Promise<PreparedDraftBatch> {
-  const { payload, regionIds, generatorInput: genIn, deps } = input;
+  const {
+    payload,
+    linkedRegionIds,
+    suggestedRegionLabels,
+    generatorInput: genIn,
+    deps,
+  } = input;
   const exerciseId = generateOpaqueEntityId();
   const versionId = generateOpaqueEntityId();
   const category = payload.category as ExerciseCategory;
@@ -145,8 +133,12 @@ async function buildPersistBatchStatements(input: {
     );
   }
 
-  const regionStatements = regionIds.map((regionId) =>
+  const suggestedRegions = new ExerciseSuggestedBodyRegionsRepository();
+  const regionStatements = linkedRegionIds.map((regionId) =>
     bodyRegionLinks.buildLinkBatchStatement(exerciseId, regionId),
+  );
+  const suggestionStatements = suggestedRegionLabels.map((label) =>
+    suggestedRegions.buildInsertSuggestionBatchStatement(exerciseId, label),
   );
 
   try {
@@ -189,6 +181,7 @@ async function buildPersistBatchStatements(input: {
         }),
         ...aliasStatements,
         ...regionStatements,
+        ...suggestionStatements,
         deps.requests.buildUpdateAfterDraftLinkBatchStatement({
           id: genIn.requestId,
           status: "drafting",
@@ -247,18 +240,14 @@ export function createDeepInfraExerciseDraftGenerator(
           );
           continue;
         }
-        const regionIds = await resolveBodyRegionIds(input.sql, validated.body_regions);
-        if (!regionIds) {
-          lastFailure = deepInfraExerciseDraftError(
-            "deepinfra_exercise_draft_response_invalid",
-          );
-          continue;
-        }
+        const { linkedRegionIds, suggestedLabels } =
+          await partitionExerciseDraftBodyRegions(input.sql, validated.body_regions);
         let prepared: Awaited<ReturnType<typeof buildPersistBatchStatements>>;
         try {
           prepared = await buildPersistBatchStatements({
             payload: validated,
-            regionIds,
+            linkedRegionIds,
+            suggestedRegionLabels: suggestedLabels,
             generatorInput: input,
             deps,
           });

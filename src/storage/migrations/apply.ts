@@ -10,6 +10,7 @@ export const MIGRATION_0006_ID = "0006_mcp_oauth";
 export const MIGRATION_0007_ID = "0007_sql_batch_min_rows_guard";
 export const MIGRATION_0008_ID = "0008_routine_draft_discards";
 export const MIGRATION_0009_ID = "0009_routine_conditions";
+export const MIGRATION_0010_ID = "0010_exercise_suggested_body_regions";
 
 export function splitSqlStatements(sql: string): string[] {
   const withoutComments = sql

@@ -177,6 +177,20 @@ d1_tables:
       exercise_id: {}
       body_region_id: {}
 
+  exercise_suggested_body_regions:
+    defaults:
+      whose: operational
+      storage: D1
+      processors: [Cloudflare]
+      retention: until exercise deleted
+      who_can_see: all_practitioners
+      source: migrations/0010_exercise_suggested_body_regions.sql
+      verified: true
+      notes: Draft-only suggested labels until DIDI-1254 promotes them with exercise save.
+    columns:
+      exercise_id: {}
+      label: {}
+
   exercise_requests:
     defaults:
       storage: D1
