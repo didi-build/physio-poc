@@ -15,7 +15,7 @@ The Worker MCP server lists only `PHYSIO_MCP_WIRED_TOOLS` (the four read tools) 
 
 Write tools use per-tool MCP annotations: `create_or_edit_program` is non-destructive write (`readOnlyHint: false`, `destructiveHint: false`); publish, set expiry, and delete are destructive writes (`destructiveHint: true`). All tools keep `openWorldHint: false`.
 
-**HELD (DIDI-1251):** There is no CTO-approved assistant-facing confirm instruction (ask and wait for explicit yes before publish, delete, or set expiry). Tool descriptions carry only user-facing v13 sample lines; behaviour prose in spec.md:338, 340–343, and 389 is out of scope for this PR. No server confirm token. See CTO comment `e1b1cb2d` on DIDI-1242.
+**Tool descriptions (DIDI-1251 / spec PR132, merge `5c02d0b`):** `publish_program`, `set_program_link_expiry`, and `delete_program` use APPROVED #25–#27 from `design/connector/claude-connector/spec.md` (includes ask-and-wait confirm instruction). `create_or_edit_program` has **no** approved tool description (empty string; listed in omissions doc). No server confirm token.
 
 ## Privacy
 
@@ -27,4 +27,4 @@ The contract module must not import Node, Cloudflare Workers, or other runtime-s
 
 ## Write-tool schema fields without v13 `description` (DIDI-1251)
 
-Until CTO approves assistant-facing copy, write-tool JSON Schema fields listed in [`docs/mcp-connector/write-schema-omitted-descriptions.md`](../mcp-connector/write-schema-omitted-descriptions.md) (regenerate with `npx tsx scripts/list-mcp-write-schema-omissions.ts`) have **no** `description` — type and constraints only; **free-text write fields** are excluded and instead use the `5d59df38` sentence. HELD confirm instruction remains **DIDI-1251**. Output `source_routine_id` keeps `routineIdProperty` text from the read-tool spec. Mechanics are noted in `src/mcp-connector/json-schema.ts` comments.
+Write-tool JSON Schema fields without approved copy are listed in [`docs/mcp-connector/write-schema-omitted-descriptions.md`](../mcp-connector/write-schema-omitted-descriptions.md) (regenerate with `npx tsx scripts/list-mcp-write-schema-omissions.ts`). **Free-text write fields** approved in DIDI-1251 use exactly `Do not pass patient information.` (`program_title` input, `row_notes`, row `exercise_name` per spec PR132); other free-text write fields cite DIDI-594 comment `5d59df38`. Output `source_routine_id` keeps `routineIdProperty` text from the read-tool spec.

@@ -25,30 +25,12 @@ import {
 
 export const CREATE_OR_EDIT_PROGRAM_TOOL_NAME = "create_or_edit_program" as const;
 
-/** spec.md error table `exercises_not_found` REUSED strings only */
-export const createOrEditProgramDescription = [
-  "{name} isn't in your exercise library yet, and I can't create new exercises from here.",
-  "You can request it in the web app. The search is already filled in:",
-  "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged.",
-].join(" ");
+/** No approved tool description (DIDI-1251 #25–#27 cover publish/set/delete only). */
+export const createOrEditProgramDescription = "";
 
-/** spec.md Confirm wording — APPROVED #1–#4 and REUSED publish lines only (no spec prose). */
-export const publishProgramDescription = [
-  "Publish {name}?",
-  "Creates the share link. Anyone with it sees this version.",
-  "Expires in {expiry} ({date}), your default.",
-  "Reply yes to publish, or tell me a different expiry. No keeps it as a draft.",
-  "A separate copy of {routine}, v{n}. Later routine edits won't change it.",
-  "Code {code}. Creates the share link.",
-  "Publish changes to {name}?",
-  "Your patient sees this on the same link right away.",
-  "Reply yes to publish, or no to keep the changes as a draft.",
-  "This isn't live yet.",
-  "{name} has draft changes that aren't live yet. Do you want the link to the published version, or should I publish the draft first?",
-  "I can set any date from tomorrow, with no latest date, or make it never expire.",
-  "Expires in {expiry} ({date}).",
-  "Never expires.",
-].join(" ");
+/** spec.md Tools (v13) APPROVED #25 (DIDI-1251 / spec PR132). */
+export const publishProgramDescription =
+  "Publish a program, or publish its draft changes to the same share link. Before calling, ask the user in the conversation and wait for an explicit yes. Read the program first with get_program_share_link_or_pdf so the question has the real name, code, link state and expiry. The question must cover the program name, that it creates or updates the share link, that anyone with the link sees this version, and the expiry and whether it is the default. For a program made from a routine, also say that later routine edits won't change it. For changes to a live program, say what changed and that the patient sees it on the same link. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.";
 
 const routineIdWithoutDescription: JsonSchema = { ...routineIdProperty };
 delete (routineIdWithoutDescription as { description?: string }).description;
@@ -139,14 +121,9 @@ export const publishProgramOutputSchema: JsonSchema = {
 
 export const SET_PROGRAM_LINK_EXPIRY_TOOL_NAME = "set_program_link_expiry" as const;
 
-/** spec.md APPROVED #5–#7 set-expiry confirm sample lines only. */
-export const setProgramLinkExpiryDescription = [
-  "Change the link for {name} to expire on {date}?",
-  "Change the link for {name} to never expire?",
-  "It's the same link. Right now it expires on {current_date}.",
-  "It's the same link. Right now it never expires.",
-  "Reply yes to change it, or no to leave it.",
-].join(" ");
+/** spec.md Tools (v13) APPROVED #26 (DIDI-1251 / spec PR132). */
+export const setProgramLinkExpiryDescription =
+  "Change when a program's share link expires. The link stays the same. If the user's message already names the date or expiry, call this tool directly. Otherwise, ask the user in the conversation and wait for an explicit yes before calling. Read the program first with get_program_share_link_or_pdf. The question must cover the program name, the new expiry, that it's the same link, and the current expiry. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.";
 
 export const setProgramLinkExpiryInputSchema: JsonSchema = {
   type: "object",
@@ -176,14 +153,9 @@ export const setProgramLinkExpiryOutputSchema: JsonSchema = {
 
 export const DELETE_PROGRAM_TOOL_NAME = "delete_program" as const;
 
-/** spec.md delete confirm REUSED + APPROVED #8. */
-export const deleteProgramDescription = [
-  "Delete {name}?",
-  "{code}, {n} exercises. It moves to Recently deleted.",
-  'Closes its share link, so anyone who opens it sees "This link was closed".',
-  "You can restore it in the web app for 30 days.",
-  "Reply yes to delete it, or no to keep it.",
-].join(" ");
+/** spec.md Tools (v13) APPROVED #27 (DIDI-1251 / spec PR132). */
+export const deleteProgramDescription =
+  "Delete a program. Before calling, ask the user in the conversation and wait for an explicit yes. Read the program first with get_program_share_link_or_pdf so the question has the real name, code, exercise count and link state. The question must cover the program name, code and exercise count, that it moves to Recently deleted, that its share link closes (only when the link is open), and that it can be restored in the web app for 30 days. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.";
 
 export const deleteProgramInputSchema: JsonSchema = {
   type: "object",
