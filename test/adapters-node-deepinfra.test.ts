@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createImageGenerationPort } from "../src/adapters/node/create-image-generation-port.js";
-import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
+import {
+  DEEPINFRA_IMAGE_JSON_MAX_BYTES,
+  DeepInfraFluxKleinImageGeneration,
+} from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
 import { buildStartImagePrompt } from "../src/domain/exercise-media-prompts.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import {
@@ -120,6 +123,39 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     void startBytes;
   });
 
+  it("falls back to prompt-only end generation on HTTP 422 even when the body has no unsupported keywords", async () => {
+    const generationsCalls: string[] = [];
+    const editCalls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/v1/openai/images/generations")) {
+        generationsCalls.push(String(init?.body));
+        return new Response(
+          JSON.stringify({ data: [{ b64_json: b64Png("FALLBACK-END-422") }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/v1/images/edits")) {
+        editCalls.push(url);
+        return new Response(JSON.stringify({ detail: [{ msg: "field required", type: "value_error" }] }), {
+          status: 422,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await generator.generateStartAndEndImages({
+      startPrompt: "start only",
+      endPrompt: "fallback end prompt",
+    });
+
+    expect(editCalls).toHaveLength(1);
+    expect(generationsCalls).toHaveLength(2);
+    expect(generationsCalls[1]).toContain("fallback end prompt");
+  });
+
   it("falls back to prompt-only end generation when edit response is unsupported", async () => {
     const generationsCalls: string[] = [];
     const editCalls: string[] = [];
@@ -182,6 +218,21 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     } finally {
       restoreConsoleSpies(consoleSpies);
     }
+  });
+
+  it("rejects image JSON payloads over the response size cap", async () => {
+    const overCap = "x".repeat(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1);
+    const fetchImpl = vi.fn(async () =>
+      new Response(overCap, {
+        status: 200,
+        headers: { "content-type": "application/json", "content-length": String(overCap.length) },
+      }),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_response_invalid",
+      statusCode: 502,
+    });
   });
 
   it("rejects invalid JSON image payloads", async () => {

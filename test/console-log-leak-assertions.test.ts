@@ -29,6 +29,11 @@ describe("console-log-leak-assertions", () => {
     expect(() => assertLeakFreeText(bodyInspectForm, { jsonBody })).toThrow();
   });
 
+  function invalid502Expectations() {
+    const jsonBody = JSON.stringify({ detail: REGEN_NOTE });
+    return { note: REGEN_NOTE, jsonBody, apiKey: API_KEY };
+  }
+
   describe("image generation 401 leak probes", () => {
     it("passes for a redacted ImageGenerationError", () => {
       const expectations = edit401Expectations();
@@ -53,6 +58,29 @@ describe("console-log-leak-assertions", () => {
     it("fails when the regeneration note is attached as an error property", () => {
       const expectations = edit401Expectations();
       const err = new ImageGenerationError("image_generation_request_failed", 401);
+      (err as ImageGenerationError & { regenerationNote: string }).regenerationNote =
+        REGEN_NOTE;
+      expect(() => expectThrownErrorLeakFree(err, expectations)).toThrow();
+    });
+  });
+
+  describe("image generation invalid response leak probes", () => {
+    it("passes for a redacted ImageGenerationError", () => {
+      const expectations = invalid502Expectations();
+      const err = new ImageGenerationError("image_generation_response_invalid", 502);
+      expectThrownErrorLeakFree(err, expectations);
+    });
+
+    it("fails when the response body is the thrown error cause (raw text)", () => {
+      const expectations = invalid502Expectations();
+      const err = new ImageGenerationError("image_generation_response_invalid", 502);
+      err.cause = expectations.jsonBody;
+      expect(() => expectThrownErrorLeakFree(err, expectations)).toThrow();
+    });
+
+    it("fails when the regeneration note is attached as an error property", () => {
+      const expectations = invalid502Expectations();
+      const err = new ImageGenerationError("image_generation_response_invalid", 502);
       (err as ImageGenerationError & { regenerationNote: string }).regenerationNote =
         REGEN_NOTE;
       expect(() => expectThrownErrorLeakFree(err, expectations)).toThrow();
