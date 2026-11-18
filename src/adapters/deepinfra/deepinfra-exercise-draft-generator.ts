@@ -28,10 +28,6 @@ import {
 } from "./exercise-draft-ai-schema.js";
 import { EXERCISE_DRAFT_SYSTEM_PROMPT } from "./exercise-draft-system-prompt.js";
 import {
-  SEEDED_BODY_REGION_IDS,
-  isSeededBodyRegionLabel,
-} from "./exercise-draft-seeded-body-regions.js";
-import {
   DeepInfraChatCompletionClient,
   isNonRetryableDeepInfraHttpStatus,
   type DeepInfraChatCompletionRequest,
@@ -82,30 +78,24 @@ function cueShapeValid(payload: ExerciseDraftAiPayload): boolean {
   );
 }
 
-async function resolveSeededBodyRegionIds(
+async function resolveBodyRegionIds(
   sql: ExerciseDraftGeneratorInput["sql"],
   labels: string[],
-): Promise<string[]> {
-  if (labels.length === 0) {
-    return [];
-  }
+): Promise<string[] | null> {
   const regions = new BodyRegionsRepository(sql);
   const all = await regions.listAll();
   const ids: string[] = [];
   for (const label of labels) {
-    if (!isSeededBodyRegionLabel(label)) {
-      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_body_region_invalid");
-    }
-    const expectedId = SEEDED_BODY_REGION_IDS[label];
-    const match = all.find((row) => row.id === expectedId);
+    const normalized = label.trim().toLowerCase();
+    const match = all.find((row) => row.label.toLowerCase() === normalized);
     if (!match) {
-      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_body_region_invalid");
+      return null;
     }
-    if (!ids.includes(expectedId)) {
-      ids.push(expectedId);
+    if (!ids.includes(match.id)) {
+      ids.push(match.id);
     }
   }
-  return ids;
+  return ids.length > 0 ? ids : null;
 }
 
 function draftDescription(payload: ExerciseDraftAiPayload): string {
@@ -257,10 +247,13 @@ export function createDeepInfraExerciseDraftGenerator(
           );
           continue;
         }
-        const regionIds = await resolveSeededBodyRegionIds(
-          input.sql,
-          validated.body_regions,
-        );
+        const regionIds = await resolveBodyRegionIds(input.sql, validated.body_regions);
+        if (!regionIds) {
+          lastFailure = deepInfraExerciseDraftError(
+            "deepinfra_exercise_draft_response_invalid",
+          );
+          continue;
+        }
         let prepared: Awaited<ReturnType<typeof buildPersistBatchStatements>>;
         try {
           prepared = await buildPersistBatchStatements({
@@ -300,9 +293,6 @@ export function createDeepInfraExerciseDraftGenerator(
         return { exerciseId: prepared.exerciseId, versionId: prepared.versionId };
       } catch (error) {
         if (error instanceof DeepInfraExerciseDraftError) {
-          if (error.code === "deepinfra_exercise_draft_body_region_invalid") {
-            throw error;
-          }
           lastFailure = error;
           if (
             error.code === "deepinfra_exercise_draft_request_failed" &&

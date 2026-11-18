@@ -3,8 +3,7 @@ export type DeepInfraExerciseDraftErrorCode =
   | "deepinfra_exercise_draft_response_invalid"
   | "deepinfra_exercise_draft_response_too_large"
   | "deepinfra_exercise_draft_timeout"
-  | "deepinfra_exercise_draft_network_error"
-  | "deepinfra_exercise_draft_body_region_invalid";
+  | "deepinfra_exercise_draft_network_error";
 
 export class DeepInfraExerciseDraftError extends Error {
   readonly httpStatus?: number;

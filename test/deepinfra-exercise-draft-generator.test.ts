@@ -41,8 +41,6 @@ Never include patient-identifying or patient-specific information (names, contac
 
 Use only the practitioner-supplied exercise name and their optional notes. Fill the template fields: title, aliases, category (stretch or strengthening), body_regions, description, equipment, starting_position, steps, common_mistakes, regressions, progressions, precautions, default_sets_and_reps, and cue lines.
 
-For body_regions, use only the seeded library labels: knee, ankle, hip. Use an empty array when none of those regions apply.
-
 For stretch exercises, provide cue_stretching and set cue_isometric, cue_concentric, and cue_eccentric to null. For strengthening exercises, provide cue_isometric, cue_concentric, and cue_eccentric and set cue_stretching to null.
 
 Write clear, practical physiotherapy language suitable for a shared exercise library.`;
@@ -562,50 +560,6 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("fails closed on body region DB mismatch with one provider call and no persistence", async () => {
-    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
-    const generator = createDeepInfraExerciseDraftGenerator({
-      apiKey: SENTINEL_KEY,
-      fetchImpl,
-    });
-    const storage = await openMigratedDatabase();
-    try {
-      await storage.run("DELETE FROM body_regions WHERE id = ?", ["br-knee"]);
-      const practitioner = await seedPractitioner(
-        storage,
-        id("pr-brfail"),
-        "br@example.com",
-      );
-      const requests = new ExerciseRequestsRepository(storage);
-      const versions = new ExerciseVersionsRepository(storage);
-      await expect(
-        generator(
-          {
-            sql: storage,
-            requestId: id("req-brfail"),
-            requestedName: "Heel slide",
-            exerciseNote: null,
-            requestedBy: practitioner,
-            now: AFTER_FORM,
-          },
-          {
-            exercises: new ExercisesRepository(storage),
-            versions,
-            requests,
-          },
-        ),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_body_region_invalid" });
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      const count = await storage.first<{ count: number }>(
-        "SELECT COUNT(*) AS count FROM exercise_requests WHERE id = ?",
-        [id("req-brfail")],
-      );
-      expect(count?.count).toBe(0);
-    } finally {
-      storage.close();
-    }
-  });
-
   it("enforces response size while streaming without content-length", async () => {
     const chunk = "x".repeat(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES + 1);
     const stream = new ReadableStream({
@@ -791,7 +745,7 @@ describe("DeepInfra request metadata guards", () => {
       expect(responseFormat.json_schema.strict).toBe(true);
       const messages = body.messages as Array<{ role: string; content: string }>;
       expect(messages[0]?.content).toBe(PINNED_SYSTEM_PROMPT);
-      expect(messages[0]?.content).toContain("knee, ankle, hip");
+      expect(messages[0]?.content).toContain("Never include patient-identifying");
     } finally {
       storage.close();
     }
