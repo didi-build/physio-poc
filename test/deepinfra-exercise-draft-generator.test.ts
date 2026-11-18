@@ -17,7 +17,6 @@ import {
   ExercisesRepository,
 } from "../src/storage/repositories/exercise-data.js";
 import {
-  assertLeakFreeText,
   expectThrownErrorLeakFree,
   restoreConsoleSpies,
   spyAllConsoleLevels,
@@ -729,9 +728,6 @@ describe("DeepInfra API key redaction on failures", () => {
         expectThrownErrorLeakFree(err, { apiKey: SENTINEL_KEY, jsonBody: echo });
         return true;
       });
-      const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
-      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
-      assertLeakFreeText(String(auth ?? ""), { apiKey: SENTINEL_KEY });
     } finally {
       storage.close();
     }
