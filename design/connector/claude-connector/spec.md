@@ -39,7 +39,7 @@ The connector did not change in v12. Its final revision is the v11 one above.
 
 ## Decisions
 
-1. Muse and Claude get the write tools. ChatGPT, Grok and Copilot are read-only and use deep links for changes.
+1. All four assistants should work. Muse and Claude get the write tools. ChatGPT, Grok and Copilot are read-only and use deep links for changes. ChatGPT and Copilot remain MVP priority (build, test and polish first).
 2. The connector creates and edits programs and share links (the old "read-only" wording was a misalignment). It can't create or edit exercises or routines.
 3. Save and publish are separate; edits save automatically. Publish, delete and set expiry (when the user did not already give the date or expiry in the same message) need an explicit user confirm in the conversation. The server does not check. Confirm lines are reference wording; the assistant may reword them if it covers the same facts.
 4. Default expiry 1 year, shown on the publish confirm.
@@ -51,7 +51,11 @@ The connector did not change in v12. Its final revision is the v11 one above.
 DIDI-594 comment bf5c77d7, Diadem, Nov 17, 2026 (CTO chat, times EST):
 - 8:14 PM: "oh perfect. that means we can go ahead with the write connector plan. can you ensure tickets are in place? I think we already designed it but it could have been lost."
 - 8:22 PM (widget picks): "Muse gets write tools"; "Claude gets write tools"; "Build the full October set: create, edit, from routine, publish, set expiry, delete"; "The assistant asking for confirmation is enough"
-- CTO stated in the same chat, without objection: creating or editing exercises and routines stays out; ChatGPT, Grok and Copilot stay read-only and keep the deep links.
+
+**CTO, same chat (bf5c77d7), without Diadem objection:**
+- Creating or editing exercises and routines stays out.
+- ChatGPT stays read-only (ChatGPT and Grok were not picked in the widget; Grok stays read-only in v13).
+- Copilot stays read-only and keeps the deep links.
 
 DIDI-594 comment 1d16df1a, Diadem, Nov 17, 2026, 8:35 PM EST (Designer chat widget, answering "DIDI-1241 connector wording"):
 
@@ -236,6 +240,28 @@ Rendered from the approved connector source (revision 465211305146613760, unchan
 >
 > DIDI-851 Done. The description's Share links line and Changes section are updated. Recorded by CTO.
 
+**DIDI-594 comment, 2026-10-29 (comment 6b866ab0)** (https://linear.app/didi-build/issue/DIDI-594):
+
+> **Connector read-only in v1 (LOCKED, Oct 29, 2026, 7:26 PM ET).** Diadem, 7:16 PM ET: "ok v1 connector can be read only , and any "write" use cases will send a link that opens the exact page that he needs to do the action on". 7:26 PM ET: "for v1 we will do read only tools". **Was:** every connector client was read-only; writes used deep links. **Is (v13):** superseded for Muse and Claude by bf5c77d7; ChatGPT, Grok, Copilot and unconfigured clients stay read-only per that lock until bf5c77d7.
+
+**DIDI-594 comment, 2026-11-17 (comment bf5c77d7)** (https://linear.app/didi-build/issue/DIDI-594):
+
+> Diadem, Nov 17, 2026 (CTO chat, times EST), verbatim:
+> - 8:14 PM: "oh perfect. that means we can go ahead with the write connector plan. can you ensure tickets are in place? I think we already designed it but it could have been lost."
+> - 8:22 PM (widget picks): "Muse gets write tools"; "Claude gets write tools"; "Build the full October set: create, edit, from routine, publish, set expiry, delete"; "The assistant asking for confirmation is enough"
+>
+> CTO, same chat, without Diadem objection: creating or editing exercises and routines stays out; ChatGPT stays read-only (ChatGPT and Grok were not picked); Copilot stays read-only with deep links; Grok stays read-only.
+
+**DIDI-594 comment, 2026-11-17 (comment 1d16df1a)** (https://linear.app/didi-build/issue/DIDI-594):
+
+> Diadem, Nov 17, 2026, 8:35 PM EST (Designer chat widget, answering "DIDI-1241 connector wording"), verbatim:
+> - The 24 proposed strings: "approve however don't hardcode "Kojo"."
+> - Confirm lines: "Confirm lines can be reworded if they cover the same facts"
+> - Set expiry when date already given: "Skip confirm when he already gave the date"
+> - Read-only assistants: "Read-only assistants can use their own words plus the link"
+> - Patient-details warning: "Use the shorter patient-details line (#18)"
+> - Muse naming: "Muse named only on the consent page"
+
 ## Confirm wording (assistant-side, before publish, set expiry and delete)
 
 How it works: the tool descriptions for `publish_program`, `set_program_link_expiry` and `delete_program` tell the assistant to ask the user in the conversation and wait for a yes before calling the tool. The server does not check. Muse's own approval prompt can appear on top; we don't control its wording.
@@ -320,7 +346,7 @@ Rule: every error is a stable `error_code` the assistant can act on. Where the u
 | `program_not_found` (exists) | all program tools | Missing, another practitioner's, or deleted (identical) | APPROVED #14: "I couldn't find a program with that name or code." |
 | `ambiguous_title` (exists) | lookups by title | More than one program has that name | APPROVED #15: "More than one program is called {name}. Which one do you mean?" plus each candidate's code |
 | `routine_not_found` (exists) | create from routine | Missing or not the owner's published routine | APPROVED #16: "I couldn't find that routine." |
-| `not_supported_v1` (exists) | `get_program_builder_link` | Read-only clients only; Muse and Claude use `from_routine_id` on create | Retired for write clients; code-only for read-only |
+| `not_supported_v1` (exists) | `get_program_builder_link` | Read-only clients that call it in paths replaced by write tools on Muse and Claude | Code-only for read-only. Muse and Claude keep `get_program_builder_link` (see Tools and descriptions by client) |
 | `exercises_not_found` (partial result, not an error) | create or edit | Some names don't match an approved exercise; the rest saves | REUSED: "{name} isn't in your exercise library yet, and I can't create new exercises from here." + "You can request it in the web app. The search is already filled in:" + "Once a practitioner approves it, ask me again and I'll add it to {program}. The rest of the program is unchanged." |
 | `name_required` (exists) | publish | No program name | REUSED: "Add a program name to publish. Use something you will recognise, not the patient's name." |
 | `placeholders_block_publish` (exists) | publish | Any placeholder row | REUSED: "Approve or remove placeholders to publish" + "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." / "One exercise is a placeholder. Approve each draft or remove it from this program, then publish." |
@@ -346,13 +372,32 @@ Rule: every error is a stable `error_code` the assistant can act on. Where the u
 | DIDI-1043 stub "Example response: …" summaries | Retired. Stub output is dev-only and must never reach the user; no approved copy |
 | Patient-detail validator line (found while reading) | Retired. Replaced by #18 |
 
+## Tools and descriptions by client (DIDI-1243)
+
+On main, all clients share the same four read tools and the same descriptions in `src/mcp-connector/tools.ts` (`search_approved_exercises`, `search_routines`, `get_program_builder_link`, `get_program_share_link_or_pdf`, lines 43, 105, 143, 178). v13 splits tool lists and description variants by the DIDI-1243 allowed-client config. Implementation detail stays in DIDI-1243; this section locks intent.
+
+**Muse and Claude (write clients in allowed-client config):**
+- Tool list: the four read tools (write-client description variant, below) plus the v13 write tools (create or edit a program, create from a routine, publish, set program link expiry, delete).
+- Read-tool descriptions: same facts as on main, but without the leading "Read-only" wording, without APPROVED #20 appended, and without "Never publishes." on `get_program_share_link_or_pdf` (Muse and Claude publish through write tools).
+- `get_program_builder_link`: kept as a fallback for anything the write tools cannot do in v1, including creating or editing exercises and routines in the web app. DIDI-1243 chooses how it stays available alongside write tools.
+
+**ChatGPT, Grok, Copilot, and every other client not granted write in allowed-client config:**
+- Tool list: the four read tools only. Write tools are omitted from the list.
+- Read-tool descriptions: the read-only text on main, unchanged, plus APPROVED #20 at the end of each description (model-facing, not shown to the user).
+- `get_program_builder_link`, `publish_link` and `manage_link` outputs stay as on main for deep-link routing.
+
+If a read-only client calls a write tool directly, the server returns `write_not_allowed` with #13.
+
+The OPEN Claude Code and custom Claude client question (above) uses this read-only branch if Diadem picks read-only; #20 covers them.
+
 ## Read-only assistants (ChatGPT, Grok, Copilot)
 
-- The write tools are not in their tool list, so they never offer to publish, change expiry or delete. They use the existing read tools and deep links (unchanged): `builder_link` to build or edit, `publish_link` to publish, `manage_link` for expiry, close link and delete.
+Read-only clients are those in the second group under Tools and descriptions by client.
+
+- The write tools are not in their tool list, so they never offer to publish, change expiry or delete. They use the read tools and deep links on main: `builder_link` to build or edit, `publish_link` to publish, `manage_link` for expiry, close link and delete.
 - They answer change requests in their own words plus the deep link (Diadem: "Read-only assistants can use their own words plus the link"). We don't script their reply.
-- Each read tool description keeps "Read-only" and adds APPROVED #20 (model-facing, not shown to the user): "This assistant can't make changes. For any change, give the user the matching link."
-- A direct write call from a read-only client gets `write_not_allowed` with #13.
-- The OPEN Claude Code and custom Claude client question (above) lands here if Diadem picks read-only; #20 covers them.
+- Each read tool description uses the read-only variant with APPROVED #20 (see Tools and descriptions by client).
+- A direct write call gets `write_not_allowed` with #13.
 
 ## Consent page (DIDI-1243)
 
@@ -372,10 +417,10 @@ Muse and Claude get a write version. Same layout, same Option C card. The app's 
 | It can't, 2 | "For changes, it sends you a link to the right page here instead" | Removed on the write page |
 | Patient line, safety line, Deny, Allow, Signed in as, Not you? Sign out, tab title, After Allow, After Deny, invalid client, expired | approved | REUSED unchanged |
 
-Re-consent: when an existing Muse or Claude connection gains write access, the user sees the write page once. No extra string.
+Re-consent (DIDI-1243 requirement): when an existing Muse or Claude connection gains write access, the user sees the write page once. No extra string. DIDI-1243 must implement this flow.
 Which page a client gets is decided by the server's allowed-client config (DIDI-1243), never by the self-reported name.
 
-Write consent mockups (390 px at 2x and 1280 px at 1x): follow-up. `src/auth/mcp-oauth/consent-html.ts` renders only the read-only page today; a clean swap to the write strings without implementation work was not available in this spec-only PR. Target layout: DIDI-1125 option C final revision (component 466932541740429312, revision 467169139593728000). Sample `{host}` claude.ai, `{name}` Claude, `{email}` kojo@example.com.
+Write consent mockups (390 px at 2x and 1280 px at 1x): follow-up on DIDI-1243. `src/auth/mcp-oauth/consent-html.ts` renders only the read-only page today; a clean swap to the write strings without implementation work was not available in this spec-only PR. Target layout: DIDI-1125 option C final revision (component 466932541740429312, revision 467169139593728000). Sample `{host}` claude.ai, `{name}` Claude, `{email}` practitioner@example.com.
 
 ## Copy inventory (verbatim from the approved source)
 
