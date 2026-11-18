@@ -5,7 +5,7 @@ import {
   DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL,
   DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID,
 } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
-import { EXERCISE_DRAFT_SYSTEM_PROMPT } from "../src/adapters/deepinfra/exercise-draft-system-prompt.js";
+import { openAiJsonSchemaResponseFormat } from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
 import { readHttpResponseTextWithByteCap } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { resolveExerciseDraftGenerator } from "../src/adapters/deepinfra/resolve-exercise-draft-generator.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
@@ -27,11 +27,26 @@ import {
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { MAX_LENGTH_EXERCISE_TEMPLATE_TEXT } from "../src/mcp-connector/text-limits.js";
 import { id } from "./helpers/opaque-test-ids.js";
 
 const SENTINEL_KEY = "deepinfra-sentinel-key-must-not-appear";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
 const AFTER_FORM = "2026-10-30T11:00:00.000Z";
+
+const PINNED_SYSTEM_PROMPT = `You draft exercise library entries for physiotherapy practitioners. Reply with a single JSON object that matches the exercise_draft schema exactly.
+
+Clinical text you write is always a draft for practitioner review and approval. Nothing you output goes live without human sign-off.
+
+Never include patient-identifying or patient-specific information (names, contact details, health card numbers, dates of birth, or similar).
+
+Use only the practitioner-supplied exercise name and their optional notes. Fill the template fields: title, aliases, category (stretch or strengthening), body_regions, description, equipment, starting_position, steps, common_mistakes, regressions, progressions, precautions, default_sets_and_reps, and cue lines.
+
+For body_regions, use only the seeded library labels: knee, ankle, hip. Use an empty array when none of those regions apply.
+
+For stretch exercises, provide cue_stretching and set cue_isometric, cue_concentric, and cue_eccentric to null. For strengthening exercises, provide cue_isometric, cue_concentric, and cue_eccentric and set cue_stretching to null.
+
+Write clear, practical physiotherapy language suitable for a shared exercise library.`;
 
 const VALID_STRETCH_DRAFT = {
   title: "Heel slide",
@@ -105,11 +120,16 @@ describe("DeepInfra exercise draft generator", () => {
       const [url, init] = call!;
       expect(url).toBe("https://api.deepinfra.com/v1/openai/chat/completions");
       const body = requestBodyFromCall(init);
-      expect(body.model).toBe("meta-llama/Llama-3.3-70B-Instruct-Turbo");
-      const messages = body.messages as Array<{ role: string; content: string }>;
-      expect(messages[1]).toEqual({
-        role: "user",
-        content: "Exercise name: Heel slide\nNote: rehab version",
+      expect(body).toEqual({
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages: [
+          { role: "system", content: PINNED_SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: "Exercise name: Heel slide\nNote: rehab version",
+          },
+        ],
+        response_format: openAiJsonSchemaResponseFormat(),
       });
     } finally {
       storage.close();
@@ -146,6 +166,12 @@ describe("DeepInfra exercise draft generator", () => {
       );
       expect(version?.status).toBe("draft");
       expect(version?.title).toBe("Heel slide");
+      const description = await storage.first<{ description: string }>(
+        "SELECT description FROM exercise_versions WHERE exercise_id = ?",
+        [created.exercise_id],
+      );
+      expect(description?.description).toBe("Gentle knee flexion stretch.");
+      expect(description?.description).not.toContain("Default sets and reps");
     } finally {
       storage.close();
     }
@@ -184,6 +210,41 @@ describe("DeepInfra exercise draft generator", () => {
         ["Bad json move"],
       );
       expect(count?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("retries once when repository validation fails after a schema-valid payload", async () => {
+    const tooLong = "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1);
+    const overLimit = { ...VALID_STRETCH_DRAFT, description: tooLong };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(envelope(JSON.stringify(overLimit)))
+      .mockResolvedValueOnce(envelope(JSON.stringify(overLimit)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-domain"),
+        "d@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      await expect(
+        service.submitRequest({
+          practitionerId: practitioner,
+          requestedName: "Domain validation fail",
+          formOpenedAt: FORM_OPENED,
+        }),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }
@@ -262,6 +323,39 @@ describe("DeepInfra exercise draft generator", () => {
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       restoreConsoleSpies(spies);
+      storage.close();
+    }
+  });
+
+  it.each([402, 403, 429] as const)("does not retry on HTTP %i", async (status) => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status }));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id(`pr-${status}`),
+        `${status}@example.com`,
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      await expect(
+        service.submitRequest({
+          practitionerId: practitioner,
+          requestedName: `No retry ${status}`,
+          formOpenedAt: FORM_OPENED,
+        }),
+      ).rejects.toMatchObject({
+        code: "deepinfra_exercise_draft_request_failed",
+        httpStatus: status,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    } finally {
       storage.close();
     }
   });
@@ -367,6 +461,152 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
+  it("rejects responses whose content-length exceeds the cap before streaming", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: {
+            "content-length": String(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES + 1),
+          },
+        }),
+    );
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-cl"),
+        "cl@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-cl"),
+            requestedName: "Cap",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_too_large" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("maps stream read abort to typed timeout", async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{"));
+      },
+      pull() {
+        return Promise.reject(
+          new DOMException("The operation was aborted", "AbortError"),
+        );
+      },
+    });
+    await expect(
+      readHttpResponseTextWithByteCap(
+        new Response(stream, { status: 200 }),
+        DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
+      ),
+    ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+  });
+
+  it("includes regeneration note in the user message when provided", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = createDeepInfraExerciseDraftGenerator({ apiKey: "k", fetchImpl });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen"),
+        "regen@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await generator(
+        {
+          sql: storage,
+          requestId: id("req-regen"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          regenerationNote: "more detail",
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
+      const messages = (
+        JSON.parse(String(init.body)) as { messages: { content: string }[] }
+      ).messages;
+      expect(messages[1]?.content).toContain("Regenerate note: more detail");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("fails closed on body region DB mismatch with one provider call and no persistence", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      await storage.run("DELETE FROM body_regions WHERE id = ?", ["br-knee"]);
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-brfail"),
+        "br@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-brfail"),
+            requestedName: "Heel slide",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_body_region_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const count = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercise_requests WHERE id = ?",
+        [id("req-brfail")],
+      );
+      expect(count?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("enforces response size while streaming without content-length", async () => {
     const chunk = "x".repeat(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES + 1);
     const stream = new ReadableStream({
@@ -410,6 +650,47 @@ describe("DeepInfra exercise draft generator", () => {
 });
 
 describe("DeepInfra API key redaction on failures", () => {
+  it("never echoes the sentinel key on invalid JSON envelope bodies", async () => {
+    const echo = `not-json-Bearer-${SENTINEL_KEY}`;
+    const fetchImpl = vi.fn(async () => envelope(echo));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-bad-envelope"),
+        "be@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-bad-envelope"),
+            requestedName: "Bad envelope",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toSatisfy((err) => {
+        expectThrownErrorLeakFree(err, { apiKey: SENTINEL_KEY, jsonBody: echo });
+        return true;
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("never echoes the sentinel key in thrown error messages", async () => {
     const echo = '{"authorization":"Bearer ' + SENTINEL_KEY + '"}';
     const fetchImpl = vi.fn(async () => new Response(echo, { status: 502 }));
@@ -448,7 +729,9 @@ describe("DeepInfra API key redaction on failures", () => {
         expectThrownErrorLeakFree(err, { apiKey: SENTINEL_KEY, jsonBody: echo });
         return true;
       });
-      assertLeakFreeText(String(fetchImpl.mock.calls[0]), { apiKey: SENTINEL_KEY });
+      const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
+      const auth = (init?.headers as Record<string, string> | undefined)?.Authorization;
+      assertLeakFreeText(String(auth ?? ""), { apiKey: SENTINEL_KEY });
     } finally {
       storage.close();
     }
@@ -511,8 +794,8 @@ describe("DeepInfra request metadata guards", () => {
       expect(responseFormat.type).toBe("json_schema");
       expect(responseFormat.json_schema.strict).toBe(true);
       const messages = body.messages as Array<{ role: string; content: string }>;
-      expect(messages[0]?.content).toBe(EXERCISE_DRAFT_SYSTEM_PROMPT);
-      expect(messages[0]?.content).toContain("Never include patient-identifying");
+      expect(messages[0]?.content).toBe(PINNED_SYSTEM_PROMPT);
+      expect(messages[0]?.content).toContain("knee, ankle, hip");
     } finally {
       storage.close();
     }

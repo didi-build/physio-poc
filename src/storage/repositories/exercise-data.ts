@@ -548,6 +548,7 @@ export class ExerciseVersionsRepository {
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
       ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+      /* didi-1008: AI full-draft insert — status must remain 'draft' (not minimal-draft path) */
       bindings: [
         id,
         exerciseId,

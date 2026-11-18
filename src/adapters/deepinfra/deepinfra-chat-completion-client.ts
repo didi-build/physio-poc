@@ -3,6 +3,7 @@ import {
   DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
   DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL,
 } from "./exercise-draft-ai-config.js";
+import { deepInfraExerciseDraftError } from "./deepinfra-draft-error-factory.js";
 import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
 
 export type DeepInfraChatMessage = {
@@ -40,9 +41,7 @@ export async function readHttpResponseTextWithByteCap(
   if (contentLength) {
     const len = Number(contentLength);
     if (Number.isFinite(len) && len > maxBytes) {
-      throw new DeepInfraExerciseDraftError(
-        "deepinfra_exercise_draft_response_too_large",
-      );
+      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_too_large");
     }
   }
 
@@ -50,9 +49,7 @@ export async function readHttpResponseTextWithByteCap(
   if (!body) {
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > maxBytes) {
-      throw new DeepInfraExerciseDraftError(
-        "deepinfra_exercise_draft_response_too_large",
-      );
+      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_too_large");
     }
     return new TextDecoder().decode(buffer);
   }
@@ -61,15 +58,22 @@ export async function readHttpResponseTextWithByteCap(
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
-    const { done, value } = await reader.read();
+    let done: boolean;
+    let value: Uint8Array | undefined;
+    try {
+      ({ done, value } = await reader.read());
+    } catch (err) {
+      throw mapFetchFailureToError(err);
+    }
     if (done) {
       break;
     }
+    if (!value) {
+      continue;
+    }
     total += value.length;
     if (total > maxBytes) {
-      throw new DeepInfraExerciseDraftError(
-        "deepinfra_exercise_draft_response_too_large",
-      );
+      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_too_large");
     }
     chunks.push(value);
   }
@@ -87,13 +91,9 @@ function mapFetchFailureToError(cause: unknown): DeepInfraExerciseDraftError {
     lowered.includes("timeout") ||
     cause instanceof DOMException
   ) {
-    return new DeepInfraExerciseDraftError("deepinfra_exercise_draft_timeout", {
-      cause,
-    });
+    return deepInfraExerciseDraftError("deepinfra_exercise_draft_timeout");
   }
-  return new DeepInfraExerciseDraftError("deepinfra_exercise_draft_network_error", {
-    cause,
-  });
+  return deepInfraExerciseDraftError("deepinfra_exercise_draft_network_error");
 }
 
 export type DeepInfraChatCompletionClientConfig = {
@@ -144,18 +144,20 @@ export class DeepInfraChatCompletionClient {
         throw mapFetchFailureToError(err);
       }
 
-      const rawText = await readHttpResponseTextWithByteCap(
-        response,
-        this.responseMaxBytes,
-      );
+      let rawText: string;
+      try {
+        rawText = await readHttpResponseTextWithByteCap(
+          response,
+          this.responseMaxBytes,
+        );
+      } catch (err) {
+        throw mapFetchFailureToError(err);
+      }
 
       if (!response.ok) {
-        throw new DeepInfraExerciseDraftError(
-          "deepinfra_exercise_draft_request_failed",
-          {
-            httpStatus: response.status,
-          },
-        );
+        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_request_failed", {
+          httpStatus: response.status,
+        });
       }
 
       let envelope: {
@@ -163,17 +165,12 @@ export class DeepInfraChatCompletionClient {
       };
       try {
         envelope = JSON.parse(rawText) as typeof envelope;
-      } catch (err) {
-        throw new DeepInfraExerciseDraftError(
-          "deepinfra_exercise_draft_response_invalid",
-          { cause: err },
-        );
+      } catch {
+        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
       }
       const content = envelope.choices?.[0]?.message?.content;
       if (typeof content !== "string" || content.trim().length === 0) {
-        throw new DeepInfraExerciseDraftError(
-          "deepinfra_exercise_draft_response_invalid",
-        );
+        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
       }
       return { contentJson: content, httpStatus: response.status };
     } finally {

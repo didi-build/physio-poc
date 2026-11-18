@@ -5,6 +5,10 @@ import {
   MAX_LENGTH_PROGRAM_TITLE,
 } from "../../mcp-connector/text-limits.js";
 import type { ExerciseCategory } from "../../domain/exercise-types.js";
+import {
+  SEEDED_BODY_REGION_LABELS,
+  isSeededBodyRegionLabel,
+} from "./exercise-draft-seeded-body-regions.js";
 
 export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
   type: "object",
@@ -37,8 +41,8 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     category: { type: "string", enum: ["stretch", "strengthening"] },
     body_regions: {
       type: "array",
-      items: { type: "string", minLength: 1, maxLength: 80 },
-      minItems: 1,
+      items: { type: "string", enum: [...SEEDED_BODY_REGION_LABELS] },
+      minItems: 0,
     },
     description: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
     equipment: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
@@ -131,8 +135,7 @@ export function parseAndValidateExerciseDraftAiPayload(
     ) ||
     (record.category !== "stretch" && record.category !== "strengthening") ||
     !Array.isArray(record.body_regions) ||
-    record.body_regions.length === 0 ||
-    !record.body_regions.every((entry) => isNonEmptyString(entry, 80)) ||
+    !record.body_regions.every((entry) => isSeededBodyRegionLabel(String(entry))) ||
     !isBoundedString(record.description, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.equipment, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.starting_position, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
