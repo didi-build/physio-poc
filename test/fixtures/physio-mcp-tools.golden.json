@@ -5,9 +5,7 @@
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "properties": {
         "query": {
           "type": "string",
@@ -17,10 +15,7 @@
         },
         "category": {
           "type": "string",
-          "enum": [
-            "Stretching",
-            "Strengthening"
-          ],
+          "enum": ["Stretching", "Strengthening"],
           "description": "Exercise library category filter."
         },
         "body_region": {
@@ -29,12 +24,7 @@
         },
         "prescription_type": {
           "type": "string",
-          "enum": [
-            "stretching",
-            "isometric",
-            "concentric",
-            "eccentric"
-          ],
+          "enum": ["stretching", "isometric", "concentric", "eccentric"],
           "description": "Optional filter: exercises that can be prescribed with this type."
         },
         "limit": {
@@ -53,13 +43,7 @@
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "summary",
-        "share_link",
-        "manage_url",
-        "exercises",
-        "match_count"
-      ],
+      "required": ["summary", "share_link", "manage_url", "exercises", "match_count"],
       "properties": {
         "summary": {
           "type": "string",
@@ -74,9 +58,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -89,9 +71,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -106,11 +86,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "exercise_version_id",
-              "exercise_name",
-              "category"
-            ],
+            "required": ["exercise_version_id", "exercise_name", "category"],
             "properties": {
               "exercise_version_id": {
                 "type": "string"
@@ -121,10 +97,7 @@
               },
               "category": {
                 "type": "string",
-                "enum": [
-                  "Stretching",
-                  "Strengthening"
-                ],
+                "enum": ["Stretching", "Strengthening"],
                 "description": "Exercise library category filter."
               },
               "body_regions": {
@@ -138,12 +111,7 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "stretching",
-                    "isometric",
-                    "concentric",
-                    "eccentric"
-                  ],
+                  "enum": ["stretching", "isometric", "concentric", "eccentric"],
                   "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
                 },
                 "description": "Prescription types allowed for this exercise on a program row."
@@ -171,14 +139,10 @@
                 "maxItems": 0
               }
             },
-            "required": [
-              "exercises"
-            ]
+            "required": ["exercises"]
           },
           "then": {
-            "required": [
-              "search_link"
-            ]
+            "required": ["search_link"]
           }
         }
       ]
@@ -195,9 +159,7 @@
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "query"
-      ],
+      "required": ["query"],
       "properties": {
         "query": {
           "type": "string",
@@ -221,12 +183,7 @@
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "summary",
-        "share_link",
-        "manage_url",
-        "routines"
-      ],
+      "required": ["summary", "share_link", "manage_url", "routines"],
       "properties": {
         "summary": {
           "type": "string",
@@ -241,9 +198,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -256,9 +211,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -268,11 +221,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "routine_id",
-              "routine_name",
-              "routine_version"
-            ],
+            "required": ["routine_id", "routine_name", "routine_version"],
             "properties": {
               "routine_id": {
                 "type": "string"
@@ -292,10 +241,7 @@
               },
               "source": {
                 "type": "string",
-                "enum": [
-                  "community",
-                  "personal_copy"
-                ],
+                "enum": ["community", "personal_copy"],
                 "description": "Whether this hit is the community routine or a personal copy."
               }
             }
@@ -337,11 +283,7 @@
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "summary",
-        "share_link",
-        "builder_link"
-      ],
+      "required": ["summary", "share_link", "builder_link"],
       "properties": {
         "summary": {
           "type": "string",
@@ -356,9 +298,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -376,9 +316,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -389,10 +327,7 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         },
@@ -464,9 +399,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -479,9 +412,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS URL of the server-rendered program PDF. Never inline bytes. Empty when no published PDF applies."
@@ -494,9 +425,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -509,9 +438,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "Deep link to the program publish page when a draft needs publishing. Empty when no draft publish page applies."
@@ -524,9 +451,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "Deep link to the program share page in the web app (expiry, close link, delete). Empty when no program applies."
@@ -544,10 +469,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "version",
-                "updated_at"
-              ],
+              "required": ["version", "updated_at"],
               "properties": {
                 "version": {
                   "type": "integer",
@@ -572,10 +494,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "version",
-                "updated_at"
-              ],
+              "required": ["version", "updated_at"],
               "properties": {
                 "version": {
                   "type": "integer",
@@ -594,11 +513,7 @@
         },
         "draft_state": {
           "type": "string",
-          "enum": [
-            "draft_only",
-            "published_only",
-            "published_with_draft_changes"
-          ],
+          "enum": ["draft_only", "published_only", "published_with_draft_changes"],
           "description": "Whether the program is draft-only, published, or published with newer draft changes."
         },
         "has_newer_draft": {
@@ -607,12 +522,7 @@
         },
         "share_link_state": {
           "type": "string",
-          "enum": [
-            "live",
-            "closed",
-            "expired",
-            "none"
-          ],
+          "enum": ["live", "closed", "expired", "none"],
           "description": "Whether the program has a live, closed, expired, or no share link."
         },
         "program_code": {
@@ -621,10 +531,7 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         }
@@ -665,23 +572,14 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "exercise_version_id",
-                  "prescription_type",
-                  "params"
-                ],
+                "required": ["exercise_version_id", "prescription_type", "params"],
                 "properties": {
                   "exercise_version_id": {
                     "type": "string"
                   },
                   "prescription_type": {
                     "type": "string",
-                    "enum": [
-                      "stretching",
-                      "isometric",
-                      "concentric",
-                      "eccentric"
-                    ],
+                    "enum": ["stretching", "isometric", "concentric", "eccentric"],
                     "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
                   },
                   "params": {
@@ -696,10 +594,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -720,10 +615,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -744,10 +636,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -768,10 +657,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -792,10 +678,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -816,10 +699,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -840,10 +720,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -864,10 +741,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -892,11 +766,7 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "exercise_name",
-                  "prescription_type",
-                  "params"
-                ],
+                "required": ["exercise_name", "prescription_type", "params"],
                 "properties": {
                   "exercise_name": {
                     "type": "string",
@@ -905,12 +775,7 @@
                   },
                   "prescription_type": {
                     "type": "string",
-                    "enum": [
-                      "stretching",
-                      "isometric",
-                      "concentric",
-                      "eccentric"
-                    ],
+                    "enum": ["stretching", "isometric", "concentric", "eccentric"],
                     "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
                   },
                   "params": {
@@ -925,10 +790,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -949,10 +811,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -973,10 +832,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -997,10 +853,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -1021,10 +874,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -1045,10 +895,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -1069,10 +916,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -1093,10 +937,7 @@
                           {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": [
-                              "min",
-                              "max"
-                            ],
+                            "required": ["min", "max"],
                             "properties": {
                               "min": {
                                 "type": "number"
@@ -1148,9 +989,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -1163,9 +1002,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -1176,10 +1013,7 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         },
@@ -1214,12 +1048,7 @@
               },
               "prescription_type": {
                 "type": "string",
-                "enum": [
-                  "stretching",
-                  "isometric",
-                  "concentric",
-                  "eccentric"
-                ],
+                "enum": ["stretching", "isometric", "concentric", "eccentric"],
                 "description": "How this exercise is prescribed on this program row. Stretch exercises use stretching only. Strengthening exercises use isometric, concentric, or eccentric."
               },
               "params": {
@@ -1234,10 +1063,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1258,10 +1084,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1282,10 +1105,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1306,10 +1126,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1330,10 +1147,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1354,10 +1168,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1378,10 +1189,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1402,10 +1210,7 @@
                       {
                         "type": "object",
                         "additionalProperties": false,
-                        "required": [
-                          "min",
-                          "max"
-                        ],
+                        "required": ["min", "max"],
                         "properties": {
                           "min": {
                             "type": "number"
@@ -1433,10 +1238,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "requested_exercise_name",
-              "web_app_exercise_search_url"
-            ],
+            "required": ["requested_exercise_name", "web_app_exercise_search_url"],
             "properties": {
               "requested_exercise_name": {
                 "type": "string",
@@ -1448,10 +1250,7 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "exercise_version_id",
-                    "exercise_name"
-                  ],
+                  "required": ["exercise_version_id", "exercise_name"],
                   "properties": {
                     "exercise_version_id": {
                       "type": "string"
@@ -1483,9 +1282,7 @@
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "program_code"
-      ],
+      "required": ["program_code"],
       "properties": {
         "program_code": {
           "type": "string",
@@ -1498,14 +1295,7 @@
           "properties": {
             "expires_in": {
               "type": "string",
-              "enum": [
-                "1_week",
-                "30_days",
-                "90_days",
-                "1_year",
-                "never",
-                "custom_date"
-              ]
+              "enum": ["1_week", "30_days", "90_days", "1_year", "never", "custom_date"]
             },
             "custom_date": {
               "type": "string",
@@ -1520,14 +1310,10 @@
                     "const": "custom_date"
                   }
                 },
-                "required": [
-                  "expires_in"
-                ]
+                "required": ["expires_in"]
               },
               "then": {
-                "required": [
-                  "custom_date"
-                ]
+                "required": ["custom_date"]
               }
             }
           ]
@@ -1560,9 +1346,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -1575,9 +1359,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS URL of the server-rendered program PDF. Never inline bytes. Empty when no published PDF applies."
@@ -1590,9 +1372,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -1608,20 +1388,13 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         },
         "draft_state": {
           "type": "string",
-          "enum": [
-            "draft_only",
-            "published_only",
-            "published_with_draft_changes"
-          ],
+          "enum": ["draft_only", "published_only", "published_with_draft_changes"],
           "description": "Whether the program is draft-only, published, or published with newer draft changes."
         },
         "draft": {
@@ -1632,10 +1405,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "version",
-                "updated_at"
-              ],
+              "required": ["version", "updated_at"],
               "properties": {
                 "version": {
                   "type": "integer",
@@ -1660,10 +1430,7 @@
             {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "version",
-                "updated_at"
-              ],
+              "required": ["version", "updated_at"],
               "properties": {
                 "version": {
                   "type": "integer",
@@ -1682,12 +1449,7 @@
         },
         "share_link_state": {
           "type": "string",
-          "enum": [
-            "live",
-            "closed",
-            "expired",
-            "none"
-          ],
+          "enum": ["live", "closed", "expired", "none"],
           "description": "Whether the program has a live, closed, expired, or no share link."
         },
         "publish_change_lines": {
@@ -1710,10 +1472,7 @@
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "program_code",
-        "expires_in"
-      ],
+      "required": ["program_code", "expires_in"],
       "properties": {
         "program_code": {
           "type": "string",
@@ -1722,14 +1481,7 @@
         },
         "expires_in": {
           "type": "string",
-          "enum": [
-            "1_week",
-            "30_days",
-            "90_days",
-            "1_year",
-            "never",
-            "custom_date"
-          ]
+          "enum": ["1_week", "30_days", "90_days", "1_year", "never", "custom_date"]
         },
         "custom_date": {
           "type": "string",
@@ -1740,12 +1492,7 @@
     "outputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "summary",
-        "share_link",
-        "manage_url",
-        "program_code"
-      ],
+      "required": ["summary", "share_link", "manage_url", "program_code"],
       "properties": {
         "summary": {
           "type": "string",
@@ -1760,9 +1507,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -1775,9 +1520,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -1793,21 +1536,13 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         },
         "share_link_state": {
           "type": "string",
-          "enum": [
-            "live",
-            "closed",
-            "expired",
-            "none"
-          ],
+          "enum": ["live", "closed", "expired", "none"],
           "description": "Whether the program has a live, closed, expired, or no share link."
         }
       }
@@ -1824,9 +1559,7 @@
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "program_code"
-      ],
+      "required": ["program_code"],
       "properties": {
         "program_code": {
           "type": "string",
@@ -1859,9 +1592,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
@@ -1874,9 +1605,7 @@
             },
             {
               "type": "string",
-              "enum": [
-                ""
-              ]
+              "enum": [""]
             }
           ],
           "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
@@ -1887,10 +1616,7 @@
           "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
         },
         "program_title": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "maxLength": 80,
           "description": "Non-identifying program title, or null when unset. Do not include patient names, contact details, health card numbers, or dates of birth."
         },
@@ -1900,12 +1626,7 @@
         },
         "share_link_state": {
           "type": "string",
-          "enum": [
-            "live",
-            "closed",
-            "expired",
-            "none"
-          ],
+          "enum": ["live", "closed", "expired", "none"],
           "description": "Whether the program has a live, closed, expired, or no share link."
         }
       }
