@@ -608,6 +608,39 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
+  it("rejects when content-length exceeds the cap before reading the body", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": String(DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1),
+          },
+        }),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_response_invalid",
+      statusCode: 502,
+    });
+  });
+
+  it("rejects empty JSON bodies", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response("", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_response_invalid",
+      statusCode: 502,
+    });
+  });
+
   it("rejects unparseable JSON bodies", async () => {
     const fetchImpl = vi.fn(
       async () =>
