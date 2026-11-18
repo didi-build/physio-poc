@@ -34,8 +34,9 @@ import { ProgramBuilderService } from "../programs/program-builder-service.js";
 import {
   appendMergeToDraftRequest,
   fakeExerciseDraftGenerator,
-  type ExerciseDraftGenerator,
 } from "./fake-draft-generator.js";
+import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
+import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import type {
   ApproveExerciseRequestResult,
@@ -322,6 +323,9 @@ export class ExerciseRequestsService {
           },
         );
       } catch (error) {
+        if (error instanceof DeepInfraExerciseDraftError) {
+          throw error;
+        }
         if (error instanceof ExerciseRequestsServiceError) {
           throw error;
         }

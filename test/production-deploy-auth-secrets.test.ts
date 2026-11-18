@@ -38,6 +38,7 @@ const FIXTURE_SECRET_VALUES = {
   GOOGLE_CLIENT_SECRET: "fixture-google-client-secret",
   BETTER_AUTH_SECRET: "fixture-better-auth-secret-at-least-32-chars",
   PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
+  PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-api-key",
 };
 
 const FIXTURE_BETTER_AUTH_SECRET_31_CHARS = "fixture-better-auth-secret-31ch";
@@ -85,12 +86,13 @@ function runAssertScript(
 }
 
 describe("production Worker auth secret guard (DIDI-1044)", () => {
-  it("pins the four ticket auth secret names for guard and upload", () => {
+  it("pins the five ticket Worker secret names for guard and upload", () => {
     expect([...PRODUCTION_WORKER_AUTH_SECRET_NAMES]).toEqual([
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
       "BETTER_AUTH_SECRET",
       "PHYSIO_ALLOWED_GOOGLE_EMAILS",
+      "PHYSIO_DEEPINFRA_API_KEY",
     ]);
   });
 
@@ -100,6 +102,7 @@ describe("production Worker auth secret guard (DIDI-1044)", () => {
       "GOOGLE_CLIENT_SECRET",
       "BETTER_AUTH_SECRET",
       "PHYSIO_ALLOWED_GOOGLE_EMAILS",
+      "PHYSIO_DEEPINFRA_API_KEY",
     ]);
   });
 
@@ -149,6 +152,7 @@ describe("production Worker auth secret guard (DIDI-1044)", () => {
       GOOGLE_CLIENT_SECRET: "sec",
       BETTER_AUTH_SECRET: "  " + FIXTURE_SECRET_VALUES.BETTER_AUTH_SECRET + "  ",
       PHYSIO_ALLOWED_GOOGLE_EMAILS: "a@example.com",
+      PHYSIO_DEEPINFRA_API_KEY: "  deep  ",
     });
     expect(Object.keys(payload).sort()).toEqual(
       [...PRODUCTION_WORKER_AUTH_SECRET_NAMES].sort(),

@@ -7,7 +7,6 @@ import {
   ExerciseAliasesRepository,
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
-  ExercisesRepository,
 } from "../../storage/repositories/exercise-data.js";
 import {
   FreeTextValidationError,
@@ -20,33 +19,21 @@ import {
   ExerciseRequestsServiceError,
   isExerciseAliasUniqueConstraintError,
 } from "./errors.js";
+import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
 
-export type ExerciseDraftGeneratorResult = {
-  exerciseId: string;
-  versionId: string;
-};
-
-export type ExerciseDraftGenerator = (
-  input: {
-    sql: SqlStoragePort;
-    requestId: string;
-    requestedName: string;
-    exerciseNote: string | null;
-    requestedBy: string;
-    now: string;
-  },
-  deps: {
-    exercises: ExercisesRepository;
-    versions: ExerciseVersionsRepository;
-    requests: ExerciseRequestsRepository;
-  },
-) => Promise<ExerciseDraftGeneratorResult>;
+export type {
+  ExerciseDraftGenerator,
+  ExerciseDraftGeneratorResult,
+  ExerciseDraftGeneratorInput,
+  ExerciseDraftGeneratorDeps,
+} from "./exercise-draft-generator-types.js";
 
 /** Test and local stub: creates a stretch draft with the requested title. */
 export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
+  void input.regenerationNote;
   const exerciseId = generateOpaqueEntityId();
   const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);

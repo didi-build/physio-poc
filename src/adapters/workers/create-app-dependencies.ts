@@ -30,6 +30,8 @@ export type WorkerEnv = {
   PHYSIO_ROUTINE_SIMILAR_CONDITION_BONUS?: string;
   PHYSIO_ROUTINE_SIMILAR_MAX_RESULTS?: string;
   PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
+  PHYSIO_DEEPINFRA_API_KEY?: string;
+  PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL?: string;
   PHYSIO_DB?: PhysioD1Database;
   PHYSIO_MEDIA?: PhysioR2Bucket;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
@@ -77,6 +79,8 @@ function workerProductionEnvCacheKey(env: WorkerEnv): string {
     env.GOOGLE_CLIENT_ID ?? "",
     env.GOOGLE_CLIENT_SECRET ?? "",
     env.PHYSIO_ALLOWED_GOOGLE_EMAILS ?? "",
+    env.PHYSIO_DEEPINFRA_API_KEY ?? "",
+    env.PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL ?? "",
     workerPhysioDbCacheToken(env.PHYSIO_DB),
   ].join("\u001e");
 }
