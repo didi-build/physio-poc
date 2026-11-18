@@ -46,6 +46,10 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 6. Media regeneration: 5 per practitioner per day.
 7. The review step exists to check AI-generated content only.
 
+## Body region picker (DIDI-1253)
+
+The **Body region** field in draft review Basics (and the same field on other exercise save forms) is a combobox per [body-region-picker/spec.md](../body-region-picker/spec.md): existing catalog match, typed new inline **Add {region}**, AI-suggested value with **Keep** or **Change** before save, and empty list. Replaces free-text entry from `draftData.ts` `TEXT_META`. New regions go live with the exercise, not on a separate admin page.
+
 ## Mockups
 
 All states are rendered from the approved web revision 465225161508020224 (unchanged in v11 and v12).
@@ -312,6 +316,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+- **Nov 18, 2026**: DIDI-1253 body region picker spec (variant A). https://linear.app/didi-build/issue/DIDI-1253
 - **Oct 23, 2026**: First concept: search, no result, request, draft review directions A, B and C; direction A kept. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Any practitioner can see and approve a request; requested by and approved by. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827
 - **Oct 24, 2026**: Similar exercises on submit, Merge my changes, no requester notification, regeneration cap. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-828, https://linear.app/didi-build/issue/DIDI-829
