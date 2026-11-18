@@ -194,6 +194,7 @@ describe("Public link page print layout (DIDI-1195)", () => {
     expect(screen.queryByTestId("public-link-exercise-print")).toBeNull();
     const failedBox = screen.getByTestId("public-link-media-failed");
     expect(failedBox).not.toHaveClass("link-page-no-print");
+    expect(failedBox.querySelector(".link-page-print-media-failed")).not.toBeNull();
     assertNoScreenOnlyAncestor(failedBox);
     expect(document.querySelector(".link-page-media-retry")).toHaveClass(
       "link-page-no-print",
@@ -229,6 +230,7 @@ describe("Public link page print layout (DIDI-1195)", () => {
     expect(screen.queryByTestId("public-link-exercise-print")).toBeNull();
     const failedBox = screen.getByTestId("public-link-media-failed");
     expect(failedBox).not.toHaveClass("link-page-no-print");
+    expect(failedBox.querySelector(".link-page-print-media-failed")).not.toBeNull();
     expect(startStill).toBeTruthy();
   });
 
