@@ -148,7 +148,7 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 | Control | Behaviour |
 | -- | -- |
 | Check (`Keep {region}`) | Accept the suggestion: chip becomes a normal accepted catalog-style chip with visible **Clear**; **Suggested** label removed |
-| x (`Clear {region}`) | Remove the pending chip from the form (`dismissSuggestion` in r8); does not create a catalog entry. That region name **stays gone** for this exercise form session (see decision 10) |
+| x (`Clear {region}`) | Remove the pending chip from the form (`dismissSuggestion` in r8); does not create a catalog entry. On **this exercise form**, that region name is not offered again as a pending chip ([DIDI-594](https://linear.app/didi-build/issue/DIDI-594) comment `14be1082`; decision 10) |
 | Rewording | Physio types in the typeahead and uses the normal **Add {region}** path. No **Change** control and no **Change** refill |
 
 ## Region labels: display and matching
@@ -261,7 +261,7 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 7. User-typed new regions: **New** pill on add row and on accepted chip per r4.
 8. Hint and focus caret approved in r4 (5:49 PM ET).
 9. Touch targets at least 44 px on list rows, add row, and typeahead; accepted chips `min-h-11`; pending controls use r8 overlapping 44 px `::after` zones with 28 px visible circles (see open a11y item).
-10. Dismissed pending AI suggestion: once the physio presses **x** (`Clear {region}`) on a pending **Suggested** chip, that region name is not suggested again on that exercise form session, including if the AI drafter's regions are applied again on that form. **Diadem, Nov 19, 2026, 4:25 PM ET**, verbatim:
+10. Dismissed pending AI suggestion: once the physio presses **x** (`Clear {region}`) on a pending **Suggested** chip, that region name is not offered again on **this exercise form**. Locked [DIDI-594 comment `14be1082`](https://linear.app/didi-build/issue/DIDI-594). **Diadem, Nov 19, 2026, 4:25 PM ET**, verbatim:
 
 > Stays gone on that form
 
@@ -281,7 +281,7 @@ Phone 390 by 844 px; desktop 1280 by 900 px. No preview chrome. Caret frozen vis
 
 ## Changes
 
-- **Nov 19, 2026**: DIDI-1256: dismissed pending AI suggestion stays gone on that form session (Diadem 4:25 PM ET). https://linear.app/didi-build/issue/DIDI-1256
+- **Nov 19, 2026**: DIDI-1256: dismissed pending AI suggestion stays gone on this exercise form (DIDI-594 `14be1082`, Diadem 4:25 PM ET). https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 19, 2026**: DIDI-1256 QA R1: DIDI-594 locks `7baedf0c` / `32f06097`; r8 Enter; chip gaps and control sizing; mockup viewport background. https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 19, 2026**: DIDI-1256: add on edit; r8 pending AI chips; mockups 05 to 07; N5 to N7; retire N2/N3 visible **Keep**/**Change**. https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 18, 2026**: DIDI-1253 QA R2: mockups from r4 source `473932751381368833`; `max-h-96`; display vs storage casing; `listMeBodyRegions`; a11y open item for chip **Clear**. https://linear.app/didi-build/issue/DIDI-1253
