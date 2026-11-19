@@ -254,25 +254,13 @@ export function createDeepInfraExerciseDraftGenerator(
           }
           throw error;
         }
-        let prepared: Awaited<ReturnType<typeof buildPersistBatchStatements>>;
-        try {
-          prepared = await buildPersistBatchStatements({
-            payload: validated,
-            linkedRegionIds,
-            suggestedRegionLabels: suggestedLabels,
-            generatorInput: input,
-            deps,
-          });
-        } catch (error) {
-          if (error instanceof DeepInfraExerciseDraftError) {
-            if (error.code === "deepinfra_exercise_draft_response_invalid") {
-              lastFailure = error;
-              continue;
-            }
-            throw error;
-          }
-          throw error;
-        }
+        const prepared = await buildPersistBatchStatements({
+          payload: validated,
+          linkedRegionIds,
+          suggestedRegionLabels: suggestedLabels,
+          generatorInput: input,
+          deps,
+        });
 
         try {
           await input.sql.batch(prepared.statements);

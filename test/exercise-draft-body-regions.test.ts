@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { partitionExerciseDraftBodyRegions } from "../src/adapters/deepinfra/exercise-draft-body-regions.js";
+import { FreeTextValidationError } from "../src/domain/exercise-free-text.js";
 import { openMigratedDatabase } from "./helpers/exercise-sqlite-fixture.js";
 
 describe("partitionExerciseDraftBodyRegions", () => {
@@ -78,6 +79,34 @@ describe("partitionExerciseDraftBodyRegions", () => {
       ]);
       expect(result.linkedRegionIds).toEqual(["br-knee"]);
       expect(result.suggestedLabels).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("links library lower back when input has extreme internal whitespace", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      await storage.run("INSERT INTO body_regions (id, label) VALUES (?, ?)", [
+        "br-lower-back-qa",
+        "lower back",
+      ]);
+      const spaced = `Lower${" ".repeat(80)}Back`;
+      const result = await partitionExerciseDraftBodyRegions(storage, [spaced]);
+      expect(result.linkedRegionIds).toEqual(["br-lower-back-qa"]);
+      expect(result.suggestedLabels).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects overlong suggested labels via partition validation", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const overlong = `x${"y".repeat(80)}`;
+      await expect(
+        partitionExerciseDraftBodyRegions(storage, [overlong]),
+      ).rejects.toThrow(FreeTextValidationError);
     } finally {
       storage.close();
     }

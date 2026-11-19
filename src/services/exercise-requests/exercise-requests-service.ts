@@ -323,9 +323,6 @@ export class ExerciseRequestsService {
           },
         );
       } catch (error) {
-        if (error instanceof DeepInfraExerciseDraftError) {
-          throw error;
-        }
         if (error instanceof ExerciseRequestsServiceError) {
           throw error;
         }

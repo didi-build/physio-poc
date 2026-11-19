@@ -6,10 +6,11 @@ import {
   DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID,
 } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import {
-  EXERCISE_DRAFT_AI_JSON_SCHEMA,
-  openAiJsonSchemaResponseFormat,
-} from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
-import { EXERCISE_DRAFT_SYSTEM_PROMPT } from "../src/adapters/deepinfra/exercise-draft-system-prompt.js";
+  PINNED_EXERCISE_DRAFT_JSON_SCHEMA,
+  PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT,
+  PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT,
+} from "./fixtures/pinned-deepinfra-exercise-draft-literals.js";
+import { DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import { readHttpResponseTextWithByteCap } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { resolveExerciseDraftGenerator } from "../src/adapters/deepinfra/resolve-exercise-draft-generator.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
@@ -39,8 +40,6 @@ import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fe
 const SENTINEL_KEY = "deepinfra-sentinel-key-must-not-appear";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
 const AFTER_FORM = "2026-10-30T11:00:00.000Z";
-
-const PINNED_SYSTEM_PROMPT = EXERCISE_DRAFT_SYSTEM_PROMPT;
 
 const VALID_STRETCH_DRAFT = {
   title: "Heel slide",
@@ -112,17 +111,21 @@ describe("DeepInfra exercise draft generator", () => {
       expect(call).toBeDefined();
       const [url, init] = call!;
       expect(url).toBe("https://api.deepinfra.com/v1/openai/chat/completions");
+      expect(init?.method).toBe("POST");
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer test-key");
+      expect(headers["Content-Type"]).toBe("application/json");
       const body = requestBodyFromCall(init);
       expect(body).toEqual({
         model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
         messages: [
-          { role: "system", content: PINNED_SYSTEM_PROMPT },
+          { role: "system", content: PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT },
           {
             role: "user",
             content: "Exercise name: Heel slide\nNote: rehab version",
           },
         ],
-        response_format: openAiJsonSchemaResponseFormat(),
+        response_format: PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT,
       });
     } finally {
       storage.close();
@@ -244,6 +247,7 @@ describe("DeepInfra exercise draft generator", () => {
           },
         ),
       ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
       const aliasRows = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_aliases WHERE alias LIKE '%@%'",
       );
@@ -412,38 +416,41 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it.each([402, 403, 429] as const)("does not retry on HTTP %i", async (status) => {
-    const fetchImpl = vi.fn(async () => new Response("{}", { status }));
-    const generator = createDeepInfraExerciseDraftGenerator({
-      apiKey: SENTINEL_KEY,
-      fetchImpl,
-    });
-    const storage = await openMigratedDatabase();
-    try {
-      const practitioner = await seedPractitioner(
-        storage,
-        id(`pr-${status}`),
-        `${status}@example.com`,
-      );
-      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        now: () => AFTER_FORM,
-        draftGenerator: generator,
+  it.each([400, 404, 422, 402, 403, 429] as const)(
+    "does not retry on HTTP %i",
+    async (status) => {
+      const fetchImpl = vi.fn(async () => new Response("{}", { status }));
+      const generator = createDeepInfraExerciseDraftGenerator({
+        apiKey: SENTINEL_KEY,
+        fetchImpl,
       });
-      await expect(
-        service.submitRequest({
-          practitionerId: practitioner,
-          requestedName: `No retry ${status}`,
-          formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({
-        code: "deepinfra_exercise_draft_request_failed",
-        httpStatus: status,
-      });
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-    } finally {
-      storage.close();
-    }
-  });
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id(`pr-${status}`),
+          `${status}@example.com`,
+        );
+        const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+          now: () => AFTER_FORM,
+          draftGenerator: generator,
+        });
+        await expect(
+          service.submitRequest({
+            practitionerId: practitioner,
+            requestedName: `No retry ${status}`,
+            formOpenedAt: FORM_OPENED,
+          }),
+        ).rejects.toMatchObject({
+          code: "deepinfra_exercise_draft_request_failed",
+          httpStatus: status,
+        });
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+      } finally {
+        storage.close();
+      }
+    },
+  );
 
   it("does not retry on HTTP 401", async () => {
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 401 }));
@@ -479,39 +486,55 @@ describe("DeepInfra exercise draft generator", () => {
   });
 
   it("maps timeout to typed failure without raw AbortError", async () => {
-    const fetchImpl = vi.fn(
-      async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted", "AbortError"));
-          });
-        }),
-    );
-    const generator = createDeepInfraExerciseDraftGenerator({
-      apiKey: SENTINEL_KEY,
-      fetchImpl,
-      timeoutMs: 5,
-    });
-    const storage = await openMigratedDatabase();
+    vi.useFakeTimers();
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
     try {
-      const practitioner = await seedPractitioner(
-        storage,
-        id("pr-timeout"),
-        "t@example.com",
+      const fetchImpl = vi.fn(
+        (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => {
+              reject(new DOMException("The operation was aborted", "AbortError"));
+            });
+          }),
       );
-      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        now: () => AFTER_FORM,
-        draftGenerator: generator,
+      const generator = createDeepInfraExerciseDraftGenerator({
+        apiKey: SENTINEL_KEY,
+        fetchImpl,
       });
-      await expect(
-        service.submitRequest({
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id("pr-timeout"),
+          "t@example.com",
+        );
+        const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+          now: () => AFTER_FORM,
+          draftGenerator: generator,
+        });
+        const pending = service.submitRequest({
           practitionerId: practitioner,
           requestedName: "Timeout",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+        });
+        await vi.advanceTimersByTimeAsync(
+          DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS + 1,
+        );
+        await expect(pending).rejects.toSatisfy((err: unknown) => {
+          expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+          expect((err as Error).cause).toBeUndefined();
+          return true;
+        });
+        expect(timeoutSpy).toHaveBeenCalledWith(
+          expect.any(Function),
+          DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS,
+        );
+      } finally {
+        storage.close();
+      }
     } finally {
-      storage.close();
+      timeoutSpy.mockRestore();
+      vi.useRealTimers();
     }
   });
 
@@ -540,7 +563,133 @@ describe("DeepInfra exercise draft generator", () => {
           requestedName: "Network",
           formOpenedAt: FORM_OPENED,
         }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_network_error" });
+      ).rejects.toSatisfy((err: unknown) => {
+        expect(err).toMatchObject({ code: "deepinfra_exercise_draft_network_error" });
+        expect((err as Error).cause).toBeUndefined();
+        return true;
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("uses PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL override in the provider request", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = resolveExerciseDraftGenerator({
+      PHYSIO_DEEPINFRA_API_KEY: "k",
+      PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL: "custom-model/from-env",
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-model-override"),
+        "model@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await generator(
+        {
+          sql: storage,
+          requestId: id("req-model-override"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      const body = requestBodyFromCall(
+        (fetchImpl.mock.calls[0] as unknown as [string, RequestInit?])[1],
+      );
+      expect(body.model).toBe("custom-model/from-env");
+    } finally {
+      vi.unstubAllGlobals();
+      storage.close();
+    }
+  });
+
+  it("trims whitespace from the API key before Authorization", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = resolveExerciseDraftGenerator({
+      PHYSIO_DEEPINFRA_API_KEY: "  trimmed-key  ",
+    });
+    vi.stubGlobal("fetch", fetchImpl);
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-trim-key"),
+        "trim@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await generator(
+        {
+          sql: storage,
+          requestId: id("req-trim-key"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit?])[1];
+      const headers = init?.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer trimmed-key");
+    } finally {
+      vi.unstubAllGlobals();
+      storage.close();
+    }
+  });
+
+  it("retries once without persisting when template text includes patient details", async () => {
+    const draftWithTemplatePii = {
+      ...VALID_STRETCH_DRAFT,
+      steps: "Jane Smith DOB 1990-01-02 — slide heel",
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(envelope(JSON.stringify(draftWithTemplatePii)))
+      .mockResolvedValueOnce(envelope(JSON.stringify(draftWithTemplatePii)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-template-pii"),
+        "tpii@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      await expect(
+        service.submitRequest({
+          practitionerId: practitioner,
+          requestedName: "Template PII",
+          formOpenedAt: FORM_OPENED,
+        }),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      const requestCount = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
+        ["Template PII"],
+      );
+      expect(requestCount?.count).toBe(0);
     } finally {
       storage.close();
     }
@@ -703,7 +852,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("fails schema validation with one provider call when aliases are empty", async () => {
+  it("fails schema validation after two provider attempts when aliases are empty", async () => {
     const emptyAliases = { ...VALID_STRETCH_DRAFT, aliases: [] };
     const fetchImpl = vi.fn(async () => envelope(JSON.stringify(emptyAliases)));
     const generator = createDeepInfraExerciseDraftGenerator({
@@ -1117,13 +1266,14 @@ describe("DeepInfra request metadata guards", () => {
       );
       const responseFormat = body.response_format as {
         type: string;
-        json_schema: { strict: boolean };
+        json_schema: { name: string; strict: boolean; schema: unknown };
       };
       expect(responseFormat.type).toBe("json_schema");
       expect(responseFormat.json_schema.strict).toBe(true);
-      const jsonSchema = (body.response_format as { json_schema: { schema: unknown } })
-        .json_schema.schema as typeof EXERCISE_DRAFT_AI_JSON_SCHEMA;
-      expect(jsonSchema).toEqual(EXERCISE_DRAFT_AI_JSON_SCHEMA);
+      expect(responseFormat).toEqual(PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT);
+      const jsonSchema = responseFormat.json_schema.schema;
+      expect(jsonSchema).toEqual(PINNED_EXERCISE_DRAFT_JSON_SCHEMA);
+      expect(responseFormat.json_schema.name).toBe("exercise_draft");
       expect(jsonSchema.required).not.toContain("default_sets_and_reps");
       expect(jsonSchema.properties).not.toHaveProperty("default_sets_and_reps");
       expect(jsonSchema.properties.aliases).toMatchObject({ minItems: 1 });
@@ -1134,7 +1284,7 @@ describe("DeepInfra request metadata guards", () => {
       expect(bodyRegionsProp.enum).toBeUndefined();
       expect(bodyRegionsProp.minItems).toBe(1);
       const messages = body.messages as Array<{ role: string; content: string }>;
-      expect(messages[0]?.content).toBe(PINNED_SYSTEM_PROMPT);
+      expect(messages[0]?.content).toBe(PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT);
       expect(messages[0]?.content).toContain("Never include patient-identifying");
       expect(messages[0]?.content).toContain(
         "For body_regions, use free-text region names.",

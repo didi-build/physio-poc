@@ -70,8 +70,8 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         deps,
       );
       expect(response.status).toBe(502);
-      const payload = (await response.json()) as { error: string };
-      expect(payload.error).toBe("deepinfra_exercise_draft_request_failed");
+      const payload = await response.json();
+      expect(payload).toEqual({ error: "deepinfra_exercise_draft_request_failed" });
     } finally {
       storage.close();
     }
@@ -152,8 +152,8 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         deps,
       );
       expect(response.status).toBe(502);
-      const payload = (await response.json()) as { error: string };
-      expect(payload.error).toBe("deepinfra_exercise_draft_response_invalid");
+      const payload = await response.json();
+      expect(payload).toEqual({ error: "deepinfra_exercise_draft_response_invalid" });
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();

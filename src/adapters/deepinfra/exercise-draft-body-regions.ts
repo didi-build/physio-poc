@@ -43,14 +43,6 @@ export async function partitionExerciseDraftBodyRegions(
     }
     const validated = validateSuggestedBodyRegionLabel(trimmed);
     const suggestKey = normalizeConditionLabelKey(validated);
-    const lateLibraryMatch = byNormalizedLabel.get(suggestKey);
-    if (lateLibraryMatch) {
-      if (!seenLinkedIds.has(lateLibraryMatch.id)) {
-        seenLinkedIds.add(lateLibraryMatch.id);
-        linkedRegionIds.push(lateLibraryMatch.id);
-      }
-      continue;
-    }
     if (!seenSuggestedKeys.has(suggestKey)) {
       seenSuggestedKeys.add(suggestKey);
       suggestedLabels.push(suggestKey);

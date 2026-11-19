@@ -54,7 +54,9 @@ describe("DeepInfraChatCompletionClient", () => {
     expect(thrown).toMatchObject({
       code: "deepinfra_exercise_draft_response_invalid",
     });
+    expect((thrown as Error).cause).toBeUndefined();
     expect(inspectValue(thrown)).not.toContain(SENTINEL_BODY);
+    expect(String(thrown)).not.toContain(SENTINEL_BODY.slice(0, 12));
   });
 
   it("maps DOMException without abort wording to typed timeout", async () => {
@@ -71,7 +73,54 @@ describe("DeepInfraChatCompletionClient", () => {
         messages: [{ role: "user", content: "draft" }],
         response_format: { type: "json_schema" },
       }),
-    ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+      expect((err as Error).cause).toBeUndefined();
+      return true;
+    });
+  });
+
+  it.each([400, 404, 422] as const)(
+    "does not retry on HTTP %i from complete()",
+    async (status) => {
+      const fetchImpl = vi.fn(async () => new Response("{}", { status }));
+      const client = new DeepInfraChatCompletionClient({
+        apiKey: "unit-test-key",
+        fetchImpl,
+      });
+      await expect(
+        client.complete({
+          model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+          messages: [{ role: "user", content: "draft" }],
+          response_format: { type: "json_schema" },
+        }),
+      ).rejects.toMatchObject({
+        code: "deepinfra_exercise_draft_request_failed",
+        httpStatus: status,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("maps network failure without attaching cause", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const client = new DeepInfraChatCompletionClient({
+      apiKey: "unit-test-key",
+      fetchImpl,
+    });
+    await expect(
+      client.complete({
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages: [{ role: "user", content: "draft" }],
+        response_format: { type: "json_schema" },
+      }),
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toMatchObject({ code: "deepinfra_exercise_draft_network_error" });
+      expect((err as Error).cause).toBeUndefined();
+      return true;
+    });
   });
 });
 

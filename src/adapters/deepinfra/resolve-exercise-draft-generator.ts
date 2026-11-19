@@ -10,7 +10,6 @@ export type ResolveExerciseDraftGeneratorEnv = {
 
 export function resolveExerciseDraftGenerator(
   env: ResolveExerciseDraftGeneratorEnv,
-  fetchImpl?: typeof fetch,
 ): ExerciseDraftGenerator {
   const apiKey = env.PHYSIO_DEEPINFRA_API_KEY?.trim();
   if (!apiKey) {
@@ -21,6 +20,5 @@ export function resolveExerciseDraftGenerator(
     modelId: resolveDeepInfraExerciseDraftModelId(
       env.PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL,
     ),
-    fetchImpl,
   });
 }
