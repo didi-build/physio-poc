@@ -2,9 +2,8 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PublicLinkPage } from "../../src/ui/pages/PublicLinkPage.js";
@@ -12,8 +11,14 @@ import {
   EXERCISE_VISUAL_PLACEHOLDER_END_SRC,
   EXERCISE_VISUAL_PLACEHOLDER_START_SRC,
 } from "../../src/ui/exercise-visual/placeholders.js";
+import {
+  desktopMediaScope,
+  printMediaScope,
+  readPrintStylesheet,
+  ruleDeclarationsInScope,
+} from "./public-link-print-css-scope.js";
 
-const PRINT_STYLESHEET = join(process.cwd(), "src/ui/styles/public-link-page.css");
+const TRY_AGAIN = "Try again" as const;
 
 const EXPIRY_STAYS_OPEN =
   "This link stays open until your physiotherapist closes it." as const;
@@ -117,6 +122,15 @@ describe("Public link page print layout (DIDI-1195)", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
+    const endCaption = endFigure!.querySelector("figcaption");
+    const endImageForOrder = endFigure!.querySelector("img");
+    expect(endImageForOrder).not.toBeNull();
+    expect(endCaption).not.toBeNull();
+    expect(
+      endImageForOrder!.compareDocumentPosition(endCaption!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
     for (const img of [startImg, endImg]) {
       const src = img?.getAttribute("src") ?? "";
       expect(src).not.toBe(EXERCISE_VISUAL_PLACEHOLDER_START_SRC);
@@ -215,11 +229,8 @@ describe("Public link page print layout (DIDI-1195)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("public-link-exercise-print")).toBeInTheDocument();
     });
-    const startStill = document.querySelector(
-      ".link-page-carousel-still, .link-page-carousel-motion img",
-    ) as HTMLImageElement | null;
     const motionStart = document.querySelector(
-      'img[src="https://cdn.example/heel-start.png"]',
+      `img[src="${START_URL}"]`,
     ) as HTMLImageElement;
     fireEvent.error(motionStart);
 
@@ -231,7 +242,47 @@ describe("Public link page print layout (DIDI-1195)", () => {
     const failedBox = screen.getByTestId("public-link-media-failed");
     expect(failedBox).not.toHaveClass("link-page-no-print");
     expect(failedBox.querySelector(".link-page-print-media-failed")).not.toBeNull();
-    expect(startStill).toBeTruthy();
+  });
+
+  it("restores print stills after Try again following a carousel image load error", async () => {
+    const user = userEvent.setup();
+    mockOpenLink(EXPIRY_STAYS_OPEN, [
+      {
+        position: 0,
+        title: "Heel slide",
+        prescription_type: "stretching",
+        params: { hold_s: 30 },
+        note: null,
+        media: { start_url: START_URL, end_url: END_URL },
+      },
+    ]);
+    await waitFor(() => {
+      expect(screen.getByTestId("public-link-exercise-print")).toBeInTheDocument();
+    });
+    const carouselStart = document.querySelector(
+      `.link-page-carousel img[src="${START_URL}"]`,
+    ) as HTMLImageElement | null;
+    const firstStart =
+      carouselStart ??
+      (document.querySelector(`img[src="${START_URL}"]`) as HTMLImageElement);
+    fireEvent.error(firstStart);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("public-link-exercise-print")).toBeNull();
+    });
+
+    const tryAgain = screen.getByRole("button", {
+      name: "Try loading images for Heel slide again",
+    });
+    expect(tryAgain).toHaveTextContent(TRY_AGAIN);
+    await user.click(tryAgain);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("public-link-exercise-print")).toBeInTheDocument();
+    });
+    const printRoot = screen.getByTestId("public-link-exercise-print");
+    expect(printRoot.querySelector(`img[src="${START_URL}"]`)).not.toBeNull();
+    expect(printRoot.querySelector(`img[src="${END_URL}"]`)).not.toBeNull();
   });
 
   it("shows the expiry line on the web page only, not in the print-only blocks", async () => {
@@ -277,35 +328,78 @@ describe("Public link page print layout (DIDI-1195)", () => {
 });
 
 describe("public link page print stylesheet (DIDI-1195)", () => {
-  it("lays out three print columns with row span, spec literals, and screen hide", () => {
-    const css = readFileSync(PRINT_STYLESHEET, "utf8");
+  it("lays out three print columns with row span and screen hide", () => {
+    const css = readPrintStylesheet();
     expect(css).toContain("@media print");
     expect(css).toMatch(/\.link-page-only-print\s*\{[^}]*display:\s*none\s*;[^}]*\}/);
     expect(css).toMatch(/\.link-page-no-print\s*\{[^}]*display:\s*none/);
-    expect(css).toMatch(/\.link-page-only-print\s*\{[^}]*display:\s*contents/);
-    expect(css).toMatch(
-      /\.link-page-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+11rem\s+11rem/,
+    expect(
+      ruleDeclarationsInScope(printMediaScope(css), ".link-page-only-print"),
+    ).toMatch(/display:\s*contents/);
+    expect(ruleDeclarationsInScope(printMediaScope(css), ".link-page-row")).toMatch(
+      /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+11rem\s+11rem/,
     );
-    expect(css).toMatch(
-      /\.link-page-print-still--start\s*\{[^}]*grid-row:\s*1\s*\/\s*span\s+3/,
+    expect(
+      ruleDeclarationsInScope(printMediaScope(css), ".link-page-print-still--start"),
+    ).toMatch(/grid-column:\s*2/);
+    expect(
+      ruleDeclarationsInScope(printMediaScope(css), ".link-page-print-still--start"),
+    ).toMatch(/grid-row:\s*1\s*\/\s*span\s+3/);
+    expect(ruleDeclarationsInScope(printMediaScope(css), ".link-page-row")).toMatch(
+      /break-inside:\s*avoid/,
     );
-    expect(css).toMatch(
-      /\.link-page-print-still--end\s*\{[^}]*grid-row:\s*1\s*\/\s*span\s+3/,
-    );
-    expect(css).toMatch(/\.link-page-media-failed\s*\{[^}]*grid-column:\s*2\s*\/\s*4/);
-    expect(css).toMatch(
-      /\.link-page-media-failed\s*\{[^}]*grid-row:\s*1\s*\/\s*span\s+3/,
-    );
-    expect(css).toMatch(/\.link-page-print-still-img\s*\{[^}]*object-fit:\s*cover/);
-    expect(css).toMatch(/\.link-page-print-caption\s*\{[^}]*color:\s*#64748b/);
-    expect(css).toMatch(/\.link-page-media-failed\s*\{[^}]*min-height:\s*8\.25rem/);
-    expect(css).toMatch(
-      /\.link-page-media-failed \.link-page-print-media-failed\s*\{[^}]*font-size:\s*13px/,
-    );
-    expect(css).toMatch(
-      /\.link-page-media-failed \.link-page-print-media-failed\s*\{[^}]*color:\s*#64748b/,
-    );
-    expect(css).toMatch(/\.link-page-row\s*\{[^}]*break-inside:\s*avoid/);
     expect(css).not.toContain("exercise-motion");
+  });
+
+  it("pins spec print CSS values inside @media print (QA value mutants)", () => {
+    const css = readPrintStylesheet();
+    const print = printMediaScope(css);
+    const stillImg = ruleDeclarationsInScope(print, ".link-page-print-still-img");
+    expect(stillImg).toContain("aspect-ratio: 4 / 3");
+    expect(stillImg).toContain("border-radius: 0.75rem");
+    expect(stillImg).toContain("object-fit: cover");
+
+    const caption = ruleDeclarationsInScope(print, ".link-page-print-caption");
+    expect(caption).toContain("font-size: 0.75rem");
+    expect(caption).toContain("text-align: left");
+    expect(caption).toContain("margin: 0.25rem 0 0");
+
+    const failedMsg = ruleDeclarationsInScope(
+      print,
+      ".link-page-media-failed .link-page-print-media-failed",
+    );
+    expect(failedMsg).toContain("font-size: 13px");
+    expect(failedMsg).toContain("color: #64748b");
+    expect(failedMsg).not.toMatch(/display:\s*none/);
+
+    const row = ruleDeclarationsInScope(print, ".link-page-row");
+    expect(row).toContain("gap: 0.75rem");
+
+    const title = ruleDeclarationsInScope(print, ".link-page-row-title");
+    expect(title).toContain("font-size: 15px");
+
+    const doseLine = ruleDeclarationsInScope(print, ".link-page-dose-line");
+    expect(doseLine).toContain("font-size: 13px");
+
+    const note = ruleDeclarationsInScope(print, ".link-page-row-note");
+    expect(note).toContain("font-size: 12px");
+    expect(note).toContain("line-height: 1.625");
+
+    const failedCell = ruleDeclarationsInScope(print, ".link-page-media-failed");
+    expect(failedCell).toContain("min-height: 8.25rem");
+    expect(failedCell).toContain("border: 1px dashed #cbd5e1");
+    expect(failedCell).toContain("align-items: center");
+    expect(failedCell).toContain("justify-content: center");
+    expect(ruleDeclarationsInScope(print, ".link-page-print-still--end")).toMatch(
+      /grid-row:\s*1\s*\/\s*span\s+3/,
+    );
+  });
+
+  it("keeps desktop row grid for viewport layout (N20)", () => {
+    const css = readPrintStylesheet();
+    const desktop = desktopMediaScope(css);
+    expect(ruleDeclarationsInScope(desktop, ".link-page-row")).toContain(
+      "display: grid",
+    );
   });
 });
