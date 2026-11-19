@@ -117,7 +117,7 @@ export class DeepInfraChatCompletionClient {
     if (!config.apiKey.trim()) {
       throw new Error("DeepInfraChatCompletionClient requires apiKey");
     }
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.fetchImpl = config.fetchImpl ?? ((input, init) => fetch(input, init));
     this.timeoutMs = config.timeoutMs ?? DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS;
     this.responseMaxBytes =
       config.responseMaxBytes ?? DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES;

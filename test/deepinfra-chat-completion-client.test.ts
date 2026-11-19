@@ -1,10 +1,38 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepInfraChatCompletionClient } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { inspectValue } from "./helpers/console-log-leak-assertions.js";
+import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
 
 const SENTINEL_BODY = "provider-body-sentinel-must-not-appear-in-cause";
 
 describe("DeepInfraChatCompletionClient", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls global fetch without illegal this binding when fetchImpl is omitted", async () => {
+    const contentJson = JSON.stringify({ title: "Heel slide" });
+    stubThisSensitiveGlobalFetch(
+      () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: contentJson } }] }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    );
+    const client = new DeepInfraChatCompletionClient({
+      apiKey: "unit-test-key",
+    });
+    const result = await client.complete({
+      model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      messages: [{ role: "user", content: "draft" }],
+      response_format: { type: "json_schema" },
+    });
+    expect(result.contentJson).toBe(contentJson);
+  });
+
   it("does not attach raw provider body when chat completion JSON parse fails", async () => {
     const fetchImpl = vi
       .fn()

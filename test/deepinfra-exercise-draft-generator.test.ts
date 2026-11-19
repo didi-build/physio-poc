@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
 import {
   DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
@@ -34,6 +34,7 @@ import {
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { MAX_LENGTH_EXERCISE_TEMPLATE_TEXT } from "../src/mcp-connector/text-limits.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
 
 const SENTINEL_KEY = "deepinfra-sentinel-key-must-not-appear";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -935,6 +936,47 @@ describe("DeepInfra exercise draft generator", () => {
   it("uses the DeepInfra generator when PHYSIO_DEEPINFRA_API_KEY is set", () => {
     const gen = resolveExerciseDraftGenerator({ PHYSIO_DEEPINFRA_API_KEY: "present" });
     expect(gen).not.toBe(fakeExerciseDraftGenerator);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolveExerciseDraftGenerator uses global fetch without illegal this binding (Worker wiring)", async () => {
+    const globalFetch = stubThisSensitiveGlobalFetch(() =>
+      envelope(JSON.stringify(VALID_STRETCH_DRAFT)),
+    );
+    const generator = resolveExerciseDraftGenerator({
+      PHYSIO_DEEPINFRA_API_KEY: "present",
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-worker-fetch"),
+        "wf@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await generator(
+        {
+          sql: storage,
+          requestId: id("req-worker-fetch"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      expect(globalFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      storage.close();
+    }
   });
 });
 
