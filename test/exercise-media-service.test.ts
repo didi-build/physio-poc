@@ -215,10 +215,7 @@ describe("ExerciseMediaService (integration)", () => {
       );
       expect(versionRow?.media_set_id).toBe(liveSetId);
       expect(versionRow?.pending_media_set_id).toBe(result.media.mediaSetId);
-      const publicView = await service.getMediaForServing(
-        approvedVersionId,
-        "public",
-      );
+      const publicView = await service.getMediaForServing(approvedVersionId, "public");
       expect(publicView?.mediaSetId).toBe(liveSetId);
       const versions = await storage.all<{ version_number: number; status: string }>(
         "SELECT version_number, status FROM exercise_versions WHERE exercise_id = ? ORDER BY version_number",
