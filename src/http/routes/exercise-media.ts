@@ -17,6 +17,10 @@ import type { PractitionerSession } from "../../auth/auth-port.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
 import { jsonUnauthorized } from "../responses.js";
+import {
+  EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE,
+  readBoundedExerciseMediaJsonObject,
+} from "../bounded-json-request-body.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
@@ -80,6 +84,12 @@ function mediaService(deps: AppDependencies): ExerciseMediaService {
 }
 
 function serviceErrorResponse(error: ExerciseMediaServiceError): Response {
+  if (error.code === "exercise_media_already_generated") {
+    return Response.json(
+      { error: "exercise_media_already_generated" },
+      { status: 409, headers: JSON_HEADERS },
+    );
+  }
   const status =
     error.code === "version_not_found" || error.code === "media_set_not_found"
       ? 404
@@ -104,31 +114,26 @@ function routeErrorResponse(error: unknown): Response | null {
   return null;
 }
 
-async function readJsonBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (text.trim().length === 0) {
-    return {};
-  }
-  return JSON.parse(text) as unknown;
-}
-
-async function readJsonObjectBody(
+async function readExerciseMediaPostJsonObject(
   request: Request,
 ): Promise<Record<string, unknown> | Response> {
   try {
-    const body = await readJsonBody(request);
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    const body = await readBoundedExerciseMediaJsonObject(request);
+    if (body === EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE) {
+      return Response.json(
+        { error: EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE },
+        { status: 413, headers: JSON_HEADERS },
+      );
+    }
+    return body;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
       return Response.json(
         { error: "invalid_input", message: "Invalid JSON body" },
         { status: 400, headers: JSON_HEADERS },
       );
     }
-    return body as Record<string, unknown>;
-  } catch {
-    return Response.json(
-      { error: "invalid_input", message: "Invalid JSON body" },
-      { status: 400, headers: JSON_HEADERS },
-    );
+    throw error;
   }
 }
 
@@ -217,7 +222,7 @@ export async function handleExerciseMediaRequest(
         { status: 405, headers: JSON_HEADERS },
       );
     }
-    const body = await readJsonObjectBody(request);
+    const body = await readExerciseMediaPostJsonObject(request);
     if (body instanceof Response) {
       return body;
     }
@@ -251,7 +256,7 @@ export async function handleExerciseMediaRequest(
     );
   }
 
-  const body = await readJsonObjectBody(request);
+  const body = await readExerciseMediaPostJsonObject(request);
   if (body instanceof Response) {
     return body;
   }

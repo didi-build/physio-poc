@@ -164,7 +164,7 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
     this.imageSize = config.imageSize ?? DEEPINFRA_FLUX_KLEIN_IMAGE_SIZE;
     this.requestTimeoutMs =
       config.requestTimeoutMs ?? DEEPINFRA_IMAGE_REQUEST_TIMEOUT_MS;
-    this.fetchImpl = config.fetchImpl ?? fetch;
+    this.fetchImpl = config.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
   async generateStartAndEndImages(

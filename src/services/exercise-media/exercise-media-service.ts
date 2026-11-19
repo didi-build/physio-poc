@@ -46,7 +46,8 @@ export class ExerciseMediaServiceError extends Error {
       | "daily_limit_reached"
       | "invalid_scope"
       | "invalid_input"
-      | "start_reference_unavailable",
+      | "start_reference_unavailable"
+      | "exercise_media_already_generated",
   ) {
     super(message);
     this.name = "ExerciseMediaServiceError";
@@ -125,10 +126,26 @@ export class ExerciseMediaService {
     regenerationNote?: string | null;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
+    const quota = await this.getRegenerationQuota(input.practitionerId);
+    if (quota.limitReached) {
+      throw new ExerciseMediaServiceError(
+        "Daily media regeneration limit reached",
+        "daily_limit_reached",
+      );
+    }
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
       input.practitionerId,
     );
+    if (version.media_set_id) {
+      const existing = await this.mediaSets.findById(version.media_set_id);
+      if (existing) {
+        throw new ExerciseMediaServiceError(
+          "Exercise media already generated for this version",
+          "exercise_media_already_generated",
+        );
+      }
+    }
     const visibility: MediaVisibility =
       version.status === "approved" ? "public" : "draft";
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
@@ -137,13 +154,24 @@ export class ExerciseMediaService {
       endPrompt: buildEndImagePrompt(promptContext),
       regenerationNote,
     });
-    return this.persistMediaSet({
+    const media = await this.persistMediaSet({
       version,
       visibility,
       start: generated.start,
       end: generated.end,
       updateVersion: true,
     });
+    const nowIso = this.clock().toISOString();
+    await this.regenerations.insert({
+      id: this.createId(),
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: "both",
+      hadNote: regenerationNote !== null,
+      createdAt: nowIso,
+    });
+    return media;
   }
 
   async regenerateMedia(input: {

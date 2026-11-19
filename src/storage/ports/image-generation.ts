@@ -1,6 +1,8 @@
 export type GeneratedImage = {
   bytes: Uint8Array;
   contentType: string;
+  /** fal CDN URL for the start image, when the provider returns one (for edit chaining). */
+  providerSourceUrl?: string;
 };
 
 export type GenerateExerciseImagesInput = {
@@ -17,7 +19,26 @@ export type StartReferenceImage = {
 export type ImageGenerationCallOptions = {
   regenerationNote?: string | null;
   startReferenceImage?: StartReferenceImage;
+  /** fal manual-test adapter: HTTPS URL on fal.media for edit chaining. */
+  startReferenceImageUrl?: string;
 };
+
+export type FalImageGenerationErrorCode =
+  | "fal_api_request_failed"
+  | "fal_image_download_failed"
+  | "fal_start_reference_required";
+
+export class FalImageGenerationError extends Error {
+  readonly code: FalImageGenerationErrorCode;
+  readonly statusCode: number;
+
+  constructor(code: FalImageGenerationErrorCode, statusCode: number) {
+    super(code);
+    this.name = "FalImageGenerationError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
 
 export type ImageGenerationErrorCode =
   | "image_generation_request_failed"
