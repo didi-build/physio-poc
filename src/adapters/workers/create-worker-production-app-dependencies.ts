@@ -5,7 +5,6 @@ import {
   logWorkerMediaBindingMissingOnce,
   MediaBindingMissingObjectStorage,
 } from "./media-binding-missing-object-storage.js";
-import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-object-storage.js";
 import { R2ObjectStorage } from "./r2-object-storage.js";
 import type { ObjectStoragePort } from "../../storage/ports/object-storage.js";
 import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
@@ -55,7 +54,7 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
 
 function resolveProductionObjectStorage(env: WorkerEnv): ObjectStoragePort {
   if (env.PHYSIO_MEDIA) {
-    return new InMemoryObjectStorage();
+    return new R2ObjectStorage(env.PHYSIO_MEDIA);
   }
   logWorkerMediaBindingMissingOnce();
   return new MediaBindingMissingObjectStorage();
