@@ -17,6 +17,9 @@ const DEPLOY_WORKFLOW_PATH = join(WORKFLOWS_DIR, DEPLOY_WORKFLOW_FILENAME);
 
 const DEEPINFRA_SECRET_NAME = "PHYSIO_DEEPINFRA_API_KEY";
 const PUT_STEP_NAME = "Put production Worker auth secrets";
+/** Literal deploy job environment and GitHub production secret ref (DIDI-1212). */
+const GATED_DEPLOY_JOB_ENVIRONMENT = "production";
+const GATED_DEPLOY_PUT_SECRET_REF = `\${{ secrets.${DEEPINFRA_SECRET_NAME} }}`;
 
 type WorkflowStep = {
   name?: string;
@@ -27,6 +30,7 @@ type WorkflowStep = {
 type DeployWorkflow = {
   jobs: {
     deploy: {
+      environment?: string;
       steps: WorkflowStep[];
     };
   };
@@ -65,12 +69,12 @@ describe("PHYSIO_DEEPINFRA_API_KEY production deploy wiring (DIDI-1212)", () => 
     expect(payload.PHYSIO_DEEPINFRA_API_KEY).toBe(fixtureKey);
   });
 
-  it("passes PHYSIO_DEEPINFRA_API_KEY only on the gated deploy Put step", () => {
-    const steps = loadDeployWorkflow().jobs.deploy.steps;
+  it("pins gated deploy production environment and PHYSIO_DEEPINFRA_API_KEY on Put from production secrets", () => {
+    const deployJob = loadDeployWorkflow().jobs.deploy;
+    expect(deployJob.environment).toBe(GATED_DEPLOY_JOB_ENVIRONMENT);
+    const steps = deployJob.steps;
     const putStep = steps.find((step) => step.name === PUT_STEP_NAME);
-    expect(putStep?.env?.[DEEPINFRA_SECRET_NAME]).toBe(
-      `\${{ secrets.${DEEPINFRA_SECRET_NAME} }}`,
-    );
+    expect(putStep?.env?.[DEEPINFRA_SECRET_NAME]).toBe(GATED_DEPLOY_PUT_SECRET_REF);
     for (const step of steps) {
       if (step.name === PUT_STEP_NAME) {
         continue;

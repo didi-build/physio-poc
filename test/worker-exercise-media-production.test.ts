@@ -30,7 +30,10 @@ import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 import { exerciseMediaHttpRouteCases } from "../src/http/routes/exercise-media.js";
 import {
   assertLeakFreeText,
+  expectConsoleCallsLeakFree,
   expectThrownErrorLeakFree,
+  restoreConsoleSpies,
+  spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
 import { ImageGenerationError } from "../src/storage/ports/image-generation.js";
 
@@ -95,6 +98,37 @@ describe("Worker production exercise media (DIDI-1212)", () => {
       expect(deps.exerciseMediaImages).toBeInstanceOf(
         DeepInfraFluxKleinImageGeneration,
       );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns 401 with unauthorized body for exercise media on worker.fetch with production auth env and no cookie", async () => {
+    const { storage, d1 } = await openWorkerAuthTestDatabase();
+    try {
+      resetWorkerProductionAuthCacheForTests();
+      const env = buildWorkerProductionAuthEnv({
+        PHYSIO_DB: d1,
+        PHYSIO_MEDIA: createFakeR2Bucket(),
+      });
+      for (const testCase of exerciseMediaHttpRouteCases()) {
+        const response = await worker.fetch(
+          new Request(`${WORKER_PRODUCTION_TEST_BASE}${testCase.path}`, {
+            method: testCase.method,
+            headers:
+              testCase.method === "POST"
+                ? { "content-type": "application/json" }
+                : undefined,
+            body:
+              testCase.method === "POST"
+                ? JSON.stringify({ scope: "start" })
+                : undefined,
+          }),
+          env,
+        );
+        expect(response.status, `${testCase.method} ${testCase.path}`).toBe(401);
+        await expect(response.json()).resolves.toEqual(UNAUTHORIZED_BODY);
+      }
     } finally {
       storage.close();
     }
@@ -312,6 +346,36 @@ describe("Worker production exercise media (DIDI-1212)", () => {
       await expect(response.json()).resolves.toEqual(VERSION_NOT_FOUND_BODY);
     } finally {
       storage.close();
+    }
+  });
+
+  it("does not leak PHYSIO_DEEPINFRA_API_KEY in console output or the err.cause chain when DeepInfra fetch fails", async () => {
+    const consoleSpies = spyAllConsoleLevels();
+    try {
+      const fetchImpl: typeof fetch = async () =>
+        new Response(JSON.stringify({ detail: SENTINEL_API_KEY }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      const deepinfra = new DeepInfraFluxKleinImageGeneration({
+        apiKey: SENTINEL_API_KEY,
+        fetchImpl,
+      });
+      let caught: unknown;
+      try {
+        await deepinfra.generateStartImage("prompt");
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeDefined();
+      expectThrownErrorLeakFree(caught, { apiKey: SENTINEL_API_KEY });
+      const cause = (caught as { cause?: unknown }).cause;
+      if (cause !== undefined) {
+        expectThrownErrorLeakFree(cause, { apiKey: SENTINEL_API_KEY });
+      }
+      expectConsoleCallsLeakFree(consoleSpies, { apiKey: SENTINEL_API_KEY });
+    } finally {
+      restoreConsoleSpies(consoleSpies);
     }
   });
 
