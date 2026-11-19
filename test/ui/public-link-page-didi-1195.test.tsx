@@ -18,6 +18,36 @@ import {
   ruleDeclarationsInScope,
 } from "./public-link-print-css-scope.js";
 
+function declarationValueInRule(
+  ruleBody: string,
+  property: string,
+): string | undefined {
+  const chunks = ruleBody.split(";");
+  for (const chunk of chunks) {
+    const trimmed = chunk.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const colon = trimmed.indexOf(":");
+    if (colon < 0) {
+      continue;
+    }
+    const name = trimmed.slice(0, colon).trim();
+    if (name === property) {
+      return trimmed.slice(colon + 1).trim();
+    }
+  }
+  return undefined;
+}
+
+function expectExactDeclaration(
+  ruleBody: string,
+  property: string,
+  expectedValue: string,
+): void {
+  expect(declarationValueInRule(ruleBody, property)).toBe(expectedValue);
+}
+
 const TRY_AGAIN = "Try again" as const;
 
 const EXPIRY_STAYS_OPEN =
@@ -355,51 +385,57 @@ describe("public link page print stylesheet (DIDI-1195)", () => {
     const css = readPrintStylesheet();
     const print = printMediaScope(css);
     const stillImg = ruleDeclarationsInScope(print, ".link-page-print-still-img");
-    expect(stillImg).toContain("aspect-ratio: 4 / 3");
-    expect(stillImg).toContain("border-radius: 0.75rem");
-    expect(stillImg).toContain("object-fit: cover");
+    expectExactDeclaration(stillImg, "aspect-ratio", "4 / 3");
+    expectExactDeclaration(stillImg, "border-radius", "0.75rem");
+    expectExactDeclaration(stillImg, "object-fit", "cover");
 
     const caption = ruleDeclarationsInScope(print, ".link-page-print-caption");
-    expect(caption).toContain("font-size: 0.75rem");
-    expect(caption).toContain("text-align: left");
-    expect(caption).toContain("margin: 0.25rem 0 0");
+    expectExactDeclaration(caption, "font-size", "0.75rem");
+    expectExactDeclaration(caption, "text-align", "left");
+    expectExactDeclaration(caption, "margin", "0.25rem 0 0");
+    expectExactDeclaration(caption, "color", "#64748b");
 
     const failedMsg = ruleDeclarationsInScope(
       print,
       ".link-page-media-failed .link-page-print-media-failed",
     );
-    expect(failedMsg).toContain("font-size: 13px");
-    expect(failedMsg).toContain("color: #64748b");
-    expect(failedMsg).not.toMatch(/display:\s*none/);
+    expectExactDeclaration(failedMsg, "font-size", "13px");
+    expectExactDeclaration(failedMsg, "color", "#64748b");
+    expect(declarationValueInRule(failedMsg, "display")).toBeUndefined();
 
     const row = ruleDeclarationsInScope(print, ".link-page-row");
-    expect(row).toContain("gap: 0.75rem");
+    expectExactDeclaration(row, "display", "grid");
+    expectExactDeclaration(row, "gap", "0.75rem");
 
     const title = ruleDeclarationsInScope(print, ".link-page-row-title");
-    expect(title).toContain("font-size: 15px");
+    expectExactDeclaration(title, "font-size", "15px");
 
     const doseLine = ruleDeclarationsInScope(print, ".link-page-dose-line");
-    expect(doseLine).toContain("font-size: 13px");
+    expectExactDeclaration(doseLine, "font-size", "13px");
 
     const note = ruleDeclarationsInScope(print, ".link-page-row-note");
-    expect(note).toContain("font-size: 12px");
-    expect(note).toContain("line-height: 1.625");
+    expectExactDeclaration(note, "font-size", "12px");
+    expectExactDeclaration(note, "line-height", "1.625");
 
     const failedCell = ruleDeclarationsInScope(print, ".link-page-media-failed");
-    expect(failedCell).toContain("min-height: 8.25rem");
-    expect(failedCell).toContain("border: 1px dashed #cbd5e1");
-    expect(failedCell).toContain("align-items: center");
-    expect(failedCell).toContain("justify-content: center");
-    expect(ruleDeclarationsInScope(print, ".link-page-print-still--end")).toMatch(
-      /grid-row:\s*1\s*\/\s*span\s+3/,
-    );
+    expectExactDeclaration(failedCell, "grid-column", "2 / 4");
+    expectExactDeclaration(failedCell, "grid-row", "1 / span 3");
+    expectExactDeclaration(failedCell, "min-height", "8.25rem");
+    expectExactDeclaration(failedCell, "border", "1px dashed #cbd5e1");
+    expectExactDeclaration(failedCell, "align-items", "center");
+    expectExactDeclaration(failedCell, "justify-content", "center");
+
+    const endStill = ruleDeclarationsInScope(print, ".link-page-print-still--end");
+    expectExactDeclaration(endStill, "grid-row", "1 / span 3");
   });
 
-  it("keeps desktop row grid for viewport layout (N20)", () => {
+  it("keeps desktop row grid for viewport layout (N20 desktop)", () => {
     const css = readPrintStylesheet();
     const desktop = desktopMediaScope(css);
-    expect(ruleDeclarationsInScope(desktop, ".link-page-row")).toContain(
-      "display: grid",
+    expectExactDeclaration(
+      ruleDeclarationsInScope(desktop, ".link-page-row"),
+      "display",
+      "grid",
     );
   });
 });
