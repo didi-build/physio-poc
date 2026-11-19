@@ -8,7 +8,7 @@ When exercise save forms wire the approved template field (`design/reference/web
 
 **Today:** `src/ui/exercise-requests/DraftReviewPage.tsx` does **not** render a body region field. No exercise library editor in `src/ui/exercise-library/` renders a body region input today.
 
-**Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) locks `6b4144fd`, `ef0be2a4`, and `84a4199c`, Nov 18 to 19, 2026 product direction and approvals on [DIDI-1253](https://linear.app/didi-build/issue/DIDI-1253) and [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256). AI pending chip design (r8): approved in Linear [DIDI-1256 comment `ab0ce302`](https://linear.app/didi-build/issue/DIDI-1256); CTO lock for r8 pending.
+**Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) locks `6b4144fd`, `ef0be2a4`, `84a4199c`, `7baedf0c` (add on edit), and `32f06097` (r8), Nov 18 to 19, 2026 product direction and approvals on [DIDI-1253](https://linear.app/didi-build/issue/DIDI-1253) and [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256).
 
 ## Body region field in the app today
 
@@ -109,13 +109,13 @@ Typeahead and dropdown: MagicPath `ABR4TypingHint` (revision `473932751381368833
 
 ### Selected chips
 
-When `selections.length > 0`: `mt-2 flex flex-wrap items-center` below the label. Extra vertical gap (`gap-y-6 pt-4`) when any chip is pending so the floating **Suggested** label clears the row below.
+When `selections.length > 0`: `mt-2 flex flex-wrap items-center` below the label (r8). Chip row: `gap-x-2.5` always; when any chip is pending, `gap-y-6 pt-4` so the floating **Suggested** label clears the row below; when none is pending, `gap-2` (same as r4 chip row spacing). Accepted chips keep r4 `gap-2` between label and remove control inside each pill.
 
 | Chip kind | Style |
 | -- | -- |
 | Existing catalog region (accepted) | `rounded-full`, `border-[#0f766e]`, fill `#0f766e`, white text, semibold `text-sm`, `min-h-11` |
 | User-added region not in catalog (accepted, typed via add row) | `rounded-full`, `border-[#0f766e]`, fill `#f0fdfa`, text `#115e59`, white pill **New** (`TAG_NEW`), `min-h-11` (r4) |
-| AI-suggested region (pending, r8) | White fill, `border-dashed border-[#0f766e]`, text `#115e59`, `min-h-11`. Plain teal **Suggested** text on the top edge (no pill; background only on the field canvas `#f8fafc` to break the dash). Filled teal check control (`aria-label` **Keep {region}**) and **x** in a light circle (`aria-label` **Clear {region}**), each `44 px` hit target (`after:h-11 after:w-11`) |
+| AI-suggested region (pending, r8) | White fill, `border-dashed border-[#0f766e]`, text `#115e59`, `min-h-11`. **Suggested** label: `text-[10px] font-semibold leading-none text-[#115e59]`, centered on the top edge (`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2`), `whitespace-nowrap`, `px-1.5`; `bg-[#f8fafc]` on the label span only to break the dashed border (plain text, not a pill). Check and **x** sit side by side: visible control `h-7 w-7` (28 px) with inner icon disc `h-6 w-6`; each button also has overlapping `after:h-11 after:w-11` (44 px) tap zone (`aria-label` **Keep {region}** / **Clear {region}**) |
 | AI-suggested region (accepted after check) | Same as existing catalog chip: solid teal fill, white text, visible **Clear** remove control; no **Suggested** label (see mockup 07) |
 | Remove control (accepted chips) | Visible text button **Clear** on each chip: `h-8`, `min-w-8`, `rounded-full`, `text-xs` font-semibold; `text-white/90` with `hover:bg-white/15` on existing chips, `text-[#115e59]` with `hover:bg-white` on user **New** chips (`CLEAR`, `src/ui/copy/exercise-library.ts` line 12) |
 
@@ -129,6 +129,7 @@ When `selections.length > 0`: `mt-2 flex flex-wrap items-center` below the label
 - Transparent `<input>` overlay: `role="combobox"`, `caret-transparent`, `pl-10 pr-10`, captures typing and focus.
 - Right: chevron button `tabIndex={-1}`, `aria-label` **Body region** (`BODY_REGION`), toggles list and refocuses input.
 - Placeholder string: N4 **Type to search or add a region**.
+- **Enter (r8 integrated picker):** when the list is closed, `preventDefault` and `setOpen(true)` only; when open, `activateOption(highlight)`. This replaces r4 behaviour where Enter activates the highlighted option whether or not the list is open.
 
 ### Dropdown list
 
@@ -147,7 +148,7 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 | Control | Behaviour |
 | -- | -- |
 | Check (`Keep {region}`) | Accept the suggestion: chip becomes a normal accepted catalog-style chip with visible **Clear**; **Suggested** label removed |
-| x (`Clear {region}`) | Remove the pending chip only; does not create a catalog entry |
+| x (`Clear {region}`) | Remove the pending chip from the form (`dismissSuggestion` in r8); does not create a catalog entry |
 | Rewording | Physio types in the typeahead and uses the normal **Add {region}** path. No **Change** control and no **Change** refill |
 
 ## Region labels: display and matching
@@ -166,6 +167,7 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 | After pick | `addSelection`: append chip, clear query, close list, `requestAnimationFrame` refocus input |
 | Remove chip | Filter selections with `sameRegion`; refocus input |
 | Chevron | Toggles `open`; does not steal focus from typeahead long term |
+| Enter (r8) | List closed: open list only. List open: `activateOption(highlight)`. Differs from r4 standalone typeahead mockups (01 to 04), which activate on Enter even when closed |
 
 ## States (mockups)
 
@@ -185,7 +187,8 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 | -- | -- |
 | ArrowDown | `preventDefault`; set `open` true; move highlight down (clamped). |
 | ArrowUp | `preventDefault`; move highlight up (clamped). |
-| Enter | `preventDefault`; `activateOption(highlight)` for the highlighted catalog row or add row **whether or not the list is open** (r4: Enter does not gate on `open`). |
+| Enter (r4 stills 01 to 04) | `preventDefault`; `activateOption(highlight)` **whether or not the list is open** |
+| Enter (r8 picker) | `preventDefault`; if list open, `activateOption(highlight)`; if closed, open list only (does not pick) |
 | Escape | Close list (`setOpen(false)`). |
 
 - Typeahead input: `role="combobox"`, `aria-expanded`, `aria-controls` (list id), `aria-autocomplete="list"`, `aria-activedescendant` when open and a highlighted option exists.
@@ -213,6 +216,11 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 - User-visible copy for invalid or duplicate region name on add (described need only; no proposed wording).
 - User-visible copy for exercise save failure attributable to body region (described need only; no proposed wording).
 - Each accepted chip remove control exposes only **Clear** to assistive tech, so screen reader users cannot tell which region they are removing. Accessible names that distinguish chips need new copy from Diadem (described need only; no proposed wording).
+- Pending-chip check and **x** use 28 px visible circles with side-by-side placement and overlapping 44 px `::after` hit areas; usable width along the chip for the check is about 28 px before overlap with **x** (described need only; no proposed fix).
+
+### Open: needs Diadem decision
+
+- After the physio dismisses a pending AI suggestion on this form, whether that region name is offered again on the same exercise form session (r8 removes it from selection state only; no approved product rule).
 
 ## Strings
 
@@ -250,13 +258,13 @@ Choosing a list row or the add row: append chip (existing or user-new styling), 
 
 1. Multi-region: `body_regions: string[]`; chips reflect every selected region.
 2. Variant B chip row plus variant A add row inside typeahead dropdown on all exercise save flows (add and edit).
-3. AI drafter: keep all returned regions; each unresolved name starts as an r8 pending chip until kept or cleared.
+3. AI drafter: keep all returned regions. Catalog matches arrive as accepted existing chips; other drafter names arrive as r8 pending chips until kept or cleared.
 4. Edit for everyone and Edit my copy: same picker as add flows; new regions go live on save (2:05 PM EST Nov 19).
 5. Pending AI chips: r8 dashed treatment; **Suggested** label; check and x with N6 and N7 accessible names; no **Change**.
 6. Accepted AI suggestion after check: solid existing-style chip per mockup 07 (no **New** tag).
 7. User-typed new regions: **New** pill on add row and on accepted chip per r4.
 8. Hint and focus caret approved in r4 (5:49 PM ET).
-9. Touch targets at least 44 px on chips, list rows, add row, typeahead, and pending controls.
+9. Touch targets at least 44 px on list rows, add row, and typeahead; accepted chips `min-h-11`; pending controls use r8 overlapping 44 px `::after` zones with 28 px visible circles (see open a11y item).
 
 ## Mockups
 
@@ -274,6 +282,7 @@ Phone 390 by 844 px; desktop 1280 by 900 px. No preview chrome. Caret frozen vis
 
 ## Changes
 
+- **Nov 19, 2026**: DIDI-1256 QA R1: DIDI-594 locks `7baedf0c` / `32f06097`; r8 Enter; chip gaps and control sizing; mockup viewport background. https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 19, 2026**: DIDI-1256: add on edit; r8 pending AI chips; mockups 05 to 07; N5 to N7; retire N2/N3 visible **Keep**/**Change**. https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 18, 2026**: DIDI-1253 QA R2: mockups from r4 source `473932751381368833`; `max-h-96`; display vs storage casing; `listMeBodyRegions`; a11y open item for chip **Clear**. https://linear.app/didi-build/issue/DIDI-1253
 - **Nov 18, 2026**: DIDI-1253 r4 (A+B typing hint) approved 5:49 PM ET; multi-region chips; N4 placeholder; mockups 01 to 04. CTO withdrew single-choice ruling. https://linear.app/didi-build/issue/DIDI-1253

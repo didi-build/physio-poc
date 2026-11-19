@@ -83,7 +83,7 @@ The full verbatim copy is in the inventory at the end.
 
 ## Body region picker (DIDI-1253, DIDI-1256)
 
-Chip plus typeahead per [body-region-picker/spec.md](../body-region-picker/spec.md) when exercise save forms wire **Body region**. Multi-select `body_regions: string[]`. Inline **Add {region}** on add and edit flows; new regions go live on save. AI drafter regions use r8 pending chips (**Suggested**, check **Keep {region}**, x **Clear {region}**). Filter pills remain fixed `BODY_REGION_PILLS` in `library-filters.ts` (not live catalogs).
+Chip plus typeahead per [body-region-picker/spec.md](../body-region-picker/spec.md) when exercise save forms wire **Body region**. Multi-select `body_regions: string[]`. Inline **Add {region}** on add and edit flows; new regions go live on save. AI drafter: keep every returned region; catalog matches pre-fill as accepted existing chips; other names pre-fill as r8 pending chips (**Suggested**, check **Keep {region}**, x **Clear {region}**) until kept or cleared. Filter pills remain fixed `BODY_REGION_PILLS` in `library-filters.ts` (not live catalogs).
 
 ## Mockups
 

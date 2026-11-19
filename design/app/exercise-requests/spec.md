@@ -48,7 +48,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 ## Body region picker (DIDI-1253, DIDI-1256)
 
-Chip plus typeahead per [body-region-picker/spec.md](../body-region-picker/spec.md) when draft review wires **Body region** (`draftData.ts` `TEXT_META`). **Today** `DraftReviewPage.tsx` has no body region field. Multi-select `body_regions: string[]`; AI pre-fills all drafter regions as r8 pending chips until kept or cleared. **Add {region}** on add and edit flows; new regions go live on save.
+Chip plus typeahead per [body-region-picker/spec.md](../body-region-picker/spec.md) when draft review wires **Body region** (`draftData.ts` `TEXT_META`). **Today** `DraftReviewPage.tsx` has no body region field. Multi-select `body_regions: string[]`; AI pre-fills every returned region: catalog matches as accepted existing chips, other names as r8 pending chips until kept or cleared. **Add {region}** on add and edit flows; new regions go live on save.
 
 ## Mockups
 
@@ -323,5 +323,5 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Oct 25, 2026**: v10 comment #18: Requests and drafts shows only work in progress; approved requests go straight into My exercises. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 25, 2026**: v12 approved by Diadem (7:22 PM ET). No change to this feature in v11 or v12. https://linear.app/didi-build/issue/DIDI-809
 - **Nov 10, 2026**: DIDI-1200 C2 approved by Diadem (2:09 PM ET). The request card shows on every All exercises empty state, not only on a search with no match, as a single container. Exercise is editable: prefilled from the search, empty with no search. Not on My exercises. No new strings. https://linear.app/didi-build/issue/DIDI-1200
-- **Nov 19, 2026**: DIDI-1256 body region picker: add on edit, r8 AI pending chips. https://linear.app/didi-build/issue/DIDI-1256
 - **Nov 18, 2026**: DIDI-1253 body region picker r4 (A+B chips, multi-region). https://linear.app/didi-build/issue/DIDI-1253
+- **Nov 19, 2026**: DIDI-1256 body region picker: add on edit, r8 AI pending chips. https://linear.app/didi-build/issue/DIDI-1256
