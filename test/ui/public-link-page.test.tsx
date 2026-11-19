@@ -233,6 +233,10 @@ describe("public link page print stylesheet", () => {
     const css = readFileSync(PRINT_STYLESHEET, "utf8");
     expect(css).toContain("@media print");
     expect(css).toMatch(/\.link-page-no-print\s*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/\.link-page-only-print\s*\{[^}]*display:\s*contents/);
+    expect(css).toMatch(
+      /\.link-page-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+11rem\s+11rem/,
+    );
     expect(css).toMatch(/\.link-page-row\s*\{[^}]*break-inside:\s*avoid/);
     expect(css).not.toContain("exercise-motion");
   });

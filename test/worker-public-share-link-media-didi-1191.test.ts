@@ -71,7 +71,8 @@ describe("Worker public share link media (DIDI-1191)", () => {
         env,
       );
       expect(response.status).toBe(404);
-      expect(await response.text()).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+      expect(await response.text()).toBe('{"error":"not_found"}');
+      expect(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY).toBe('{"error":"not_found"}');
     } finally {
       storage.close();
     }
