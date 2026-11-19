@@ -66,6 +66,7 @@ describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", ()
   it("adds the physio-media R2 bucket binding to the deploy config output", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-r2-"));
     const outputPath = join(tempDir, "wrangler.ci.jsonc");
+    const priorCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
     process.env[ENV_LEAK_PROBE] = "must-not-leak";
     process.env.CLOUDFLARE_API_TOKEN = "must-not-leak";
     resetRecordedSpawnEnvsForTests();
@@ -98,7 +99,11 @@ describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", ()
       assertRecordedSpawnEnvIsMinimalPrepare(FIXTURE_DATABASE_ID);
     } finally {
       delete process.env[ENV_LEAK_PROBE];
-      delete process.env.CLOUDFLARE_API_TOKEN;
+      if (priorCloudflareToken === undefined) {
+        delete process.env.CLOUDFLARE_API_TOKEN;
+      } else {
+        process.env.CLOUDFLARE_API_TOKEN = priorCloudflareToken;
+      }
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
