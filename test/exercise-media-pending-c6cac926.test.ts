@@ -305,6 +305,68 @@ describe("exercise media pending model (c6cac926)", () => {
     }
   });
 
+  it("rejects non-requester regenerate when pending was requested by someone else", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerId = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("regen-owner"),
+        "own@ex.com",
+      );
+      const otherId = await seedPractitioner(
+        storage,
+        testOpaqueEntityId("regen-other"),
+        "oth@ex.com",
+      );
+      const { versionId } = await seedApprovedExerciseVersionWithMedia(
+        storage,
+        ownerId,
+      );
+      const ownerDeps = exerciseMediaTestDeps(storage, {
+        practitionerId: ownerId,
+        email: "own@ex.com",
+        displayName: "Owner",
+      });
+      const regenUrl = `${BASE}/api/me/exercise-versions/${versionId}/media/regenerate`;
+      await handleRequest(
+        new Request(
+          regenUrl,
+          mutatingAppApiRequestInit(regenUrl, {
+            method: "POST",
+            headers: {
+              cookie: exerciseMediaSessionCookie(ownerDeps),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ scope: "both" }),
+          }),
+        ),
+        ownerDeps,
+      );
+      await storage.run(
+        "UPDATE exercise_versions SET pending_media_requested_by = ? WHERE id = ?",
+        [otherId, versionId],
+      );
+      const denied = await handleRequest(
+        new Request(
+          regenUrl,
+          mutatingAppApiRequestInit(regenUrl, {
+            method: "POST",
+            headers: {
+              cookie: exerciseMediaSessionCookie(ownerDeps),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ scope: "both" }),
+          }),
+        ),
+        ownerDeps,
+      );
+      expect(denied.status).toBe(404);
+      await expect(denied.json()).resolves.toEqual(VERSION_NOT_FOUND_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("rejects non-requester internal serve with pinned 404 body", async () => {
     const storage = await openMigratedDatabase();
     try {

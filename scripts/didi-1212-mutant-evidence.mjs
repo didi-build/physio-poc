@@ -3,7 +3,9 @@ import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const REPO = "/agent/repos/physio-poc";
-const HEAD = execSync("git -C " + REPO + " rev-parse HEAD", { encoding: "utf8" }).trim();
+const HEAD = execSync("git -C " + REPO + " rev-parse HEAD", {
+  encoding: "utf8",
+}).trim();
 const OUT_MD = `/tmp/didi-1212-mutants-${HEAD}.md`;
 const OUT_LOG = `/tmp/didi-1212-baseline-${HEAD}.log`;
 
@@ -23,10 +25,7 @@ const mutants = [
     name: "require-practitioner.ts: session guard returns bypass token instead of 401",
     file: "src/http/require-practitioner.ts",
     apply: (s) =>
-      s.replace(
-        "return jsonUnauthorized();",
-        'return "mutant-session-bypass";',
-      ),
+      s.replace("return jsonUnauthorized();", 'return "mutant-session-bypass";'),
   },
   {
     id: "S01",
@@ -123,7 +122,7 @@ const mutants = [
     apply: (s) =>
       s.replace(
         "return Response.json({ error: error.code }, { status: 502, headers: JSON_HEADERS });",
-        'return Response.json({ error: error.code, debug: process.env.PHYSIO_DEEPINFRA_API_KEY }, { status: 502, headers: JSON_HEADERS });',
+        "return Response.json({ error: error.code, debug: process.env.PHYSIO_DEEPINFRA_API_KEY }, { status: 502, headers: JSON_HEADERS });",
       ),
   },
   {
@@ -171,7 +170,10 @@ const mutants = [
     name: "exercise-media.ts: no-store removed from SERVE_JSON_HEADERS",
     file: "src/http/routes/exercise-media.ts",
     apply: (s) =>
-      s.replace('"cache-control": "no-store"', '"cache-control": "public, max-age=3600"'),
+      s.replace(
+        '"cache-control": "no-store"',
+        '"cache-control": "public, max-age=3600"',
+      ),
   },
   {
     id: "B1D",
@@ -310,10 +312,7 @@ const mutants = [
     name: "exercise-media-service.ts: approved regenerate skips pending requester gate",
     file: "src/services/exercise-media/exercise-media-service.ts",
     apply: (s) =>
-      s.replace(
-        `version.pending_media_requested_by !== input.practitionerId`,
-        "false",
-      ),
+      s.replace(`version.pending_media_requested_by !== input.practitionerId`, "false"),
   },
   {
     id: "C6R3",
@@ -374,7 +373,8 @@ function runSuite() {
 
 function parseSummary(out) {
   const testsLine = [...out.matchAll(/^\s*Tests\s+(.+)$/gm)].pop()?.[1]?.trim() ?? "?";
-  const filesLine = [...out.matchAll(/^\s*Test Files\s+(.+)$/gm)].pop()?.[1]?.trim() ?? "?";
+  const filesLine =
+    [...out.matchAll(/^\s*Test Files\s+(.+)$/gm)].pop()?.[1]?.trim() ?? "?";
   let failed = 0;
   let passed = 0;
   let skipped = 0;
