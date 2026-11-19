@@ -4,7 +4,7 @@ import {
   PHYSIO_MCP_TOOL_NAMES,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
-  type PhysioMcpToolName,
+  type PhysioMcpWiredToolName,
 } from "../../mcp-connector/index.js";
 import { DATE_FORMAT_FIELD_PATHS } from "./generated/input-validator-meta.js";
 import type { StandaloneValidateFunction } from "./generated/input-validators.js";
@@ -39,7 +39,7 @@ export class PhysioMcpStructuredToolError extends Error {
   }
 }
 
-const validators: Record<PhysioMcpToolName, StandaloneValidateFunction> = {
+const validators: Record<PhysioMcpWiredToolName, StandaloneValidateFunction> = {
   [SEARCH_APPROVED_EXERCISES_TOOL_NAME]: search_approved_exercises,
   [SEARCH_ROUTINES_TOOL_NAME]: search_routines,
   [GET_PROGRAM_BUILDER_LINK_TOOL_NAME]: get_program_builder_link,
@@ -97,10 +97,10 @@ export function validatePhysioMcpToolInput(
   toolName: string,
   args: unknown,
 ): Record<string, unknown> {
-  if (!PHYSIO_MCP_TOOL_NAMES.includes(toolName as PhysioMcpToolName)) {
+  if (!PHYSIO_MCP_TOOL_NAMES.includes(toolName as PhysioMcpWiredToolName)) {
     throw new PhysioMcpToolInputError(`Unknown tool: ${toolName}`);
   }
-  const name = toolName as PhysioMcpToolName;
+  const name = toolName as PhysioMcpWiredToolName;
   const record =
     args !== null && typeof args === "object" && !Array.isArray(args)
       ? (args as Record<string, unknown>)

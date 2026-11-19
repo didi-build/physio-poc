@@ -12,9 +12,9 @@ import { describe, expect, it } from "vitest";
 import {
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
-  MCP_TOOL_ANNOTATIONS,
   PATIENT_DETAIL_REJECTION_MESSAGE,
   PHYSIO_MCP_TOOL_NAMES,
+  PHYSIO_MCP_WIRED_TOOLS,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
   buildWebAppExerciseSearchUrl,
@@ -86,11 +86,15 @@ async function mcpHttpFetchWithOwnerRoutine(routineUuid: string) {
   return fetch;
 }
 
-const goldenTools = JSON.parse(
+const goldenContractTools = JSON.parse(
   readFileSync(
     join(process.cwd(), "test/fixtures/physio-mcp-tools.golden.json"),
     "utf8",
   ),
+);
+
+const goldenWiredTools = goldenContractTools.filter((tool: { name: string }) =>
+  PHYSIO_MCP_WIRED_TOOLS.some((wired) => wired.name === tool.name),
 );
 
 const Ajv = AjvModule.default ?? AjvModule;
@@ -154,7 +158,7 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
   it("lists tools deep-equal to the golden fixture with flat input roots", async () => {
     await withMcpClient(async (client) => {
       const { tools } = await client.listTools();
-      expect(tools).toEqual(goldenTools);
+      expect(tools).toEqual(goldenWiredTools);
       for (const tool of tools ?? []) {
         const schema = tool.inputSchema as Record<string, unknown>;
         expect(schema.type).toBe("object");
@@ -165,11 +169,49 @@ describe("Physio MCP HTTP handler (Streamable HTTP)", () => {
     });
   });
 
-  it("lists read-only tool annotations on every tool", async () => {
+  it("lists read-only tool annotations on every wired tool", async () => {
+    const readOnlyAnnotations = {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    };
     await withMcpClient(async (client) => {
       const { tools } = await client.listTools();
+      expect(tools?.map((t) => t.name)).toEqual(
+        goldenWiredTools.map((t: { name: string }) => t.name),
+      );
       for (const tool of tools ?? []) {
-        expect(tool.annotations).toEqual(MCP_TOOL_ANNOTATIONS);
+        expect(tool.annotations).toEqual(readOnlyAnnotations);
+      }
+    });
+  });
+
+  const UNWIRED_WRITE_TOOL_NAMES = [
+    "create_or_edit_program",
+    "publish_program",
+    "set_program_link_expiry",
+    "delete_program",
+  ] as const;
+
+  it("does not expose unwired write tools on tools/list", async () => {
+    await withMcpClient(async (client) => {
+      const { tools } = await client.listTools();
+      const names = new Set(tools?.map((t) => t.name));
+      for (const name of UNWIRED_WRITE_TOOL_NAMES) {
+        expect(names.has(name), name).toBe(false);
+      }
+    });
+  });
+
+  it("rejects unwired write tool calls with Unknown tool text and isError", async () => {
+    await withMcpClient(async (client) => {
+      for (const name of UNWIRED_WRITE_TOOL_NAMES) {
+        const result = await client.callTool({
+          name,
+          arguments: { program_code: "PRG-7K3Q" },
+        });
+        expect(result.isError, name).toBe(true);
+        expect(toolErrorText(result), name).toBe(`Unknown tool: ${name}`);
       }
     });
   });

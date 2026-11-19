@@ -22,17 +22,26 @@ export {
 } from "../app-routes.js";
 
 export {
+  CREATE_OR_EDIT_PROGRAM_TOOL_NAME,
+  DELETE_PROGRAM_TOOL_NAME,
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
+  MCP_CREATE_EDIT_PROGRAM_ANNOTATIONS,
+  MCP_DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   MCP_TOOL_ANNOTATIONS,
+  PUBLISH_PROGRAM_TOOL_NAME,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
+  SET_PROGRAM_LINK_EXPIRY_TOOL_NAME,
   getPhysioMcpTool,
   PHYSIO_MCP_TOOL_NAMES,
   PHYSIO_MCP_TOOLS,
+  PHYSIO_MCP_WIRED_TOOL_NAMES,
+  PHYSIO_MCP_WIRED_TOOLS,
   type PhysioMcpToolDefinition,
   type PhysioMcpToolName,
   type PhysioMcpToolAnnotations,
+  type PhysioMcpWiredToolName,
 } from "./contract.js";
 
 export {
@@ -104,11 +113,15 @@ export {
   ambiguousProgramMatchSchema,
   approvedExerciseSummarySchema,
   exerciseCategorySchema,
+  exerciseNotFoundSchema,
   nullableProgramVersionRefSchema,
   prescriptionTypeSchema,
   programCodeProperty,
+  programRowInputSchema,
+  programRowOutputSchema,
   programTitleProperty,
   programVersionRefSchema,
+  publishOverridesInputSchema,
   rowParamsSchema,
   routineIdProperty,
   routineSummarySchema,
@@ -116,3 +129,18 @@ export {
   shareLinkOutputProperty,
   summaryOutputProperty,
 } from "./json-schema.js";
+
+export {
+  createOrEditProgramDescription,
+  createOrEditProgramInputSchema,
+  createOrEditProgramOutputSchema,
+  deleteProgramDescription,
+  deleteProgramInputSchema,
+  deleteProgramOutputSchema,
+  publishProgramDescription,
+  publishProgramInputSchema,
+  publishProgramOutputSchema,
+  setProgramLinkExpiryDescription,
+  setProgramLinkExpiryInputSchema,
+  setProgramLinkExpiryOutputSchema,
+} from "./write-tools.js";
