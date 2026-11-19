@@ -133,7 +133,7 @@ describe("ExerciseMediaService (integration)", () => {
         practitionerId,
         exerciseVersionId: versionId,
       });
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 4; i += 1) {
         await service.regenerateMedia({
           practitionerId,
           exerciseVersionId: versionId,
@@ -247,8 +247,8 @@ describe("ExerciseMediaService (integration)", () => {
       const regenRows = await storage.all<{ had_note: number }>(
         "SELECT had_note FROM media_regenerations",
       );
-      expect(regenRows).toHaveLength(1);
-      expect(regenRows[0]?.had_note).toBe(1);
+      expect(regenRows).toHaveLength(2);
+      expect(regenRows.find((row) => row.had_note === 1)).toBeDefined();
       const tableDump = JSON.stringify(
         await storage.all("SELECT * FROM media_regenerations"),
       );

@@ -148,7 +148,7 @@ describe("Exercise media HTTP routes (integration)", () => {
         deps,
       );
 
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 4; i += 1) {
         const regen = await handleRequest(
           mediaRequest(
             `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`,

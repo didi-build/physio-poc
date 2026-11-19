@@ -437,7 +437,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
     return { practA, practB, approvedVersionId };
   }
 
-  it("POST generate: exercise owner B succeeds on B approved version", async () => {
+  it("POST generate: exercise owner B gets 409 when B approved version already has media", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practB, approvedVersionId } =
@@ -460,7 +460,10 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         ),
         deps,
       );
-      expect(response.status).toBe(201);
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toEqual({
+        error: "exercise_media_already_generated",
+      });
     } finally {
       storage.close();
     }
@@ -759,7 +762,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
     }
   });
 
-  it("owner B succeeds on generate, regenerate and internal when approver is A", async () => {
+  it("owner B succeeds on regenerate and internal when approver is A (generate 409 if media exists)", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practB, approvedVersionId } =
@@ -783,7 +786,10 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         ),
         deps,
       );
-      expect(generateResponse.status).toBe(201);
+      expect(generateResponse.status).toBe(409);
+      await expect(generateResponse.json()).resolves.toEqual({
+        error: "exercise_media_already_generated",
+      });
       const regenerateUrl = `${apiBase}/exercise-versions/${approvedVersionId}/media/regenerate`;
       const regenerateResponse = await handleRequest(
         new Request(
