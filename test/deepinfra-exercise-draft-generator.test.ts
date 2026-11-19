@@ -12,6 +12,7 @@ import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fa
 import { DeepInfraExerciseDraftError } from "../src/services/exercise-requests/deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
+  ExerciseAliasesRepository,
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
   ExercisesRepository,
@@ -23,6 +24,7 @@ import {
 } from "./helpers/console-log-leak-assertions.js";
 import {
   openMigratedDatabase,
+  seedExercise,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
@@ -207,6 +209,53 @@ describe("DeepInfra exercise draft generator", () => {
         ["Bad json move"],
       );
       expect(count?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("retries once when a schema-valid alias clashes with the library", async () => {
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-alias-clash"),
+        "alias-clash@example.com",
+      );
+      const existingExerciseId = id("ex-alias-clash");
+      await seedExercise(storage, practitioner, existingExerciseId);
+      const aliases = new ExerciseAliasesRepository(storage);
+      await aliases.insert({
+        id: id("alias-clash"),
+        exerciseId: existingExerciseId,
+        alias: "Heel slides",
+        createdAt: AFTER_FORM,
+      });
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-alias-clash"),
+            requestedName: "Heel slide clash",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }
