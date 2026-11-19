@@ -39,48 +39,53 @@ function buildOversizeValidJsonBody(): string {
 }
 
 function jsonBodyWithExactByteLength(targetBytes: number): string {
-  const shell = (padLen: number) =>
-    JSON.stringify({
-      data: [{ b64_json: b64Png("OK") }],
-      pad: "p".repeat(padLen),
-    });
-  let lo = 0;
-  let hi = targetBytes;
-  let best = shell(0);
-  while (lo <= hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const body = shell(mid);
-    if (body.length === targetBytes) {
-      return body;
-    }
-    if (body.length < targetBytes) {
-      best = body;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
+  const b64 = b64Png("OK");
+  const emptyPadShell = JSON.stringify({
+    data: [{ b64_json: b64 }],
+    pad: "",
+  });
+  const padLen = targetBytes - emptyPadShell.length;
+  if (padLen < 0) {
+    throw new Error(
+      `target byte length ${targetBytes} is smaller than JSON shell ${emptyPadShell.length}`,
+    );
   }
-  if (best.length === targetBytes) {
-    return best;
+  const body = JSON.stringify({
+    data: [{ b64_json: b64 }],
+    pad: "p".repeat(padLen),
+  });
+  if (body.length !== targetBytes) {
+    throw new Error(`expected ${targetBytes} bytes, built ${body.length}`);
   }
-  throw new Error(
-    `could not build JSON of byte length ${targetBytes} (closest ${best.length})`,
-  );
+  return body;
+}
+
+const IMAGE_GENERATION_ERROR_OWN_KEYS = [
+  "code",
+  "statusCode",
+  "name",
+  "message",
+  "stack",
+] as const;
+
+function expectImageGenerationErrorShape(err: unknown): void {
+  expect(err).toBeInstanceOf(ImageGenerationError);
+  expect((err as Error).cause).toBeUndefined();
+  for (const key of Object.getOwnPropertyNames(err as object)) {
+    expect(IMAGE_GENERATION_ERROR_OWN_KEYS).toContain(key);
+  }
 }
 
 async function expectLeakFreeProviderError(
   run: () => Promise<unknown>,
   expectations: { note?: string; jsonBody?: string; apiKey: string },
   code: string,
-  providerBodyAttachedAsCause?: string | object,
 ): Promise<void> {
   const consoleSpies = spyAllConsoleLevels();
   try {
     await expect(run()).rejects.toSatisfy((err: unknown) => {
       expect(err).toMatchObject({ code, message: code });
-      if (providerBodyAttachedAsCause !== undefined) {
-        (err as ImageGenerationError).cause = providerBodyAttachedAsCause;
-      }
+      expectImageGenerationErrorShape(err);
       expectThrownErrorLeakFree(err, expectations);
       console.error(err);
       return true;
@@ -128,6 +133,11 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     expect(timeoutSpy).toHaveBeenCalledWith(REQUEST_TIMEOUT_MS);
     expect(seen[0]?.init?.signal).toBeDefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const headers = seen[0]?.init?.headers as Record<string, string>;
+    expect(headers.Authorization).toBe(
+      "Bearer deepinfra-sentinel-key-must-not-appear-in-errors",
+    );
+    expect(headers["Content-Type"]).toBe("application/json");
     timeoutSpy.mockRestore();
   });
 
@@ -148,6 +158,11 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       expect(form.get("prompt")).toBe("end prompt");
       expect(form.get("response_format")).toBe("b64_json");
       expect(form.get("size")).toBeNull();
+      const reqHeaders = init?.headers as Record<string, string>;
+      expect(reqHeaders.Authorization).toBe(
+        "Bearer deepinfra-sentinel-key-must-not-appear-in-errors",
+      );
+      expect(reqHeaders["Content-Type"]).toBeUndefined();
       const file = form.get("image");
       expect(file).toBeInstanceOf(Blob);
       const received = new Uint8Array(await (file as Blob).arrayBuffer());
@@ -292,15 +307,15 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     >,
     run: (g: DeepInfraFluxKleinImageGeneration) => Promise<unknown>,
     code: string,
-    providerBodyAttachedAsCause?: string | object,
+    servedBody?: string,
   ) {
     const note = `leak probe ${label}`;
-    const jsonBody = JSON.stringify({ detail: note, echo: note });
+    const jsonBody =
+      servedBody ?? JSON.stringify({ detail: note, echo: note, sentinel: apiKey });
     await expectLeakFreeProviderError(
       () => run(new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl })),
       { note, jsonBody, apiKey },
       code,
-      providerBodyAttachedAsCause,
     );
   }
 
@@ -326,6 +341,7 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
         statusCode: 403,
         message: "image_generation_request_failed",
       });
+      expectImageGenerationErrorShape(err);
       expectThrownErrorLeakFree(err, { note, jsonBody, apiKey });
       return true;
     });
@@ -333,14 +349,19 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
 
   it("does not leak the sentinel key on 429 and 5xx generation failures", async () => {
     for (const status of [429, 500] as const) {
-      const providerJson = JSON.stringify({ detail: "rate limited" });
+      const note = `leak probe gen ${status}`;
+      const providerJson = JSON.stringify({
+        detail: note,
+        echo: note,
+        sentinel: apiKey,
+      });
       const fetchImpl = vi.fn(async () => new Response(providerJson, { status }));
       await leakCase(
         String(status),
         fetchImpl,
         (g) => g.generateStartImage("prompt"),
         "image_generation_request_failed",
-        JSON.parse(providerJson) as object,
+        providerJson,
       );
     }
   });
@@ -374,7 +395,10 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       invalidJsonBody,
     );
 
-    const badB64Json = JSON.stringify({ data: [{ b64_json: "!!!not-base64!!!" }] });
+    const badB64Json = JSON.stringify({
+      data: [{ b64_json: "!!!not-base64!!!" }],
+      sentinel: apiKey,
+    });
     const badB64Fetch = vi.fn(
       async () =>
         new Response(badB64Json, {
@@ -387,7 +411,7 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       badB64Fetch,
       (g) => g.generateStartImage("prompt"),
       "image_generation_response_invalid",
-      JSON.parse(badB64Json) as object,
+      badB64Json,
     );
 
     const over = DEEPINFRA_IMAGE_JSON_MAX_BYTES + 1;
@@ -593,6 +617,28 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
+  it("does not attach upstream JSON as error.cause for missing b64_json payloads", async () => {
+    const missingFieldBody = JSON.stringify({
+      data: [{ url: "https://cdn.example/only-url.png" }],
+      sentinel: apiKey,
+    });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(missingFieldBody, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    await expectLeakFreeProviderError(
+      () =>
+        new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl }).generateStartImage(
+          "prompt",
+        ),
+      { jsonBody: missingFieldBody, apiKey },
+      "image_generation_response_invalid",
+    );
+  });
+
   it("rejects valid JSON when b64_json is null", async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -666,6 +712,68 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
       code: "start_reference_required",
       statusCode: 400,
     });
+  });
+
+  it("pins the JSON byte cap at 12582912 (12 MiB)", () => {
+    expect(DEEPINFRA_IMAGE_JSON_MAX_BYTES).toBe(12582912);
+    expect(DEEPINFRA_IMAGE_JSON_MAX_BYTES).toBe(12 * 1024 * 1024);
+  });
+
+  it("does not leak served edit-path bodies on 429, 5xx, or invalid JSON", async () => {
+    const startBytes = new Uint8Array([9, 8, 7]);
+    const runEdit = (
+      fetchImpl: NonNullable<
+        ConstructorParameters<typeof DeepInfraFluxKleinImageGeneration>[0]["fetchImpl"]
+      >,
+      code: string,
+      servedBody: string,
+      status: number,
+    ) =>
+      leakCase(
+        `edit-${status}`,
+        fetchImpl,
+        (g) =>
+          g.generateEndImage("end", {
+            startReferenceImage: { bytes: startBytes, contentType: "image/png" },
+          }),
+        code,
+        servedBody,
+      );
+
+    const note = 'edit leak "probe"';
+    for (const status of [429, 500] as const) {
+      const providerJson = JSON.stringify({
+        detail: note,
+        echo: note,
+        sentinel: apiKey,
+      });
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === EDITS_URL) {
+          return new Response(providerJson, { status });
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+      await runEdit(fetchImpl, "image_generation_request_failed", providerJson, status);
+    }
+
+    const invalidJsonBody = "{not-json";
+    const invalidJsonFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === EDITS_URL) {
+        return new Response(invalidJsonBody, {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    await runEdit(
+      invalidJsonFetch,
+      "image_generation_response_invalid",
+      invalidJsonBody,
+      200,
+    );
   });
 
   it("maps timeout aborts on fetch to image_generation_network_failed", async () => {

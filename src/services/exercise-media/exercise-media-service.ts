@@ -204,7 +204,10 @@ export class ExerciseMediaService {
         )
       : null;
 
-    const startProviderUrl = existing?.start_provider_url ?? null;
+    let startProviderUrl = existing?.start_provider_url ?? null;
+    if (input.scope === "start" || input.scope === "both") {
+      startProviderUrl = null;
+    }
     const imageOptions = { regenerationNote };
 
     if (input.scope === "start" || input.scope === "both") {

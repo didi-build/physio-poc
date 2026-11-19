@@ -35,9 +35,11 @@ Sources:
 - [FLUX 2 Klein 4b model page](https://deepinfra.com/black-forest-labs/FLUX-2-klein-4b) states: "Unified generation & editing — Text-to-image, image editing, and multi-reference in one model" and lists **Editing examples**.
 - [OpenAI Images Edits API](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) documents `POST /v1/images/edits` with required multipart fields `image`, `prompt`, and `model`.
 
-**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter uses **edits only** for end stills (multipart with stored start bytes). It does **not** fall back to a second text-to-image call on edit failure: the [OpenAI Images Generations](https://docs.deepinfra.com/api-reference/image-generation/openai-images-generations) and [Images Edits](https://docs.deepinfra.com/api-reference/image-generation/openai-images-edits) references do not document an HTTP status or response shape for “edits unsupported”, so a prompt-only fallback would be guesswork.
+**Conclusion (docs-based, not live-tested):** DeepInfra documents image edits for FLUX.2 klein 4B via `/v1/images/edits`. The production adapter uses **edits only** for end stills (multipart with stored start bytes). It does **not** fall back to a second text-to-image call on edit failure.
 
-**Seed:** The model page lists a **Seed** parameter for the native [Inference API](https://docs.deepinfra.com/docs/advanced-schema-guide) (`POST /v1/inference/{model}`), not for `POST /v1/openai/images/generations`. OpenAI-compatible generation requests therefore omit `seed`; aligned end stills come from the start image passed into `/v1/images/edits`.
+**CTO ruling** ([DIDI-1209 comment a74d56b1](https://linear.app/didi-build/issue/DIDI-1209#comment-a74d56b1)): “I'm going with option (a): there is no runtime fallback.” “An edit failure returns the typed error and a 502.” “Removing the undocumented `seed` param is accepted.” “A fallback would be added only if there's a documented, status-gated signal.”
+
+**Seed:** The model page lists a **Seed** parameter for the native [Inference API](https://docs.deepinfra.com/docs/advanced-schema-guide) (`POST /v1/inference/{model}`), not for `POST /v1/openai/images/generations`. OpenAI-compatible generation requests omit `seed`.
 
 ### Data handling (DeepInfra)
 

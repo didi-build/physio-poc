@@ -136,7 +136,41 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
     try {
       const { practitionerId, versionId, objects } =
         await seedDraftVersionWithGeneratedMedia(storage);
-      const { fetchImpl, generationCalls, editCalls } = createEndOnlyRegenFetchMock();
+      const mediaRow = await storage.first<{
+        start_object_key: string;
+        visibility: string;
+      }>(
+        "SELECT start_object_key, visibility FROM exercise_media_sets ORDER BY created_at DESC LIMIT 1",
+      );
+      expect(mediaRow).toBeTruthy();
+      const storedStart = await objects.getImage(
+        mediaRow!.start_object_key,
+        mediaRow!.visibility as "draft",
+      );
+      expect(storedStart).toBeTruthy();
+
+      let generationCalls = 0;
+      let editCalls = 0;
+      let editImageBytes: Uint8Array | null = null;
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/v1/openai/images/generations")) {
+          generationCalls += 1;
+          throw new Error("generations must not run on end-only regeneration");
+        }
+        if (url.endsWith("/v1/images/edits")) {
+          editCalls += 1;
+          const form = init?.body as FormData;
+          const file = form.get("image");
+          expect(file).toBeInstanceOf(Blob);
+          editImageBytes = new Uint8Array(await (file as Blob).arrayBuffer());
+          return new Response(
+            JSON.stringify({ data: [{ b64_json: b64Png("end-edit") }] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
       const deepinfra = new DeepInfraFluxKleinImageGeneration({
         apiKey: DEEPINFRA_API_KEY,
         fetchImpl,
@@ -148,8 +182,48 @@ describe("Exercise media QA round 3 (integration, mocked DeepInfra)", () => {
         scope: "end",
         note: REGEN_NOTE,
       });
-      expect(generationCalls()).toBe(0);
-      expect(editCalls()).toBe(1);
+      expect(generationCalls).toBe(0);
+      expect(editCalls).toBe(1);
+      expect(editImageBytes).toEqual(storedStart!.body);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("start regeneration stores null start_provider_url", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId, objects } =
+        await seedDraftVersionWithGeneratedMedia(storage);
+      await storage.run(
+        `UPDATE exercise_media_sets SET start_provider_url = ?
+         WHERE id = (SELECT id FROM exercise_media_sets ORDER BY created_at DESC LIMIT 1)`,
+        ["https://example.com/prior-start.png"],
+      );
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/v1/openai/images/generations")) {
+          return new Response(
+            JSON.stringify({ data: [{ b64_json: b64Png("regen-start") }] }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      });
+      const deepinfra = new DeepInfraFluxKleinImageGeneration({
+        apiKey: DEEPINFRA_API_KEY,
+        fetchImpl,
+      });
+      const service = new ExerciseMediaService(storage, deepinfra, objects);
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "start",
+      });
+      const row = await storage.first<{ start_provider_url: string | null }>(
+        "SELECT start_provider_url FROM exercise_media_sets ORDER BY created_at DESC LIMIT 1",
+      );
+      expect(row?.start_provider_url).toBeNull();
     } finally {
       storage.close();
     }

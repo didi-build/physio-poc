@@ -184,7 +184,7 @@ describe("Exercise media HTTP routes (integration)", () => {
     }
   });
 
-  it("returns 409 for end-only regeneration when start_provider_url is missing", async () => {
+  it("returns 409 for end-only regeneration when stored start object bytes are missing", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);

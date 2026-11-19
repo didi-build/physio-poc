@@ -12,12 +12,9 @@ export {
   type ImageGenerationErrorCode,
 } from "../../storage/ports/image-generation.js";
 
-export const DEEPINFRA_API_ORIGIN = "https://api.deepinfra.com";
 export const DEEPINFRA_OPENAI_IMAGES_GENERATIONS_URL =
   "https://api.deepinfra.com/v1/openai/images/generations";
 export const DEEPINFRA_IMAGES_EDITS_URL = "https://api.deepinfra.com/v1/images/edits";
-export const DEEPINFRA_OPENAI_IMAGES_GENERATIONS_PATH = "/v1/openai/images/generations";
-export const DEEPINFRA_IMAGES_EDITS_PATH = "/v1/images/edits";
 export const DEEPINFRA_FLUX_KLEIN_4B_MODEL_ID = "black-forest-labs/FLUX-2-klein-4b";
 export const DEEPINFRA_FLUX_KLEIN_IMAGE_SIZE = "1024x1024";
 export const DEEPINFRA_IMAGE_RESPONSE_FORMAT = "b64_json";
@@ -82,20 +79,7 @@ function authorizationHeader(apiKey: string): Record<string, string> {
   };
 }
 
-function isAbortOrTimeoutError(error: unknown): boolean {
-  if (error instanceof DOMException) {
-    return error.name === "TimeoutError" || error.name === "AbortError";
-  }
-  if (error instanceof Error) {
-    return error.name === "TimeoutError" || error.name === "AbortError";
-  }
-  return false;
-}
-
-function mapBodyReadError(error: unknown): never {
-  if (isAbortOrTimeoutError(error)) {
-    networkFailed();
-  }
+function mapBodyReadError(_error: unknown): never {
   networkFailed();
 }
 
@@ -114,11 +98,7 @@ async function readBoundedResponseText(
 
     const body = response.body;
     if (!body) {
-      const buffer = await response.arrayBuffer();
-      if (buffer.byteLength > maxBytes) {
-        invalidResponse();
-      }
-      return new TextDecoder().decode(buffer);
+      invalidResponse();
     }
 
     const reader = body.getReader();
@@ -150,18 +130,7 @@ async function readBoundedResponseText(
 }
 
 async function readJsonBody(response: Response, maxBytes: number): Promise<unknown> {
-  let text: string;
-  try {
-    text = await readBoundedResponseText(response, maxBytes);
-  } catch (error: unknown) {
-    if (error instanceof ImageGenerationError) {
-      throw error;
-    }
-    mapBodyReadError(error);
-  }
-  if (text.trim().length === 0) {
-    invalidResponse();
-  }
+  const text = await readBoundedResponseText(response, maxBytes);
   try {
     return JSON.parse(text) as unknown;
   } catch {
@@ -236,10 +205,7 @@ export class DeepInfraFluxKleinImageGeneration implements ImageGenerationPort {
   private async deepInfraFetch(input: string, init: RequestInit): Promise<Response> {
     try {
       return await this.fetchImpl(input, init);
-    } catch (error: unknown) {
-      if (isAbortOrTimeoutError(error)) {
-        networkFailed();
-      }
+    } catch {
       networkFailed();
     }
   }
