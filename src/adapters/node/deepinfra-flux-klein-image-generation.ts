@@ -79,7 +79,7 @@ function authorizationHeader(apiKey: string): Record<string, string> {
   };
 }
 
-function mapBodyReadError(_error: unknown): never {
+function mapBodyReadError(): never {
   networkFailed();
 }
 
@@ -125,7 +125,7 @@ async function readBoundedResponseText(
     if (error instanceof ImageGenerationError) {
       throw error;
     }
-    mapBodyReadError(error);
+    mapBodyReadError();
   }
 }
 
