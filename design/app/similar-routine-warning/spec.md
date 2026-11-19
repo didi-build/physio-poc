@@ -62,20 +62,20 @@ Diadem: "Yes, approve all five strings", for exactly these:
 
 ## Timing and behaviour (variant B)
 
-Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks above. Rows marked **Open: needs Diadem approval** are visible in variant B but not locked on DIDI-594 yet (Designer is checking with Diadem on the B board).
+Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks above, plus Diadem behaviour decisions (Nov 19, 2026, ET) quoted in the table below.
 
 | Topic | Rule |
 | -- | -- |
 | When the first check runs | In the background once the draft has **at least 1 condition and 2 exercises** (DIDI-594 L update 2, `03489a7e`). Until then, no check and no warning UI. |
-| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Open: needs Diadem approval** on the B board: exact debounce or scheduling detail. |
+| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: Re-check a moment after they stop editing conditions or exercises. Short debounce after the last condition or exercise edit; exact delay is for dev to choose (no fixed millisecond value in this spec). |
 | Never blocks | Autosave, **Done for now**, and **Publish** are never blocked by the check running, waiting, succeeding, failing, or by the daily AI cap (DIDI-594 L update 2, `03489a7e`). |
 | Matches found | Amber card above the footer buttons. Lists **at most 3** matches, best score first (see server sort below). **Publish** and **Done for now** stay enabled. |
-| View | Opens a preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Open: needs Diadem approval** on the B board: whether navigation ever leaves the draft editor. |
-| Continue anyway | Hides the card for this draft. **Open: needs Diadem approval** on the B board: when the card may show again after later edits. |
+| View | Preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: View stays on the form as a preview sheet. |
+| Continue anyway | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: After Continue anyway, it stays hidden for this draft. |
 | No match | No warning UI. **Publish** opens **Publish this routine?** with the routine card, **What happens** bullets, and **Publish now** / **Not yet** (same structure as [routines mockup 15](../routines/mockups/15-publish-routine-sheet-phone.png); sample routine name and tags in PNGs are not copy). |
-| Check failed or AI cap | **Open: needs Diadem approval** on the B board: failed check and reached AI cap are indistinguishable on screen. **Publish** behaviour matches no match when nothing is shown. |
-| Shared condition highlight | **Open: needs Diadem approval** on the B board: filled teal chips for conditions shared with the draft, outline chips for other conditions on the match row. |
-| Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET**, verbatim: Leave "Used N times" off the compact rows. |
+| Check failed or AI cap | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: A failed check shows nothing, same as no match. Reached AI cap behaves the same on screen. **Publish** matches no match when no warning is shown. |
+| Shared condition highlight | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: Highlight shared conditions in filled teal, others outlined. |
+| Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET**, verbatim: Leave "Used N times" off the compact rows. DIDI-594 comment `903421e2`. |
 | Scope | Published community routines plus the caller's own drafts and published routines; **My routines** saved copies are excluded from candidacy (server scope; lock `e5aa6515`). |
 
 ## Server contract (build reference, not designed here)
@@ -206,7 +206,7 @@ Strings visible in the B mockups or required for accessibility that are not in t
 
 Failed-state and no-match **copy**: none shown by design (no strings to approve).
 
-Behaviour rows marked **Open: needs Diadem approval** in Timing and behaviour are pending Diadem review on the B board (see that section).
+Copy and accessibility items in the table above remain **Open: needs Diadem approval**. Timing and behaviour rows are decided unless noted here.
 
 ## Decisions
 
