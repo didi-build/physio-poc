@@ -156,10 +156,15 @@ From variant B source (`SrBoard.tsx` revision `471088919975432193`):
 | W5 | Continue anyway | 2:14 PM |
 | W6 | {n} total | 2:43 PM (DIDI-594 comment `f4682350`) |
 | W7 | Remove {condition} | 2:43 PM (`f4682350`) |
+| W8 | Conditions | 4:27 PM ET |
 
 **Diadem, Nov 19, 2026, 2:14 PM EST**, verbatim: "Yes, approve all five strings" (W1 to W5).
 
 **Diadem, Nov 19, 2026, 2:43 PM EST**, verbatim (DIDI-594 comment `f4682350`): Yes, approve "{n} total" and "Remove {condition}".
+
+**Diadem, Nov 19, 2026, 4:27 PM ET**, verbatim: yes to "conditions".
+
+W8 **Conditions** replaces `CONDITION` = "Condition" (`src/ui/copy/routines.ts` line 46) on the New routine form only.
 
 ### Reused from repo (verified)
 
@@ -192,7 +197,6 @@ Strings visible in the B mockups or required for accessibility that are not in t
 
 | Need | Where it appears |
 | -- | -- |
-| Conditions | Label shown in mockups above condition chips. On main today: `CONDITION` = "Condition" (`src/ui/copy/routines.ts` line 46, singular). Held for Diadem decision (BLOCKER, mockups unchanged). |
 | Preview sheet title | Uses the matched routine's name at runtime (sample names in mockups are not copy) |
 | Optional in-progress indicator | No user-visible string today; open product decision if the check should ever show progress while a re-check runs |
 | Per-row **View** accessible names | Multiple **View** buttons in the warning card |
@@ -220,6 +224,7 @@ Behaviour rows marked **Open: needs Diadem approval** in Timing and behaviour ar
 
 ## Changes
 
+- **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 QA R1. Re-render mockups (full frames, fixed states 04 to 06), layout/a11y section, L update 2 lock `03489a7e`, behaviour and copy lock ids, Conditions blocker note, DIDI-1263 dependency. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Diadem approved W6 `{n} total` and W7 `Remove {condition}` at 2:43 PM EST (`f4682350`). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Variant B spec, five approved strings, behaviour locks, six states, mockups from MagicPath revision `471088919975432193`. Unblocks [DIDI-1226](https://linear.app/didi-build/issue/DIDI-1226). https://linear.app/didi-build/issue/DIDI-1224
