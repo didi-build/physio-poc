@@ -579,6 +579,66 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
+  it("succeeds with one provider call when every body region name is unknown", async () => {
+    const draftAllUnknown = {
+      ...VALID_STRETCH_DRAFT,
+      body_regions: ["upper back", "thoracic spine"],
+    };
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(draftAllUnknown)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const regionCountBefore = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM body_regions",
+      );
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-all-unknown"),
+        "all-unknown@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      const result = await generator(
+        {
+          sql: storage,
+          requestId: id("req-all-unknown"),
+          requestedName: "Cat-camel",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      const regionCountAfter = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM body_regions",
+      );
+      expect(regionCountAfter?.count).toBe(regionCountBefore?.count);
+      const linked = await storage.all<{ body_region_id: string }>(
+        "SELECT body_region_id FROM exercise_body_regions WHERE exercise_id = ?",
+        [result.exerciseId],
+      );
+      expect(linked).toEqual([]);
+      const suggested = await storage.all<{ label: string }>(
+        "SELECT label FROM exercise_suggested_body_regions WHERE exercise_id = ?",
+        [result.exerciseId],
+      );
+      expect(suggested.map((row) => row.label).sort()).toEqual([
+        "thoracic spine",
+        "upper back",
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("includes regeneration note in the user message when provided", async () => {
     const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
     const generator = createDeepInfraExerciseDraftGenerator({ apiKey: "k", fetchImpl });
