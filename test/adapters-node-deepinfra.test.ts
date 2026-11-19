@@ -673,6 +673,56 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
     });
   });
 
+  it("accepts when content-length equals the cap before reading the body", async () => {
+    const validSmall = JSON.stringify({ data: [{ b64_json: b64Png("OK") }] });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(validSmall, {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": "12582912",
+          },
+        }),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).resolves.toMatchObject({
+      contentType: "image/png",
+    });
+  });
+
+  it("rejects 2xx responses with a null body as invalid JSON", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(null, {
+          status: 204,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+    await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+      code: "image_generation_response_invalid",
+      statusCode: 502,
+    });
+  });
+
+  for (const body of ["null", "99", JSON.stringify("string-payload")]) {
+    it(`rejects JSON non-object payload ${body}`, async () => {
+      const fetchImpl = vi.fn(
+        async () =>
+          new Response(body, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+      const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+      await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+        code: "image_generation_response_invalid",
+        statusCode: 502,
+      });
+    });
+  }
+
   it("rejects empty JSON bodies", async () => {
     const fetchImpl = vi.fn(
       async () =>

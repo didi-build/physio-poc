@@ -118,9 +118,10 @@ describe("DeepInfra adapter QA round 1 (mocked fetch)", () => {
 
   it("sets AbortSignal.timeout(120000) on edits requests", async () => {
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    let editInit: RequestInit | undefined;
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(EDITS_URL);
-      expect(init?.signal).toBeDefined();
+      editInit = init;
       return new Response(JSON.stringify({ data: [{ b64_json: b64Png("END") }] }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -131,6 +132,7 @@ describe("DeepInfra adapter QA round 1 (mocked fetch)", () => {
       startReferenceImage: startReference,
     });
     expect(timeoutSpy).toHaveBeenCalledWith(REQUEST_TIMEOUT_MS);
+    expect(editInit?.signal).toBe(timeoutSpy.mock.results[0]?.value);
     timeoutSpy.mockRestore();
   });
 
@@ -237,6 +239,23 @@ describe("DeepInfra adapter QA round 1 (mocked fetch)", () => {
     });
     expect(calls).toEqual([EDITS_URL]);
   });
+
+  for (const body of ["null", "42", JSON.stringify("not-an-object")]) {
+    it(`rejects JSON non-object payload ${body}`, async () => {
+      const fetchImpl = vi.fn(
+        async () =>
+          new Response(body, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      );
+      const generator = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+      await expect(generator.generateStartImage("prompt")).rejects.toMatchObject({
+        code: "image_generation_response_invalid",
+        statusCode: 502,
+      });
+    });
+  }
 
   for (const body of [
     "{}",
@@ -411,6 +430,52 @@ describe("DeepInfra HTTP route QA round 1", () => {
         error: "image_generation_request_failed",
       });
       expect(calls).toEqual([EDITS_URL]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("JSON null payload through route: 502 image_generation_response_invalid", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId, objectStorage } =
+        await seedDraftVersion(storage);
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url === GENERATIONS_URL) {
+          return new Response("null", {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw new Error(`unexpected ${url}`);
+      });
+      const deepinfra = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
+      const deps = exerciseMediaTestDeps(
+        storage,
+        {
+          practitionerId,
+          email: "coach@example.com",
+          displayName: "Coach",
+        },
+        { objects: objectStorage, exerciseMediaImages: deepinfra },
+      );
+      const response = await handleRequest(
+        mediaRequest(
+          `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/generate`,
+          deps,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({}),
+          },
+        ),
+        deps,
+      );
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({
+        error: "image_generation_response_invalid",
+      });
     } finally {
       storage.close();
     }

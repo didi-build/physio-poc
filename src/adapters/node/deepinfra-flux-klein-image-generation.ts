@@ -79,10 +79,6 @@ function authorizationHeader(apiKey: string): Record<string, string> {
   };
 }
 
-function mapBodyReadError(): never {
-  networkFailed();
-}
-
 async function readBoundedResponseText(
   response: Response,
   maxBytes: number,
@@ -125,7 +121,7 @@ async function readBoundedResponseText(
     if (error instanceof ImageGenerationError) {
       throw error;
     }
-    mapBodyReadError();
+    networkFailed();
   }
 }
 
@@ -139,6 +135,9 @@ async function readJsonBody(response: Response, maxBytes: number): Promise<unkno
 }
 
 function imageFromPayload(payload: unknown): GeneratedImage {
+  if (payload === null || typeof payload !== "object") {
+    invalidResponse();
+  }
   const parsed = payload as OpenAIImagesResponse;
   const entry = parsed.data?.[0];
   const b64 = entry?.b64_json;

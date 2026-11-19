@@ -218,13 +218,10 @@ export class ExerciseMediaService {
       startImage = { body: generated.bytes, contentType: generated.contentType };
     }
     if (input.scope === "end" || input.scope === "both") {
-      const visibility = (existing?.visibility ?? "draft") as MediaVisibility;
       const startReferenceImage =
         startImage !== null
           ? { bytes: startImage.body, contentType: startImage.contentType }
-          : existing
-            ? await this.loadStartReferenceImage(existing.start_object_key, visibility)
-            : undefined;
+          : undefined;
       if (!startReferenceImage) {
         throw new ExerciseMediaServiceError(
           "Start reference image is not available for end regeneration",
@@ -391,17 +388,6 @@ export class ExerciseMediaService {
       endObjectKey: row.end_object_key,
       visibility: row.visibility,
     };
-  }
-
-  private async loadStartReferenceImage(
-    startObjectKey: string,
-    visibility: MediaVisibility,
-  ): Promise<{ bytes: Uint8Array; contentType: string } | null> {
-    const image = await this.media.getImage(startObjectKey, visibility);
-    if (!image) {
-      return null;
-    }
-    return { bytes: image.body, contentType: image.contentType };
   }
 
   private promptContextFromVersion(
