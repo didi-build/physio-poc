@@ -33,6 +33,7 @@ const EXPECTED_MIGRATION_FILES = [
   "0007_sql_batch_min_rows_guard.sql",
   "0008_routine_draft_discards.sql",
   "0009_routine_conditions.sql",
+  "0010_exercise_version_pending_media.sql",
 ] as const;
 
 function materializePhase1MigrationsDir(targetDir: string): void {

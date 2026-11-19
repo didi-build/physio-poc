@@ -154,12 +154,13 @@ describe("ExerciseMediaService (integration)", () => {
     }
   });
 
-  it("creates a new approved version when regenerating media on an approved exercise", async () => {
+  it("stores approved regenerations as pending draft without changing live media_set_id", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
       const approvedVersionId = id("ver-approved-1");
+      const liveSetId = id("live-public-set");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -178,36 +179,52 @@ describe("ExerciseMediaService (integration)", () => {
           title: "Bridge",
         }),
       );
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          liveSetId,
+          `media-sets/${liveSetId}/start.png`,
+          `media-sets/${liveSetId}/end.png`,
+          null,
+          "public",
+          TS,
+        ],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        liveSetId,
+        approvedVersionId,
+      ]);
       const { service } = await createService(storage);
-      await service.generateInitialMediaForVersion({
-        practitionerId,
-        exerciseVersionId: approvedVersionId,
-      });
       const result = await service.regenerateMedia({
         practitionerId,
         exerciseVersionId: approvedVersionId,
         scope: "both",
         note: "deeper range",
       });
-      expect(result.outcome).toBe("new_approved_version");
-      if (result.outcome === "new_approved_version") {
-        expect(result.newVersionNumber).toBe(2);
-        expect(result.media.visibility).toBe("public");
-      }
-      const summaryRow = await storage.first<{ change_summary: string | null }>(
-        "SELECT change_summary FROM exercise_versions WHERE exercise_id = ? AND version_number = 2",
-        [exerciseId],
+      expect(result.outcome).toBe("pending_draft_updated");
+      expect(result.media.visibility).toBe("draft");
+      expect(result.media.mediaSetId).not.toBe(liveSetId);
+      const versionRow = await storage.first<{
+        media_set_id: string | null;
+        pending_media_set_id: string | null;
+      }>(
+        "SELECT media_set_id, pending_media_set_id FROM exercise_versions WHERE id = ?",
+        [approvedVersionId],
       );
-      expect(summaryRow?.change_summary).toBe("Regenerated images");
-      expect(summaryRow?.change_summary).not.toContain("deeper range");
+      expect(versionRow?.media_set_id).toBe(liveSetId);
+      expect(versionRow?.pending_media_set_id).toBe(result.media.mediaSetId);
+      const publicView = await service.getMediaForServing(
+        approvedVersionId,
+        "public",
+      );
+      expect(publicView?.mediaSetId).toBe(liveSetId);
       const versions = await storage.all<{ version_number: number; status: string }>(
         "SELECT version_number, status FROM exercise_versions WHERE exercise_id = ? ORDER BY version_number",
         [exerciseId],
       );
-      expect(versions).toEqual([
-        { version_number: 1, status: "approved" },
-        { version_number: 2, status: "approved" },
-      ]);
+      expect(versions).toEqual([{ version_number: 1, status: "approved" }]);
     } finally {
       storage.close();
     }

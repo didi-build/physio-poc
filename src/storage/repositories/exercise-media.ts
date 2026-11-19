@@ -120,6 +120,7 @@ export type ExerciseVersionMediaRow = {
   starting_position: string;
   steps: string;
   media_set_id: string | null;
+  pending_media_set_id: string | null;
   change_summary: string | null;
   created_at: string;
 };
@@ -130,7 +131,8 @@ export class ExerciseVersionMediaRepository {
   async findVersion(id: string): Promise<ExerciseVersionMediaRow | null> {
     return this.sql.first<ExerciseVersionMediaRow>(
       `SELECT id, exercise_id, version_number, status, approved_by, approved_at,
-              title, description, starting_position, steps, media_set_id, change_summary, created_at
+              title, description, starting_position, steps, media_set_id, pending_media_set_id,
+              change_summary, created_at
        FROM exercise_versions WHERE id = ? LIMIT 1`,
       [id],
     );
@@ -142,7 +144,7 @@ export class ExerciseVersionMediaRepository {
     return this.sql.first<ExerciseVersionMediaRow & { exercise_created_by: string }>(
       `SELECT ev.id, ev.exercise_id, ev.version_number, ev.status, ev.approved_by, ev.approved_at,
               ev.title, ev.description, ev.starting_position, ev.steps, ev.media_set_id,
-              ev.change_summary, ev.created_at, e.created_by AS exercise_created_by
+              ev.pending_media_set_id, ev.change_summary, ev.created_at, e.created_by AS exercise_created_by
        FROM exercise_versions ev
        JOIN exercises e ON e.id = ev.exercise_id
        WHERE ev.id = ? LIMIT 1`,
@@ -155,6 +157,16 @@ export class ExerciseVersionMediaRepository {
       mediaSetId,
       versionId,
     ]);
+  }
+
+  async updatePendingMediaSetId(
+    versionId: string,
+    pendingMediaSetId: string | null,
+  ): Promise<void> {
+    await this.sql.run(
+      "UPDATE exercise_versions SET pending_media_set_id = ? WHERE id = ?",
+      [pendingMediaSetId, versionId],
+    );
   }
 
   async latestApprovedVersionNumber(exerciseId: string): Promise<number | null> {

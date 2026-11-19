@@ -61,7 +61,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
     }
   });
 
-  it("stores approved regenerations as public media, not draft", async () => {
+  it("stores approved regenerations as private draft media, not public", async () => {
     const storage = await openMigratedDatabase();
     const media = new PrefixMediaStorage(new InMemoryObjectStorage());
     const putSpy = vi.spyOn(media, "putImage");
@@ -69,6 +69,7 @@ describe("exercise media QA round 1 (integration and unit)", () => {
       const practitionerId = await seedPractitioner(storage);
       const exerciseId = await seedExercise(storage, practitionerId);
       const approvedVersionId = id("ver-approved");
+      const liveSetId = id("live-set");
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
@@ -87,6 +88,23 @@ describe("exercise media QA round 1 (integration and unit)", () => {
           title: "Bridge",
         }),
       );
+      await storage.run(
+        `INSERT INTO exercise_media_sets (
+          id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          liveSetId,
+          `media-sets/${liveSetId}/start.png`,
+          `media-sets/${liveSetId}/end.png`,
+          null,
+          "public",
+          TS,
+        ],
+      );
+      await storage.run("UPDATE exercise_versions SET media_set_id = ? WHERE id = ?", [
+        liveSetId,
+        approvedVersionId,
+      ]);
       let tick = 0;
       const service = new ExerciseMediaService(
         storage,
@@ -95,10 +113,6 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
         () => id(`media-id-${tick}`),
       );
-      await service.generateInitialMediaForVersion({
-        practitionerId,
-        exerciseVersionId: approvedVersionId,
-      });
       putSpy.mockClear();
       await service.regenerateMedia({
         practitionerId,
@@ -106,12 +120,12 @@ describe("exercise media QA round 1 (integration and unit)", () => {
         scope: "start",
       });
       for (const call of putSpy.mock.calls) {
-        expect(call[3]).toBe("public");
+        expect(call[3]).toBe("draft");
       }
       const row = await storage.first<{ visibility: string }>(
         "SELECT visibility FROM exercise_media_sets ORDER BY created_at DESC LIMIT 1",
       );
-      expect(row?.visibility).toBe("public");
+      expect(row?.visibility).toBe("draft");
     } finally {
       storage.close();
     }
