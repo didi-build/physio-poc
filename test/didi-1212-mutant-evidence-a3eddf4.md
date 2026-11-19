@@ -4,42 +4,42 @@ Head: `a3eddf4dcb4e5ccdeea1bfa651c7086addf28414`
 
 Baseline (serial `npm run test -- --maxWorkers=1`): **Test Files** 286 passed (286); **Tests** 2880 passed | 4 skipped (2884); exit **0**.
 
-| ID | Mutant site | Exit | Failed | Passed | Skipped | vs baseline (failed/passed) | Error kind | Status |
-|----|-------------|------|--------|--------|---------|-----------------------------|------------|--------|
-| M1 | create-worker-production-app-dependencies.ts: extraRouteHandlers cleared (route not registered on Worker) | 1 | 5 | 2875 | 4 | 0 / 2880 → 5 / 2875 | test_failure | Killed |
-| M2 | require-practitioner.ts: session guard returns bypass token instead of 401 | 1 | 4 | 2876 | 4 | 0 / 2880 → 4 / 2876 | test_failure | Killed |
-| S01 | create-worker-production-app-dependencies.ts: extraSessionPublicPath opens quota GET without session | 0 | 0 | 2880 | 4 | 0 / 2880 → 0 / 2880 | survivor | Survived |
-| S02 | create-worker-production-app-dependencies.ts: extraSessionPublicPath opens all exercise media routes without session | 0 | 0 | 2880 | 4 | 0 / 2880 → 0 / 2880 | survivor | Survived |
-| M3 | exercise-media-service.ts: owner check removed (exercise_created_by !== practitionerId) | 1 | 13 | 2867 | 4 | 0 / 2880 → 13 / 2867 | test_failure | Killed |
-| M4 | create-image-generation-port.ts: fake chosen when PHYSIO_DEEPINFRA_API_KEY present (if (!apiKey)) | 1 | 34 | 2846 | 4 | 0 / 2880 → 34 / 2846 | test_failure | Killed |
-| M5 | create-image-generation-port.ts: DeepInfra chosen when key absent (if (true)) | 1 | 32 | 2848 | 4 | 0 / 2880 → 32 / 2848 | test_failure | Killed |
-| M6 | create-worker-production-app-dependencies.ts: InMemoryObjectStorage kept in prod | 1 | 3 | 2877 | 4 | 0 / 2880 → 3 / 2877 | test_failure | Killed |
-| M7 | .github/workflows/ci.yml: PHYSIO_DEEPINFRA_API_KEY on PR CI check job | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| M8 | .github/workflows/deploy-physio-mcp-worker.yml: PHYSIO_DEEPINFRA_API_KEY removed from gated Put step | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| M9 | exercise-media.ts: key leaked into ImageGenerationError JSON response | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| L02 | exercise-media.ts: 502 ImageGenerationError body includes upstream message | 1 | 7 | 2873 | 4 | 0 / 2880 → 7 / 2873 | test_failure | Killed |
-| L03 | deepinfra-flux-klein-image-generation.ts: apiKey logged on HTTP request failure | 1 | 7 | 2873 | 4 | 0 / 2880 → 7 / 2873 | test_failure | Killed |
-| K09 | deploy-physio-mcp-worker.yml: deploy job environment not production | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| K11 | deploy-physio-mcp-worker.yml: PHYSIO_DEEPINFRA_API_KEY on non-Put step | 0 | 0 | 0 | 0 | 0 / 2880 → 0 / 0 | no-op | Survived (no-op) |
-| M11 | exercise-media.ts: no-store removed from SERVE_JSON_HEADERS | 1 | 3 | 2877 | 4 | 0 / 2880 → 3 / 2877 | test_failure | Killed |
-| B1D | deepinfra-flux-klein-image-generation.ts: restore ?? fetch (unbound) | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| B1F | fal-flux-klein-image-generation.ts: restore ?? fetch (unbound) | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| Q1A | exercise-media.ts: wrong 409 error code string | 1 | 4 | 2876 | 4 | 0 / 2880 → 4 / 2876 | test_failure | Killed |
-| Q1B | exercise-media.ts: 409 → 400 for already generated | 1 | 4 | 2876 | 4 | 0 / 2880 → 4 / 2876 | test_failure | Killed |
-| Q1C | exercise-media-service.ts: generate skips cap increment | 1 | 4 | 2876 | 4 | 0 / 2880 → 4 / 2876 | test_failure | Killed |
-| Q2A | bounded-json-request-body.ts: remove Content-Length precheck | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| Q2B | bounded-json-request-body.ts: reject at cap (>=) | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| Q2C | bounded-json-request-body.ts: skip bounded read (arrayBuffer) | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| P1 | persistApprovedPendingMediaSet writes public object visibility (approved generate/regenerate) | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| P2 | persistApprovedPendingMediaSet inserts public exercise_media_sets row | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| P3 | getMediaForServing internal serves pending_media_set_id without owner gate | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| P4 | exercise-media serve JSON drops Cache-Control no-store | 1 | 3 | 2877 | 4 | 0 / 2880 → 3 / 2877 | test_failure | Killed |
-| C6R1 | exercise-media-service.ts: pending internal serve skips requester match | 1 | 2 | 2878 | 4 | 0 / 2880 → 2 / 2878 | test_failure | Killed |
-| C6R2 | exercise-media-service.ts: approved regenerate skips pending requester gate | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| C6R3 | exercise-media-service.ts: replace pending without deleting old draft objects | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| C6R4 | exercise-media-service.ts: public serve prefers pending_media_set_id | 1 | 4 | 2876 | 4 | 0 / 2880 → 4 / 2876 | test_failure | Killed |
-| C6R5 | exercise-media-service.ts: generate allowed when pending already exists | 1 | 1 | 2879 | 4 | 0 / 2880 → 1 / 2879 | test_failure | Killed |
-| C6R6 | exercise-media-service.ts: approved pending persist also updates live media_set_id | 1 | 5 | 2875 | 4 | 0 / 2880 → 5 / 2875 | test_failure | Killed |
+| ID   | Mutant site                                                                                                          | Exit | Failed | Passed | Skipped | vs baseline (failed/passed) | Error kind   | Status           |
+| ---- | -------------------------------------------------------------------------------------------------------------------- | ---- | ------ | ------ | ------- | --------------------------- | ------------ | ---------------- |
+| M1   | create-worker-production-app-dependencies.ts: extraRouteHandlers cleared (route not registered on Worker)            | 1    | 5      | 2875   | 4       | 0 / 2880 → 5 / 2875         | test_failure | Killed           |
+| M2   | require-practitioner.ts: session guard returns bypass token instead of 401                                           | 1    | 4      | 2876   | 4       | 0 / 2880 → 4 / 2876         | test_failure | Killed           |
+| S01  | create-worker-production-app-dependencies.ts: extraSessionPublicPath opens quota GET without session                 | 0    | 0      | 2880   | 4       | 0 / 2880 → 0 / 2880         | survivor     | Survived         |
+| S02  | create-worker-production-app-dependencies.ts: extraSessionPublicPath opens all exercise media routes without session | 0    | 0      | 2880   | 4       | 0 / 2880 → 0 / 2880         | survivor     | Survived         |
+| M3   | exercise-media-service.ts: owner check removed (exercise_created_by !== practitionerId)                              | 1    | 13     | 2867   | 4       | 0 / 2880 → 13 / 2867        | test_failure | Killed           |
+| M4   | create-image-generation-port.ts: fake chosen when PHYSIO_DEEPINFRA_API_KEY present (if (!apiKey))                    | 1    | 34     | 2846   | 4       | 0 / 2880 → 34 / 2846        | test_failure | Killed           |
+| M5   | create-image-generation-port.ts: DeepInfra chosen when key absent (if (true))                                        | 1    | 32     | 2848   | 4       | 0 / 2880 → 32 / 2848        | test_failure | Killed           |
+| M6   | create-worker-production-app-dependencies.ts: InMemoryObjectStorage kept in prod                                     | 1    | 3      | 2877   | 4       | 0 / 2880 → 3 / 2877         | test_failure | Killed           |
+| M7   | .github/workflows/ci.yml: PHYSIO_DEEPINFRA_API_KEY on PR CI check job                                                | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| M8   | .github/workflows/deploy-physio-mcp-worker.yml: PHYSIO_DEEPINFRA_API_KEY removed from gated Put step                 | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| M9   | exercise-media.ts: key leaked into ImageGenerationError JSON response                                                | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| L02  | exercise-media.ts: 502 ImageGenerationError body includes upstream message                                           | 1    | 7      | 2873   | 4       | 0 / 2880 → 7 / 2873         | test_failure | Killed           |
+| L03  | deepinfra-flux-klein-image-generation.ts: apiKey logged on HTTP request failure                                      | 1    | 7      | 2873   | 4       | 0 / 2880 → 7 / 2873         | test_failure | Killed           |
+| K09  | deploy-physio-mcp-worker.yml: deploy job environment not production                                                  | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| K11  | deploy-physio-mcp-worker.yml: PHYSIO_DEEPINFRA_API_KEY on non-Put step                                               | 0    | 0      | 0      | 0       | 0 / 2880 → 0 / 0            | no-op        | Survived (no-op) |
+| M11  | exercise-media.ts: no-store removed from SERVE_JSON_HEADERS                                                          | 1    | 3      | 2877   | 4       | 0 / 2880 → 3 / 2877         | test_failure | Killed           |
+| B1D  | deepinfra-flux-klein-image-generation.ts: restore ?? fetch (unbound)                                                 | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| B1F  | fal-flux-klein-image-generation.ts: restore ?? fetch (unbound)                                                       | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| Q1A  | exercise-media.ts: wrong 409 error code string                                                                       | 1    | 4      | 2876   | 4       | 0 / 2880 → 4 / 2876         | test_failure | Killed           |
+| Q1B  | exercise-media.ts: 409 → 400 for already generated                                                                   | 1    | 4      | 2876   | 4       | 0 / 2880 → 4 / 2876         | test_failure | Killed           |
+| Q1C  | exercise-media-service.ts: generate skips cap increment                                                              | 1    | 4      | 2876   | 4       | 0 / 2880 → 4 / 2876         | test_failure | Killed           |
+| Q2A  | bounded-json-request-body.ts: remove Content-Length precheck                                                         | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| Q2B  | bounded-json-request-body.ts: reject at cap (>=)                                                                     | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| Q2C  | bounded-json-request-body.ts: skip bounded read (arrayBuffer)                                                        | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| P1   | persistApprovedPendingMediaSet writes public object visibility (approved generate/regenerate)                        | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| P2   | persistApprovedPendingMediaSet inserts public exercise_media_sets row                                                | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| P3   | getMediaForServing internal serves pending_media_set_id without owner gate                                           | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| P4   | exercise-media serve JSON drops Cache-Control no-store                                                               | 1    | 3      | 2877   | 4       | 0 / 2880 → 3 / 2877         | test_failure | Killed           |
+| C6R1 | exercise-media-service.ts: pending internal serve skips requester match                                              | 1    | 2      | 2878   | 4       | 0 / 2880 → 2 / 2878         | test_failure | Killed           |
+| C6R2 | exercise-media-service.ts: approved regenerate skips pending requester gate                                          | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| C6R3 | exercise-media-service.ts: replace pending without deleting old draft objects                                        | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| C6R4 | exercise-media-service.ts: public serve prefers pending_media_set_id                                                 | 1    | 4      | 2876   | 4       | 0 / 2880 → 4 / 2876         | test_failure | Killed           |
+| C6R5 | exercise-media-service.ts: generate allowed when pending already exists                                              | 1    | 1      | 2879   | 4       | 0 / 2880 → 1 / 2879         | test_failure | Killed           |
+| C6R6 | exercise-media-service.ts: approved pending persist also updates live media_set_id                                   | 1    | 5      | 2875   | 4       | 0 / 2880 → 5 / 2875         | test_failure | Killed           |
 
 ## Killing tests (full vitest names)
 

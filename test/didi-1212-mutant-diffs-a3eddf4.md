@@ -145,7 +145,7 @@ index 4bac8c9..8f33720 100644
  import type { ObjectStoragePort } from "../../storage/ports/object-storage.js";
  import { createPhysioMcpHttpHandler } from "./mcp/handle-mcp-http-request.js";
 @@ -54,7 +55,7 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
- 
+
  function resolveProductionObjectStorage(env: WorkerEnv): ObjectStoragePort {
    if (env.PHYSIO_MEDIA) {
 -    return new R2ObjectStorage(env.PHYSIO_MEDIA);
@@ -163,7 +163,7 @@ index 0e89c75..50594d2 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -104,6 +104,8 @@ jobs:
- 
+
    check:
      name: check
 +    env:
@@ -285,13 +285,13 @@ index d3b6fb4..7990f30 100644
 --- a/src/http/routes/exercise-media.ts
 +++ b/src/http/routes/exercise-media.ts
 @@ -26,7 +26,7 @@ const JSON_HEADERS = { "content-type": "application/json" };
- 
+
  const SERVE_JSON_HEADERS = {
    ...JSON_HEADERS,
 -  "cache-control": "no-store",
 +  "cache-control": "public, max-age=3600",
  };
- 
+
  const EXERCISE_MEDIA_ME_VERSION_PATH =
 ```
 
@@ -309,7 +309,7 @@ index fd34ac1..39535bc 100644
 -    this.fetchImpl = config.fetchImpl ?? ((input, init) => fetch(input, init));
 +    this.fetchImpl = config.fetchImpl ?? fetch;
    }
- 
+
    async generateStartAndEndImages(
 ```
 
@@ -327,7 +327,7 @@ index 1b6c6c1..9b831d4 100644
 -    this.fetchImpl = config.fetchImpl ?? ((input, init) => fetch(input, init));
 +    this.fetchImpl = config.fetchImpl ?? fetch;
    }
- 
+
    async generateStartAndEndImages(input: GenerateExerciseImagesInput): Promise<{
 ```
 
@@ -438,7 +438,7 @@ index 37186b1..97237d5 100644
 --- a/src/http/bounded-json-request-body.ts
 +++ b/src/http/bounded-json-request-body.ts
 @@ -61,7 +61,7 @@ export async function readBoundedExerciseMediaJsonObject(
- 
+
    let bytes: Uint8Array;
    try {
 -    bytes = await readBodyBytesBounded(request, maxBytes);
@@ -512,15 +512,15 @@ index d3b6fb4..ed66904 100644
 --- a/src/http/routes/exercise-media.ts
 +++ b/src/http/routes/exercise-media.ts
 @@ -24,10 +24,7 @@ import {
- 
+
  const JSON_HEADERS = { "content-type": "application/json" };
- 
+
 -const SERVE_JSON_HEADERS = {
 -  ...JSON_HEADERS,
 -  "cache-control": "no-store",
 -};
 +const SERVE_JSON_HEADERS = { ...JSON_HEADERS };
- 
+
  const EXERCISE_MEDIA_ME_VERSION_PATH =
    /^\/api\/me\/exercise-versions\/([^/]+)\/media\/(generate|regenerate)$/;
 ```
