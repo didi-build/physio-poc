@@ -116,15 +116,21 @@ Phone 390 by 844 px; desktop 1280 by 900 px. No preview chrome.
 
 ## Strings
 
-### Approved (Diadem, Nov 19, 2026, 2:14 PM EST)
+### Approved (Diadem, Nov 19, 2026, EST)
 
-| Id | String |
-| -- | -- |
-| W1 | Similar routines already exist |
-| W2 | These look close to yours. Open one to compare, or carry on with yours. |
-| W3 | Shares {k} of your {n} exercises |
-| W4 | View |
-| W5 | Continue anyway |
+| Id | String | When approved |
+| -- | -- | -- |
+| W1 | Similar routines already exist | 2:14 PM (with W2 to W5, DIDI-594 comment `61c1b98a`) |
+| W2 | These look close to yours. Open one to compare, or carry on with yours. | 2:14 PM |
+| W3 | Shares {k} of your {n} exercises | 2:14 PM |
+| W4 | View | 2:14 PM |
+| W5 | Continue anyway | 2:14 PM |
+| W6 | {n} total | 2:43 PM |
+| W7 | Remove {condition} | 2:43 PM |
+
+**Diadem, Nov 19, 2026, 2:14 PM EST**, verbatim: "Yes, approve all five strings" (W1 to W5).
+
+**Diadem, Nov 19, 2026, 2:43 PM EST**, verbatim: Yes, approve "{n} total" and "Remove {condition}".
 
 ### Reused from repo (verified)
 
@@ -150,7 +156,7 @@ Phone 390 by 844 px; desktop 1280 by 900 px. No preview chrome.
 | Save to My routines | `src/ui/copy/routines.ts` `SAVE_TO_MY_ROUTINES` (line 110) |
 | Community routine · Version {version} · Updated {date} by {by} · Used {usage} times | `src/ui/copy/routines.ts` `communityRoutineMeta` (lines 181-188) |
 | Close | `src/ui/copy/a11y.ts` `ARIA_CLOSE_SCRIM` (line 3), sheet close control |
-| Remove {name} | `src/ui/copy/routines.ts` `removeExerciseAria` (lines 339-340), condition chip remove pattern **proposed** to match exercise remove labeling |
+| Remove {name} | `src/ui/copy/routines.ts` `removeExerciseAria` (lines 339-340), exercise row remove only |
 
 ### Open: needs Diadem approval
 
@@ -159,8 +165,6 @@ Strings visible in the B mockups or required for accessibility that are not in t
 | Need | Where it appears |
 | -- | -- |
 | Conditions | Field label on the New routine form (owned by [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216); not approved on this ticket) |
-| Condition chip remove control accessible name | Exploration uses `Remove {condition name}` via the same pattern as `Remove {name}` for exercises; needs explicit approval for conditions if wording differs |
-| Exercise count suffix on the draft list | Mockup shows `{n} total` beside **Exercises**; no matching string in `src/ui/copy/routines.ts` today |
 | Preview sheet title | Uses the matched routine's name at runtime (sample names in mockups are not copy) |
 | Optional in-progress indicator | No user-visible string today; open product decision if the check should ever show progress while debounced re-check runs |
 
@@ -185,4 +189,5 @@ Failed-state and no-match **copy**: none shown by design (no strings to approve)
 
 ## Changes
 
+- **Nov 19, 2026**: DIDI-1224. Diadem approved W6 `{n} total` and W7 `Remove {condition}` at 2:43 PM EST. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Variant B spec, five approved strings, behaviour locks, six states at 390 and 1280, mockups from MagicPath revision `471088919975432193`. Unblocks [DIDI-1226](https://linear.app/didi-build/issue/DIDI-1226). https://linear.app/didi-build/issue/DIDI-1224
