@@ -542,5 +542,1033 @@
       "destructiveHint": false,
       "openWorldHint": false
     }
+  },
+  {
+    "name": "create_or_edit_program",
+    "description": "",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "program_title": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Do not pass patient information."
+        },
+        "from_routine_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+          "maxLength": 36
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["exercise_version_id", "prescription_type", "params"],
+                "properties": {
+                  "exercise_version_id": {
+                    "type": "string"
+                  },
+                  "prescription_type": {
+                    "type": "string",
+                    "enum": ["stretching", "isometric", "concentric", "eccentric"]
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "reps": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "sets": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "hold_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "ascent_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "descent_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "rest_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "per_day": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "days_per_week": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "row_notes": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "Do not pass patient information."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["exercise_name", "prescription_type", "params"],
+                "properties": {
+                  "exercise_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "description": "Do not pass patient information."
+                  },
+                  "prescription_type": {
+                    "type": "string",
+                    "enum": ["stretching", "isometric", "concentric", "eccentric"]
+                  },
+                  "params": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "reps": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "sets": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "hold_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "ascent_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "descent_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "rest_s": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "per_day": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "days_per_week": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["min", "max"],
+                            "properties": {
+                              "min": {
+                                "type": "number"
+                              },
+                              "max": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "row_notes": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "Do not pass patient information."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "share_link",
+        "manage_url",
+        "program_code",
+        "program_title",
+        "rows"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "share_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "manage_url": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "program_title": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "source_routine_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+          "maxLength": 36
+        },
+        "exercise_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "exercise_version_id",
+              "exercise_name",
+              "prescription_type",
+              "params"
+            ],
+            "properties": {
+              "exercise_version_id": {
+                "type": "string"
+              },
+              "exercise_name": {
+                "type": "string"
+              },
+              "prescription_type": {
+                "type": "string",
+                "enum": ["stretching", "isometric", "concentric", "eccentric"]
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reps": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "sets": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "hold_s": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "ascent_s": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "descent_s": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "rest_s": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "per_day": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "days_per_week": {
+                    "oneOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["min", "max"],
+                        "properties": {
+                          "min": {
+                            "type": "number"
+                          },
+                          "max": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "row_notes": {
+                "type": "string",
+                "maxLength": 300
+              }
+            }
+          }
+        },
+        "exercises_not_found": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requested_exercise_name", "web_app_exercise_search_url"],
+            "properties": {
+              "requested_exercise_name": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "candidate_matches": {
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["exercise_version_id", "exercise_name"],
+                  "properties": {
+                    "exercise_version_id": {
+                      "type": "string"
+                    },
+                    "exercise_name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "web_app_exercise_search_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            }
+          }
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "publish_program",
+    "description": "Publish a program, or publish its draft changes to the same share link. Before calling, ask the user in the conversation and wait for an explicit yes. Read the program first with get_program_share_link_or_pdf so the question has the real name, code, link state and expiry. The question must cover the program name, that it creates or updates the share link, that anyone with the link sees this version, and the expiry and whether it is the default. For a program made from a routine, also say that later routine edits won't change it. For changes to a live program, say what changed and that the patient sees it on the same link. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_code"],
+      "properties": {
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "overrides": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "expires_in": {
+              "type": "string",
+              "enum": ["1_week", "30_days", "90_days", "1_year", "never", "custom_date"]
+            },
+            "custom_date": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "expires_in": {
+                    "const": "custom_date"
+                  }
+                },
+                "required": ["expires_in"]
+              },
+              "then": {
+                "required": ["custom_date"]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "share_link",
+        "manage_url",
+        "pdf_url",
+        "draft_state",
+        "published",
+        "publish_change_lines"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "share_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "pdf_url": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "manage_url": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "program_title": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "draft_state": {
+          "type": "string",
+          "enum": ["draft_only", "published_only", "published_with_draft_changes"]
+        },
+        "draft": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "updated_at"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          ]
+        },
+        "published": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["version", "updated_at"],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          ]
+        },
+        "share_link_state": {
+          "type": "string",
+          "enum": ["live", "closed", "expired", "none"]
+        },
+        "publish_change_lines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "set_program_link_expiry",
+    "description": "Change when a program's share link expires. The link stays the same. If the user's message already names the date or expiry, call this tool directly. Otherwise, ask the user in the conversation and wait for an explicit yes before calling. Read the program first with get_program_share_link_or_pdf. The question must cover the program name, the new expiry, that it's the same link, and the current expiry. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_code", "expires_in"],
+      "properties": {
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "expires_in": {
+          "type": "string",
+          "enum": ["1_week", "30_days", "90_days", "1_year", "never", "custom_date"]
+        },
+        "custom_date": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "share_link", "manage_url", "program_code"],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "share_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "manage_url": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "program_title": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "share_link_state": {
+          "type": "string",
+          "enum": ["live", "closed", "expired", "none"]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "delete_program",
+    "description": "Delete a program. Before calling, ask the user in the conversation and wait for an explicit yes. Read the program first with get_program_share_link_or_pdf so the question has the real name, code, exercise count and link state. The question must cover the program name, code and exercise count, that it moves to Recently deleted, that its share link closes (only when the link is open), and that it can be restored in the web app for 30 days. Use the approved confirm lines as reference wording. You may reword them if you cover the same facts. If the user says no, don't call this tool. Do not pass patient information.",
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_code"],
+      "properties": {
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        }
+      }
+    },
+    "outputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary",
+        "share_link",
+        "manage_url",
+        "program_code",
+        "restore_until"
+      ],
+      "properties": {
+        "summary": {
+          "type": "string",
+          "maxLength": 4000
+        },
+        "share_link": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "manage_url": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uri"
+            },
+            {
+              "type": "string",
+              "enum": [""]
+            }
+          ]
+        },
+        "program_code": {
+          "type": "string",
+          "pattern": "^PRG-[A-Z0-9]+$"
+        },
+        "program_title": {
+          "type": ["string", "null"],
+          "maxLength": 80
+        },
+        "restore_until": {
+          "type": "string",
+          "format": "date"
+        },
+        "share_link_state": {
+          "type": "string",
+          "enum": ["live", "closed", "expired", "none"]
+        }
+      }
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "openWorldHint": false
+    }
   }
 ]

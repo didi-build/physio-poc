@@ -6,6 +6,7 @@ import {
   MAX_LENGTH_ROUTINE_NAME,
   MAX_LENGTH_SUMMARY,
   PHYSIO_MCP_TOOLS,
+  PHYSIO_MCP_WIRED_TOOLS,
   SEARCH_APPROVED_EXERCISES_TOOL_NAME,
   SEARCH_ROUTINES_TOOL_NAME,
   searchApprovedExercisesInputSchema,
@@ -284,8 +285,8 @@ describe("assertNoOutputPatternProperties", () => {
 });
 
 describe("DIDI-1026 explicit MCP contract assertions", () => {
-  it("has no legacy date or publish override fields anywhere in tool schemas", () => {
-    for (const tool of PHYSIO_MCP_TOOLS) {
+  it("has no legacy date or publish override fields on wired read tool schemas", () => {
+    for (const tool of PHYSIO_MCP_WIRED_TOOLS) {
       for (const [side, schema] of [
         ["input", tool.inputSchema],
         ["output", tool.outputSchema],

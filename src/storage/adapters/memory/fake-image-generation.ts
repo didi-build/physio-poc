@@ -24,10 +24,7 @@ export class FakeImageGeneration implements ImageGenerationPort {
   ): Promise<{ start: GeneratedImage; end: GeneratedImage }> {
     const start = pngFromSeed(input.startPrompt, 1);
     return {
-      start: {
-        ...start,
-        providerSourceUrl: "https://v3b.fal.media/files/fake/start.png",
-      },
+      start,
       end: pngFromSeed(input.endPrompt, 2),
     };
   }
@@ -37,10 +34,7 @@ export class FakeImageGeneration implements ImageGenerationPort {
     options?: ImageGenerationCallOptions,
   ): Promise<GeneratedImage> {
     void options;
-    return {
-      ...pngFromSeed(startPrompt, 1),
-      providerSourceUrl: "https://v3b.fal.media/files/fake/start.png",
-    };
+    return pngFromSeed(startPrompt, 1);
   }
 
   async generateEndImage(

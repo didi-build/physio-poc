@@ -3,7 +3,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { PHYSIO_MCP_TOOLS } from "../../../mcp-connector/index.js";
+import { PHYSIO_MCP_WIRED_TOOLS } from "../../../mcp-connector/index.js";
 import {
   invokePhysioMcpTool,
   type PhysioMcpHttpDeps,
@@ -26,7 +26,7 @@ export function createPhysioMcpServer(
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: PHYSIO_MCP_TOOLS.map((tool) => ({
+    tools: PHYSIO_MCP_WIRED_TOOLS.map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,

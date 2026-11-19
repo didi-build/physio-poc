@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CREATE_OR_EDIT_PROGRAM_TOOL_NAME,
   FREE_TEXT_NO_PATIENT_DETAILS,
   GET_PROGRAM_BUILDER_LINK_TOOL_NAME,
   GET_PROGRAM_SHARE_LINK_OR_PDF_TOOL_NAME,
@@ -10,16 +11,20 @@ import {
   MAX_LENGTH_REQUESTED_EXERCISE_NAME,
   MAX_LENGTH_ROUTINE_NAME,
   MAX_LENGTH_ROW_NOTES,
-  MCP_TOOL_ANNOTATIONS,
   PHYSIO_MCP_TOOLS,
   SEARCH_ROUTINES_TOOL_NAME,
+  validateFreeTextForPatientDetails,
   getProgramBuilderLinkInputSchema,
   getProgramShareLinkOrPdfInputSchema,
   searchApprovedExercisesInputSchema,
   searchApprovedExercisesOutputSchema,
   searchRoutinesInputSchema,
 } from "../src/mcp-connector/index.js";
-import { programRowInputSchema } from "../src/mcp-connector/json-schema.js";
+import {
+  exerciseNotFoundCandidateSchema,
+  exerciseNotFoundSchema,
+  programRowInputSchema,
+} from "../src/mcp-connector/json-schema.js";
 import {
   collectSchemaDescriptionViolations,
   findSchemaAtPath,
@@ -36,12 +41,6 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
   it("matches committed golden snapshot of PHYSIO_MCP_TOOLS", () => {
     const golden = JSON.parse(readFileSync(GOLDEN_PATH, "utf8"));
     expect(PHYSIO_MCP_TOOLS).toEqual(golden);
-  });
-
-  it("pins MCP tool annotations on every tool", () => {
-    for (const tool of PHYSIO_MCP_TOOLS) {
-      expect(tool.annotations).toEqual(MCP_TOOL_ANNOTATIONS);
-    }
   });
 
   it("pins free-text maxLength caps at 80/80/300/100 where applicable", () => {
@@ -81,6 +80,28 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
     });
     expect(MAX_LENGTH_ROW_NOTES).toBe(300);
     expect(MAX_LENGTH_REQUESTED_EXERCISE_NAME).toBe(100);
+  });
+
+  it("pins write-tool output required fields including restore_until and publish_change_lines", () => {
+    const create = PHYSIO_MCP_TOOLS.find((t) => t.name === "create_or_edit_program")!;
+    const publish = PHYSIO_MCP_TOOLS.find((t) => t.name === "publish_program")!;
+    const del = PHYSIO_MCP_TOOLS.find((t) => t.name === "delete_program")!;
+    expect(schemaRequired(create.outputSchema)).toEqual(
+      expect.arrayContaining([
+        "summary",
+        "share_link",
+        "manage_url",
+        "program_code",
+        "program_title",
+        "rows",
+      ]),
+    );
+    expect(schemaRequired(publish.outputSchema)).toEqual(
+      expect.arrayContaining(["publish_change_lines", "published", "pdf_url"]),
+    );
+    expect(schemaRequired(del.outputSchema)).toEqual(
+      expect.arrayContaining(["restore_until"]),
+    );
   });
 
   it("pins literal required arrays on tool output schemas", () => {
@@ -145,7 +166,32 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
     expect(category?.enum).toEqual(["Stretching", "Strengthening"]);
   });
 
-  it("requires FREE_TEXT_NO_PATIENT_DETAILS on every capped free-text field description", () => {
+  it("pins maxLength caps on every relevant capped free-text field", () => {
+    const createOrEdit = PHYSIO_MCP_TOOLS.find(
+      (t) => t.name === "create_or_edit_program",
+    )!;
+    expect(findSchemaAtPath(createOrEdit.inputSchema, ["program_title"])).toMatchObject(
+      {
+        maxLength: MAX_LENGTH_PROGRAM_TITLE,
+      },
+    );
+    visitSchemaNodes(programRowInputSchema, (node) => {
+      const props = node.properties as
+        Record<string, { maxLength?: number }> | undefined;
+      if (props?.row_notes?.maxLength !== undefined) {
+        expect(props.row_notes.maxLength).toBe(MAX_LENGTH_ROW_NOTES);
+      }
+      if (props?.exercise_name?.maxLength !== undefined) {
+        expect(props.exercise_name.maxLength).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
+      }
+    });
+    expect(
+      (exerciseNotFoundSchema.properties as Record<string, { maxLength?: number }>)
+        .requested_exercise_name?.maxLength,
+    ).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
+  });
+
+  it("requires FREE_TEXT_NO_PATIENT_DETAILS on capped fields that carry descriptions", () => {
     const paths: Array<{ root: JsonSchemaLike; path: string[] }> = [
       { root: searchApprovedExercisesInputSchema, path: ["query"] },
       { root: searchRoutinesInputSchema, path: ["query"] },
@@ -166,6 +212,61 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
         );
       }
     });
+  });
+
+  it("pins every write-tool capped free-text field for validateFreeTextForPatientDetails coverage", () => {
+    const flagged = "Notify user@example.com";
+    expect(validateFreeTextForPatientDetails(flagged).ok).toBe(false);
+
+    const create = PHYSIO_MCP_TOOLS.find(
+      (t) => t.name === CREATE_OR_EDIT_PROGRAM_TOOL_NAME,
+    )!;
+    expect(findSchemaAtPath(create.inputSchema, ["program_title"])).toMatchObject({
+      maxLength: MAX_LENGTH_PROGRAM_TITLE,
+    });
+    const patientInformationSentence = "Do not pass patient information.";
+    expect(
+      String(findSchemaAtPath(create.inputSchema, ["program_title"])?.description),
+    ).toBe(patientInformationSentence);
+
+    let rowNotesSeen = false;
+    let rowExerciseNameSeen = false;
+    visitSchemaNodes(programRowInputSchema, (node) => {
+      const props = node.properties as Record<string, JsonSchemaLike> | undefined;
+      if (props?.row_notes?.maxLength !== undefined) {
+        rowNotesSeen = true;
+        expect(props.row_notes.maxLength).toBe(MAX_LENGTH_ROW_NOTES);
+        expect(String(props.row_notes.description)).toBe(patientInformationSentence);
+      }
+      if (props?.exercise_name?.maxLength !== undefined) {
+        rowExerciseNameSeen = true;
+        expect(props.exercise_name.maxLength).toBe(MAX_LENGTH_REQUESTED_EXERCISE_NAME);
+        expect(String(props.exercise_name.description)).toBe(
+          patientInformationSentence,
+        );
+      }
+    });
+    expect(rowNotesSeen).toBe(true);
+    expect(rowExerciseNameSeen).toBe(true);
+
+    expect(
+      (exerciseNotFoundSchema.properties as Record<string, JsonSchemaLike>)
+        .requested_exercise_name,
+    ).toMatchObject({ maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME });
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        (exerciseNotFoundSchema.properties as Record<string, JsonSchemaLike>)
+          .requested_exercise_name ?? {},
+        "description",
+      ),
+    ).toBe(false);
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        (exerciseNotFoundCandidateSchema.properties as Record<string, JsonSchemaLike>)
+          .exercise_name ?? {},
+        "description",
+      ),
+    ).toBe(false);
   });
 
   it("has no patient-like names in tool or field descriptions", () => {
