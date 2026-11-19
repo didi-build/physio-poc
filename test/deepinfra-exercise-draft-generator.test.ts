@@ -1271,7 +1271,13 @@ describe("DeepInfra request metadata guards", () => {
       expect(responseFormat.type).toBe("json_schema");
       expect(responseFormat.json_schema.strict).toBe(true);
       expect(responseFormat).toEqual(PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT);
-      const jsonSchema = responseFormat.json_schema.schema;
+      const jsonSchema = responseFormat.json_schema.schema as Record<
+        string,
+        unknown
+      > & {
+        required: string[];
+        properties: Record<string, unknown>;
+      };
       expect(jsonSchema).toEqual(PINNED_EXERCISE_DRAFT_JSON_SCHEMA);
       expect(responseFormat.json_schema.name).toBe("exercise_draft");
       expect(jsonSchema.required).not.toContain("default_sets_and_reps");

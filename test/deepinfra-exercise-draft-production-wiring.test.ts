@@ -71,7 +71,9 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       expect(deps.exerciseDraftGenerator).not.toBe(fakeExerciseDraftGenerator);
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await deps.exerciseDraftGenerator(
+      const draftGenerator = deps.exerciseDraftGenerator;
+      expect(draftGenerator).toBeDefined();
+      await draftGenerator!(
         {
           sql: storage,
           requestId: id("req-worker-wire"),
@@ -114,7 +116,9 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     );
     const requests = new ExerciseRequestsRepository(deps.sql);
     const versions = new ExerciseVersionsRepository(deps.sql);
-    await deps.exerciseDraftGenerator(
+    const draftGenerator = deps.exerciseDraftGenerator;
+    expect(draftGenerator).toBeDefined();
+    await draftGenerator!(
       {
         sql: deps.sql,
         requestId: id("req-node-wire"),
