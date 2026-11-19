@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { FalFluxKleinImageGeneration } from "../src/adapters/node/fal-flux-klein-image-generation.js";
+import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
 import { handleRequest, type AppDependencies } from "../src/http/app.js";
 import {
   exerciseMediaSessionCookie,
@@ -184,7 +184,7 @@ describe("Exercise media HTTP routes (integration)", () => {
     }
   });
 
-  it("returns 409 for end-only regeneration when start_provider_url is missing", async () => {
+  it("returns 409 for end-only regeneration when stored start object bytes are missing", async () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
@@ -228,18 +228,18 @@ describe("Exercise media HTTP routes (integration)", () => {
     }
   });
 
-  it("does not echo fal response bodies or regeneration notes in API errors", async () => {
+  it("does not echo DeepInfra response bodies or regeneration notes in API errors", async () => {
     const storage = await openMigratedDatabase();
     const note = 'slow "tempo"\nline two';
     const jsonBody = JSON.stringify({ detail: note });
-    const apiKey = "fal-test-key-must-not-appear-in-errors";
+    const apiKey = "deepinfra-sentinel-key-must-not-appear-in-errors";
     const fetchImpl = vi.fn(async () => new Response(jsonBody, { status: 401 }));
-    const fal = new FalFluxKleinImageGeneration({ apiKey, fetchImpl });
+    const deepinfra = new DeepInfraFluxKleinImageGeneration({ apiKey, fetchImpl });
     const consoleSpies = spyAllConsoleLevels();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const deps = mediaHttpDeps(storage, practitionerId, {
-        exerciseMediaImages: fal,
+        exerciseMediaImages: deepinfra,
       });
       const response = await handleRequest(
         mediaRequest(
@@ -258,7 +258,7 @@ describe("Exercise media HTTP routes (integration)", () => {
       expect(text).not.toContain(apiKey);
       expect(text).not.toContain(note);
       expect(text).not.toContain(jsonBody);
-      expect(text).toContain("fal_api_request_failed");
+      expect(text).toContain("image_generation_request_failed");
       expectConsoleCallsLeakFree(consoleSpies, { note, jsonBody, apiKey });
     } finally {
       restoreConsoleSpies(consoleSpies);

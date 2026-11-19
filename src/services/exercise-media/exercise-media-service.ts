@@ -205,6 +205,9 @@ export class ExerciseMediaService {
       : null;
 
     let startProviderUrl = existing?.start_provider_url ?? null;
+    if (input.scope === "start" || input.scope === "both") {
+      startProviderUrl = null;
+    }
     const imageOptions = { regenerationNote };
 
     if (input.scope === "start" || input.scope === "both") {
@@ -213,16 +216,13 @@ export class ExerciseMediaService {
         imageOptions,
       );
       startImage = { body: generated.bytes, contentType: generated.contentType };
-      if (generated.providerSourceUrl) {
-        startProviderUrl = generated.providerSourceUrl;
-      }
     }
     if (input.scope === "end" || input.scope === "both") {
-      const startReferenceImageUrl =
-        input.scope === "both"
-          ? (startProviderUrl ?? undefined)
-          : (existing?.start_provider_url ?? undefined);
-      if (!startReferenceImageUrl) {
+      const startReferenceImage =
+        startImage !== null
+          ? { bytes: startImage.body, contentType: startImage.contentType }
+          : undefined;
+      if (!startReferenceImage) {
         throw new ExerciseMediaServiceError(
           "Start reference image is not available for end regeneration",
           "start_reference_unavailable",
@@ -232,7 +232,7 @@ export class ExerciseMediaService {
         buildEndImagePrompt(promptContext),
         {
           ...imageOptions,
-          startReferenceImageUrl,
+          startReferenceImage,
         },
       );
       endImage = { body: generated.bytes, contentType: generated.contentType };
@@ -245,7 +245,6 @@ export class ExerciseMediaService {
       });
       startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
       endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
-      startProviderUrl = pair.start.providerSourceUrl ?? startProviderUrl;
     }
 
     const nowIso = this.clock().toISOString();
