@@ -15,6 +15,23 @@ export const OMITTED_WRITE_TOOL_DESCRIPTIONS = [
   },
 ] as const;
 
+/** Read-schema copy removed from write tools (CTO 343fc67a); QA count = 13 kinds. */
+export const REMOVED_READ_REUSED_DESCRIPTION_KINDS = [
+  "summary",
+  "program_code",
+  "share_link",
+  "pdf_url",
+  "manage_url",
+  "expires_at",
+  "program version snapshot (`version`)",
+  "program version snapshot (`updated_at`)",
+  "nullable draft/published version ref wrapper",
+  "exercise_count",
+  "draft_state",
+  "share_link_state",
+  "source_routine_id",
+] as const;
+
 export type OmissionPathRow = { tool: string; side: string; path: string };
 
 export function collectWriteSchemaOmissionPaths(): OmissionPathRow[] {
@@ -77,6 +94,10 @@ export function buildWriteSchemaOmissionsMarkdown(): {
     "## Omitted MCP tool descriptions\n\nConfirm instruction is approved in tool descriptions #25–#27 (spec PR132, merge `5c02d0b`).\n\n";
   for (const o of OMITTED_WRITE_TOOL_DESCRIPTIONS) {
     md += `- \`${o.tool}\`: ${o.note}\n`;
+  }
+  md += `\n## Removed read-reused descriptions (CTO 343fc67a)\n\n${REMOVED_READ_REUSED_DESCRIPTION_KINDS.length} field kinds that previously carried read-tool \`description\` text on write schemas (unapproved at spec \`5c02d0b\`); write tools now use \`write*\` JSON Schema fragments with no description:\n\n`;
+  for (const kind of REMOVED_READ_REUSED_DESCRIPTION_KINDS) {
+    md += `- ${kind}\n`;
   }
   md += "\n## Omitted schema `description` paths\n\n";
   for (const r of unique) {

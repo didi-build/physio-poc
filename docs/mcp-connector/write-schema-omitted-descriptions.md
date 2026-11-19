@@ -8,6 +8,24 @@ Confirm instruction is approved in tool descriptions #25–#27 (spec PR132, merg
 
 - `create_or_edit_program`: No approved MCP tool description (#25–#27 in spec PR132 / DIDI-1251 cover publish, set expiry, and delete only).
 
+## Removed read-reused descriptions (CTO 343fc67a)
+
+13 field kinds that previously carried read-tool `description` text on write schemas (unapproved at spec `5c02d0b`); write tools now use `write*` JSON Schema fragments with no description:
+
+- summary
+- program_code
+- share_link
+- pdf_url
+- manage_url
+- expires_at
+- program version snapshot (`version`)
+- program version snapshot (`updated_at`)
+- nullable draft/published version ref wrapper
+- exercise_count
+- draft_state
+- share_link_state
+- source_routine_id
+
 ## Omitted schema `description` paths
 
 - `create_or_edit_program` input: `from_routine_id`
