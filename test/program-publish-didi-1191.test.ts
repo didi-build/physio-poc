@@ -360,7 +360,8 @@ describe("DIDI-1191 public share link media (integration)", () => {
       );
       expect(unknown.status).toBe(404);
       const unknownBody = await unknown.text();
-      expect(unknownBody).toBe(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY);
+      expect(unknownBody).toBe('{"error":"not_found"}');
+      expect(PUBLIC_SHARE_LINK_MEDIA_NOT_FOUND_BODY).toBe('{"error":"not_found"}');
       expect(unknown.headers.get("cache-control")).toBe("private, max-age=300");
       expect(unknown.headers.get("x-content-type-options")).toBe("nosniff");
 

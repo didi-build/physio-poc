@@ -6,7 +6,7 @@ import {
   printParseErrorCode,
   type ParseError,
 } from "jsonc-parser";
-import { PHYSIO_R2_BUCKET_NAME } from "../../scripts/lib/wrangler-r2-binding.mjs";
+import { PHYSIO_PRODUCTION_R2_BUCKETS } from "../../scripts/lib/wrangler-r2-binding.mjs";
 import {
   PHYSIO_HARNESS_R2_BUCKETS,
   PHYSIO_HARNESS_R2_BUCKET_NAME,
@@ -40,7 +40,9 @@ export function assertHarnessR2BucketsAreLocalOnly(
 
 export function assertHarnessR2BucketsAreNotProductionBucketNames(
   buckets: readonly { bucket_name?: string }[],
-  productionBucketNames: readonly string[] = [PHYSIO_R2_BUCKET_NAME],
+  productionBucketNames: readonly string[] = PHYSIO_PRODUCTION_R2_BUCKETS.map(
+    (entry) => entry.bucket_name,
+  ),
 ): void {
   for (const entry of buckets) {
     const name = entry.bucket_name;

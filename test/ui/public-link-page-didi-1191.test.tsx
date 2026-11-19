@@ -285,7 +285,10 @@ describe("Public link page media carousel (DIDI-1191)", () => {
       screen.getByRole("button", { name: "Try loading images for Heel slide again" }),
     ).toHaveTextContent(PUBLIC_LINK_TRY_AGAIN);
     expect(screen.queryByTestId("public-link-exercise-carousel")).toBeNull();
-    expect(document.querySelector(".link-page-media-failed")).toHaveClass(
+    expect(document.querySelector(".link-page-media-failed")).not.toHaveClass(
+      "link-page-no-print",
+    );
+    expect(document.querySelector(".link-page-media-retry")).toHaveClass(
       "link-page-no-print",
     );
   });
