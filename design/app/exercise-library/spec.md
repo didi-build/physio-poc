@@ -81,6 +81,10 @@ The full verbatim copy is in the inventory at the end.
 9. Browsing never adds to a program: saving from browse adds to My exercises only.
 10. No global search.
 
+## Body region picker (DIDI-1253)
+
+Chip plus typeahead per [body-region-picker/spec.md](../body-region-picker/spec.md) when exercise save forms wire **Body region**. Multi-select `body_regions: string[]`. Add-new-exercise: inline **Add {region}** when no match. **Edit for everyone** / **Edit my copy**: existing regions only until [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256). Filter pills remain fixed `BODY_REGION_PILLS` in `library-filters.ts` (not live catalogs).
+
 ## Mockups
 
 All states are rendered from the approved web revision 465225161508020224 (this feature did not change in v11 or v12, so these match the last approved look, with the current nav).
@@ -543,6 +547,8 @@ Every user-facing string in the parts of the approved source that render this fe
 
 
 ## Changes
+
+* Nov 18, 2026: DIDI-1253 body region picker r4 (A+B chips, multi-region, hint N4). https://linear.app/didi-build/issue/DIDI-1253
 
 * Nov 10, 2026, 2:09 PM ET, DIDI-1200: Diadem approved C2 ("Yes, approve C2"). The Request a new exercise card shows on every All exercises empty state (search with no exact match, no search with 0 exercises, filters that match nothing) as one container, with the empty message inside it when there are no similar results. Exercise is editable: prefilled from the search, empty with no search; Submit request is disabled until it has text. My exercises empty states are unchanged and have no card ("C, however, this should only display on the "all exercise" tab (not my exercises)", 2:07 PM ET). PROPOSED strings: 0. Matches Product direction: yes. https://linear.app/didi-build/issue/DIDI-1200, https://linear.app/didi-build/issue/DIDI-594
 
