@@ -162,7 +162,7 @@ Strings visible in the B mockups or required for accessibility that are not in t
 | Condition chip remove control accessible name | Exploration uses `Remove {condition name}` via the same pattern as `Remove {name}` for exercises; needs explicit approval for conditions if wording differs |
 | Exercise count suffix on the draft list | Mockup shows `{n} total` beside **Exercises**; no matching string in `src/ui/copy/routines.ts` today |
 | Preview sheet title | Uses the matched routine's name at runtime (sample names in mockups are not copy) |
-| Debounced re-check delay | No user-visible string; product decision if a subtle "checking…" state is ever needed |
+| Optional in-progress indicator | No user-visible string today; open product decision if the check should ever show progress while debounced re-check runs |
 
 Failed-state and no-match **copy**: none shown by design (no strings to approve).
 
