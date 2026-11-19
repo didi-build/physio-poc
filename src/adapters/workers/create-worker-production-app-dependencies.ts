@@ -16,6 +16,8 @@ import { resolveWorkerPhysioServerConfig } from "./resolve-worker-config.js";
 import { workerCimdMetadataFetch } from "./worker-cimd-metadata-fetch.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
 import { createWorkerAssetsUiStaticPort } from "./worker-assets-ui-static-port.js";
+import { handleExerciseMediaRequest } from "../../http/routes/exercise-media.js";
+import { createWorkerImageGenerationPort } from "./create-worker-image-generation-port.js";
 
 /** Production Better Auth wiring (dynamic import from create-app-dependencies). */
 export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDependencies {
@@ -45,6 +47,8 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
     guardedAppWithoutSession: "redirect",
     uiStatic,
+    extraRouteHandlers: [handleExerciseMediaRequest],
+    exerciseMediaImages: createWorkerImageGenerationPort(env),
   };
 }
 
