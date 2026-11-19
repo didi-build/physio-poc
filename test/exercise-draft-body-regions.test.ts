@@ -36,6 +36,24 @@ describe("partitionExerciseDraftBodyRegions", () => {
     }
   });
 
+  it("matches seeded library labels when input collapses internal whitespace", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      await storage.run("INSERT INTO body_regions (id, label) VALUES (?, ?)", [
+        "br-lower-back",
+        "lower back",
+      ]);
+      const result = await partitionExerciseDraftBodyRegions(storage, [
+        "lower  back",
+        "Lower\tback",
+      ]);
+      expect(result.linkedRegionIds).toEqual(["br-lower-back"]);
+      expect(result.suggestedLabels).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("matches library labels after normalization instead of storing a suggestion", async () => {
     const storage = await openMigratedDatabase();
     try {

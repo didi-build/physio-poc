@@ -28,4 +28,32 @@ describe("DeepInfraChatCompletionClient", () => {
     });
     expect(inspectValue(thrown)).not.toContain(SENTINEL_BODY);
   });
+
+  it("maps DOMException without abort wording to typed timeout", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValue(new DOMException("Idle", "NetworkError"));
+    const client = new DeepInfraChatCompletionClient({
+      apiKey: "unit-test-key",
+      fetchImpl,
+    });
+    await expect(
+      client.complete({
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages: [{ role: "user", content: "draft" }],
+        response_format: { type: "json_schema" },
+      }),
+    ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+  });
+});
+
+describe("deepInfraExerciseDraftError factory", () => {
+  it("does not attach option metadata on error.cause", async () => {
+    const { deepInfraExerciseDraftError } =
+      await import("../src/adapters/deepinfra/deepinfra-draft-error-factory.js");
+    const err = deepInfraExerciseDraftError("deepinfra_exercise_draft_request_failed", {
+      httpStatus: 502,
+    });
+    expect((err as Error).cause).toBeUndefined();
+  });
 });

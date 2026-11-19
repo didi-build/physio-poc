@@ -207,6 +207,51 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
+  it("rejects email-shaped aliases at persist without writing rows", async () => {
+    const emailAlias = { ...VALID_STRETCH_DRAFT, aliases: ["jane@example.com"] };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(envelope(JSON.stringify(emailAlias)))
+      .mockResolvedValueOnce(envelope(JSON.stringify(emailAlias)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-email-alias"),
+        "email-alias@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-email-alias"),
+            requestedName: "Heel slide",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      const aliasRows = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercise_aliases WHERE alias LIKE '%@%'",
+      );
+      expect(aliasRows?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("retries once when a schema-valid alias clashes with the library", async () => {
     const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
     const generator = createDeepInfraExerciseDraftGenerator({
@@ -1049,6 +1094,9 @@ describe("DeepInfra request metadata guards", () => {
       const messages = body.messages as Array<{ role: string; content: string }>;
       expect(messages[0]?.content).toBe(PINNED_SYSTEM_PROMPT);
       expect(messages[0]?.content).toContain("Never include patient-identifying");
+      expect(messages[0]?.content).toContain(
+        "For body_regions, use free-text region names.",
+      );
       expect(messages[0]?.content).not.toContain("default_sets_and_reps");
     } finally {
       storage.close();
