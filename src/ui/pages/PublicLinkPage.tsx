@@ -9,9 +9,7 @@ import {
 } from "../../copy/programs-share.js";
 import { publicShareLinkApiPath } from "../../programs-api-paths.js";
 import type { PublicShareLinkView } from "../../services/programs/program-publish-service.js";
-import { TYPE_LABELS } from "../copy/my-defaults.js";
-import { LinkPageDoseBlock } from "../link-page/LinkPageDoseBlock.js";
-import { PublicLinkExerciseCarousel } from "../link-page/PublicLinkExerciseCarousel.js";
+import { PublicLinkExerciseRow } from "../link-page/PublicLinkExerciseRow.js";
 
 export function PublicLinkPage() {
   const { code } = useParams();
@@ -98,14 +96,14 @@ export function PublicLinkPage() {
       </header>
       <ol className="link-page-rows">
         {view.rows.map((row) => (
-          <li key={row.position} className="link-page-row">
-            <h2 className="link-page-row-title">
-              {row.title}, {TYPE_LABELS[row.prescription_type].toLowerCase()}
-            </h2>
-            <PublicLinkExerciseCarousel title={row.title} media={row.media} />
-            <LinkPageDoseBlock params={row.params} />
-            {row.note ? <p className="link-page-row-note">{row.note}</p> : null}
-          </li>
+          <PublicLinkExerciseRow
+            key={row.position}
+            title={row.title}
+            prescriptionType={row.prescription_type}
+            params={row.params}
+            note={row.note}
+            media={row.media}
+          />
         ))}
       </ol>
       <p className="link-page-footer link-page-no-print">{view.expiry_line}</p>

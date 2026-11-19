@@ -88,11 +88,13 @@ const SLIDE_NAMES = [
 export type PublicLinkExerciseCarouselProps = {
   title: string;
   media: PublicShareLinkRowMedia | null;
+  onLoadFailed?: (failed: boolean) => void;
 };
 
 export function PublicLinkExerciseCarousel({
   title,
   media,
+  onLoadFailed,
 }: PublicLinkExerciseCarouselProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -114,6 +116,10 @@ export function PublicLinkExerciseCarousel({
   useEffect(() => {
     setLoadFailed(missingMedia);
   }, [missingMedia]);
+
+  useEffect(() => {
+    onLoadFailed?.(loadFailed);
+  }, [loadFailed, onLoadFailed]);
 
   const scrollToSlide = useCallback(
     (index: number) => {
@@ -213,15 +219,12 @@ export function PublicLinkExerciseCarousel({
 
   if (loadFailed) {
     return (
-      <div
-        className="link-page-media-failed link-page-no-print"
-        data-testid="public-link-media-failed"
-      >
-        <p>{PUBLIC_LINK_IMAGES_DIDNT_LOAD}</p>
+      <div className="link-page-media-failed" data-testid="public-link-media-failed">
+        <p className="link-page-print-media-failed">{PUBLIC_LINK_IMAGES_DIDNT_LOAD}</p>
         <button
           ref={tryAgainRef}
           type="button"
-          className="link-page-media-retry"
+          className="link-page-media-retry link-page-no-print"
           aria-label={publicLinkTryLoadingImagesAgainLabel(title)}
           onClick={onRetry}
         >
