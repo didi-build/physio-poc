@@ -111,7 +111,7 @@ const mutants = [
     file: ".github/workflows/deploy-physio-mcp-worker.yml",
     apply: (s) =>
       s.replace(
-        /          PHYSIO_DEEPINFRA_API_KEY: \$\{\{ secrets\.PHYSIO_DEEPINFRA_API_KEY \}\}\n/,
+        / {10}PHYSIO_DEEPINFRA_API_KEY: \$\{\{ secrets\.PHYSIO_DEEPINFRA_API_KEY \}\}\n/,
         "",
       ),
   },
@@ -221,7 +221,7 @@ const mutants = [
     file: "src/services/exercise-media/exercise-media-service.ts",
     apply: (s) =>
       s.replace(
-        /    const nowIso = this\.clock\(\)\.toISOString\(\);\n    await this\.regenerations\.insert\(\{[\s\S]*?createdAt: nowIso,\n    \}\);\n    return media;/,
+        / {4}const nowIso = this\.clock\(\)\.toISOString\(\);\n {4}await this\.regenerations\.insert\(\{[\s\S]*?createdAt: nowIso,\n {4}\}\);\n {4}return media;/,
         "    return media;",
       ),
   },
@@ -231,7 +231,7 @@ const mutants = [
     file: "src/http/bounded-json-request-body.ts",
     apply: (s) =>
       s.replace(
-        /  const contentLength = contentLengthHeader\(request\);\n  if \(contentLength !== null && contentLength > maxBytes\) \{\n    return EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE;\n  \}\n\n/,
+        / {2}const contentLength = contentLengthHeader\(request\);\n {2}if \(contentLength !== null && contentLength > maxBytes\) \{\n {4}return EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE;\n {2}\}\n\n/,
         "",
       ),
   },
@@ -320,7 +320,7 @@ const mutants = [
     file: "src/services/exercise-media/exercise-media-service.ts",
     apply: (s) =>
       s.replace(
-        /    if \(input\.version\.pending_media_set_id\) \{[\s\S]*?    \}\n    const mediaSetId = this\.createId\(\);/,
+        / {4}if \(input\.version\.pending_media_set_id\) \{[\s\S]*? {4}\}\n {4}const mediaSetId = this\.createId\(\);/,
         "    const mediaSetId = this.createId();",
       ),
   },
@@ -344,7 +344,7 @@ const mutants = [
     file: "src/services/exercise-media/exercise-media-service.ts",
     apply: (s) =>
       s.replace(
-        /    if \(version\.pending_media_set_id\) \{[\s\S]*?    \}\n    const promptContext/,
+        / {4}if \(version\.pending_media_set_id\) \{[\s\S]*? {4}\}\n {4}const promptContext/,
         "    const promptContext",
       ),
   },
