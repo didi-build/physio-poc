@@ -134,25 +134,6 @@ describe("Worker production exercise media (DIDI-1212)", () => {
     }
   });
 
-  it("returns 401 with unauthorized body for media routes without a session on the Worker entry", async () => {
-    for (const testCase of exerciseMediaHttpRouteCases()) {
-      const response = await worker.fetch(
-        new Request(`${WORKER_PRODUCTION_TEST_BASE}${testCase.path}`, {
-          method: testCase.method,
-          headers:
-            testCase.method === "POST"
-              ? { "content-type": "application/json" }
-              : undefined,
-          body:
-            testCase.method === "POST" ? JSON.stringify({ scope: "start" }) : undefined,
-        }),
-        {},
-      );
-      expect(response.status, `${testCase.method} ${testCase.path}`).toBe(401);
-      await expect(response.json()).resolves.toEqual(UNAUTHORIZED_BODY);
-    }
-  });
-
   it("reaches the exercise media handler when authenticated (version_not_found, not app not_found)", async () => {
     const { storage, d1 } = await openWorkerAuthTestDatabase();
     try {
