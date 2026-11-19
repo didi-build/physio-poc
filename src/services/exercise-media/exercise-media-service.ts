@@ -165,6 +165,7 @@ export class ExerciseMediaService {
       version.status === "approved"
         ? await this.persistApprovedPendingMediaSet({
             version,
+            practitionerId: input.practitionerId,
             start: generated.start,
             end: generated.end,
           })
@@ -226,13 +227,22 @@ export class ExerciseMediaService {
       input.exerciseVersionId,
       input.practitionerId,
     );
+    if (
+      version.status === "approved" &&
+      version.pending_media_requested_by &&
+      version.pending_media_requested_by !== input.practitionerId
+    ) {
+      throw this.versionNotFoundError();
+    }
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const liveSet = version.media_set_id
       ? await this.mediaSets.findById(version.media_set_id)
       : null;
-    const pendingSet = version.pending_media_set_id
-      ? await this.mediaSets.findById(version.pending_media_set_id)
-      : null;
+    const pendingSet =
+      version.pending_media_set_id &&
+      version.pending_media_requested_by === input.practitionerId
+        ? await this.mediaSets.findById(version.pending_media_set_id)
+        : null;
     const existing = liveSet ?? pendingSet;
 
     let startImage = existing
@@ -320,6 +330,7 @@ export class ExerciseMediaService {
 
     const media = await this.persistApprovedPendingMediaSet({
       version,
+      practitionerId: input.practitionerId,
       start: {
         bytes: startImage.body,
         contentType: startImage.contentType,
@@ -368,14 +379,8 @@ export class ExerciseMediaService {
     access: "internal" | "public",
     sessionPractitionerId?: string,
   ): Promise<ExerciseMediaSetView | null> {
-    const version =
-      access === "internal"
-        ? await this.requireVersionForPractitioner(
-            exerciseVersionId,
-            sessionPractitionerId ?? "",
-          )
-        : await this.requireVersionForPublicServing(exerciseVersionId);
     if (access === "public") {
+      const version = await this.requireVersionForPublicServing(exerciseVersionId);
       if (!version.media_set_id) {
         return null;
       }
@@ -394,9 +399,17 @@ export class ExerciseMediaService {
       };
     }
 
+    const version = await this.versions.findVersionWithExerciseOwner(exerciseVersionId);
+    if (!version) {
+      throw this.versionNotFoundError();
+    }
+
     if (version.pending_media_set_id) {
       const pendingRow = await this.mediaSets.findById(version.pending_media_set_id);
       if (pendingRow) {
+        if (sessionPractitionerId !== version.pending_media_requested_by) {
+          throw this.versionNotFoundError();
+        }
         return {
           mediaSetId: pendingRow.id,
           startObjectKey: pendingRow.start_object_key,
@@ -405,6 +418,11 @@ export class ExerciseMediaService {
         };
       }
     }
+
+    await this.requireVersionForPractitioner(
+      exerciseVersionId,
+      sessionPractitionerId ?? "",
+    );
     if (!version.media_set_id) {
       return null;
     }
@@ -437,7 +455,8 @@ export class ExerciseMediaService {
   }
 
   private async persistApprovedPendingMediaSet(input: {
-    version: { id: string };
+    version: ExerciseVersionMediaRow;
+    practitionerId: string;
     start: {
       bytes: Uint8Array;
       contentType: string;
@@ -445,6 +464,18 @@ export class ExerciseMediaService {
     };
     end: { bytes: Uint8Array; contentType: string };
   }): Promise<ExerciseMediaSetView> {
+    if (input.version.pending_media_set_id) {
+      const previous = await this.mediaSets.findById(
+        input.version.pending_media_set_id,
+      );
+      if (previous) {
+        await this.media.deleteDraftSet({
+          startObjectKey: previous.start_object_key,
+          endObjectKey: previous.end_object_key,
+        });
+        await this.mediaSets.deleteById(previous.id);
+      }
+    }
     const mediaSetId = this.createId();
     const keys = mediaObjectKeys(mediaSetId);
     const createdAt = this.clock().toISOString();
@@ -468,7 +499,10 @@ export class ExerciseMediaService {
       visibility: "draft",
       createdAt,
     });
-    await this.versions.updatePendingMediaSetId(input.version.id, mediaSetId);
+    await this.versions.updatePendingDraft(input.version.id, {
+      pendingMediaSetId: mediaSetId,
+      pendingMediaRequestedBy: input.practitionerId,
+    });
     return {
       mediaSetId,
       startObjectKey: keys.startObjectKey,

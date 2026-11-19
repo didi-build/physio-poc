@@ -135,6 +135,12 @@ d1_tables:
         purpose: owner-only preview until confirm (DIDI-1261)
         processors: [Cloudflare]
         retention: until confirm or version deleted
+      pending_media_requested_by:
+        whose: practitioner
+        data: Practitioner id who created the pending media set
+        purpose: restrict pending serve and regenerate to the requester until confirm
+        processors: [Cloudflare]
+        retention: until confirm or version deleted
       change_summary:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
