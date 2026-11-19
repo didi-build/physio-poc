@@ -5,7 +5,11 @@ import {
   DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL,
   DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID,
 } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
-import { openAiJsonSchemaResponseFormat } from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
+import {
+  EXERCISE_DRAFT_AI_JSON_SCHEMA,
+  openAiJsonSchemaResponseFormat,
+} from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
+import { EXERCISE_DRAFT_SYSTEM_PROMPT } from "../src/adapters/deepinfra/exercise-draft-system-prompt.js";
 import { readHttpResponseTextWithByteCap } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { resolveExerciseDraftGenerator } from "../src/adapters/deepinfra/resolve-exercise-draft-generator.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
@@ -35,17 +39,7 @@ const SENTINEL_KEY = "deepinfra-sentinel-key-must-not-appear";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
 const AFTER_FORM = "2026-10-30T11:00:00.000Z";
 
-const PINNED_SYSTEM_PROMPT = `You draft exercise library entries for physiotherapy practitioners. Reply with a single JSON object that matches the exercise_draft schema exactly.
-
-Clinical text you write is always a draft for practitioner review and approval. Nothing you output goes live without human sign-off.
-
-Never include patient-identifying or patient-specific information (names, contact details, health card numbers, dates of birth, or similar).
-
-Use only the practitioner-supplied exercise name and their optional notes. Fill the template fields: title, aliases, category (stretch or strengthening), body_regions, description, equipment, starting_position, steps, common_mistakes, regressions, progressions, precautions, default_sets_and_reps, and cue lines. For body_regions, use free-text region names.
-
-For stretch exercises, provide cue_stretching and set cue_isometric, cue_concentric, and cue_eccentric to null. For strengthening exercises, provide cue_isometric, cue_concentric, and cue_eccentric and set cue_stretching to null.
-
-Write clear, practical physiotherapy language suitable for a shared exercise library.`;
+const PINNED_SYSTEM_PROMPT = EXERCISE_DRAFT_SYSTEM_PROMPT;
 
 const VALID_STRETCH_DRAFT = {
   title: "Heel slide",
@@ -60,7 +54,6 @@ const VALID_STRETCH_DRAFT = {
   regressions: "Smaller range",
   progressions: "Hold longer",
   precautions: "Stop if pain",
-  default_sets_and_reps: "3 sets, 10 reps",
   cue_stretching: "Move slowly",
   cue_isometric: null,
   cue_concentric: null,
@@ -571,6 +564,138 @@ describe("DeepInfra exercise draft generator", () => {
     ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
   });
 
+  it("stores normalized suggestion labels for case and whitespace variants", async () => {
+    const draftWithVariants = {
+      ...VALID_STRETCH_DRAFT,
+      body_regions: ["knee", "Upper back", "upper back", "upper   back"],
+    };
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(draftWithVariants)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-norm-suggest"),
+        "norm@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      const result = await generator(
+        {
+          sql: storage,
+          requestId: id("req-norm-suggest"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(storage),
+          versions,
+          requests,
+        },
+      );
+      const suggested = await storage.all<{ label: string }>(
+        "SELECT label FROM exercise_suggested_body_regions WHERE exercise_id = ?",
+        [result.exerciseId],
+      );
+      expect(suggested).toEqual([{ label: "upper back" }]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("retries once without persisting when a suggested body region contains patient details", async () => {
+    const draftWithPii = {
+      ...VALID_STRETCH_DRAFT,
+      body_regions: ["knee", "call jane 416-555-0199"],
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(envelope(JSON.stringify(draftWithPii)))
+      .mockResolvedValueOnce(envelope(JSON.stringify(draftWithPii)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-pii-region"),
+        "pii-region@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-pii-region"),
+            requestedName: "Heel slide",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      const suggestionCount = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercise_suggested_body_regions",
+      );
+      expect(suggestionCount?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("fails schema validation with one provider call when aliases are empty", async () => {
+    const emptyAliases = { ...VALID_STRETCH_DRAFT, aliases: [] };
+    const fetchImpl = vi.fn(async () => envelope(JSON.stringify(emptyAliases)));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-empty-alias"),
+        "empty-alias@example.com",
+      );
+      const requests = new ExerciseRequestsRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      await expect(
+        generator(
+          {
+            sql: storage,
+            requestId: id("req-empty-alias"),
+            requestedName: "Heel slide",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("persists unknown body region names as suggestions with one provider call", async () => {
     const draftWithSuggestion = {
       ...VALID_STRETCH_DRAFT,
@@ -909,9 +1034,22 @@ describe("DeepInfra request metadata guards", () => {
       };
       expect(responseFormat.type).toBe("json_schema");
       expect(responseFormat.json_schema.strict).toBe(true);
+      const jsonSchema = (body.response_format as { json_schema: { schema: unknown } })
+        .json_schema.schema as typeof EXERCISE_DRAFT_AI_JSON_SCHEMA;
+      expect(jsonSchema).toEqual(EXERCISE_DRAFT_AI_JSON_SCHEMA);
+      expect(jsonSchema.required).not.toContain("default_sets_and_reps");
+      expect(jsonSchema.properties).not.toHaveProperty("default_sets_and_reps");
+      expect(jsonSchema.properties.aliases).toMatchObject({ minItems: 1 });
+      const bodyRegionsProp = jsonSchema.properties.body_regions as {
+        enum?: unknown;
+        minItems: number;
+      };
+      expect(bodyRegionsProp.enum).toBeUndefined();
+      expect(bodyRegionsProp.minItems).toBe(1);
       const messages = body.messages as Array<{ role: string; content: string }>;
       expect(messages[0]?.content).toBe(PINNED_SYSTEM_PROMPT);
       expect(messages[0]?.content).toContain("Never include patient-identifying");
+      expect(messages[0]?.content).not.toContain("default_sets_and_reps");
     } finally {
       storage.close();
     }

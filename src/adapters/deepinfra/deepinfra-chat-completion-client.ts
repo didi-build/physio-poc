@@ -17,7 +17,7 @@ export type DeepInfraChatCompletionRequest = {
   response_format: unknown;
 };
 
-const NON_RETRYABLE_HTTP_STATUSES = new Set([401, 402, 403, 429]);
+const NON_RETRYABLE_HTTP_STATUSES = new Set([400, 401, 402, 403, 404, 422, 429]);
 
 export function isNonRetryableDeepInfraHttpStatus(status: number): boolean {
   return NON_RETRYABLE_HTTP_STATUSES.has(status);

@@ -110,38 +110,38 @@ async function buildPersistBatchStatements(input: {
   const category = payload.category as ExerciseCategory;
   const aliasesRepo = new ExerciseAliasesRepository(genIn.sql);
   const bodyRegionLinks = new ExerciseBodyRegionsRepository(genIn.sql);
-
-  const aliasStatements = [];
-  const seenAliases = new Set<string>();
-  for (const alias of payload.aliases) {
-    const normalized = validateExerciseAlias(alias);
-    const key = normalized.toLowerCase();
-    if (seenAliases.has(key)) {
-      continue;
-    }
-    seenAliases.add(key);
-    if (await aliasesRepo.aliasExistsCaseInsensitive(normalized)) {
-      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
-    }
-    aliasStatements.push(
-      aliasesRepo.buildInsertBatchStatement({
-        id: generateOpaqueEntityId(),
-        exerciseId,
-        alias: normalized,
-        createdAt: genIn.now,
-      }),
-    );
-  }
-
   const suggestedRegions = new ExerciseSuggestedBodyRegionsRepository();
-  const regionStatements = linkedRegionIds.map((regionId) =>
-    bodyRegionLinks.buildLinkBatchStatement(exerciseId, regionId),
-  );
-  const suggestionStatements = suggestedRegionLabels.map((label) =>
-    suggestedRegions.buildInsertSuggestionBatchStatement(exerciseId, label),
-  );
 
   try {
+    const aliasStatements = [];
+    const seenAliases = new Set<string>();
+    for (const alias of payload.aliases) {
+      const normalized = validateExerciseAlias(alias);
+      const key = normalized.toLowerCase();
+      if (seenAliases.has(key)) {
+        continue;
+      }
+      seenAliases.add(key);
+      if (await aliasesRepo.aliasExistsCaseInsensitive(normalized)) {
+        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
+      }
+      aliasStatements.push(
+        aliasesRepo.buildInsertBatchStatement({
+          id: generateOpaqueEntityId(),
+          exerciseId,
+          alias: normalized,
+          createdAt: genIn.now,
+        }),
+      );
+    }
+
+    const regionStatements = linkedRegionIds.map((regionId) =>
+      bodyRegionLinks.buildLinkBatchStatement(exerciseId, regionId),
+    );
+    const suggestionStatements = suggestedRegionLabels.map((label) =>
+      suggestedRegions.buildInsertSuggestionBatchStatement(exerciseId, label),
+    );
+
     return {
       exerciseId,
       versionId,
@@ -240,8 +240,20 @@ export function createDeepInfraExerciseDraftGenerator(
           );
           continue;
         }
-        const { linkedRegionIds, suggestedLabels } =
-          await partitionExerciseDraftBodyRegions(input.sql, validated.body_regions);
+        let linkedRegionIds: string[];
+        let suggestedLabels: string[];
+        try {
+          ({ linkedRegionIds, suggestedLabels } =
+            await partitionExerciseDraftBodyRegions(input.sql, validated.body_regions));
+        } catch (error) {
+          if (error instanceof FreeTextValidationError) {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          throw error;
+        }
         let prepared: Awaited<ReturnType<typeof buildPersistBatchStatements>>;
         try {
           prepared = await buildPersistBatchStatements({

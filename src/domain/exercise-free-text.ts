@@ -180,6 +180,18 @@ export function normalizeConditionLabelKey(label: string): string {
   return label.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Suggested body region label on AI drafts: length cap and patient-detail guard. */
+export function validateSuggestedBodyRegionLabel(label: string): string {
+  const trimmed = label.trim();
+  if (trimmed.length < 1 || trimmed.length > 80) {
+    throw new FreeTextValidationError(
+      "Suggested body region label must be 1 to 80 characters",
+    );
+  }
+  assertNoPatientDetails(trimmed, "Suggested body region");
+  return trimmed;
+}
+
 /**
  * Regeneration note for exercise media: prompt-only, never persisted (CTO ruling).
  */

@@ -33,7 +33,6 @@ export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
-  void input.regenerationNote;
   const exerciseId = generateOpaqueEntityId();
   const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);

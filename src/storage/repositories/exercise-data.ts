@@ -9,7 +9,6 @@ import type {
   VersionStatus,
 } from "../../domain/exercise-types.js";
 import {
-  FreeTextValidationError,
   validateChangeSummary,
   validateExerciseAlias,
   validateExerciseCue,
@@ -17,6 +16,8 @@ import {
   validateExerciseTitle,
   validateRequestNote,
   validateRequestedExerciseName,
+  normalizeConditionLabelKey,
+  validateSuggestedBodyRegionLabel,
 } from "../../domain/exercise-free-text.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import {
@@ -645,15 +646,11 @@ export class ExerciseSuggestedBodyRegionsRepository {
     label: string,
   ): SqlBatchStatement {
     const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");
-    const trimmed = label.trim();
-    if (trimmed.length < 1 || trimmed.length > 80) {
-      throw new FreeTextValidationError(
-        "Suggested body region label must be 1 to 80 characters",
-      );
-    }
+    const validated = validateSuggestedBodyRegionLabel(label);
+    const stored = normalizeConditionLabelKey(validated);
     return {
       sql: "INSERT INTO exercise_suggested_body_regions (exercise_id, label) VALUES (?, ?)",
-      bindings: [opaqueExerciseId, trimmed],
+      bindings: [opaqueExerciseId, stored],
       minRowsAffected: 1,
     };
   }

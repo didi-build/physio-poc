@@ -22,7 +22,6 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     "regressions",
     "progressions",
     "precautions",
-    "default_sets_and_reps",
     "cue_stretching",
     "cue_isometric",
     "cue_concentric",
@@ -32,6 +31,7 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     title: { type: "string", minLength: 1, maxLength: MAX_LENGTH_PROGRAM_TITLE },
     aliases: {
       type: "array",
+      minItems: 1,
       items: { type: "string", minLength: 1, maxLength: MAX_LENGTH_EXERCISE_ALIAS },
     },
     category: { type: "string", enum: ["stretch", "strengthening"] },
@@ -54,11 +54,6 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     regressions: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
     progressions: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
     precautions: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
-    default_sets_and_reps: {
-      type: "string",
-      minLength: 1,
-      maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
-    },
     cue_stretching: {
       type: ["string", "null"],
       maxLength: MAX_LENGTH_EXERCISE_CUE,
@@ -91,7 +86,6 @@ export type ExerciseDraftAiPayload = {
   regressions: string;
   progressions: string;
   precautions: string;
-  default_sets_and_reps: string;
   cue_stretching: string | null;
   cue_isometric: string | null;
   cue_concentric: string | null;
@@ -141,10 +135,6 @@ export function parseAndValidateExerciseDraftAiPayload(
     !isBoundedString(record.regressions, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.progressions, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.precautions, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
-    !isNonEmptyString(
-      record.default_sets_and_reps,
-      MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
-    ) ||
     !isCueField(record.cue_stretching) ||
     !isCueField(record.cue_isometric) ||
     !isCueField(record.cue_concentric) ||

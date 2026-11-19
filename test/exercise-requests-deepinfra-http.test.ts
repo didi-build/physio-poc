@@ -76,4 +76,87 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
       storage.close();
     }
   });
+
+  it("returns 502 when the model alias looks like an email (E01)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-http-email-alias"),
+        "e01@example.com",
+      );
+      const emailAliasDraft = {
+        title: "Heel slide",
+        aliases: ["jane@example.com"],
+        category: "stretch",
+        body_regions: ["knee"],
+        description: "Gentle knee flexion stretch.",
+        equipment: "Mat",
+        starting_position: "Supine on mat.",
+        steps: "1. Bend knee",
+        common_mistakes: "Rushing",
+        regressions: "Smaller range",
+        progressions: "Hold longer",
+        precautions: "Stop if pain",
+        cue_stretching: "Move slowly",
+        cue_isometric: null,
+        cue_concentric: null,
+        cue_eccentric: null,
+      };
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: JSON.stringify(emailAliasDraft) } }],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              choices: [{ message: { content: JSON.stringify(emailAliasDraft) } }],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      const generator = createDeepInfraExerciseDraftGenerator({
+        apiKey: "key",
+        fetchImpl,
+      });
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "e01@example.com",
+          displayName: "E",
+        },
+      });
+      const cookie = auth.createSessionCookieHeader();
+      const deps = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: generator,
+      };
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Email alias draft",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        deps,
+      );
+      expect(response.status).toBe(502);
+      const payload = (await response.json()) as { error: string };
+      expect(payload.error).toBe("deepinfra_exercise_draft_response_invalid");
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      storage.close();
+    }
+  });
 });

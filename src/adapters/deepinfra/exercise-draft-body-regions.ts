@@ -1,3 +1,7 @@
+import {
+  normalizeConditionLabelKey,
+  validateSuggestedBodyRegionLabel,
+} from "../../domain/exercise-free-text.js";
 import { BodyRegionsRepository } from "../../storage/repositories/exercise-data.js";
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 
@@ -6,7 +10,7 @@ export type ExerciseDraftBodyRegionPartition = {
   suggestedLabels: string[];
 };
 
-/** Match draft free-text names to library regions; unmatched names are kept as suggestions. */
+/** Match draft free-text names to library regions; unmatched names are kept as suggestions (normalized). */
 export async function partitionExerciseDraftBodyRegions(
   sql: SqlStoragePort,
   rawNames: string[],
@@ -15,7 +19,7 @@ export async function partitionExerciseDraftBodyRegions(
   const all = await regions.listAll();
   const byNormalizedLabel = new Map<string, { id: string; label: string }>();
   for (const row of all) {
-    byNormalizedLabel.set(row.label.trim().toLowerCase(), row);
+    byNormalizedLabel.set(normalizeConditionLabelKey(row.label), row);
   }
 
   const linkedRegionIds: string[] = [];
@@ -28,18 +32,28 @@ export async function partitionExerciseDraftBodyRegions(
     if (trimmed.length === 0) {
       continue;
     }
-    const match = byNormalizedLabel.get(trimmed.toLowerCase());
-    if (match) {
-      if (!seenLinkedIds.has(match.id)) {
-        seenLinkedIds.add(match.id);
-        linkedRegionIds.push(match.id);
+    const nameKey = normalizeConditionLabelKey(trimmed);
+    const libraryMatch = byNormalizedLabel.get(nameKey);
+    if (libraryMatch) {
+      if (!seenLinkedIds.has(libraryMatch.id)) {
+        seenLinkedIds.add(libraryMatch.id);
+        linkedRegionIds.push(libraryMatch.id);
       }
       continue;
     }
-    const suggestKey = trimmed.toLowerCase();
+    const validated = validateSuggestedBodyRegionLabel(trimmed);
+    const suggestKey = normalizeConditionLabelKey(validated);
+    const lateLibraryMatch = byNormalizedLabel.get(suggestKey);
+    if (lateLibraryMatch) {
+      if (!seenLinkedIds.has(lateLibraryMatch.id)) {
+        seenLinkedIds.add(lateLibraryMatch.id);
+        linkedRegionIds.push(lateLibraryMatch.id);
+      }
+      continue;
+    }
     if (!seenSuggestedKeys.has(suggestKey)) {
       seenSuggestedKeys.add(suggestKey);
-      suggestedLabels.push(trimmed);
+      suggestedLabels.push(suggestKey);
     }
   }
 
