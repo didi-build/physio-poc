@@ -181,7 +181,6 @@ export const exerciseNotFoundCandidateSchema: JsonSchema = {
     exercise_version_id: { type: "string" },
     exercise_name: {
       type: "string",
-      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
     },
   },
 };
@@ -195,7 +194,6 @@ export const exerciseNotFoundSchema: JsonSchema = {
     requested_exercise_name: {
       type: "string",
       maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME,
-      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
     },
     candidate_matches: {
       type: "array",
@@ -286,11 +284,10 @@ export const nullableProgramTitleProperty: JsonSchema = {
   description: `Non-identifying program title, or null when unset. ${FREE_TEXT_NO_PATIENT_DETAILS}`,
 };
 
-/** Write tool outputs: nullable program title; patient-information line only. */
+/** Write tool outputs: nullable program title; no field description (CTO 343fc67a). */
 export const writeNullableProgramTitleOutputProperty: JsonSchema = {
   type: ["string", "null"],
   maxLength: MAX_LENGTH_PROGRAM_TITLE,
-  description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
 };
 
 export const matchCountOutputProperty: JsonSchema = {
@@ -415,6 +412,15 @@ export const programRowInputSchema: JsonSchema = {
   ],
 };
 
+const programRowSharedPropertiesWriteOutput: Record<string, JsonSchema> = {
+  prescription_type: writePrescriptionTypeSchema,
+  params: writeRowParamsSchema,
+  row_notes: {
+    type: "string",
+    maxLength: MAX_LENGTH_ROW_NOTES,
+  },
+};
+
 /** Saved row shape after write (DIDI-1244). */
 export const programRowOutputSchema: JsonSchema = {
   type: "object",
@@ -426,10 +432,75 @@ export const programRowOutputSchema: JsonSchema = {
     },
     exercise_name: {
       type: "string",
-      description: WRITE_FREE_TEXT_PATIENT_INFORMATION_DESCRIPTION,
     },
-    ...programRowSharedPropertiesWrite,
+    ...programRowSharedPropertiesWriteOutput,
   },
+};
+
+/** Write tools: URI or empty string without read-schema description text. */
+export const writeUriOrEmptyStringSchema: JsonSchema = {
+  oneOf: [
+    { type: "string", format: "uri" },
+    { type: "string", enum: [""] },
+  ],
+};
+
+export const writeSummaryOutputProperty: JsonSchema = {
+  type: "string",
+  maxLength: MAX_LENGTH_SUMMARY,
+};
+
+export const writeShareLinkOutputProperty: JsonSchema = writeUriOrEmptyStringSchema;
+
+export const writePdfUrlOutputProperty: JsonSchema = writeUriOrEmptyStringSchema;
+
+export const writeManageUrlOutputProperty: JsonSchema = writeUriOrEmptyStringSchema;
+
+export const writeExpiresAtOutputProperty: JsonSchema = {
+  type: "string",
+  format: "date-time",
+};
+
+export const writeProgramVersionRefSchema: JsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "updated_at"],
+  properties: {
+    version: { type: "integer", minimum: 1 },
+    updated_at: { type: "string", format: "date-time" },
+  },
+};
+
+export const writeNullableProgramVersionRefSchema: JsonSchema = {
+  oneOf: [{ type: "null" }, writeProgramVersionRefSchema],
+};
+
+export const writeExerciseCountOutputProperty: JsonSchema = {
+  type: "integer",
+  minimum: 0,
+};
+
+export const writeDraftStateOutputProperty: JsonSchema = {
+  type: "string",
+  enum: ["draft_only", "published_only", "published_with_draft_changes"],
+};
+
+export const writeShareLinkStateOutputProperty: JsonSchema = {
+  type: "string",
+  enum: ["live", "closed", "expired", "none"],
+};
+
+/** Write tool inputs: program code without read-schema description text. */
+export const writeProgramCodeProperty: JsonSchema = {
+  type: "string",
+  pattern: "^PRG-[A-Z0-9]+$",
+};
+
+/** Write tool output: source routine id without read-schema description text. */
+export const writeRoutineIdOutputProperty: JsonSchema = {
+  type: "string",
+  pattern: OPAQUE_ENTITY_ID_PATTERN,
+  maxLength: OPAQUE_ENTITY_ID_LENGTH,
 };
 
 export const approvedExerciseSummarySchema: JsonSchema = {

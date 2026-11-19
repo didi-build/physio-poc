@@ -11,63 +11,66 @@ import {
   visitSchemaNodes,
 } from "./mcp-connector-schema-test-utils.js";
 
-/** Literal pin (DIDI-594 comment 5d59df38); do not import schema constants. */
+/** Literal pin (DIDI-594 comment 5d59df38 / spec 463); do not import schema constants. */
 const PATIENT_INFORMATION_SENTENCE = "Do not pass patient information.";
 
-function expectDescriptionEndsWith(node: unknown, label: string): void {
+function expectExactInputDescription(node: unknown, label: string): void {
   expect(node, `${label} missing`).toBeTruthy();
-  const description = (node as { description?: string }).description;
-  expect(description, label).toBeDefined();
-  expect(description!.endsWith(PATIENT_INFORMATION_SENTENCE), label).toBe(true);
+  expect((node as { description?: string }).description, label).toBe(
+    PATIENT_INFORMATION_SENTENCE,
+  );
 }
 
-const WRITE_FREE_TEXT_FIELDS: Array<{ label: string; node: unknown }> = [
-  {
-    label: "create_or_edit_program.input.program_title",
-    node: findSchemaAtPath(
-      PHYSIO_MCP_TOOLS.find((t) => t.name === "create_or_edit_program")!.inputSchema,
-      ["program_title"],
-    ),
-  },
-];
+function expectNoDescription(node: unknown, label: string): void {
+  expect(node, `${label} missing`).toBeTruthy();
+  expect(
+    Object.prototype.hasOwnProperty.call(node as object, "description"),
+    label,
+  ).toBe(false);
+}
 
-describe("Write free-text field descriptions (DIDI-594 5d59df38)", () => {
-  it("ends every write free-text field description with the pinned sentence", () => {
-    for (const { label, node } of WRITE_FREE_TEXT_FIELDS) {
-      expectDescriptionEndsWith(node, label);
-    }
+describe("Write free-text field descriptions (CTO 343fc67a)", () => {
+  it("pins exact patient-information sentence on every free-text write input", () => {
+    expectExactInputDescription(
+      findSchemaAtPath(
+        PHYSIO_MCP_TOOLS.find((t) => t.name === "create_or_edit_program")!.inputSchema,
+        ["program_title"],
+      ),
+      "create_or_edit_program.input.program_title",
+    );
 
     visitSchemaNodes(programRowInputSchema, (node) => {
       const props = node.properties as
         Record<string, { description?: string }> | undefined;
       if (props?.row_notes) {
-        expectDescriptionEndsWith(props.row_notes, "programRowInput row_notes");
+        expectExactInputDescription(props.row_notes, "programRowInput row_notes");
       }
       if (props?.exercise_name?.description !== undefined) {
-        expectDescriptionEndsWith(props.exercise_name, "programRowInput exercise_name");
-      }
-    });
-
-    visitSchemaNodes(programRowOutputSchema, (node) => {
-      const props = node.properties as
-        Record<string, { description?: string }> | undefined;
-      if (props?.row_notes) {
-        expectDescriptionEndsWith(props.row_notes, "programRowOutput row_notes");
-      }
-      if (props?.exercise_name) {
-        expectDescriptionEndsWith(
+        expectExactInputDescription(
           props.exercise_name,
-          "programRowOutput exercise_name",
+          "programRowInput exercise_name",
         );
       }
     });
+  });
 
-    expectDescriptionEndsWith(
+  it("omits description on listed write output free-text fields", () => {
+    visitSchemaNodes(programRowOutputSchema, (node) => {
+      const props = node.properties as Record<string, unknown> | undefined;
+      if (props?.row_notes) {
+        expectNoDescription(props.row_notes, "programRowOutput row_notes");
+      }
+      if (props?.exercise_name) {
+        expectNoDescription(props.exercise_name, "programRowOutput exercise_name");
+      }
+    });
+
+    expectNoDescription(
       (exerciseNotFoundSchema.properties as Record<string, unknown>)
         .requested_exercise_name,
       "exercises_not_found.requested_exercise_name",
     );
-    expectDescriptionEndsWith(
+    expectNoDescription(
       (exerciseNotFoundCandidateSchema.properties as Record<string, unknown>)
         .exercise_name,
       "exercises_not_found.candidate_matches.exercise_name",
@@ -84,7 +87,7 @@ describe("Write free-text field descriptions (DIDI-594 5d59df38)", () => {
     for (const tool of writeTools) {
       const title = findSchemaAtPath(tool.outputSchema, ["program_title"]);
       if (title) {
-        expectDescriptionEndsWith(title, `${tool.name}.output.program_title`);
+        expectNoDescription(title, `${tool.name}.output.program_title`);
       }
     }
   });

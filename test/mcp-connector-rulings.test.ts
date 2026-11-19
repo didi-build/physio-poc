@@ -254,17 +254,19 @@ describe("CTO ruling pins (golden snapshot and explicit assertions)", () => {
         .requested_exercise_name,
     ).toMatchObject({ maxLength: MAX_LENGTH_REQUESTED_EXERCISE_NAME });
     expect(
-      String(
+      Object.prototype.hasOwnProperty.call(
         (exerciseNotFoundSchema.properties as Record<string, JsonSchemaLike>)
-          .requested_exercise_name?.description,
+          .requested_exercise_name ?? {},
+        "description",
       ),
-    ).toBe(patientInformationSentence);
+    ).toBe(false);
     expect(
-      String(
+      Object.prototype.hasOwnProperty.call(
         (exerciseNotFoundCandidateSchema.properties as Record<string, JsonSchemaLike>)
-          .exercise_name?.description,
+          .exercise_name ?? {},
+        "description",
       ),
-    ).toBe(patientInformationSentence);
+    ).toBe(false);
   });
 
   it("has no patient-like names in tool or field descriptions", () => {

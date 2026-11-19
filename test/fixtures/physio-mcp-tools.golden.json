@@ -552,8 +552,7 @@
       "properties": {
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "program_title": {
           "type": "string",
@@ -961,8 +960,7 @@
       "properties": {
         "summary": {
           "type": "string",
-          "maxLength": 4000,
-          "description": "Plain text summary for the assistant. Do not include patient names, contact details, health card numbers, or dates of birth."
+          "maxLength": 4000
         },
         "share_link": {
           "oneOf": [
@@ -974,8 +972,7 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
+          ]
         },
         "manage_url": {
           "oneOf": [
@@ -987,29 +984,24 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+          ]
         },
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80,
-          "description": "Do not pass patient information."
+          "maxLength": 80
         },
         "source_routine_id": {
           "type": "string",
           "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
-          "maxLength": 36,
-          "description": "Opaque routine id assigned by the system (UUID v4, hex case insensitive, for example 550e8400-e29b-41d4-a716-446655440000)."
+          "maxLength": 36
         },
         "exercise_count": {
           "type": "integer",
-          "minimum": 0,
-          "description": "Number of exercises on the program draft."
+          "minimum": 0
         },
         "rows": {
           "type": "array",
@@ -1027,8 +1019,7 @@
                 "type": "string"
               },
               "exercise_name": {
-                "type": "string",
-                "description": "Do not pass patient information."
+                "type": "string"
               },
               "prescription_type": {
                 "type": "string",
@@ -1202,8 +1193,7 @@
               },
               "row_notes": {
                 "type": "string",
-                "maxLength": 300,
-                "description": "Do not pass patient information."
+                "maxLength": 300
               }
             }
           }
@@ -1217,8 +1207,7 @@
             "properties": {
               "requested_exercise_name": {
                 "type": "string",
-                "maxLength": 100,
-                "description": "Do not pass patient information."
+                "maxLength": 100
               },
               "candidate_matches": {
                 "type": "array",
@@ -1232,8 +1221,7 @@
                       "type": "string"
                     },
                     "exercise_name": {
-                      "type": "string",
-                      "description": "Do not pass patient information."
+                      "type": "string"
                     }
                   }
                 }
@@ -1263,8 +1251,7 @@
       "properties": {
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "overrides": {
           "type": "object",
@@ -1312,8 +1299,7 @@
       "properties": {
         "summary": {
           "type": "string",
-          "maxLength": 4000,
-          "description": "Plain text summary for the assistant. Do not include patient names, contact details, health card numbers, or dates of birth."
+          "maxLength": 4000
         },
         "share_link": {
           "oneOf": [
@@ -1325,8 +1311,7 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
+          ]
         },
         "pdf_url": {
           "oneOf": [
@@ -1338,8 +1323,7 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS URL of the server-rendered program PDF. Never inline bytes. Empty when no published PDF applies."
+          ]
         },
         "manage_url": {
           "oneOf": [
@@ -1351,28 +1335,23 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+          ]
         },
         "expires_at": {
           "type": "string",
-          "format": "date-time",
-          "description": "When the published share link expires. Omitted when there is no published link."
+          "format": "date-time"
         },
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80,
-          "description": "Do not pass patient information."
+          "maxLength": 80
         },
         "draft_state": {
           "type": "string",
-          "enum": ["draft_only", "published_only", "published_with_draft_changes"],
-          "description": "Whether the program is draft-only, published, or published with newer draft changes."
+          "enum": ["draft_only", "published_only", "published_with_draft_changes"]
         },
         "draft": {
           "oneOf": [
@@ -1386,18 +1365,15 @@
               "properties": {
                 "version": {
                   "type": "integer",
-                  "minimum": 1,
-                  "description": "Monotonic program version number for this snapshot."
+                  "minimum": 1
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time",
-                  "description": "When this version was last saved."
+                  "format": "date-time"
                 }
               }
             }
-          ],
-          "description": "Null when that side (draft or published) does not exist."
+          ]
         },
         "published": {
           "oneOf": [
@@ -1411,23 +1387,19 @@
               "properties": {
                 "version": {
                   "type": "integer",
-                  "minimum": 1,
-                  "description": "Monotonic program version number for this snapshot."
+                  "minimum": 1
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time",
-                  "description": "When this version was last saved."
+                  "format": "date-time"
                 }
               }
             }
-          ],
-          "description": "Null when that side (draft or published) does not exist."
+          ]
         },
         "share_link_state": {
           "type": "string",
-          "enum": ["live", "closed", "expired", "none"],
-          "description": "Whether the program has a live, closed, expired, or no share link."
+          "enum": ["live", "closed", "expired", "none"]
         },
         "publish_change_lines": {
           "type": "array",
@@ -1453,8 +1425,7 @@
       "properties": {
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "expires_in": {
           "type": "string",
@@ -1473,8 +1444,7 @@
       "properties": {
         "summary": {
           "type": "string",
-          "maxLength": 4000,
-          "description": "Plain text summary for the assistant. Do not include patient names, contact details, health card numbers, or dates of birth."
+          "maxLength": 4000
         },
         "share_link": {
           "oneOf": [
@@ -1486,8 +1456,7 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
+          ]
         },
         "manage_url": {
           "oneOf": [
@@ -1499,28 +1468,23 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+          ]
         },
         "expires_at": {
           "type": "string",
-          "format": "date-time",
-          "description": "When the published share link expires. Omitted when there is no published link."
+          "format": "date-time"
         },
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80,
-          "description": "Do not pass patient information."
+          "maxLength": 80
         },
         "share_link_state": {
           "type": "string",
-          "enum": ["live", "closed", "expired", "none"],
-          "description": "Whether the program has a live, closed, expired, or no share link."
+          "enum": ["live", "closed", "expired", "none"]
         }
       }
     },
@@ -1540,8 +1504,7 @@
       "properties": {
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         }
       }
     },
@@ -1558,8 +1521,7 @@
       "properties": {
         "summary": {
           "type": "string",
-          "maxLength": 4000,
-          "description": "Plain text summary for the assistant. Do not include patient names, contact details, health card numbers, or dates of birth."
+          "maxLength": 4000
         },
         "share_link": {
           "oneOf": [
@@ -1571,8 +1533,7 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS share link for the program when a published version exists or after publish. Empty string when no published link applies."
+          ]
         },
         "manage_url": {
           "oneOf": [
@@ -1584,18 +1545,15 @@
               "type": "string",
               "enum": [""]
             }
-          ],
-          "description": "HTTPS link to open the related screen in the web app. Empty when no screen applies."
+          ]
         },
         "program_code": {
           "type": "string",
-          "pattern": "^PRG-[A-Z0-9]+$",
-          "description": "Stable program code assigned by the system (for example PRG-7K3Q)."
+          "pattern": "^PRG-[A-Z0-9]+$"
         },
         "program_title": {
           "type": ["string", "null"],
-          "maxLength": 80,
-          "description": "Do not pass patient information."
+          "maxLength": 80
         },
         "restore_until": {
           "type": "string",
@@ -1603,8 +1561,7 @@
         },
         "share_link_state": {
           "type": "string",
-          "enum": ["live", "closed", "expired", "none"],
-          "description": "Whether the program has a live, closed, expired, or no share link."
+          "enum": ["live", "closed", "expired", "none"]
         }
       }
     },

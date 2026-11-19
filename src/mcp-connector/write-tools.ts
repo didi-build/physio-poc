@@ -1,26 +1,27 @@
 import type { JsonSchema } from "./json-schema.js";
 import {
-  draftStateOutputProperty,
-  exerciseCountOutputProperty,
   exerciseNotFoundSchema,
-  expiresAtOutputProperty,
-  nullableProgramVersionRefSchema,
-  pdfUrlOutputProperty,
-  programCodeProperty,
   programRowInputSchema,
   programRowOutputSchema,
-  writeNullableProgramTitleOutputProperty,
-  writeProgramTitleInputProperty,
   publishChangeLinesOutputProperty,
   publishOverridesInputSchema,
   restoreUntilOutputProperty,
   routineIdProperty,
   shareLinkCustomDateInputProperty,
   shareLinkExpiresInInputProperty,
-  shareLinkOutputProperty,
-  shareLinkStateOutputProperty,
-  summaryOutputProperty,
-  manageUrlOutputProperty,
+  writeDraftStateOutputProperty,
+  writeExerciseCountOutputProperty,
+  writeExpiresAtOutputProperty,
+  writeManageUrlOutputProperty,
+  writeNullableProgramTitleOutputProperty,
+  writeNullableProgramVersionRefSchema,
+  writePdfUrlOutputProperty,
+  writeProgramCodeProperty,
+  writeProgramTitleInputProperty,
+  writeRoutineIdOutputProperty,
+  writeShareLinkOutputProperty,
+  writeShareLinkStateOutputProperty,
+  writeSummaryOutputProperty,
 } from "./json-schema.js";
 
 export const CREATE_OR_EDIT_PROGRAM_TOOL_NAME = "create_or_edit_program" as const;
@@ -39,7 +40,7 @@ export const createOrEditProgramInputSchema: JsonSchema = {
   type: "object",
   additionalProperties: false,
   properties: {
-    program_code: programCodeProperty,
+    program_code: writeProgramCodeProperty,
     program_title: writeProgramTitleInputProperty,
     from_routine_id: routineIdWithoutDescription,
     rows: {
@@ -61,13 +62,13 @@ export const createOrEditProgramOutputSchema: JsonSchema = {
     "rows",
   ],
   properties: {
-    summary: summaryOutputProperty,
-    share_link: shareLinkOutputProperty,
-    manage_url: manageUrlOutputProperty,
-    program_code: programCodeProperty,
+    summary: writeSummaryOutputProperty,
+    share_link: writeShareLinkOutputProperty,
+    manage_url: writeManageUrlOutputProperty,
+    program_code: writeProgramCodeProperty,
     program_title: writeNullableProgramTitleOutputProperty,
-    source_routine_id: routineIdProperty,
-    exercise_count: exerciseCountOutputProperty,
+    source_routine_id: writeRoutineIdOutputProperty,
+    exercise_count: writeExerciseCountOutputProperty,
     rows: {
       type: "array",
       items: programRowOutputSchema,
@@ -86,7 +87,7 @@ export const publishProgramInputSchema: JsonSchema = {
   additionalProperties: false,
   required: ["program_code"],
   properties: {
-    program_code: programCodeProperty,
+    program_code: writeProgramCodeProperty,
     overrides: publishOverridesInputSchema,
   },
 };
@@ -104,17 +105,17 @@ export const publishProgramOutputSchema: JsonSchema = {
     "publish_change_lines",
   ],
   properties: {
-    summary: summaryOutputProperty,
-    share_link: shareLinkOutputProperty,
-    pdf_url: pdfUrlOutputProperty,
-    manage_url: manageUrlOutputProperty,
-    expires_at: expiresAtOutputProperty,
-    program_code: programCodeProperty,
+    summary: writeSummaryOutputProperty,
+    share_link: writeShareLinkOutputProperty,
+    pdf_url: writePdfUrlOutputProperty,
+    manage_url: writeManageUrlOutputProperty,
+    expires_at: writeExpiresAtOutputProperty,
+    program_code: writeProgramCodeProperty,
     program_title: writeNullableProgramTitleOutputProperty,
-    draft_state: draftStateOutputProperty,
-    draft: nullableProgramVersionRefSchema,
-    published: nullableProgramVersionRefSchema,
-    share_link_state: shareLinkStateOutputProperty,
+    draft_state: writeDraftStateOutputProperty,
+    draft: writeNullableProgramVersionRefSchema,
+    published: writeNullableProgramVersionRefSchema,
+    share_link_state: writeShareLinkStateOutputProperty,
     publish_change_lines: publishChangeLinesOutputProperty,
   },
 };
@@ -130,7 +131,7 @@ export const setProgramLinkExpiryInputSchema: JsonSchema = {
   additionalProperties: false,
   required: ["program_code", "expires_in"],
   properties: {
-    program_code: programCodeProperty,
+    program_code: writeProgramCodeProperty,
     expires_in: shareLinkExpiresInInputProperty,
     custom_date: shareLinkCustomDateInputProperty,
   },
@@ -141,13 +142,13 @@ export const setProgramLinkExpiryOutputSchema: JsonSchema = {
   additionalProperties: false,
   required: ["summary", "share_link", "manage_url", "program_code"],
   properties: {
-    summary: summaryOutputProperty,
-    share_link: shareLinkOutputProperty,
-    manage_url: manageUrlOutputProperty,
-    expires_at: expiresAtOutputProperty,
-    program_code: programCodeProperty,
+    summary: writeSummaryOutputProperty,
+    share_link: writeShareLinkOutputProperty,
+    manage_url: writeManageUrlOutputProperty,
+    expires_at: writeExpiresAtOutputProperty,
+    program_code: writeProgramCodeProperty,
     program_title: writeNullableProgramTitleOutputProperty,
-    share_link_state: shareLinkStateOutputProperty,
+    share_link_state: writeShareLinkStateOutputProperty,
   },
 };
 
@@ -162,7 +163,7 @@ export const deleteProgramInputSchema: JsonSchema = {
   additionalProperties: false,
   required: ["program_code"],
   properties: {
-    program_code: programCodeProperty,
+    program_code: writeProgramCodeProperty,
   },
 };
 
@@ -171,13 +172,13 @@ export const deleteProgramOutputSchema: JsonSchema = {
   additionalProperties: false,
   required: ["summary", "share_link", "manage_url", "program_code", "restore_until"],
   properties: {
-    summary: summaryOutputProperty,
-    share_link: shareLinkOutputProperty,
-    manage_url: manageUrlOutputProperty,
-    program_code: programCodeProperty,
+    summary: writeSummaryOutputProperty,
+    share_link: writeShareLinkOutputProperty,
+    manage_url: writeManageUrlOutputProperty,
+    program_code: writeProgramCodeProperty,
     program_title: writeNullableProgramTitleOutputProperty,
     restore_until: restoreUntilOutputProperty,
-    share_link_state: shareLinkStateOutputProperty,
+    share_link_state: writeShareLinkStateOutputProperty,
   },
 };
 

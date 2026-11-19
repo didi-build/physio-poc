@@ -11,6 +11,7 @@ Confirm instruction is approved in tool descriptions #25–#27 (spec PR132, merg
 ## Omitted schema `description` paths
 
 - `create_or_edit_program` input: `from_routine_id`
+- `create_or_edit_program` input: `program_code`
 - `create_or_edit_program` input: `rows`
 - `create_or_edit_program` input: `rows[].exercise_version_id`
 - `create_or_edit_program` input: `rows[].params`
@@ -39,11 +40,18 @@ Confirm instruction is approved in tool descriptions #25–#27 (spec PR132, merg
 - `create_or_edit_program` input: `rows[].params.sets.max`
 - `create_or_edit_program` input: `rows[].params.sets.min`
 - `create_or_edit_program` input: `rows[].prescription_type`
+- `create_or_edit_program` output: `exercise_count`
 - `create_or_edit_program` output: `exercises_not_found`
 - `create_or_edit_program` output: `exercises_not_found[].candidate_matches`
+- `create_or_edit_program` output: `exercises_not_found[].candidate_matches[].exercise_name`
 - `create_or_edit_program` output: `exercises_not_found[].candidate_matches[].exercise_version_id`
+- `create_or_edit_program` output: `exercises_not_found[].requested_exercise_name`
 - `create_or_edit_program` output: `exercises_not_found[].web_app_exercise_search_url`
+- `create_or_edit_program` output: `manage_url`
+- `create_or_edit_program` output: `program_code`
+- `create_or_edit_program` output: `program_title`
 - `create_or_edit_program` output: `rows`
+- `create_or_edit_program` output: `rows[].exercise_name`
 - `create_or_edit_program` output: `rows[].exercise_version_id`
 - `create_or_edit_program` output: `rows[].params`
 - `create_or_edit_program` output: `rows[].params.ascent_s`
@@ -71,12 +79,47 @@ Confirm instruction is approved in tool descriptions #25–#27 (spec PR132, merg
 - `create_or_edit_program` output: `rows[].params.sets.max`
 - `create_or_edit_program` output: `rows[].params.sets.min`
 - `create_or_edit_program` output: `rows[].prescription_type`
+- `create_or_edit_program` output: `rows[].row_notes`
+- `create_or_edit_program` output: `share_link`
+- `create_or_edit_program` output: `source_routine_id`
+- `create_or_edit_program` output: `summary`
+- `delete_program` input: `program_code`
+- `delete_program` output: `manage_url`
+- `delete_program` output: `program_code`
+- `delete_program` output: `program_title`
 - `delete_program` output: `restore_until`
+- `delete_program` output: `share_link`
+- `delete_program` output: `share_link_state`
+- `delete_program` output: `summary`
 - `publish_program` input: `overrides`
 - `publish_program` input: `overrides.custom_date`
 - `publish_program` input: `overrides.expires_in`
+- `publish_program` input: `program_code`
+- `publish_program` output: `draft`
+- `publish_program` output: `draft_state`
+- `publish_program` output: `draft.updated_at`
+- `publish_program` output: `draft.version`
+- `publish_program` output: `expires_at`
+- `publish_program` output: `manage_url`
+- `publish_program` output: `pdf_url`
+- `publish_program` output: `program_code`
+- `publish_program` output: `program_title`
 - `publish_program` output: `publish_change_lines`
+- `publish_program` output: `published`
+- `publish_program` output: `published.updated_at`
+- `publish_program` output: `published.version`
+- `publish_program` output: `share_link`
+- `publish_program` output: `share_link_state`
+- `publish_program` output: `summary`
 - `set_program_link_expiry` input: `custom_date`
 - `set_program_link_expiry` input: `expires_in`
+- `set_program_link_expiry` input: `program_code`
+- `set_program_link_expiry` output: `expires_at`
+- `set_program_link_expiry` output: `manage_url`
+- `set_program_link_expiry` output: `program_code`
+- `set_program_link_expiry` output: `program_title`
+- `set_program_link_expiry` output: `share_link`
+- `set_program_link_expiry` output: `share_link_state`
+- `set_program_link_expiry` output: `summary`
 
-Total: 68 paths.
+Total: 111 paths.
