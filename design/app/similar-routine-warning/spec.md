@@ -8,6 +8,8 @@ On the **New routine** draft flow (and the same draft editor when editing a draf
 
 The parent form fields (including **Conditions**, condition-first layout) follow [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216); only the similar-routine warning strings and behaviour are in scope here.
 
+The control for adding more conditions (type-ahead, add row when nothing matches, chips, reusing the body region picker pattern) is deferred to [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216), per DIDI-594 comment `3fd723a4`.
+
 **Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) entries L and L update 1 (Nov 10, 2026), L update 2 (Nov 11, 2026, comment `03489a7e`), behaviour lock comment `e5aa6515`, string locks `61c1b98a` and `f4682350`, and [DIDI-1224](https://linear.app/didi-build/issue/DIDI-1224).
 
 ## Design source (approved Nov 11 and Nov 19, 2026)
