@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PHYSIO_PRODUCTION_R2_BUCKETS } from "../scripts/lib/wrangler-r2-binding.mjs";
 import { PHYSIO_HARNESS_R2_BUCKETS } from "./fixtures/wrangler-harness-r2-binding.mjs";
@@ -10,6 +11,21 @@ import {
 } from "./helpers/wrangler-harness-config.js";
 
 describe("Wrangler harness physio-media R2 (B1 / DIDI-1040)", () => {
+  it("derives default production bucket guard from PHYSIO_PRODUCTION_R2_BUCKETS", () => {
+    const helperPath = join(import.meta.dirname, "helpers/wrangler-harness-config.ts");
+    const source = readFileSync(helperPath, "utf8");
+    expect(source).toMatch(
+      /productionBucketNames:[\s\S]*PHYSIO_PRODUCTION_R2_BUCKETS\.map/,
+    );
+    for (const entry of PHYSIO_PRODUCTION_R2_BUCKETS) {
+      expect(() =>
+        assertHarnessR2BucketsAreNotProductionBucketNames([
+          { bucket_name: entry.bucket_name },
+        ]),
+      ).toThrow(/production bucket name/);
+    }
+  });
+
   it("keeps the harness binding local/simulated with no remote bucket or account", () => {
     assertHarnessR2BucketsAreLocalOnly(
       PHYSIO_HARNESS_R2_BUCKETS as readonly Record<string, unknown>[],

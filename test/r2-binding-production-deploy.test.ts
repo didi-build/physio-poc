@@ -1,5 +1,4 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,6 +17,12 @@ import {
   nonDeployWorkflowFilenames,
 } from "./helpers/production-deploy-workflow-guards.js";
 import { D1_PLACEHOLDER_PRODUCTION } from "../scripts/lib/wrangler-d1-placeholders.mjs";
+import { assertRecordedSpawnEnvIsMinimalPrepare } from "./helpers/assert-recorded-minimal-spawn-env.js";
+import { minimalChildProcessEnv } from "./helpers/minimal-child-process-env.js";
+import {
+  resetRecordedSpawnEnvsForTests,
+  spawnSyncRecording,
+} from "./helpers/spawn-sync-recording-for-tests.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const WRANGLER_PATH = join(REPO_ROOT, "wrangler.jsonc");
@@ -56,12 +61,17 @@ describe("R2 binding stays out of committed wrangler.jsonc (DIDI-1040)", () => {
 
 describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", () => {
   const FIXTURE_DATABASE_ID = "00000000-0000-0000-0000-000000000002";
+  const ENV_LEAK_PROBE = "PHYSIO_DIDI_1240_SPAWN_ENV_PROBE";
 
   it("adds the physio-media R2 bucket binding to the deploy config output", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-prepare-r2-"));
     const outputPath = join(tempDir, "wrangler.ci.jsonc");
+    const priorCloudflareToken = process.env.CLOUDFLARE_API_TOKEN;
+    process.env[ENV_LEAK_PROBE] = "must-not-leak";
+    process.env.CLOUDFLARE_API_TOKEN = "must-not-leak";
+    resetRecordedSpawnEnvsForTests();
     try {
-      const result = spawnSync(
+      const result = spawnSyncRecording(
         process.execPath,
         [
           join(REPO_ROOT, "scripts/prepare-wrangler-config.mjs"),
@@ -71,13 +81,12 @@ describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", ()
         {
           cwd: REPO_ROOT,
           encoding: "utf8",
-          env: {
-            ...process.env,
+          env: minimalChildProcessEnv({
             PHYSIO_D1_DATABASE_ID: FIXTURE_DATABASE_ID,
-          },
+          }),
         },
       );
-      expect(result.status, result.stderr).toBe(0);
+      expect(result.status, String(result.stderr ?? "")).toBe(0);
       const parsed = parseWranglerJsonc(readFileSync(outputPath, "utf8"));
       expect(parsed.r2_buckets).toEqual(PHYSIO_PRODUCTION_R2_BUCKETS);
       expect((parsed.r2_buckets as { bucket_name: string }[])[0]?.bucket_name).toBe(
@@ -87,7 +96,14 @@ describe("prepare-wrangler-config injects production R2 binding (DIDI-1040)", ()
         PHYSIO_R2_BINDING,
       );
       expect(readFileSync(outputPath, "utf8")).not.toContain(D1_PLACEHOLDER_PRODUCTION);
+      assertRecordedSpawnEnvIsMinimalPrepare(FIXTURE_DATABASE_ID);
     } finally {
+      delete process.env[ENV_LEAK_PROBE];
+      if (priorCloudflareToken === undefined) {
+        delete process.env.CLOUDFLARE_API_TOKEN;
+      } else {
+        process.env.CLOUDFLARE_API_TOKEN = priorCloudflareToken;
+      }
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
