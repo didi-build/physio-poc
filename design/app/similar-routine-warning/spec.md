@@ -75,7 +75,7 @@ Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks ab
 | No match | No warning UI. **Publish** opens **Publish this routine?** with the routine card, **What happens** bullets, and **Publish now** / **Not yet** (same structure as [routines mockup 15](../routines/mockups/15-publish-routine-sheet-phone.png); sample routine name and tags in PNGs are not copy). |
 | Check failed or AI cap | **Open: needs Diadem approval** on the B board: failed check and reached AI cap are indistinguishable on screen. **Publish** behaviour matches no match when nothing is shown. |
 | Shared condition highlight | **Open: needs Diadem approval** on the B board: filled teal chips for conditions shared with the draft, outline chips for other conditions on the match row. |
-| Match row content | Routine name, condition chips (when present), overlap line, **View**. **Open: needs Diadem approval** on the B board: omitting "Used N times" on compact B list rows. |
+| Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET**, verbatim: Leave "Used N times" off the compact rows. |
 | Scope | Published community routines plus the caller's own drafts and published routines; **My routines** saved copies are excluded from candidacy (server scope; lock `e5aa6515`). |
 
 ## Server contract (build reference, not designed here)
