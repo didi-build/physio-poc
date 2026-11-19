@@ -4,7 +4,7 @@ Area: app · Feature: similar-routine-warning
 
 ## Purpose
 
-On the **New routine** draft flow (and the same draft editor when editing a draft), warn the practitioner when other routines look similar, without blocking autosave, **Done for now**, or **Publish**. Variant **B. Live inline card**: once the draft has enough data, the app checks in the background; when matches exist, an amber card lists up to three similar routines above the footer actions. **View** opens a read-only preview sheet over the form. **Continue anyway** dismisses the warning for this draft session.
+On the **New routine** draft flow (and the same draft editor when editing a draft), warn the practitioner when other routines look similar, without blocking autosave, **Done for now**, or **Publish**. Variant **B. Live inline card**: once the draft has enough data, the app checks in the background; when matches exist, an amber card lists up to three similar routines above the footer actions. **View** opens a read-only preview sheet over the form. **Continue anyway** dismisses the warning for this draft.
 
 The parent form fields (including **Conditions**, condition-first layout) follow [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216); only the similar-routine warning strings and behaviour are in scope here.
 
@@ -73,7 +73,7 @@ Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks ab
 | View | Preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: View stays on the form as a preview sheet. |
 | Continue anyway | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: After Continue anyway, it stays hidden for this draft. |
 | No match | No warning UI. **Publish** opens **Publish this routine?** with the routine card, **What happens** bullets, and **Publish now** / **Not yet** (same structure as [routines mockup 15](../routines/mockups/15-publish-routine-sheet-phone.png); sample routine name and tags in PNGs are not copy). |
-| Check failed or AI cap | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: A failed check shows nothing, same as no match. Reached AI cap behaves the same on screen. **Publish** matches no match when no warning is shown. |
+| Check failed or AI cap | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: A failed check shows nothing, same as no match. Reached daily AI cap shows no warning UI and does not block **Publish** (DIDI-594 L update 2, `03489a7e`). **Publish** matches no match when no warning is shown. |
 | Shared condition highlight | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: Highlight shared conditions in filled teal, others outlined. |
 | Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET** (DIDI-594 comment `903421e2`), verbatim: Leave "Used N times" off the compact rows. |
 | Scope | Published community routines plus the caller's own drafts and published routines; **My routines** saved copies are excluded from candidacy (server scope; lock `e5aa6515`). |
@@ -102,17 +102,73 @@ Scoring (`src/services/routines/routine-similarity-score.ts`, `src/routine-simil
 
 ## Layout and accessibility
 
-From variant B source (`SrBoard.tsx` revision `471088919975432193`):
+From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `471088919975432193`). Base text colour `#0f172a` via `.sr-root` (`SrBoard.css`).
+
+### Page shell
+
+| | Phone | Desktop (`wide`) |
+| -- | -- | -- |
+| Root | `sr-root relative min-h-full bg-slate-50 px-4 pb-0 pt-4` | `px-10 pb-6 pt-6` |
+| Form column | full width | `mx-auto max-w-[44rem]` |
+
+### Form blocks
+
+| Element | Classes |
+| -- | -- |
+| Card sections | `rounded-2xl border border-slate-200 bg-white p-4` |
+| Condition chips | `inline-flex min-h-9 items-center gap-1 rounded-full bg-teal-50 pl-3 pr-1 text-sm font-semibold text-teal-800` |
+| Exercise add | `min-h-11 w-full rounded-xl border-2 border-dashed border-teal-300 text-sm font-semibold text-teal-800` |
+
+### Warning card (`Warning`)
+
+| Element | Classes / attrs |
+| -- | -- |
+| Container | `section` `role="status"` `aria-live="polite"`; `rounded-2xl border border-amber-300 bg-amber-50 p-4` |
+| Title | `h2` `text-base font-semibold text-amber-900` |
+| Body | `p` `text-sm text-amber-900` |
+| Match list | `ul` `mt-3 space-y-2` |
+| **Continue anyway** | `secondary` + `mt-3 w-full` (see buttons) |
+
+### Match row (`MatchRow`, compact B)
+
+| Element | Classes |
+| -- | -- |
+| Row | `rounded-xl border border-amber-200 bg-white p-3` |
+| Thumbnail grid | `grid h-14 w-16 grid-cols-2 gap-0.5 rounded-lg` (cells `bg-slate-200`, `aria-hidden`) |
+| Name | `text-sm font-semibold` |
+| Condition chip shared | `badge(true)`: `inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold bg-teal-700 text-white` |
+| Condition chip other | `badge(false)`: `bg-teal-50 text-teal-800` |
+| Overlap line | `text-xs text-slate-600` |
+| **View** | `inline-flex min-h-11 shrink-0 items-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-teal-800` |
+
+### Footer actions
+
+| Element | Classes |
+| -- | -- |
+| Bar | `mt-4 border-t border-slate-200 bg-white py-3`; phone `-mx-4 px-4`, desktop `flex items-center justify-end gap-3 px-4` |
+| Primary (**Publish**) | `inline-flex min-h-11 … rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white` |
+| Secondary (**Done for now**) | `inline-flex min-h-11 … rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800` |
+
+### Sheets (`Sheet`, `PublishSheet`)
+
+| Element | Classes / attrs |
+| -- | -- |
+| Scrim | `absolute inset-0 bg-slate-900/45` |
+| Dialog | `role="dialog"` `aria-labelledby` on heading `id` |
+| Phone sheet | `max-h-[92%] overflow-y-auto rounded-t-3xl`; grab handle `h-1.5 w-10 rounded-full bg-slate-300` (`aria-hidden`) |
+| Desktop sheet | `max-w-[32rem] rounded-3xl`, centered in `p-6` |
+| Heading row | `px-5 pb-2 pt-3`; `h2` `text-lg font-semibold`; close `min-h-11 w-11 rounded-xl text-slate-500` |
+
+### Accessibility
 
 | Element | Markup / behaviour |
 | -- | -- |
-| Similar routines card | `<section role="status" aria-live="polite">` wrapping the amber warning. Title is a heading inside the section (`<h2>`). |
-| Preview sheet | `role="dialog"` with `aria-labelledby` pointing at the sheet heading. Heading text is the matched routine's name (runtime). Body shows badges, meta line, exercise list, and primary actions from reused routine strings. |
-| **Publish this routine?** sheet | Same dialog pattern; `aria-labelledby` references the **Publish this routine?** heading (reused publish strings from `src/ui/copy/routines.ts`). |
-| Close control | Icon button with `aria-label` **Close** (`src/ui/copy/a11y.ts` `ARIA_CLOSE_SCRIM`). |
-| Condition chip remove | Icon button with accessible name **Remove {condition}** (W7); `{condition}` is the chip label at runtime. |
-| Match row **View** | Text button showing **View** (W4). **Open: needs Diadem approval** (described need only): distinguishable accessible names per row when multiple **View** buttons are present. |
-| Shared exercise check in preview | Glyph marking exercises that overlap the draft. **Open: needs Diadem approval** (described need only): screen reader text for that indicator. |
+| Preview sheet | Heading is the matched routine's name (`sr-preview-title`). Body omits a second title (`showTitle={false}` on preview content). |
+| **Publish this routine?** sheet | `aria-labelledby` → `sr-publish-title`; reused publish strings from `src/ui/copy/routines.ts`. |
+| Close control | `aria-label` **Close** (`ARIA_CLOSE_SCRIM`). |
+| Condition chip remove | `aria-label` **Remove {condition}** (W7). |
+| Match row **View** | **Open: needs Diadem approval** (described need only): distinguishable accessible names per row when multiple **View** buttons are present. |
+| Shared exercise check in preview | `text-teal-700` check glyph, `aria-hidden` in source. **Open: needs Diadem approval** (described need only): screen reader text for that indicator. |
 
 ## States (mockups)
 
@@ -121,9 +177,9 @@ From variant B source (`SrBoard.tsx` revision `471088919975432193`):
 | 01 | form | New routine draft with conditions and exercises filled; check has run; **no** warning yet (no matches, or still below trigger). Same baseline as [routines mockup 11](../routines/mockups/11-new-routine-draft-autosaved-phone.png) plus condition chips from DIDI-1216 exploration. |
 | 02 | warn | Matches found: amber **Similar routines already exist** card with up to three rows and **Continue anyway**, footer **Done for now** / **Publish** visible below. |
 | 03 | view | **View** opened: preview sheet over the form (routine name once in the sheet title, not duplicated in the body). |
-| 04 | continue | **Continue anyway** taken: no warning card; **Publish this routine?** sheet over the form. |
-| 05 | nomatch | No warning; **Publish this routine?** sheet over the form. **Pixels match state 04 and 06**; capture is from `nomatch` state in the B board (logic: no similar routines). |
-| 06 | failed | **Pixels match state 04 and 05**; capture is from `failed` state in the B board (logic: check failed or AI cap, no warning UI). |
+| 04 | continue | **Continue anyway** taken: warning card hidden; form only (no sheet). Same chrome as state 01 until the practitioner taps **Publish**. |
+| 05 | nomatch | No warning; **Publish this routine?** sheet over the form (logic: no similar routines). |
+| 06 | failed | Same pixels as state 05 on screen (logic: check failed or AI cap, no warning UI); capture is from the `failed` board state. |
 
 **Capture sizes** (full frame, RGB PNG):
 
@@ -158,13 +214,13 @@ From variant B source (`SrBoard.tsx` revision `471088919975432193`):
 | W5 | Continue anyway | 2:14 PM |
 | W6 | {n} total | 2:43 PM (DIDI-594 comment `f4682350`) |
 | W7 | Remove {condition} | 2:43 PM (`f4682350`) |
-| W8 | Conditions | 4:27 PM ET |
+| W8 | Conditions | 4:27 PM ET (DIDI-594 comment `3fd723a4`) |
 
 **Diadem, Nov 19, 2026, 2:14 PM EST**, verbatim: "Yes, approve all five strings" (W1 to W5).
 
 **Diadem, Nov 19, 2026, 2:43 PM EST**, verbatim (DIDI-594 comment `f4682350`): Yes, approve "{n} total" and "Remove {condition}".
 
-**Diadem, Nov 19, 2026, 4:27 PM ET**, verbatim: yes to "conditions".
+**Diadem, Nov 19, 2026, 4:27 PM ET** (DIDI-594 comment `3fd723a4`), verbatim: yes to "conditions".
 
 W8 **Conditions** replaces `CONDITION` = "Condition" (`src/ui/copy/routines.ts` line 46) on the New routine form only.
 
@@ -226,7 +282,8 @@ Copy and accessibility items in the table above remain **Open: needs Diadem appr
 
 ## Changes
 
-- **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
+- **Nov 19, 2026**: DIDI-1224 follow-up. QA nits: state 04 continue mockup, spec wording, layout class inventory, lock citations (`3fd723a4`, `03489a7e` on AI cap). https://linear.app/didi-build/issue/DIDI-1224
+- **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (`3fd723a4`; replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 QA R1. Re-render mockups (full frames, fixed states 04 to 06), layout/a11y section, L update 2 lock `03489a7e`, behaviour and copy lock ids, Conditions blocker note, DIDI-1263 dependency. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Diadem approved W6 `{n} total` and W7 `Remove {condition}` at 2:43 PM EST (`f4682350`). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Variant B spec, five approved strings, behaviour locks, six states, mockups from MagicPath revision `471088919975432193`. Unblocks [DIDI-1226](https://linear.app/didi-build/issue/DIDI-1226). https://linear.app/didi-build/issue/DIDI-1224
