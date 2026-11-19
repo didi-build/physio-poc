@@ -31,7 +31,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Update flag | Saved copy stays frozen. Banner "Community updated to version N on {date}. Your copy stays on version M until you choose." with "What changed since your version", "Use version N" (primary) and "Keep mine". If you edited your copy: "Updating replaces your own change with version N. You can undo right after." |
 | Adopted / kept | Toast "Your copy is now version N" (Undo); or "Kept your copy on version M. You can still update it from this page." (Undo), and "Update my copy to version N" stays in the actions |
 | Remove | "Remove from My routines", toast "Removed {name} from My routines" with Undo. No community-wide delete |
-| New routine (draft) | "New routine" with a "Draft" badge, saves automatically ("Saving…" then "Draft saved. Only you can see it until you publish."). Fields: Routine name, Condition (only with a list), Body region, "Who it's for (optional)", Exercises (add from the library, type, doses, reorder, remove). Buttons "Done for now" (or "Cancel" while untouched) and "Publish" |
+| New routine (draft) | "New routine" with a "Draft" badge, saves automatically ("Saving…" then "Draft saved. Only you can see it until you publish."). Fields: Routine name, Condition (only with a list), Body region, "Who it's for (optional)", Exercises (add from the library, type, doses, reorder, remove). Buttons "Done for now" (or "Cancel" while untouched) and "Publish". When similar routines match, an inline warning card appears above those buttons; see [similar-routine-warning/spec.md](../similar-routine-warning/spec.md) (variant B) |
 | Publish validation | "Before you publish": "Add a routine name", "Add at least one exercise"; "Your draft is still saved." |
 | Draft routine page | "Draft, only you can see it", "Saved automatically today. Not published yet.", Edit draft, Publish, Discard draft (Undo) |
 | Publish this routine? | Sheet with the routine card and "What happens": goes live as version 1, anyone can use, improve and restore, no review step. Publish now / Not yet ("Kept as a draft. Only you can see it.") |
@@ -478,6 +478,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+- **Nov 19, 2026**: DIDI-1224. Similar routine warning on New routine (variant B inline card); linked spec and mockups. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 11, 2026**: DIDI-1192. Diadem (7:13 PM EST, CTO chat), DIDI-594 G update 6: "Match the program sheet, with 'routine' wording". "Publish this routine?" uses routine body and removal read-out strings approved Nov 11, 2026. https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 - **Nov 10, 2026**: DIDI-1192. "Publish this routine?" blocks publish while any exercise lacks its start or end image; Remove is the only action (CTO rulings, DIDI-1193; copy approved by Diadem Nov 9, 2026, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192
 - **Oct 25, 2026**: v11: Routines added (community and My routines, search, filters, routine page, use for a patient, create program from routine, edit for everyone, my copy, version history). https://linear.app/didi-build/issue/DIDI-852, https://linear.app/didi-build/issue/DIDI-809
