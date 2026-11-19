@@ -10,7 +10,7 @@ The parent form fields (including **Conditions**, condition-first layout) follow
 
 The control for adding more conditions (type-ahead, add row when nothing matches, chips, reusing the body region picker pattern) is deferred to [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216), per DIDI-594 comment `3fd723a4`.
 
-**Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) entries L and L update 1 (Nov 10, 2026), L update 2 (Nov 11, 2026, comment `03489a7e`), behaviour lock comment `e5aa6515`, string locks `61c1b98a` and `f4682350`, and [DIDI-1224](https://linear.app/didi-build/issue/DIDI-1224).
+**Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) entries L and L update 1 (Nov 10, 2026), L update 2 (Nov 11, 2026, comment `03489a7e`), behaviour lock comment `e5aa6515`, variant B detail lock `698eb165`, compact match-row lock `903421e2`, condition-field deferral `3fd723a4`, string locks `61c1b98a` and `f4682350`, and [DIDI-1224](https://linear.app/didi-build/issue/DIDI-1224).
 
 ## Design source (approved Nov 11 and Nov 19, 2026)
 
@@ -67,15 +67,15 @@ Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks ab
 | Topic | Rule |
 | -- | -- |
 | When the first check runs | In the background once the draft has **at least 1 condition and 2 exercises** (DIDI-594 L update 2, `03489a7e`). Until then, no check and no warning UI. |
-| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: Re-check a moment after they stop editing conditions or exercises. Short debounce after the last condition or exercise edit; exact delay is for dev to choose (no fixed millisecond value in this spec). |
+| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Diadem, Nov 19, 2026, 4:32 PM ET** (DIDI-594 comment `698eb165`), verbatim: Re-check a moment after they stop editing conditions or exercises. Short debounce after the last condition or exercise edit; exact delay is for dev to choose (no fixed millisecond value in this spec). |
 | Never blocks | Autosave, **Done for now**, and **Publish** are never blocked by the check running, waiting, succeeding, failing, or by the daily AI cap (DIDI-594 L update 2, `03489a7e`). |
 | Matches found | Amber card above the footer buttons. Lists **at most 3** matches, best score first (see server sort below). **Publish** and **Done for now** stay enabled. |
-| View | Preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: View stays on the form as a preview sheet. |
-| Continue anyway | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: After Continue anyway, it stays hidden for this draft. |
+| View | Preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: View stays on the form as a preview sheet. |
+| Continue anyway | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: After Continue anyway, it stays hidden for this draft. |
 | No match | No warning UI. **Publish** opens **Publish this routine?** with the routine card, **What happens** bullets, and **Publish now** / **Not yet** (same structure as [routines mockup 15](../routines/mockups/15-publish-routine-sheet-phone.png); sample routine name and tags in PNGs are not copy). |
-| Check failed or AI cap | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: A failed check shows nothing, same as no match. Reached AI cap behaves the same on screen. **Publish** matches no match when no warning is shown. |
-| Shared condition highlight | **Diadem, Nov 19, 2026, 4:32 PM ET**, verbatim: Highlight shared conditions in filled teal, others outlined. |
-| Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET**, verbatim: Leave "Used N times" off the compact rows. DIDI-594 comment `903421e2`. |
+| Check failed or AI cap | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: A failed check shows nothing, same as no match. Reached AI cap behaves the same on screen. **Publish** matches no match when no warning is shown. |
+| Shared condition highlight | **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: Highlight shared conditions in filled teal, others outlined. |
+| Match row content | Routine name, condition chips (when present), overlap line, **View**; compact B rows omit **Used N times**. **Diadem, Nov 19, 2026, 4:31 PM ET** (DIDI-594 comment `903421e2`), verbatim: Leave "Used N times" off the compact rows. |
 | Scope | Published community routines plus the caller's own drafts and published routines; **My routines** saved copies are excluded from candidacy (server scope; lock `e5aa6515`). |
 
 ## Server contract (build reference, not designed here)
