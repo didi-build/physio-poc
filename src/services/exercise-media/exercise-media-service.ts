@@ -46,7 +46,8 @@ export class ExerciseMediaServiceError extends Error {
       | "daily_limit_reached"
       | "invalid_scope"
       | "invalid_input"
-      | "start_reference_unavailable",
+      | "start_reference_unavailable"
+      | "exercise_media_already_generated",
   ) {
     super(message);
     this.name = "ExerciseMediaServiceError";
@@ -125,25 +126,67 @@ export class ExerciseMediaService {
     regenerationNote?: string | null;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
+    const quota = await this.getRegenerationQuota(input.practitionerId);
+    if (quota.limitReached) {
+      throw new ExerciseMediaServiceError(
+        "Daily media regeneration limit reached",
+        "daily_limit_reached",
+      );
+    }
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
       input.practitionerId,
     );
-    const visibility: MediaVisibility =
-      version.status === "approved" ? "public" : "draft";
+    if (version.media_set_id) {
+      const existing = await this.mediaSets.findById(version.media_set_id);
+      if (existing) {
+        throw new ExerciseMediaServiceError(
+          "Exercise media already generated for this version",
+          "exercise_media_already_generated",
+        );
+      }
+    }
+    if (version.pending_media_set_id) {
+      const pending = await this.mediaSets.findById(version.pending_media_set_id);
+      if (pending) {
+        throw new ExerciseMediaServiceError(
+          "Exercise media already generated for this version",
+          "exercise_media_already_generated",
+        );
+      }
+    }
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const generated = await this.images.generateStartAndEndImages({
       startPrompt: buildStartImagePrompt(promptContext),
       endPrompt: buildEndImagePrompt(promptContext),
       regenerationNote,
     });
-    return this.persistMediaSet({
-      version,
-      visibility,
-      start: generated.start,
-      end: generated.end,
-      updateVersion: true,
+    const media =
+      version.status === "approved"
+        ? await this.persistApprovedPendingMediaSet({
+            version,
+            practitionerId: input.practitionerId,
+            start: generated.start,
+            end: generated.end,
+          })
+        : await this.persistMediaSet({
+            version,
+            visibility: "draft",
+            start: generated.start,
+            end: generated.end,
+            updateVersion: true,
+          });
+    const nowIso = this.clock().toISOString();
+    await this.regenerations.insert({
+      id: this.createId(),
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: "both",
+      hadNote: regenerationNote !== null,
+      createdAt: nowIso,
     });
+    return media;
   }
 
   async regenerateMedia(input: {
@@ -158,10 +201,8 @@ export class ExerciseMediaService {
         quota: RegenerationQuota;
       }
     | {
-        outcome: "new_approved_version";
+        outcome: "pending_draft_updated";
         media: ExerciseMediaSetView;
-        newVersionId: string;
-        newVersionNumber: number;
         quota: RegenerationQuota;
       }
   > {
@@ -186,10 +227,23 @@ export class ExerciseMediaService {
       input.exerciseVersionId,
       input.practitionerId,
     );
+    if (
+      version.status === "approved" &&
+      version.pending_media_requested_by &&
+      version.pending_media_requested_by !== input.practitionerId
+    ) {
+      throw this.versionNotFoundError();
+    }
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
-    const existing = version.media_set_id
+    const liveSet = version.media_set_id
       ? await this.mediaSets.findById(version.media_set_id)
       : null;
+    const pendingSet =
+      version.pending_media_set_id &&
+      version.pending_media_requested_by === input.practitionerId
+        ? await this.mediaSets.findById(version.pending_media_set_id)
+        : null;
+    const existing = pendingSet ?? liveSet;
 
     let startImage = existing
       ? await this.media.getImage(
@@ -274,56 +328,18 @@ export class ExerciseMediaService {
       return { outcome: "draft_updated", media, quota: updatedQuota };
     }
 
-    const mediaSetId = this.createId();
-    const keys = mediaObjectKeys(mediaSetId);
-    await this.media.putImage(
-      keys.startObjectKey,
-      startImage.body,
-      startImage.contentType,
-      "public",
-    );
-    await this.media.putImage(
-      keys.endObjectKey,
-      endImage.body,
-      endImage.contentType,
-      "public",
-    );
-    await this.mediaSets.insert({
-      id: mediaSetId,
-      startObjectKey: keys.startObjectKey,
-      endObjectKey: keys.endObjectKey,
-      startProviderUrl,
-      visibility: "public",
-      createdAt: nowIso,
-    });
-
-    const latest = await this.versions.latestApprovedVersionNumber(version.exercise_id);
-    const nextVersion = (latest ?? version.version_number) + 1;
-    const newVersionId = this.createId();
-    const summary = summarizeRegeneration(input.scope);
-    await this.versions.insertApprovedVersionFromSource({
-      id: newVersionId,
-      source: version,
-      versionNumber: nextVersion,
-      mediaSetId,
-      approvedBy: input.practitionerId,
-      approvedAt: nowIso,
-      changeSummary: summary,
-      createdAt: nowIso,
-    });
-
-    return {
-      outcome: "new_approved_version",
-      media: {
-        mediaSetId,
-        startObjectKey: keys.startObjectKey,
-        endObjectKey: keys.endObjectKey,
-        visibility: "public",
+    const media = await this.persistApprovedPendingMediaSet({
+      version,
+      practitionerId: input.practitionerId,
+      start: {
+        bytes: startImage.body,
+        contentType: startImage.contentType,
+        providerSourceUrl: startProviderUrl,
       },
-      newVersionId,
-      newVersionNumber: nextVersion,
-      quota: updatedQuota,
-    };
+      end: { bytes: endImage.body, contentType: endImage.contentType },
+    });
+
+    return { outcome: "pending_draft_updated", media, quota: updatedQuota };
   }
 
   async promoteDraftMediaOnApproval(
@@ -363,24 +379,56 @@ export class ExerciseMediaService {
     access: "internal" | "public",
     sessionPractitionerId?: string,
   ): Promise<ExerciseMediaSetView | null> {
-    const version =
-      access === "internal"
-        ? await this.requireVersionForPractitioner(
-            exerciseVersionId,
-            sessionPractitionerId ?? "",
-          )
-        : await this.requireVersionForPublicServing(exerciseVersionId);
+    if (access === "public") {
+      const version = await this.requireVersionForPublicServing(exerciseVersionId);
+      if (!version.media_set_id) {
+        return null;
+      }
+      const row = await this.mediaSets.findById(version.media_set_id);
+      if (!row) {
+        return null;
+      }
+      if (row.visibility !== "public" || version.status !== "approved") {
+        return null;
+      }
+      return {
+        mediaSetId: row.id,
+        startObjectKey: row.start_object_key,
+        endObjectKey: row.end_object_key,
+        visibility: row.visibility,
+      };
+    }
+
+    const version = await this.versions.findVersionWithExerciseOwner(exerciseVersionId);
+    if (!version) {
+      throw this.versionNotFoundError();
+    }
+
+    if (version.pending_media_set_id) {
+      const pendingRow = await this.mediaSets.findById(version.pending_media_set_id);
+      if (pendingRow) {
+        if (sessionPractitionerId !== version.pending_media_requested_by) {
+          throw this.versionNotFoundError();
+        }
+        return {
+          mediaSetId: pendingRow.id,
+          startObjectKey: pendingRow.start_object_key,
+          endObjectKey: pendingRow.end_object_key,
+          visibility: pendingRow.visibility,
+        };
+      }
+    }
+
+    await this.requireVersionForPractitioner(
+      exerciseVersionId,
+      sessionPractitionerId ?? "",
+    );
     if (!version.media_set_id) {
       return null;
     }
     const row = await this.mediaSets.findById(version.media_set_id);
     if (!row) {
       return null;
-    }
-    if (access === "public") {
-      if (row.visibility !== "public" || version.status !== "approved") {
-        return null;
-      }
     }
     return {
       mediaSetId: row.id,
@@ -403,6 +451,63 @@ export class ExerciseMediaService {
       startingPosition: version.starting_position,
       steps: version.steps,
       regenerationNote,
+    };
+  }
+
+  private async persistApprovedPendingMediaSet(input: {
+    version: ExerciseVersionMediaRow;
+    practitionerId: string;
+    start: {
+      bytes: Uint8Array;
+      contentType: string;
+      providerSourceUrl?: string | null;
+    };
+    end: { bytes: Uint8Array; contentType: string };
+  }): Promise<ExerciseMediaSetView> {
+    if (input.version.pending_media_set_id) {
+      const previous = await this.mediaSets.findById(
+        input.version.pending_media_set_id,
+      );
+      if (previous) {
+        await this.media.deleteDraftSet({
+          startObjectKey: previous.start_object_key,
+          endObjectKey: previous.end_object_key,
+        });
+        await this.mediaSets.deleteById(previous.id);
+      }
+    }
+    const mediaSetId = this.createId();
+    const keys = mediaObjectKeys(mediaSetId);
+    const createdAt = this.clock().toISOString();
+    await this.media.putImage(
+      keys.startObjectKey,
+      input.start.bytes,
+      input.start.contentType,
+      "draft",
+    );
+    await this.media.putImage(
+      keys.endObjectKey,
+      input.end.bytes,
+      input.end.contentType,
+      "draft",
+    );
+    await this.mediaSets.insert({
+      id: mediaSetId,
+      startObjectKey: keys.startObjectKey,
+      endObjectKey: keys.endObjectKey,
+      startProviderUrl: input.start.providerSourceUrl ?? null,
+      visibility: "draft",
+      createdAt,
+    });
+    await this.versions.updatePendingDraft(input.version.id, {
+      pendingMediaSetId: mediaSetId,
+      pendingMediaRequestedBy: input.practitionerId,
+    });
+    return {
+      mediaSetId,
+      startObjectKey: keys.startObjectKey,
+      endObjectKey: keys.endObjectKey,
+      visibility: "draft",
     };
   }
 
@@ -489,10 +594,4 @@ export class ExerciseMediaService {
       "version_not_found",
     );
   }
-}
-
-function summarizeRegeneration(scope: MediaRegenerationScope): string {
-  const scopeLabel =
-    scope === "both" ? "images" : scope === "start" ? "start image" : "end image";
-  return `Regenerated ${scopeLabel}`;
 }

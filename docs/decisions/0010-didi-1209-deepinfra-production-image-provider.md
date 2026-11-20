@@ -25,7 +25,7 @@ Text inference for later features picks DeepInfra per [DIDI-1008](https://linear
 | End still   | `POST https://api.deepinfra.com/v1/images/edits`              | Multipart: start PNG bytes + end prompt + model (`response_format: b64_json`)  |
 
 - **Adapter:** `DeepInfraFluxKleinImageGeneration` (`src/adapters/node/deepinfra-flux-klein-image-generation.ts`), plain `fetch`, no SDK; selected when `PHYSIO_DEEPINFRA_API_KEY` is set (`create-image-generation-port.ts`). Otherwise **fake** adapter (local dev, tests, PR CI).
-- **Secrets:** API key name `PHYSIO_DEEPINFRA_API_KEY` only; never logged or returned on errors.
+- **Secrets:** API key name `PHYSIO_DEEPINFRA_API_KEY` only; never logged or returned on errors. Removing the key from GitHub production secrets or deploy env is not enough to clear it on the Worker: run `wrangler secret delete PHYSIO_DEEPINFRA_API_KEY` as well, because `wrangler secret bulk` only adds or updates bindings.
 - **Prompts:** `src/domain/exercise-media-prompts.ts` — exercise title/starting position, optional regeneration note, fixed clinical illustration template; no patient data.
 
 ### FLUX.2 klein edits on DeepInfra (docs-based, not live-tested)

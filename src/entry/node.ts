@@ -16,7 +16,7 @@ export type NodeServerOptions = {
   deps?: AppDependencies;
 };
 
-/** Exercise media HTTP routes: Node dev and test entries only (never the Worker entry). */
+/** Exercise media HTTP routes: Node dev and test entries (production Worker wires the same handler). */
 export function nodeExerciseMediaRouteHandlers(nodeEnv?: string): AppRouteHandler[] {
   const resolved = arguments.length >= 1 ? nodeEnv : process.env.NODE_ENV;
   if (resolved === "development" || resolved === "test") {

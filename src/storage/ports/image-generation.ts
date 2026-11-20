@@ -1,6 +1,7 @@
 export type GeneratedImage = {
   bytes: Uint8Array;
   contentType: string;
+  providerSourceUrl?: string;
 };
 
 export type GenerateExerciseImagesInput = {

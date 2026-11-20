@@ -32,6 +32,7 @@ export type WorkerEnv = {
   PHYSIO_ROUTINE_SIMILAR_AI_ENABLED?: string;
   PHYSIO_DB?: PhysioD1Database;
   PHYSIO_MEDIA?: PhysioR2Bucket;
+  PHYSIO_DEEPINFRA_API_KEY?: string;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 
@@ -78,6 +79,7 @@ function workerProductionEnvCacheKey(env: WorkerEnv): string {
     env.GOOGLE_CLIENT_SECRET ?? "",
     env.PHYSIO_ALLOWED_GOOGLE_EMAILS ?? "",
     workerPhysioDbCacheToken(env.PHYSIO_DB),
+    env.PHYSIO_DEEPINFRA_API_KEY?.trim() ? "deepinfra-key-present" : "",
   ].join("\u001e");
 }
 
