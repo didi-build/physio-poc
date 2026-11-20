@@ -228,9 +228,9 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 
 **Diadem, Nov 19, 2026, 8:30 PM ET** (DIDI-594 comment `e880fcc5`). Verbatim:
 
-1. Each **View** button's accessible name is **View {routine}** (`{routine}` = that row's routine name).
-2. The shared-exercise mark gets screen reader text **Also in your draft**.
-3. While the debounced re-check runs, show **Checking for similar routines** (polite live-region status).
+1. Approve "View {routine}" as each View button's spoken name
+2. Approve "Also in your draft" for the shared-exercise mark
+3. Show "Checking for similar routines" while it re-checks
 
 W8 **Conditions** replaces `CONDITION` = "Condition" (`src/ui/copy/routines.ts` line 46) on the New routine form only.
 
