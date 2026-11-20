@@ -86,21 +86,23 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       const versions = new ExerciseVersionsRepository(storage);
       const draftGenerator = deps.exerciseDraftGenerator;
       expect(draftGenerator).toBeDefined();
-      await draftGenerator!(
-        {
-          sql: storage,
-          requestId: id("req-worker-wire"),
-          requestedName: "Heel slide",
-          exerciseNote: null,
-          requestedBy: practitioner,
-          now: AFTER_FORM,
-        },
-        {
-          exercises: new ExercisesRepository(storage),
-          versions,
-          requests,
-        },
-      );
+      await expect(
+        draftGenerator!(
+          {
+            sql: storage,
+            requestId: id("req-worker-wire"),
+            requestedName: "Heel slide",
+            exerciseNote: null,
+            requestedBy: practitioner,
+            now: AFTER_FORM,
+          },
+          {
+            exercises: new ExercisesRepository(storage),
+            versions,
+            requests,
+          },
+        ),
+      ).resolves.toMatchObject({ exerciseId: expect.any(String) });
       expect(globalFetch).toHaveBeenCalledTimes(1);
       const init = (globalFetch.mock.calls[0] as unknown as [string, RequestInit?])[1];
       const headers = init?.headers as Record<string, string>;
@@ -111,13 +113,16 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
   });
 
   it("createNodeAppDependencies without DeepInfra key keeps the fake draft generator (Node resolve wiring)", async () => {
-    const deps = await createNodeAppDependencies({
-      AUTH_BASE_URL: "https://auth.example",
-      PHYSIO_ALLOWED_GOOGLE_EMAILS: "node-wire@example.com",
-      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
-      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    await expect(
+      createNodeAppDependencies({
+        AUTH_BASE_URL: "https://auth.example",
+        PHYSIO_ALLOWED_GOOGLE_EMAILS: "node-wire@example.com",
+        PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+        BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+      }),
+    ).resolves.toMatchObject({
+      exerciseDraftGenerator: fakeExerciseDraftGenerator,
     });
-    expect(deps.exerciseDraftGenerator).toBe(fakeExerciseDraftGenerator);
   });
 
   it("createNodeAppDependencies uses the real DeepInfra generator and global fetch", async () => {
@@ -141,21 +146,23 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     const versions = new ExerciseVersionsRepository(deps.sql);
     const draftGenerator = deps.exerciseDraftGenerator;
     expect(draftGenerator).toBeDefined();
-    await draftGenerator!(
-      {
-        sql: deps.sql,
-        requestId: id("req-node-wire"),
-        requestedName: "Heel slide",
-        exerciseNote: null,
-        requestedBy: practitioner,
-        now: AFTER_FORM,
-      },
-      {
-        exercises: new ExercisesRepository(deps.sql),
-        versions,
-        requests,
-      },
-    );
+    await expect(
+      draftGenerator!(
+        {
+          sql: deps.sql,
+          requestId: id("req-node-wire"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(deps.sql),
+          versions,
+          requests,
+        },
+      ),
+    ).resolves.toMatchObject({ exerciseId: expect.any(String) });
     expect(globalFetch).toHaveBeenCalledTimes(1);
     const call = globalFetch.mock.calls[0] as unknown as
       [string, RequestInit?] | undefined;
@@ -178,5 +185,56 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       ],
       response_format: PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT,
     });
+    expect(globalFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("createNodeAppDependencies passes PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL to the provider request", async () => {
+    const overrideModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo-override-pin";
+    const globalFetch = stubThisSensitiveGlobalFetch(() =>
+      envelope(JSON.stringify(VALID_STRETCH_DRAFT)),
+    );
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: "https://auth.example",
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "node-model@example.com",
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+      PHYSIO_DEEPINFRA_API_KEY: "node-model-key",
+      PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL: overrideModel,
+    });
+    const practitioner = await seedExercisePractitioner(
+      deps.sql,
+      id("pr-node-model"),
+      "node-model@example.com",
+    );
+    const requests = new ExerciseRequestsRepository(deps.sql);
+    const versions = new ExerciseVersionsRepository(deps.sql);
+    await expect(
+      deps.exerciseDraftGenerator!(
+        {
+          sql: deps.sql,
+          requestId: id("req-node-model"),
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          requestedBy: practitioner,
+          now: AFTER_FORM,
+        },
+        {
+          exercises: new ExercisesRepository(deps.sql),
+          versions,
+          requests,
+        },
+      ),
+    ).resolves.toMatchObject({ exerciseId: expect.any(String) });
+    expect(globalFetch).toHaveBeenCalledTimes(1);
+    const init = (globalFetch.mock.calls[0] as unknown as [string, RequestInit?])[1];
+    const body = requestBodyFromCall(init);
+    expect(body.model).toBe(overrideModel);
+    expect(globalFetch).toHaveBeenCalledWith(
+      DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL,
+      expect.any(Object),
+    );
   });
 });

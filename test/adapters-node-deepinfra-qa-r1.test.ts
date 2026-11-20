@@ -280,7 +280,7 @@ describe("DeepInfra adapter QA round 1 (mocked fetch)", () => {
   }
 });
 
-async function seedDraftVersion(
+async function seedDraftVersionBare(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
 ) {
   const practitionerId = await seedPractitioner(storage);
@@ -295,7 +295,14 @@ async function seedDraftVersion(
     }),
   ]);
   const objectStorage = new InMemoryObjectStorage();
-  const media = new PrefixMediaStorage(objectStorage);
+  return { practitionerId, versionId: FIXTURE_VERSION_ID, objectStorage };
+}
+
+async function seedDraftVersion(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+) {
+  const seeded = await seedDraftVersionBare(storage);
+  const media = new PrefixMediaStorage(seeded.objectStorage);
   let tick = 0;
   const bootstrap = new ExerciseMediaService(
     storage,
@@ -305,10 +312,10 @@ async function seedDraftVersion(
     () => testOpaqueEntityId(`bootstrap-${tick}`),
   );
   await bootstrap.generateInitialMediaForVersion({
-    practitionerId,
-    exerciseVersionId: FIXTURE_VERSION_ID,
+    practitionerId: seeded.practitionerId,
+    exerciseVersionId: seeded.versionId,
   });
-  return { practitionerId, versionId: FIXTURE_VERSION_ID, objectStorage };
+  return seeded;
 }
 
 function mediaRequest(
@@ -354,7 +361,7 @@ describe("DeepInfra HTTP route QA round 1", () => {
       const storage = await openMigratedDatabase();
       try {
         const { practitionerId, versionId, objectStorage } =
-          await seedDraftVersion(storage);
+          await seedDraftVersionBare(storage);
         const fetchImpl = setupFetch();
         const deepinfra = new DeepInfraFluxKleinImageGeneration({
           apiKey,
@@ -439,7 +446,7 @@ describe("DeepInfra HTTP route QA round 1", () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId, objectStorage } =
-        await seedDraftVersion(storage);
+        await seedDraftVersionBare(storage);
       const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
         const url = typeof input === "string" ? input : input.toString();
         if (url === GENERATIONS_URL) {
@@ -486,7 +493,7 @@ describe("DeepInfra HTTP route QA round 1", () => {
       const storage = await openMigratedDatabase();
       try {
         const { practitionerId, versionId, objectStorage } =
-          await seedDraftVersion(storage);
+          await seedDraftVersionBare(storage);
         const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
           const url = typeof input === "string" ? input : input.toString();
           if (url === GENERATIONS_URL) {

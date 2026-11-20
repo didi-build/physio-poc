@@ -19,7 +19,8 @@ Numbered files under `migrations/` (Node test runner and D1 via wrangler when wi
 | 0007 | `0007_sql_batch_min_rows_guard.sql`        | Internal empty guard table for SqlStoragePort batch minRowsAffected (DIDI-1101)                     |
 | 0008 | `0008_routine_draft_discards.sql`          | Ephemeral discard tombstones for undo_draft_discard (DIDI-1204)                                     |
 | 0009 | `0009_routine_conditions.sql`              | Routine–condition join, condition dedupe columns, backfill (DIDI-1217)                              |
-| 0010 | `0010_exercise_suggested_body_regions.sql` | Draft suggested body region labels for AI drafts (DIDI-1008; promote on save: DIDI-1254)            |
+| 0011 | `0011_exercise_version_pending_media.sql`  | Pending exercise media on draft versions (DIDI-136)                                                 |
+| 0012 | `0012_exercise_suggested_body_regions.sql` | Draft suggested body region labels for AI drafts (DIDI-1008; promote on save: DIDI-1254)            |
 
 ## schema_migrations on D1
 

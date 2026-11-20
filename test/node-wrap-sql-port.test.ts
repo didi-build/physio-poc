@@ -41,6 +41,28 @@ function readNodeAdapterSource(): string {
   return readFileSync(join(REPO_ROOT, NODE_ADAPTER_PATH), "utf8");
 }
 
+describe("Node dev entry migrations (DIDI-1267)", () => {
+  it("createNodeAppDependencies applies migration 0011 pending media columns", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: "https://auth.example",
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "dev@example.com",
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const applied = await deps.sql.all<{ id: string }>(
+      "SELECT id FROM schema_migrations WHERE id = ?",
+      ["0011_exercise_version_pending_media"],
+    );
+    expect(applied).toHaveLength(1);
+    const columns = await deps.sql.all<{ name: string }>(
+      "PRAGMA table_info(exercise_versions)",
+    );
+    const names = columns.map((column) => column.name);
+    expect(names).toContain("pending_media_set_id");
+    expect(names).toContain("pending_media_requested_by");
+  });
+});
+
 describe("wrapSqlPort DI (DIDI-1150)", () => {
   it("defaults wrapSqlPort to the identity function when omitted", async () => {
     const deps = await createNodeAppDependencies({

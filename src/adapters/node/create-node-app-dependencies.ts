@@ -11,6 +11,8 @@ import {
   MIGRATION_0004_ID,
   MIGRATION_0006_ID,
   MIGRATION_0007_ID,
+  MIGRATION_0011_ID,
+  MIGRATION_0012_ID,
 } from "../../storage/migrations/apply.js";
 import {
   handleFakeGoogleRequest,
@@ -49,6 +51,14 @@ const MIGRATION_0006_SQL = readFileSync(
 );
 const MIGRATION_0007_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0007_sql_batch_min_rows_guard.sql"),
+  "utf8",
+);
+const MIGRATION_0011_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0011_exercise_version_pending_media.sql"),
+  "utf8",
+);
+const MIGRATION_0012_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0012_exercise_suggested_body_regions.sql"),
   "utf8",
 );
 
@@ -90,6 +100,8 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0004_ID, MIGRATION_0004_SQL);
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+  await applyMigration(storage, MIGRATION_0011_ID, MIGRATION_0011_SQL);
+  await applyMigration(storage, MIGRATION_0012_ID, MIGRATION_0012_SQL);
   const sqlPort = wrapSqlPort(storage);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
     cimdMetadataFetch,

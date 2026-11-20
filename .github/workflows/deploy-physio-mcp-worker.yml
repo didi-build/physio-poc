@@ -92,7 +92,9 @@ jobs:
           echo "::add-mask::${GOOGLE_CLIENT_SECRET}"
           echo "::add-mask::${BETTER_AUTH_SECRET}"
           echo "::add-mask::${PHYSIO_ALLOWED_GOOGLE_EMAILS}"
-          echo "::add-mask::${PHYSIO_DEEPINFRA_API_KEY}"
+          if [ -n "${PHYSIO_DEEPINFRA_API_KEY:-}" ]; then
+            echo "::add-mask::${PHYSIO_DEEPINFRA_API_KEY}"
+          fi
           node scripts/put-production-worker-secrets.mjs --config wrangler.ci.jsonc
       - name: Build UI static assets
         run: npm run build:ui

@@ -69,9 +69,9 @@ export type AppDependencies = {
   /** Dev/test only; session guard public paths (for example fake Google OAuth). */
   extraSessionPublicPath?: (pathname: string) => boolean;
   guardedAppWithoutSession?: GuardedAppWithoutSession;
-  /** Entry-specific routes (for example exercise media on Node dev/test only). Never set on the Worker entry. */
+  /** Entry-specific routes (exercise media on Node dev/test and production Worker). */
   extraRouteHandlers?: AppRouteHandler[];
-  /** Optional image port for exercise media routes (tests only). */
+  /** Image generation port for exercise media routes (production Worker; optional Node dev override). */
   exerciseMediaImages?: ImageGenerationPort;
   /** Exercise request draft generator (DeepInfra in production when configured). */
   exerciseDraftGenerator?: ExerciseDraftGenerator;

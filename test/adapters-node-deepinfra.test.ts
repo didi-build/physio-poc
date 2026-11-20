@@ -856,6 +856,53 @@ describe("DeepInfraFluxKleinImageGeneration (unit, mocked fetch)", () => {
   });
 });
 
+function installStrictGlobalFetchProbe(): {
+  upstreamCount: () => number;
+  restore: () => void;
+} {
+  const original = globalThis.fetch;
+  let calls = 0;
+  function strictGlobalFetch(
+    this: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ): Promise<Response> {
+    void input;
+    void init;
+    if (this !== globalThis && this !== undefined) {
+      throw new TypeError("Illegal invocation");
+    }
+    calls += 1;
+    return Promise.resolve(
+      new Response(JSON.stringify({ data: [{ b64_json: btoa("OK") }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  }
+  globalThis.fetch = strictGlobalFetch as typeof fetch;
+  return {
+    upstreamCount: () => calls,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+}
+
+describe("DeepInfra global fetch binding (Worker B1)", () => {
+  it("calls upstream through globalThis-bound fetch when fetchImpl is omitted", async () => {
+    const apiKey = "deepinfra-sentinel-key-must-not-appear-in-errors";
+    const probe = installStrictGlobalFetchProbe();
+    try {
+      const generator = new DeepInfraFluxKleinImageGeneration({ apiKey });
+      await generator.generateStartImage("prompt");
+      expect(probe.upstreamCount()).toBeGreaterThanOrEqual(1);
+    } finally {
+      probe.restore();
+    }
+  });
+});
+
 describe("createImageGenerationPort (unit)", () => {
   it("returns FakeImageGeneration when PHYSIO_DEEPINFRA_API_KEY is missing or blank", () => {
     expect(createImageGenerationPort({})).toBeInstanceOf(FakeImageGeneration);

@@ -47,11 +47,13 @@ describe("DeepInfraChatCompletionClient", () => {
     const client = new DeepInfraChatCompletionClient({
       apiKey: "unit-test-key",
     });
-    const result = await client.complete({
+    const completePromise = client.complete({
       model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
       messages: [{ role: "user", content: "draft" }],
       response_format: { type: "json_schema" },
     });
+    await expect(completePromise).resolves.toMatchObject({ contentJson });
+    const result = await completePromise;
     expect(result.contentJson).toBe(contentJson);
   });
 

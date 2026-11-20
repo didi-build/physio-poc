@@ -129,6 +129,18 @@ d1_tables:
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
       media_set_id:
         whose: operational
+      pending_media_set_id:
+        whose: practitioner
+        data: Opaque media set id for unconfirmed exercise images
+        purpose: owner-only preview until confirm (DIDI-1261)
+        processors: [Cloudflare]
+        retention: until confirm or version deleted
+      pending_media_requested_by:
+        whose: practitioner
+        data: Practitioner id who created the pending media set
+        purpose: restrict pending serve and regenerate to the requester until confirm
+        processors: [Cloudflare]
+        retention: until confirm or version deleted
       change_summary:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
@@ -184,7 +196,7 @@ d1_tables:
       processors: [Cloudflare]
       retention: until exercise deleted
       who_can_see: all_practitioners
-      source: migrations/0010_exercise_suggested_body_regions.sql
+      source: migrations/0012_exercise_suggested_body_regions.sql
       verified: true
       notes: Draft-only suggested labels until DIDI-1254 promotes them with exercise save.
     columns:

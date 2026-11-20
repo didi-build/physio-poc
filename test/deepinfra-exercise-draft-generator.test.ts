@@ -957,21 +957,24 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      const result = await generator(
-        {
-          sql: storage,
-          requestId: id("req-all-unknown"),
-          requestedName: "Cat-camel",
-          exerciseNote: null,
-          requestedBy: practitioner,
-          now: AFTER_FORM,
-        },
-        {
-          exercises: new ExercisesRepository(storage),
-          versions,
-          requests,
-        },
-      );
+      const generatorInput = {
+        sql: storage,
+        requestId: id("req-all-unknown"),
+        requestedName: "Cat-camel",
+        exerciseNote: null,
+        requestedBy: practitioner,
+        now: AFTER_FORM,
+      };
+      const generatorRepos = {
+        exercises: new ExercisesRepository(storage),
+        versions,
+        requests,
+      };
+      const resultPromise = generator(generatorInput, generatorRepos);
+      await expect(resultPromise).resolves.toMatchObject({
+        exerciseId: expect.any(String),
+      });
+      const result = await resultPromise;
       expect(fetchImpl).toHaveBeenCalledTimes(1);
       const regionCountAfter = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM body_regions",
