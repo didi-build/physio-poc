@@ -14,8 +14,21 @@ import {
 } from "./helpers/worker-auth-d1-fixture.js";
 import { seedPractitioner as seedExercisePractitioner } from "./helpers/exercise-sqlite-fixture.js";
 import { buildWorkerProductionAuthEnv } from "./helpers/worker-production-auth-test-utils.js";
+import { DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
+import {
+  PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT,
+  PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT,
+} from "./fixtures/pinned-deepinfra-exercise-draft-literals.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
 import { id } from "./helpers/opaque-test-ids.js";
+
+function requestBodyFromCall(init?: RequestInit): Record<string, unknown> {
+  const raw = init?.body;
+  if (typeof raw !== "string") {
+    throw new Error("expected JSON request body string");
+  }
+  return JSON.parse(raw) as Record<string, unknown>;
+}
 
 const VALID_STRETCH_DRAFT = {
   title: "Heel slide",
@@ -97,6 +110,16 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     }
   });
 
+  it("createNodeAppDependencies without DeepInfra key keeps the fake draft generator (Node resolve wiring)", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: "https://auth.example",
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "node-wire@example.com",
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    expect(deps.exerciseDraftGenerator).toBe(fakeExerciseDraftGenerator);
+  });
+
   it("createNodeAppDependencies uses the real DeepInfra generator and global fetch", async () => {
     const globalFetch = stubThisSensitiveGlobalFetch(() =>
       envelope(JSON.stringify(VALID_STRETCH_DRAFT)),
@@ -134,8 +157,26 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       },
     );
     expect(globalFetch).toHaveBeenCalledTimes(1);
-    const init = (globalFetch.mock.calls[0] as unknown as [string, RequestInit?])[1];
+    const call = globalFetch.mock.calls[0] as unknown as
+      [string, RequestInit?] | undefined;
+    expect(call).toBeDefined();
+    const [url, init] = call!;
+    expect(url).toBe(DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL);
+    expect(init?.method).toBe("POST");
     const headers = init?.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer node-wire-key");
+    expect(headers["Content-Type"]).toBe("application/json");
+    const body = requestBodyFromCall(init);
+    expect(body).toMatchObject({
+      model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      messages: [
+        { role: "system", content: PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: "Exercise name: Heel slide\nNote: None",
+        },
+      ],
+      response_format: PINNED_EXERCISE_DRAFT_RESPONSE_FORMAT,
+    });
   });
 });

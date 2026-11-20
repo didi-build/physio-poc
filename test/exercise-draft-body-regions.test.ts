@@ -132,7 +132,24 @@ describe("partitionExerciseDraftBodyRegions", () => {
     }
   });
 
-  it("does not reintroduce redundant late library lookup after suggestion validation (B03)", () => {
+  it("does not link unknown labels via a redundant post-validation library pass (MVLATE behaviour)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      await storage.run("INSERT INTO body_regions (id, label) VALUES (?, ?)", [
+        "br-upper-back",
+        "upper back",
+      ]);
+      const result = await partitionExerciseDraftBodyRegions(storage, [
+        " upper  back ",
+      ]);
+      expect(result.linkedRegionIds).toEqual(["br-upper-back"]);
+      expect(result.suggestedLabels).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not reintroduce redundant late library lookup after suggestion validation (MVLATE source-text)", () => {
     const path = fileURLToPath(
       new URL(
         "../src/adapters/deepinfra/exercise-draft-body-regions.ts",
