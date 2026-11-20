@@ -67,7 +67,7 @@ Derived from MagicPath board revision `471088919975432193` and DIDI-594 locks ab
 | Topic | Rule |
 | -- | -- |
 | When the first check runs | In the background once the draft has **at least 1 condition and 2 exercises** (DIDI-594 L update 2, `03489a7e`). Until then, no check and no warning UI. |
-| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Diadem, Nov 19, 2026, 4:32 PM ET** (DIDI-594 comment `698eb165`), verbatim: Re-check a moment after they stop editing conditions or exercises. Short debounce after the last condition or exercise edit; exact delay is for dev to choose (no fixed millisecond value in this spec). |
+| Re-check | After condition or exercise changes (DIDI-594 L update 2, `03489a7e`). **Diadem, Nov 19, 2026, 4:32 PM ET** (DIDI-594 comment `698eb165`), verbatim: Re-check a moment after they stop editing conditions or exercises. Short debounce after the last condition or exercise edit; exact delay is for dev to choose (no fixed millisecond value in this spec). While the debounced re-check runs, show W11 **Checking for similar routines** in a polite live-region status (`aria-live="polite"`). |
 | Never blocks | Autosave, **Done for now**, and **Publish** are never blocked by the check running, waiting, succeeding, failing, or by the daily AI cap (DIDI-594 L update 2, `03489a7e`). |
 | Matches found | Amber card above the footer buttons. Lists **at most 3** matches, best score first (see server sort below). **Publish** and **Done for now** stay enabled. |
 | View | Preview sheet over the form; draft stays underneath. Sheet title is the matched routine's name. Close returns to the form with draft unchanged. **Diadem, Nov 19, 2026, 4:32 PM ET** (`698eb165`), verbatim: View stays on the form as a preview sheet. |
@@ -154,21 +154,22 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 | Element | Classes / attrs |
 | -- | -- |
 | Scrim | `absolute inset-0 bg-slate-900/45` |
-| Dialog | `role="dialog"` `aria-labelledby` on heading `id` |
+| Dialog | `role="dialog"` (revision source has no `aria-labelledby`; build wires the sheet heading as the accessible name) |
 | Phone sheet | `max-h-[92%] overflow-y-auto rounded-t-3xl`; grab handle `h-1.5 w-10 rounded-full bg-slate-300` (`aria-hidden`) |
 | Desktop sheet | `max-w-[32rem] rounded-3xl`, centered in `p-6` |
-| Heading row | `px-5 pb-2 pt-3`; `h2` `text-lg font-semibold`; close `min-h-11 w-11 rounded-xl text-slate-500` |
+| Heading row | `px-5 pb-2 pt-3`; `h2` `m-0 text-lg font-semibold`; close `ml-auto inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500` |
 
 ### Accessibility
 
 | Element | Markup / behaviour |
 | -- | -- |
-| Preview sheet | Heading is the matched routine's name (`sr-preview-title`). Body omits a second title (`showTitle={false}` on preview content). |
-| **Publish this routine?** sheet | `aria-labelledby` → `sr-publish-title`; reused publish strings from `src/ui/copy/routines.ts`. |
+| Preview sheet | Sheet heading `h2` text is the matched routine's name. Revision `471088919975432193` also renders an `h2` with that name inside the preview body; build should show the name once (mockup 03). |
+| **Publish this routine?** sheet | Sheet heading `h2` is **Publish this routine?**; reused strings from `src/ui/copy/routines.ts`. |
 | Close control | `aria-label` **Close** (`ARIA_CLOSE_SCRIM`). |
 | Condition chip remove | `aria-label` **Remove {condition}** (W7). |
-| Match row **View** | **Open: needs Diadem approval** (described need only): distinguishable accessible names per row when multiple **View** buttons are present. |
-| Shared exercise check in preview | `text-teal-700` check glyph, `aria-hidden` in source. **Open: needs Diadem approval** (described need only): screen reader text for that indicator. |
+| Match row **View** | Visible label W4 **View**. Accessible name W9 **View {routine}** (`{routine}` is that row's routine name). |
+| Shared exercise mark in preview | Overlap glyph `text-teal-700` with `aria-hidden` in revision source; screen reader text W10 **Also in your draft**. |
+| Re-check in progress | Polite status (`aria-live="polite"`) with W11 **Checking for similar routines** while the debounced re-check runs. |
 
 ## States (mockups)
 
@@ -215,12 +216,21 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 | W6 | {n} total | 2:43 PM (DIDI-594 comment `f4682350`) |
 | W7 | Remove {condition} | 2:43 PM (`f4682350`) |
 | W8 | Conditions | 4:27 PM ET (DIDI-594 comment `3fd723a4`) |
+| W9 | View {routine} | 8:30 PM ET |
+| W10 | Also in your draft | 8:30 PM ET |
+| W11 | Checking for similar routines | 8:30 PM ET |
 
 **Diadem, Nov 19, 2026, 2:14 PM EST**, verbatim: "Yes, approve all five strings" (W1 to W5).
 
 **Diadem, Nov 19, 2026, 2:43 PM EST**, verbatim (DIDI-594 comment `f4682350`): Yes, approve "{n} total" and "Remove {condition}".
 
 **Diadem, Nov 19, 2026, 4:27 PM ET** (DIDI-594 comment `3fd723a4`), verbatim: yes to "conditions".
+
+**Diadem, Nov 19, 2026, 8:30 PM ET**; Diadem 8:30 PM ET Nov 19, 2026; CTO lock pending. Verbatim:
+
+1. Each **View** button's accessible name is **View {routine}** (`{routine}` = that row's routine name).
+2. The shared-exercise mark gets screen reader text **Also in your draft**.
+3. While the debounced re-check runs, show **Checking for similar routines** (polite live-region status).
 
 W8 **Conditions** replaces `CONDITION` = "Condition" (`src/ui/copy/routines.ts` line 46) on the New routine form only.
 
@@ -256,13 +266,10 @@ Strings visible in the B mockups or required for accessibility that are not in t
 | Need | Where it appears |
 | -- | -- |
 | Preview sheet title | Uses the matched routine's name at runtime (sample names in mockups are not copy) |
-| Optional in-progress indicator | No user-visible string today; open product decision if the check should ever show progress while a re-check runs |
-| Per-row **View** accessible names | Multiple **View** buttons in the warning card |
-| Shared-exercise indicator in preview | Overlap marker on exercises in the preview sheet |
 
 Failed-state and no-match **copy**: none shown by design (no strings to approve).
 
-Copy and accessibility items in the table above remain **Open: needs Diadem approval**. Timing and behaviour rows are decided unless noted here.
+The preview sheet title row above remains **Open: needs Diadem approval** (runtime value, not copy). Timing, behaviour, and W9 to W11 accessibility strings are decided.
 
 ## Decisions
 
@@ -282,6 +289,7 @@ Copy and accessibility items in the table above remain **Open: needs Diadem appr
 
 ## Changes
 
+- **Nov 19, 2026**: DIDI-1224 a11y follow-up. W9 to W11 (8:30 PM ET; CTO lock pending), layout tokens aligned to revision `471088919975432193`, open a11y items closed. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 follow-up. QA nits: state 04 continue mockup, spec wording, layout class inventory, lock citations (`3fd723a4`, `03489a7e` on AI cap). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (`3fd723a4`; replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 QA R1. Re-render mockups (full frames, fixed states 04 to 06), layout/a11y section, L update 2 lock `03489a7e`, behaviour and copy lock ids, Conditions blocker note, DIDI-1263 dependency. https://linear.app/didi-build/issue/DIDI-1224
