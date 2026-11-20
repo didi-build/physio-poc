@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { partitionExerciseDraftBodyRegions } from "../src/adapters/deepinfra/exercise-draft-body-regions.js";
 import { FreeTextValidationError } from "../src/domain/exercise-free-text.js";
@@ -128,5 +130,16 @@ describe("partitionExerciseDraftBodyRegions", () => {
     } finally {
       storage.close();
     }
+  });
+
+  it("does not reintroduce redundant late library lookup after suggestion validation (B03)", () => {
+    const path = fileURLToPath(
+      new URL(
+        "../src/adapters/deepinfra/exercise-draft-body-regions.ts",
+        import.meta.url,
+      ),
+    );
+    const source = readFileSync(path, "utf8");
+    expect(source).not.toContain("lateLibraryMatch");
   });
 });
