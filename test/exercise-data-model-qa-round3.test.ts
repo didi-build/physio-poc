@@ -211,11 +211,11 @@ describe("DIDI-1008: AI draft version insert status (unit)", () => {
 });
 
 describe("QA round 3: foreign key list (integration, SQLite)", () => {
-  it("lists exactly 43 foreign keys and each uses ON DELETE RESTRICT", async () => {
+  it("lists exactly 44 foreign keys and each uses ON DELETE RESTRICT", async () => {
     const storage = await openMigratedDatabase();
     try {
       const fks = await foreignKeysAcrossSchema(storage);
-      expect(fks).toHaveLength(43);
+      expect(fks).toHaveLength(44);
       for (const fk of fks) {
         expect(fk.on_delete).toBe("RESTRICT");
       }

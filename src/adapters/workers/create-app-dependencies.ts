@@ -34,7 +34,6 @@ export type WorkerEnv = {
   PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL?: string;
   PHYSIO_DB?: PhysioD1Database;
   PHYSIO_MEDIA?: PhysioR2Bucket;
-  PHYSIO_DEEPINFRA_API_KEY?: string;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 
