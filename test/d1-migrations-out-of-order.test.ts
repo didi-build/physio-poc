@@ -206,6 +206,8 @@ describe("D1 migration 0011 pending media columns (MIG3)", () => {
     const liveMediaSetId = "media-set-mig3-live";
     const versionNullMediaId = "ver-mig3-null-media";
     const versionLiveMediaId = "ver-mig3-live-media";
+    const versionApprovedLiveId = "ver-mig3-approved-live";
+    const approvedMediaSetId = "media-set-mig3-approved-live";
 
     materializeMigrationsDir(phase9MigrationsDir, MIGRATION_PREFIX_0009);
     writeWranglerConfig(phase9MigrationsDir, phase9Config);
@@ -258,6 +260,40 @@ describe("D1 migration 0011 pending media columns (MIG3)", () => {
           ) VALUES (?, ?, 1, 'draft', 'Live media', 'Supine', '[]', ?, ?)`,
         )
         .run(versionLiveMediaId, "ex-mig3-live", liveMediaSetId, ts);
+      native
+        .prepare(
+          `INSERT INTO exercise_media_sets (
+            id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          approvedMediaSetId,
+          `media-sets/${approvedMediaSetId}/start.png`,
+          `media-sets/${approvedMediaSetId}/end.png`,
+          null,
+          "public",
+          ts,
+        );
+      native
+        .prepare(
+          `INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)`,
+        )
+        .run("ex-mig3-approved", "stretch", "prac-mig3", ts);
+      native
+        .prepare(
+          `INSERT INTO exercise_versions (
+            id, exercise_id, version_number, status, title, starting_position, steps,
+            media_set_id, approved_by, approved_at, created_at
+          ) VALUES (?, ?, 1, 'approved', 'Approved live', 'Supine', '[]', ?, ?, ?, ?)`,
+        )
+        .run(
+          versionApprovedLiveId,
+          "ex-mig3-approved",
+          approvedMediaSetId,
+          "prac-mig3",
+          ts,
+          ts,
+        );
       native.close();
 
       applyLocalMigrations(persistRoot, fullConfig);
@@ -283,6 +319,17 @@ describe("D1 migration 0011 pending media columns (MIG3)", () => {
         pending_media_set_id: string | null;
         pending_media_requested_by: string | null;
       };
+      const rowApprovedLive = afterNative
+        .prepare(
+          `SELECT approved_by, media_set_id, pending_media_set_id, pending_media_requested_by
+           FROM exercise_versions WHERE id = ?`,
+        )
+        .get(versionApprovedLiveId) as {
+        approved_by: string;
+        media_set_id: string;
+        pending_media_set_id: string | null;
+        pending_media_requested_by: string | null;
+      };
       afterNative.close();
 
       expect(rowNullMedia.media_set_id).toBeNull();
@@ -291,6 +338,10 @@ describe("D1 migration 0011 pending media columns (MIG3)", () => {
       expect(rowLiveMedia.media_set_id).toBe(liveMediaSetId);
       expect(rowLiveMedia.pending_media_set_id).toBeNull();
       expect(rowLiveMedia.pending_media_requested_by).toBeNull();
+      expect(rowApprovedLive.approved_by).toBe("prac-mig3");
+      expect(rowApprovedLive.media_set_id).toBe(approvedMediaSetId);
+      expect(rowApprovedLive.pending_media_set_id).toBeNull();
+      expect(rowApprovedLive.pending_media_requested_by).toBeNull();
     } finally {
       rmSync(persistRoot, { recursive: true, force: true });
       rmSync(configDir, { recursive: true, force: true });
