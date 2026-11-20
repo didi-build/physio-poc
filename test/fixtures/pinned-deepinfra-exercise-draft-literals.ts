@@ -1,5 +1,7 @@
 /** QA literal pins: independent of production exports so prompt/schema mutants fail tests. */
 
+export const PINNED_DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS = 90000 as const;
+
 export const PINNED_EXERCISE_DRAFT_SYSTEM_PROMPT = `You draft exercise library entries for physiotherapy practitioners. Reply with a single JSON object that matches the exercise_draft schema exactly.
 
 Clinical text you write is always a draft for practitioner review and approval. Nothing you output goes live without human sign-off.

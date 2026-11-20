@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepInfraChatCompletionClient } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
-import { DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
+import { PINNED_DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS } from "./fixtures/pinned-deepinfra-exercise-draft-literals.js";
 import { inspectValue } from "./helpers/console-log-leak-assertions.js";
 import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
 
@@ -27,7 +27,7 @@ describe("DeepInfraChatCompletionClient", () => {
       .catch(() => {});
     expect(timeoutSpy).toHaveBeenCalledWith(
       expect.any(Function),
-      DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS,
+      PINNED_DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS,
     );
     timeoutSpy.mockRestore();
   });
