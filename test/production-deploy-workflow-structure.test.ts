@@ -267,6 +267,30 @@ const FIXTURE_GOOGLE_CLIENT_ID = "fixture-google-client-id";
 const FIXTURE_GOOGLE_CLIENT_SECRET = "fixture-google-client-secret";
 
 describe("put-production-worker-secrets wrangler spawn (DIDI-1044 QA)", () => {
+  it("prints optional secret names only when bulk payload rejects multiline PHYSIO_DEEPINFRA_API_KEY", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "physio-put-optional-invalid-"));
+    const configPath = join(tempDir, "wrangler.ci.jsonc");
+    writeFileSync(configPath, "{}", "utf8");
+    const secretValue = "line-one-secret-value\nline-two-secret-value";
+    const result = spawnSync(process.execPath, [PUT_SCRIPT, "--config", configPath], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        GOOGLE_CLIENT_ID: FIXTURE_GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET: FIXTURE_GOOGLE_CLIENT_SECRET,
+        BETTER_AUTH_SECRET: "fixture-better-auth-secret-at-least-32-chars",
+        PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
+        PHYSIO_DEEPINFRA_API_KEY: secretValue,
+      },
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "PHYSIO_DEEPINFRA_API_KEY must be a single line for production deploy.",
+    );
+    expect(result.stderr).not.toContain("line-one-secret-value");
+    expect(result.stderr).not.toContain("line-two-secret-value");
+  });
   it("passes secret bulk via stdin JSON from the script serializer with no secret argv", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "physio-put-wrangler-stub-"));
     const recordArgs = join(tempDir, "args.txt");

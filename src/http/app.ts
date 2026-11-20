@@ -70,7 +70,7 @@ export type AppDependencies = {
   guardedAppWithoutSession?: GuardedAppWithoutSession;
   /** Entry-specific routes (exercise media on Node dev/test and production Worker). */
   extraRouteHandlers?: AppRouteHandler[];
-  /** Optional image port for exercise media routes (tests only). */
+  /** Optional image port override for exercise media routes (Node dev/test). */
   exerciseMediaImages?: ImageGenerationPort;
 };
 

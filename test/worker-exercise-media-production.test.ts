@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/entry/worker.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { createWorkerProductionAppDependencies } from "../src/adapters/workers/create-worker-production-app-dependencies.js";
@@ -35,8 +35,6 @@ import {
   restoreConsoleSpies,
   spyAllConsoleLevels,
 } from "./helpers/console-log-leak-assertions.js";
-import { ImageGenerationError } from "../src/storage/ports/image-generation.js";
-
 const VERSION_NOT_FOUND_BODY = {
   error: "version_not_found",
   message: "Exercise version not found",
@@ -360,36 +358,47 @@ describe("Worker production exercise media (DIDI-1212)", () => {
     }
   });
 
-  it("does not leak PHYSIO_DEEPINFRA_API_KEY in ImageGenerationError or JSON responses", async () => {
-    const { storage, d1 } = await openWorkerAuthTestDatabase();
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("does not leak PHYSIO_DEEPINFRA_API_KEY through Worker port generate when DeepInfra returns 401", async () => {
+    let upstreamCalls = 0;
+    const originalFetch = globalThis.fetch;
+    const upstreamJsonBody = JSON.stringify({
+      detail: SENTINEL_API_KEY,
+      echo: SENTINEL_API_KEY,
+    });
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      const url = typeof input === "string" ? input : input.toString();
+      if (!url.includes("deepinfra.com")) {
+        return originalFetch(input, init);
+      }
+      upstreamCalls += 1;
+      return new Response(upstreamJsonBody, {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    const consoleSpies = spyAllConsoleLevels();
     try {
+      const { storage, d1 } = await openWorkerAuthTestDatabase();
       const practId = await seedPractitioner(storage);
-      const fetchImpl: typeof fetch = async () =>
-        new Response(JSON.stringify({ detail: SENTINEL_API_KEY }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
+      const exerciseId = await seedExercise(storage, practId);
+      await storage.run(VERSION_INSERT_SQL, [
+        ...versionInsertBindings({
+          id: FIXTURE_VERSION_ID,
+          exercise_id: exerciseId,
+          status: "draft",
+          title: "Heel slide",
+          starting_position: "Supine",
+        }),
+      ]);
+
       const env = buildWorkerProductionAuthEnv({
         PHYSIO_DB: d1,
         PHYSIO_MEDIA: createFakeR2Bucket(),
         PHYSIO_DEEPINFRA_API_KEY: SENTINEL_API_KEY,
       });
       const deps = createWorkerProductionAppDependencies(env);
-      const deepinfra = new DeepInfraFluxKleinImageGeneration({
-        apiKey: SENTINEL_API_KEY,
-        fetchImpl,
-      });
-      await expectThrownErrorLeakFree(() => deepinfra.generateStartImage("prompt"), {
-        apiKey: SENTINEL_API_KEY,
-      });
-      const err = new ImageGenerationError("image_generation_request_failed", 401);
-      (err as ImageGenerationError & { cause: unknown }).cause = new Error(
-        `upstream ${SENTINEL_API_KEY.slice(0, 8)}`,
-      );
-      const body = JSON.stringify({ error: err.code });
-      assertLeakFreeText(body, { apiKey: SENTINEL_API_KEY });
       const auth = new FakeAuthPort({
         practitioner: {
           practitionerId: practId,
@@ -397,14 +406,7 @@ describe("Worker production exercise media (DIDI-1212)", () => {
           displayName: "Coach",
         },
       });
-      const wired = {
-        ...deps,
-        auth,
-        exerciseMediaImages: new DeepInfraFluxKleinImageGeneration({
-          apiKey: SENTINEL_API_KEY,
-          fetchImpl,
-        }),
-      };
+      const wired = { ...deps, auth };
       const url = `${WORKER_PRODUCTION_TEST_BASE}${exerciseMediaGeneratePath(FIXTURE_VERSION_ID)}`;
       const init = mutatingAppApiRequestInit(url, {
         method: "POST",
@@ -415,19 +417,22 @@ describe("Worker production exercise media (DIDI-1212)", () => {
         body: JSON.stringify({}),
       });
       const response = await handleRequest(new Request(url, init), wired);
+      expect(response.status).toBe(502);
+      expect(upstreamCalls).toBeGreaterThanOrEqual(1);
       const text = await response.text();
-      expect(text).not.toContain(SENTINEL_API_KEY);
-      expect(text).not.toContain(SENTINEL_API_KEY.slice(0, 12));
-      expect(logSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining(SENTINEL_API_KEY),
-      );
-      expect(errorSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining(SENTINEL_API_KEY),
-      );
-    } finally {
-      logSpy.mockRestore();
-      errorSpy.mockRestore();
+      expect(text).toContain("image_generation_request_failed");
+      assertLeakFreeText(text, {
+        apiKey: SENTINEL_API_KEY,
+        jsonBody: upstreamJsonBody,
+      });
+      expectConsoleCallsLeakFree(consoleSpies, {
+        apiKey: SENTINEL_API_KEY,
+        jsonBody: upstreamJsonBody,
+      });
       storage.close();
+    } finally {
+      restoreConsoleSpies(consoleSpies);
+      globalThis.fetch = originalFetch;
     }
   });
 });

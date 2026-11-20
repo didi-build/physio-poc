@@ -243,7 +243,7 @@ export class ExerciseMediaService {
       version.pending_media_requested_by === input.practitionerId
         ? await this.mediaSets.findById(version.pending_media_set_id)
         : null;
-    const existing = liveSet ?? pendingSet;
+    const existing = pendingSet ?? liveSet;
 
     let startImage = existing
       ? await this.media.getImage(

@@ -237,6 +237,12 @@ describe("exercise media pending model (c6cac926)", () => {
       expect(second.status).toBe(200);
       expect(await objects.get(`draft/${firstBody.media.startObjectKey}`)).toBeNull();
       expect(await objects.get(`draft/${firstBody.media.endObjectKey}`)).toBeNull();
+      const firstPendingSetId = firstBody.media.startObjectKey.split("/")[1];
+      const deletedRows = await storage.all<{ id: string }>(
+        "SELECT id FROM exercise_media_sets WHERE id = ?",
+        [firstPendingSetId],
+      );
+      expect(deletedRows).toEqual([]);
     } finally {
       storage.close();
     }

@@ -24,15 +24,16 @@ describe("optional PHYSIO_DEEPINFRA_API_KEY deploy payload (DIDI-1212)", () => {
   });
 
   it("buildWorkerAuthSecretsPayload throws INVALID_PRODUCTION_WORKER_AUTH_SECRETS for multiline optional key", () => {
-    expect(() =>
+    try {
       buildWorkerAuthSecretsPayload({
         ...BASE_AUTH_ENV,
         [OPTIONAL_SECRET_NAME]: "line-one\nline-two",
-      }),
-    ).toThrow(
-      expect.objectContaining({
-        code: INVALID_PRODUCTION_WORKER_AUTH_SECRETS,
-      }),
-    );
+      });
+      expect.fail("expected throw");
+    } catch (error: unknown) {
+      const err = error as { code?: string; invalid?: string[] };
+      expect(err.code).toBe(INVALID_PRODUCTION_WORKER_AUTH_SECRETS);
+      expect(err.invalid).toEqual([OPTIONAL_SECRET_NAME]);
+    }
   });
 });

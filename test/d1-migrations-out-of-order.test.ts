@@ -2,6 +2,7 @@ import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
   captureApplicationSchemaFromPath,
@@ -170,6 +171,85 @@ describe("application schema snapshot comparison (unit)", () => {
     );
     expect(schemasEqual(base, mutated)).toBe(false);
   });
+});
+
+const MIGRATION_PREFIX_0009 = [
+  "0001_exercise_data_model.sql",
+  "0002_program_data_model.sql",
+  "0003_exercise_media.sql",
+  "0004_better_auth.sql",
+  "0005_routine_data_model.sql",
+  "0006_mcp_oauth.sql",
+  "0007_sql_batch_min_rows_guard.sql",
+  "0008_routine_draft_discards.sql",
+  "0009_routine_conditions.sql",
+] as const;
+
+function materializeMigrationsDir(targetDir: string, keep: readonly string[]): void {
+  rmSync(targetDir, { recursive: true, force: true });
+  cpSync(join(REPO_ROOT, "migrations"), targetDir, { recursive: true });
+  for (const name of readdirSync(targetDir)) {
+    if (!keep.includes(name as (typeof keep)[number])) {
+      rmSync(join(targetDir, name));
+    }
+  }
+}
+
+describe("D1 migration 0011 pending media columns (MIG3)", () => {
+  it("leaves pending_media_set_id and pending_media_requested_by null on rows created before 0011", () => {
+    const persistRoot = mkdtempSync(join(tmpdir(), "physio-d1-mig11-"));
+    const configDir = mkdtempSync(join(tmpdir(), "physio-d1-mig11-cfg-"));
+    const phase9MigrationsDir = join(configDir, "phase9-migrations");
+    const phase9Config = join(configDir, "phase9.jsonc");
+    const fullConfig = join(configDir, "full.jsonc");
+
+    materializeMigrationsDir(phase9MigrationsDir, MIGRATION_PREFIX_0009);
+    writeWranglerConfig(phase9MigrationsDir, phase9Config);
+    writeWranglerConfig(join(REPO_ROOT, "migrations"), fullConfig);
+
+    try {
+      applyLocalMigrations(persistRoot, phase9Config);
+
+      const sqlitePath = resolveLocalD1SqlitePath(persistRoot);
+      const native = new Database(sqlitePath);
+      native
+        .prepare(`INSERT INTO practitioners (id, email, created_at) VALUES (?, ?, ?)`)
+        .run("prac-mig3", "prac-mig3@example.com", "2026-01-01T00:00:00.000Z");
+      native
+        .prepare(
+          `INSERT INTO exercises (id, category, created_by, created_at) VALUES (?, ?, ?, ?)`,
+        )
+        .run("ex-mig3", "stretch", "prac-mig3", "2026-01-01T00:00:00.000Z");
+      native
+        .prepare(
+          `INSERT INTO exercise_versions (
+            id, exercise_id, version_number, status, title, starting_position, steps, created_at
+          ) VALUES (?, ?, 1, 'draft', 'Row', 'Supine', '[]', ?)`,
+        )
+        .run("ver-mig3", "ex-mig3", "2026-01-01T00:00:00.000Z");
+      native.close();
+
+      applyLocalMigrations(persistRoot, fullConfig);
+
+      const afterNative = new Database(sqlitePath);
+      const row = afterNative
+        .prepare(
+          `SELECT pending_media_set_id, pending_media_requested_by
+           FROM exercise_versions WHERE id = ?`,
+        )
+        .get("ver-mig3") as {
+        pending_media_set_id: string | null;
+        pending_media_requested_by: string | null;
+      };
+      afterNative.close();
+
+      expect(row.pending_media_set_id).toBeNull();
+      expect(row.pending_media_requested_by).toBeNull();
+    } finally {
+      rmSync(persistRoot, { recursive: true, force: true });
+      rmSync(configDir, { recursive: true, force: true });
+    }
+  }, 180_000);
 });
 
 describe("D1 wrangler migrations out-of-order landing (integration, local D1)", () => {

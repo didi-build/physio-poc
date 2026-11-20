@@ -262,7 +262,8 @@ describe("ExerciseMediaService (integration)", () => {
         "SELECT had_note FROM media_regenerations",
       );
       expect(regenRows).toHaveLength(2);
-      expect(regenRows.find((row) => row.had_note === 1)).toBeDefined();
+      expect(regenRows[0]?.had_note).toBe(0);
+      expect(regenRows[1]?.had_note).toBe(1);
       const tableDump = JSON.stringify(
         await storage.all("SELECT * FROM media_regenerations"),
       );

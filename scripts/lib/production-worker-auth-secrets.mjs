@@ -78,7 +78,7 @@ export function serializeWorkerAuthSecretsBulkPayload(payload) {
 
 /**
  * @param {NodeJS.ProcessEnv} env
- * @returns {Record<string, string>}
+ * @returns {{ invalid: string[] }}
  */
 export function productionWorkerOptionalSecretProblems(env) {
   const invalid = [];

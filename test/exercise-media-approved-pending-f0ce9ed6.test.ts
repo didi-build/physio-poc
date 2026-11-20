@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { handleRequest } from "../src/http/app.js";
+import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   openMigratedDatabase,
   seedApprovedExerciseVersionWithMedia,
@@ -231,6 +233,115 @@ describe("exercise media approved pending draft (f0ce9ed6)", () => {
       );
       expect(versionRow?.media_set_id).toBeNull();
       expect(versionRow?.pending_media_set_id).toBe(genBody.media.mediaSetId);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("regenerates start then end on pending draft using pending set bytes, leaving live media untouched (B4)", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const { versionId, mediaSetId: liveMediaSetId } =
+        await seedApprovedExerciseVersionWithMedia(storage, practitionerId);
+      const liveStartKey = `public/media-sets/${liveMediaSetId}/start.png`;
+      const liveEndKey = `public/media-sets/${liveMediaSetId}/end.png`;
+      await objects.put(
+        liveStartKey,
+        new TextEncoder().encode("LIVE-START"),
+        "image/png",
+      );
+      await objects.put(liveEndKey, new TextEncoder().encode("LIVE-END"), "image/png");
+
+      const startMarker = "PENDING-START-v2";
+      const endMarker = "PENDING-END-v2";
+      let capturedEditReference: Uint8Array | null = null;
+      const images: ImageGenerationPort = {
+        async generateStartAndEndImages() {
+          return {
+            start: {
+              bytes: new TextEncoder().encode(startMarker),
+              contentType: "image/png",
+            },
+            end: {
+              bytes: new TextEncoder().encode("PENDING-END-initial"),
+              contentType: "image/png",
+            },
+          };
+        },
+        async generateStartImage() {
+          return {
+            bytes: new TextEncoder().encode(startMarker),
+            contentType: "image/png",
+          };
+        },
+        async generateEndImage(_prompt, options) {
+          capturedEditReference = options?.startReferenceImage?.bytes ?? null;
+          return {
+            bytes: new TextEncoder().encode(endMarker),
+            contentType: "image/png",
+          };
+        },
+      };
+      const deps = exerciseMediaTestDeps(
+        storage,
+        {
+          practitionerId,
+          email: "coach@example.com",
+          displayName: "Coach",
+        },
+        { objects, exerciseMediaImages: images },
+      );
+      const cookie = exerciseMediaSessionCookie(deps);
+      const regenUrl = `${BASE}/api/me/exercise-versions/${versionId}/media/regenerate`;
+
+      const startRegen = await handleRequest(
+        new Request(
+          regenUrl,
+          mutatingAppApiRequestInit(regenUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ scope: "start" }),
+          }),
+        ),
+        deps,
+      );
+      expect(startRegen.status).toBe(200);
+      const startBody = (await startRegen.json()) as {
+        media?: { startObjectKey: string; endObjectKey: string };
+      };
+      expect(startBody.media?.startObjectKey).toBeTruthy();
+      expect(startBody.media?.endObjectKey).toBeTruthy();
+
+      const endRegen = await handleRequest(
+        new Request(
+          regenUrl,
+          mutatingAppApiRequestInit(regenUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({ scope: "end" }),
+          }),
+        ),
+        deps,
+      );
+      expect(endRegen.status).toBe(200);
+      expect(capturedEditReference).toEqual(new TextEncoder().encode(startMarker));
+      const endBody = (await endRegen.json()) as {
+        media?: { startObjectKey: string; endObjectKey: string };
+      };
+      const decodeStored = async (key: string) => {
+        const stored = await objects.get(key);
+        return new TextDecoder().decode(stored?.body ?? new Uint8Array());
+      };
+      expect(await decodeStored(`draft/${endBody.media?.startObjectKey}`)).toBe(
+        startMarker,
+      );
+      expect(await decodeStored(`draft/${endBody.media?.endObjectKey}`)).toBe(
+        endMarker,
+      );
+      expect(await decodeStored(liveStartKey)).toBe("LIVE-START");
+      expect(await decodeStored(liveEndKey)).toBe("LIVE-END");
     } finally {
       storage.close();
     }

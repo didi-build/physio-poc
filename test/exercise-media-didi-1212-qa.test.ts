@@ -107,6 +107,65 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
     }
   });
 
+  it("returns 429 on generate at daily cap with zero upstream calls (Q1f)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      let upstreamCalls = 0;
+      const images: ImageGenerationPort = {
+        async generateStartAndEndImages() {
+          upstreamCalls += 1;
+          return new FakeImageGeneration().generateStartAndEndImages({
+            startPrompt: "s",
+            endPrompt: "e",
+          });
+        },
+        generateStartImage: (...args) =>
+          new FakeImageGeneration().generateStartImage(...args),
+        generateEndImage: (...args) =>
+          new FakeImageGeneration().generateEndImage(...args),
+      };
+      const deps = exerciseMediaTestDeps(
+        storage,
+        {
+          practitionerId,
+          email: "coach@example.com",
+          displayName: "Coach",
+        },
+        { exerciseMediaImages: images },
+      );
+      const generateUrl = `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/generate`;
+      const initial = await handleRequest(
+        mediaRequest(generateUrl, deps, { method: "POST", body: JSON.stringify({}) }),
+        deps,
+      );
+      expect(initial.status).toBe(201);
+      expect(upstreamCalls).toBe(1);
+      const regenUrl = `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`;
+      for (let i = 0; i < DAILY_MEDIA_REGENERATION_CAP - 1; i += 1) {
+        const response = await handleRequest(
+          mediaRequest(regenUrl, deps, {
+            method: "POST",
+            body: JSON.stringify({ scope: "start" }),
+          }),
+          deps,
+        );
+        expect(response.status).toBe(200);
+      }
+      const upstreamBeforeCap = upstreamCalls;
+      const capped = await handleRequest(
+        mediaRequest(generateUrl, deps, { method: "POST", body: JSON.stringify({}) }),
+        deps,
+      );
+      expect(capped.status).toBe(429);
+      const body = (await capped.json()) as { error?: string };
+      expect(body.error).toBe("daily_limit_reached");
+      expect(upstreamCalls).toBe(upstreamBeforeCap);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("shares the daily cap between generate and regenerate", async () => {
     const storage = await openMigratedDatabase();
     try {
