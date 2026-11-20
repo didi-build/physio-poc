@@ -6,7 +6,6 @@ export const PRODUCTION_WORKER_AUTH_SECRET_NAMES = [
   "GOOGLE_CLIENT_SECRET",
   "BETTER_AUTH_SECRET",
   "PHYSIO_ALLOWED_GOOGLE_EMAILS",
-  "PHYSIO_DEEPINFRA_API_KEY",
 ];
 
 /** Optional production secrets uploaded when non-empty (DIDI-1212). Never required for deploy preflight. */
