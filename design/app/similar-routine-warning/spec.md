@@ -216,9 +216,9 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 | W6 | {n} total | 2:43 PM (DIDI-594 comment `f4682350`) |
 | W7 | Remove {condition} | 2:43 PM (`f4682350`) |
 | W8 | Conditions | 4:27 PM ET (DIDI-594 comment `3fd723a4`) |
-| W9 | View {routine} | 8:30 PM ET |
-| W10 | Also in your draft | 8:30 PM ET |
-| W11 | Checking for similar routines | 8:30 PM ET |
+| W9 | View {routine} | 8:30 PM ET (DIDI-594 comment `e880fcc5`) |
+| W10 | Also in your draft | 8:30 PM ET (`e880fcc5`) |
+| W11 | Checking for similar routines | 8:30 PM ET (`e880fcc5`) |
 
 **Diadem, Nov 19, 2026, 2:14 PM EST**, verbatim: "Yes, approve all five strings" (W1 to W5).
 
@@ -226,7 +226,7 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 
 **Diadem, Nov 19, 2026, 4:27 PM ET** (DIDI-594 comment `3fd723a4`), verbatim: yes to "conditions".
 
-**Diadem, Nov 19, 2026, 8:30 PM ET**; Diadem 8:30 PM ET Nov 19, 2026; CTO lock pending. Verbatim:
+**Diadem, Nov 19, 2026, 8:30 PM ET** (DIDI-594 comment `e880fcc5`). Verbatim:
 
 1. Each **View** button's accessible name is **View {routine}** (`{routine}` = that row's routine name).
 2. The shared-exercise mark gets screen reader text **Also in your draft**.
@@ -289,7 +289,7 @@ The preview sheet title row above remains **Open: needs Diadem approval** (runti
 
 ## Changes
 
-- **Nov 19, 2026**: DIDI-1224 a11y follow-up. W9 to W11 (8:30 PM ET; CTO lock pending), layout tokens aligned to revision `471088919975432193`, open a11y items closed. https://linear.app/didi-build/issue/DIDI-1224
+- **Nov 19, 2026**: DIDI-1224 a11y follow-up. W9 to W11 (8:30 PM ET; `e880fcc5`), layout tokens aligned to revision `471088919975432193`, open a11y items closed. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 follow-up. QA nits: state 04 continue mockup, spec wording, layout class inventory, lock citations (`3fd723a4`, `03489a7e` on AI cap). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (`3fd723a4`; replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 QA R1. Re-render mockups (full frames, fixed states 04 to 06), layout/a11y section, L update 2 lock `03489a7e`, behaviour and copy lock ids, Conditions blocker note, DIDI-1263 dependency. https://linear.app/didi-build/issue/DIDI-1224
