@@ -320,7 +320,7 @@ export class ExerciseMediaService {
         start: {
           bytes: startImage.body,
           contentType: startImage.contentType,
-          providerSourceUrl: startProviderUrl,
+          startProviderUrl,
         },
         end: { bytes: endImage.body, contentType: endImage.contentType },
         updateVersion: true,
@@ -334,7 +334,7 @@ export class ExerciseMediaService {
       start: {
         bytes: startImage.body,
         contentType: startImage.contentType,
-        providerSourceUrl: startProviderUrl,
+        startProviderUrl,
       },
       end: { bytes: endImage.body, contentType: endImage.contentType },
     });
@@ -460,7 +460,7 @@ export class ExerciseMediaService {
     start: {
       bytes: Uint8Array;
       contentType: string;
-      providerSourceUrl?: string | null;
+      startProviderUrl?: string | null;
     };
     end: { bytes: Uint8Array; contentType: string };
   }): Promise<ExerciseMediaSetView> {
@@ -495,7 +495,7 @@ export class ExerciseMediaService {
       id: mediaSetId,
       startObjectKey: keys.startObjectKey,
       endObjectKey: keys.endObjectKey,
-      startProviderUrl: input.start.providerSourceUrl ?? null,
+      startProviderUrl: input.start.startProviderUrl ?? null,
       visibility: "draft",
       createdAt,
     });
@@ -517,7 +517,7 @@ export class ExerciseMediaService {
     start: {
       bytes: Uint8Array;
       contentType: string;
-      providerSourceUrl?: string | null;
+      startProviderUrl?: string | null;
     };
     end: { bytes: Uint8Array; contentType: string };
     updateVersion: boolean;
@@ -541,7 +541,7 @@ export class ExerciseMediaService {
       id: mediaSetId,
       startObjectKey: keys.startObjectKey,
       endObjectKey: keys.endObjectKey,
-      startProviderUrl: input.start.providerSourceUrl ?? null,
+      startProviderUrl: input.start.startProviderUrl ?? null,
       visibility: input.visibility,
       createdAt,
     });
