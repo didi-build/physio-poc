@@ -1,5 +1,5 @@
 export const DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL =
-  "https://api.deepinfra.com/v1/openai/chat/completions";
+  "https://api.example.com/v1/openai/chat/completions";
 
 export const DEFAULT_DEEPINFRA_EXERCISE_DRAFT_MODEL_ID =
   "meta-llama/Llama-3.3-70B-Instruct-Turbo";
