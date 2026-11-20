@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeepInfraChatCompletionClient } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
+import { DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import { inspectValue } from "./helpers/console-log-leak-assertions.js";
 import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
 
@@ -8,6 +9,27 @@ const SENTINEL_BODY = "provider-body-sentinel-must-not-appear-in-cause";
 describe("DeepInfraChatCompletionClient", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("pins the 90s request abort timer", async () => {
+    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const fetchImpl = vi.fn(() => new Promise<Response>(() => {}));
+    const client = new DeepInfraChatCompletionClient({
+      apiKey: "unit-test-key",
+      fetchImpl,
+    });
+    void client
+      .complete({
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages: [{ role: "user", content: "draft" }],
+        response_format: { type: "json_schema" },
+      })
+      .catch(() => {});
+    expect(timeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      DEEPINFRA_EXERCISE_DRAFT_REQUEST_TIMEOUT_MS,
+    );
+    timeoutSpy.mockRestore();
   });
 
   it("calls global fetch without illegal this binding when fetchImpl is omitted", async () => {
