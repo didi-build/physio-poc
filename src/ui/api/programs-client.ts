@@ -328,15 +328,13 @@ export class ProgramsClient {
   undoTypeMismatchPlaceholderLink(
     programId: string,
     rowId: string,
-    draftUpdatedAt?: string,
+    draftUpdatedAt: string,
   ): Promise<ProgramMutationResult> {
-    const body =
-      draftUpdatedAt === undefined ? {} : { draft_updated_at: draftUpdatedAt };
     return this.fetchFn(
       programRowUndoTypeMismatchLinkPath(programId, rowId),
       withJsonContentType({
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ draft_updated_at: draftUpdatedAt }),
       }),
     ).then((response) => readJson<ProgramMutationResult>(response));
   }

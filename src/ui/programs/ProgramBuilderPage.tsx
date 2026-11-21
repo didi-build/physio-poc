@@ -493,6 +493,9 @@ export function ProgramBuilderPage({
       return;
     }
     const replaceRowId = replaceMismatchRowIdRef.current;
+    const replaceIndex = replaceRowId
+      ? program.rows.findIndex((row) => row.id === replaceRowId)
+      : -1;
     replaceMismatchRowIdRef.current = null;
     setAddExerciseOpen(false);
     setRowMutationBusy(true);
@@ -508,6 +511,16 @@ export function ProgramBuilderPage({
         if (replaceRowId) {
           const removed = await client.deleteRow(program.program_id, replaceRowId);
           nextProgram = removed.program;
+          if (replaceIndex >= 0) {
+            const ids = nextProgram.rows.map((row) => row.id);
+            const newIndex = ids.indexOf(rowId);
+            if (newIndex >= 0 && newIndex !== replaceIndex) {
+              ids.splice(newIndex, 1);
+              ids.splice(replaceIndex, 0, rowId);
+              const reordered = await client.reorderRows(program.program_id, ids);
+              nextProgram = reordered.program;
+            }
+          }
         }
         applyProgram(nextProgram);
         setNoteDrafts(noteDraftsFromProgram(nextProgram));
@@ -585,7 +598,11 @@ export function ProgramBuilderPage({
               onUndo: () => {
                 const programId = current.program_id;
                 const draftAt = programRef.current?.draft_updated_at;
-                void client
+                if (!draftAt) {
+                  showToast({ message: AUTO_SAVE_FAILURE_ALERT });
+                  return;
+                }
+                return client
                   .undoTypeMismatchPlaceholderLink(programId, rowId, draftAt)
                   .then((reverted) => {
                     applyProgram(reverted.program);

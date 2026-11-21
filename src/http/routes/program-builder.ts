@@ -124,6 +124,17 @@ function parseOptionalDraftUpdatedAt(
   return value;
 }
 
+function parseRequiredDraftUpdatedAt(body: Record<string, unknown>): string | Response {
+  if (!Object.prototype.hasOwnProperty.call(body, "draft_updated_at")) {
+    return canonicalInvalidInputResponse();
+  }
+  const parsed = parseOptionalDraftUpdatedAt(body);
+  if (parsed === null || parsed === undefined) {
+    return canonicalInvalidInputResponse();
+  }
+  return parsed;
+}
+
 function parseStringField(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -725,9 +736,9 @@ export async function handleProgramBuilderRequest(
       if (unexpected) {
         return unexpected;
       }
-      const draftUpdatedAt = parseOptionalDraftUpdatedAt(body);
-      if (draftUpdatedAt === null) {
-        return canonicalInvalidInputResponse();
+      const draftUpdatedAt = parseRequiredDraftUpdatedAt(body);
+      if (draftUpdatedAt instanceof Response) {
+        return draftUpdatedAt;
       }
       try {
         const result = await service(deps).undoTypeMismatchPlaceholderLink(

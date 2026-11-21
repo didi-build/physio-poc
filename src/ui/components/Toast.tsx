@@ -23,17 +23,21 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastPayload | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const dismissToast = useCallback(() => {
     setToast(null);
+    setUndoBusy(false);
   }, []);
 
   const showToast = useCallback((payload: ToastPayload) => {
+    setUndoBusy(false);
     setToast(payload);
   }, []);
 
   useEffect(() => {
     if (!toast) {
+      setUndoBusy(false);
       return;
     }
     const delayMs = toast.onUndo ? 5000 : 2600;
@@ -62,8 +66,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className="shell-toast-undo"
+                disabled={undoBusy}
+                aria-busy={undoBusy}
                 onClick={() => {
-                  toast.onUndo?.();
+                  if (undoBusy) {
+                    return;
+                  }
+                  setUndoBusy(true);
+                  const result = toast.onUndo?.();
+                  if (result && typeof (result as Promise<void>).then === "function") {
+                    void (result as Promise<void>).finally(() => {
+                      dismissToast();
+                    });
+                    return;
+                  }
+                  setUndoBusy(false);
                   dismissToast();
                 }}
               >

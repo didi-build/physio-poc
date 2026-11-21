@@ -844,8 +844,8 @@ export class ProgramBuilderService {
     });
     try {
       await this.sql.batch(statements);
-    } catch {
-      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    } catch (err) {
+      this.mapRowWriteError(err);
     }
     await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
     return {
@@ -854,6 +854,11 @@ export class ProgramBuilderService {
     };
   }
 
+  /**
+   * Reverts a type-mismatch link using the undo snapshot embedded in the linked row's
+   * text_snapshot_json. Callers must pass draft_updated_at so concurrent draft edits
+   * reject undo (stale_write) instead of restoring over newer program state.
+   */
   async undoTypeMismatchPlaceholderLink(
     practitionerId: string,
     programId: string,

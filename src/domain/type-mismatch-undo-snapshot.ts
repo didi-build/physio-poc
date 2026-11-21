@@ -14,6 +14,8 @@ export type TypeMismatchUndoSnapshot = {
 
 const UNDO_KEY = "_typeMismatchUndo";
 
+/** Undo data lives on the linked row until undo or the next row write; HTTP undo requires draft_updated_at. */
+
 export function embedTypeMismatchUndoInTextSnapshotJson(
   publicSnapshot: ProgramRowTextSnapshot,
   undo: TypeMismatchUndoSnapshot,
