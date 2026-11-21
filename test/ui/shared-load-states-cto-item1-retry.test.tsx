@@ -639,7 +639,9 @@ describe("CTO item 1 retry behaviour", () => {
     });
 
     await screen.findByRole("button", { name: REMOVE_FROM_MY_EXERCISES });
-    await userEvent.click(screen.getByRole("button", { name: REMOVE_FROM_MY_EXERCISES }));
+    await userEvent.click(
+      screen.getByRole("button", { name: REMOVE_FROM_MY_EXERCISES }),
+    );
     await waitFor(() => {
       expect(
         screen.getByTestId("exercise-mycopy-failed-save-alert"),
@@ -898,7 +900,9 @@ describe("CTO item 1 retry behaviour", () => {
         screen.getByTestId("exercise-detail-remove-failed-save-alert"),
       ).toBeInTheDocument();
     });
-    await expectTryingAgainWhileAlertMounted("exercise-detail-remove-failed-save-alert");
+    await expectTryingAgainWhileAlertMounted(
+      "exercise-detail-remove-failed-save-alert",
+    );
     await expectRefocusOnFailedSaveAlert(
       "exercise-detail-remove-failed-save-alert",
       () => {
@@ -1030,7 +1034,9 @@ describe("CTO item 1 retry behaviour", () => {
       } as unknown as RoutinesClient,
     });
 
-    const chooser = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    const chooser = await screen.findByRole("dialog", {
+      name: NEW_PROGRAM_SHEET_TITLE,
+    });
     await userEvent.click(
       within(chooser).getByRole("button", {
         name: new RegExp(NEW_PROGRAM_FROM_ROUTINE),

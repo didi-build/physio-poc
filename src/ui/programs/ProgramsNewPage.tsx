@@ -95,9 +95,9 @@ export function ProgramsNewPage() {
     routineId: string,
     options?: { openPublishSheet?: boolean },
   ) => {
-    setRoutineBusy(true);
-    const attempt = () =>
-      createProgramFromRoutineWithDetails(client, routinesClient, routineId)
+    const attempt = () => {
+      setRoutineBusy(true);
+      return createProgramFromRoutineWithDetails(client, routinesClient, routineId)
         .then((result) => {
           setCreateFailedSave(null);
           const routineName = result.program.routine_origin?.routine_name;
@@ -109,12 +109,14 @@ export function ProgramsNewPage() {
           goToBuilder(result.program.code, options?.openPublishSheet ?? false);
         })
         .catch(() => {
-          setCreateFailedSave({ onTryAgain: attempt });
+          setCreateFailedSave({ onTryAgain: () => attempt() });
+          throw new Error("create_from_routine_failed");
         })
         .finally(() => {
           setRoutineBusy(false);
         });
-    void attempt();
+    };
+    void attempt().catch(() => {});
   };
 
   return (

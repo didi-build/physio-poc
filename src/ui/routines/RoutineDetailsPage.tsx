@@ -243,11 +243,11 @@ export function RoutineDetailsPage() {
 
   if (details.is_draft) {
     const draftName = details.draft.name?.trim() || name;
-    const onDiscardDraft = () => {
-      setFailedSaveAlert(null);
-      void client
+    const onDiscardDraft = () =>
+      client
         .discardRoutineDraft(routineId)
         .then(({ undo }) => {
+          setFailedSaveAlert(null);
           const discardedName = details.draft.name ?? "";
           showToast({
             message: toastDiscardedDraft(discardedName),
@@ -266,8 +266,8 @@ export function RoutineDetailsPage() {
             onTryAgain: onDiscardDraft,
             testId: "routine-draft-discard-failed-save-alert",
           });
+          throw new Error("routine_discard_draft_failed");
         });
-    };
     const onDraftPublish = () => {
       setDraftValidation(null);
       setDraftServerMissingImagesBlock(false);
@@ -276,12 +276,12 @@ export function RoutineDetailsPage() {
     };
     const confirmDraftPublish = () => {
       setDraftPublishBusy(true);
-      setFailedSaveAlert(null);
-      void client
+      return client
         .publishRoutineDraft(routineId, {
           name: details.draft.name ?? undefined,
         })
         .then(() => {
+          setFailedSaveAlert(null);
           setDraftPublishOpen(false);
           showToast({ message: toastPublishedVersion1(draftName) });
           load();
@@ -312,6 +312,7 @@ export function RoutineDetailsPage() {
             onTryAgain: confirmDraftPublish,
             testId: "routine-draft-publish-failed-save-alert",
           });
+          throw new Error("routine_draft_publish_failed");
         })
         .finally(() => {
           setDraftPublishBusy(false);
@@ -407,7 +408,9 @@ export function RoutineDetailsPage() {
           type="button"
           className="ex-link-btn ex-danger"
           data-testid="rt-discard-draft"
-          onClick={onDiscardDraft}
+          onClick={() => {
+            void onDiscardDraft().catch(() => {});
+          }}
         >
           {DISCARD_DRAFT}
         </button>
@@ -423,7 +426,9 @@ export function RoutineDetailsPage() {
           onClose={() => {
             setDraftPublishOpen(false);
           }}
-          onPublish={confirmDraftPublish}
+          onPublish={() => {
+            void confirmDraftPublish().catch(() => {});
+          }}
           onNotYet={() => {
             setDraftPublishOpen(false);
             showToast({ message: KEPT_AS_DRAFT });
@@ -455,11 +460,11 @@ export function RoutineDetailsPage() {
     });
   };
 
-  const onSave = () => {
-    setFailedSaveAlert(null);
-    void client
+  const onSave = () =>
+    client
       .saveToMyRoutines(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastSavedToMy(community.name),
           onUndo: () => {
@@ -475,18 +480,17 @@ export function RoutineDetailsPage() {
       })
       .catch(() => {
         setMappedFailedSave({ kind: "save_or_edit", item: "routine" }, onSave);
+        throw new Error("routine_save_failed");
       });
-  };
 
-  const onRemove = () => {
-    setFailedSaveAlert(null);
-    void client
+  const onRemove = () =>
+    client
       .removeFromMyRoutines(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastRemovedFromMy(community.name),
           onUndo: () => {
-            setFailedSaveAlert(null);
             void client
               .applyUndo(routineId, undo)
               .then(load)
@@ -502,8 +506,8 @@ export function RoutineDetailsPage() {
       })
       .catch(() => {
         setMappedFailedSave({ kind: "delete_or_remove", item: "routine" }, onRemove);
+        throw new Error("routine_remove_failed");
       });
-  };
 
   const onAdopt = () =>
     client
@@ -567,16 +571,15 @@ export function RoutineDetailsPage() {
       });
   };
 
-  const onKeep = () => {
-    setFailedSaveAlert(null);
-    void client
+  const onKeep = () =>
+    client
       .keepMyCopyVersion(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         const version = myCopy?.source_version_number ?? community.version_number;
         showToast({
           message: toastKeptCopy(version),
           onUndo: () => {
-            setFailedSaveAlert(null);
             void client
               .applyUndo(routineId, undo)
               .then(load)
@@ -589,13 +592,19 @@ export function RoutineDetailsPage() {
       })
       .catch(() => {
         setMappedFailedSave({ kind: "keep_your_version" }, onKeep);
+        throw new Error("routine_keep_failed");
       });
-  };
 
   const detailMoreActions = (
     <div className="rt-detail-more">
       {!saved ? (
-        <button type="button" className="ex-secondary-btn" onClick={onSave}>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          onClick={() => {
+            void onSave().catch(() => {});
+          }}
+        >
           {SAVE_TO_MY_ROUTINES}
         </button>
       ) : null}
@@ -642,7 +651,13 @@ export function RoutineDetailsPage() {
         {VERSION_HISTORY}
       </button>
       {saved ? (
-        <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+        <button
+          type="button"
+          className="ex-link-btn ex-danger"
+          onClick={() => {
+            void onRemove().catch(() => {});
+          }}
+        >
           {REMOVE_FROM_MY}
         </button>
       ) : null}
@@ -776,7 +791,13 @@ export function RoutineDetailsPage() {
               >
                 {useVersionN(community.version_number)}
               </button>
-              <button type="button" className="ex-secondary-btn" onClick={onKeep}>
+              <button
+                type="button"
+                className="ex-secondary-btn"
+                onClick={() => {
+                  void onKeep().catch(() => {});
+                }}
+              >
                 {KEEP_MINE}
               </button>
             </div>

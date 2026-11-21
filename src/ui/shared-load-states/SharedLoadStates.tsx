@@ -70,7 +70,7 @@ export function SharedTryAgainButton({
       type="button"
       className={className ?? "sls-try-again"}
       disabled={busy}
-      aria-label={ariaLabel}
+      aria-label={busy ? TRYING_AGAIN : ariaLabel}
       onClick={onClick}
     >
       {busy ? TRYING_AGAIN : TRY_AGAIN}

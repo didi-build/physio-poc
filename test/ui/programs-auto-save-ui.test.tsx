@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -10,10 +10,10 @@ import {
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
-  AUTO_SAVE_TRY_AGAIN,
   AUTO_SAVE_TRY_AGAIN_ARIA,
   NOT_PUBLISHED_YET,
 } from "../../src/ui/copy/programs.js";
+import { TRY_AGAIN, TRYING_AGAIN } from "../../src/ui/copy/shared-load-states.js";
 import { AutoSaveStatus } from "../../src/ui/programs/AutoSaveStatus.js";
 import { BuilderPublishCard } from "../../src/ui/programs/BuilderPublishCard.js";
 import { LeaveWithoutSavingSheet } from "../../src/ui/programs/LeaveWithoutSavingSheet.js";
@@ -141,7 +141,35 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
       screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
     );
     expect(onTryAgain).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(AUTO_SAVE_TRY_AGAIN)).toBeInTheDocument();
+    expect(screen.getByText(TRY_AGAIN)).toBeInTheDocument();
+  });
+
+  it("uses Trying again... as the accessible name while autosave retry is in flight", async () => {
+    let reject!: () => void;
+    const onTryAgain = vi.fn(
+      () =>
+        new Promise<void>((_resolve, rej) => {
+          reject = rej;
+        }),
+    );
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={onTryAgain}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    );
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    reject();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+      ).toBeEnabled();
+    });
   });
 
   it("shows exactly one failure alert on the phone status autosave block", () => {

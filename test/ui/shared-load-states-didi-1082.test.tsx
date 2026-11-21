@@ -1212,7 +1212,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
           exerciseRequestsClient={stubRequestsClient()}
           programsClient={
             {
-              listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+              listPrograms: vi
+                .fn()
+                .mockResolvedValue({ items: [], matched_code: null }),
               listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
             } as unknown as ProgramsClient
           }
@@ -1225,7 +1227,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
         />
       </MemoryRouter>,
     );
-    const chooser = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    const chooser = await screen.findByRole("dialog", {
+      name: NEW_PROGRAM_SHEET_TITLE,
+    });
     await userEvent.click(
       within(chooser).getByRole("button", {
         name: new RegExp(NEW_PROGRAM_FROM_ROUTINE),
@@ -1235,7 +1239,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
       name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
     });
     await waitFor(() => {
-      expect(within(picker).getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+      expect(
+        within(picker).getByRole("button", { name: TRY_AGAIN }),
+      ).toBeInTheDocument();
     });
     await userEvent.click(within(picker).getByRole("button", { name: TRY_AGAIN }));
     expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();

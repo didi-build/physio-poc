@@ -93,7 +93,6 @@ export const AUTO_SAVE_SAVING = "Saving...";
 export const AUTO_SAVE_SAVED = "Saved";
 export const AUTO_SAVE_NOT_SAVED = "Not saved";
 export const AUTO_SAVE_FAILURE_HELPER = "Your latest changes aren't saved yet.";
-export const AUTO_SAVE_TRY_AGAIN = "Try again";
 export const AUTO_SAVE_TRY_AGAIN_ARIA = "Try saving again";
 
 export const LEAVE_TITLE = "Leave without saving?";

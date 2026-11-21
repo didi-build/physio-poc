@@ -254,7 +254,7 @@ export function MyCopyEditorPage() {
                       type="button"
                       className="ex-primary-btn"
                       onClick={() => {
-                        applyUseLibrary(key);
+                        void applyUseLibrary(key).catch(() => {});
                       }}
                     >
                       {USE_LIBRARY_VERSION}
@@ -263,7 +263,7 @@ export function MyCopyEditorPage() {
                       type="button"
                       className="ex-secondary-btn"
                       onClick={() => {
-                        applyKeepMine(key);
+                        void applyKeepMine(key).catch(() => {});
                       }}
                     >
                       {KEEP_MINE}
