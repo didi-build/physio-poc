@@ -91,13 +91,12 @@ export function MyDefaultsPage() {
     page.share_link_expiry.practitioner.expiresIn !==
       page.share_link_expiry.global.expiresIn;
 
-  const onExpiryChange = (expiresIn: ShareLinkExpiresIn) => {
+  const onExpiryChange = (expiresIn: ShareLinkExpiresIn): void | Promise<void> => {
     if (expiresIn === effectiveExpiry) {
-      return;
+      return Promise.resolve();
     }
     setSavingExpiry(true);
-    setShareExpiryFailed(false);
-    void client
+    return client
       .updateShareLinkExpiry(expiresIn)
       .then((shareLinkExpiry) => {
         setShareExpiryFailed(false);

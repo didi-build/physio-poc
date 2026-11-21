@@ -168,11 +168,10 @@ export function RoutineEditForEveryonePage() {
 
   const onSave = () => {
     if (!dirty) {
-      return;
+      return Promise.resolve();
     }
     setSaveBusy(true);
-    setSaveFailed(false);
-    void client
+    return client
       .saveRoutineCommunityVersion(routineId, {
         expected_published_version: liveVersion,
         name: name.trim(),
@@ -183,6 +182,7 @@ export function RoutineEditForEveryonePage() {
         who_its_for: details!.who_its_for,
       })
       .then((result) => {
+        setSaveFailed(false);
         showToast({ message: toastSavedCommunityVersion(result.version_number) });
         navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }), {
           replace: true,

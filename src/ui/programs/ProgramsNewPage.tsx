@@ -64,7 +64,6 @@ export function ProgramsNewPage() {
     if (!initialFromRoutine || !sessionReady) {
       return;
     }
-    setDeepLinkRoutineLoadFailed(false);
     setDeepLinkRead("pending");
     try {
       const details = await routinesClient.getRoutineDetails(initialFromRoutine);
@@ -72,6 +71,7 @@ export function ProgramsNewPage() {
         throw new Error("Routine is not published");
       }
       setDeepLinkRead("ok");
+      setDeepLinkRoutineLoadFailed(false);
     } catch {
       setDeepLinkRead("failed");
       setDeepLinkRoutineLoadFailed(true);
@@ -95,27 +95,26 @@ export function ProgramsNewPage() {
     routineId: string,
     options?: { openPublishSheet?: boolean },
   ) => {
-    setCreateFailedSave(null);
     setRoutineBusy(true);
-    const retry = () => {
-      createFromPickedRoutine(routineId, options);
-    };
-    void createProgramFromRoutineWithDetails(client, routinesClient, routineId)
-      .then((result) => {
-        const routineName = result.program.routine_origin?.routine_name;
-        if (routineName && !options?.openPublishSheet) {
-          showToast({ message: programCreatedFromRoutineToast(routineName) });
-        }
-        setPickerOpen(false);
-        setOpen(false);
-        goToBuilder(result.program.code, options?.openPublishSheet ?? false);
-      })
-      .catch(() => {
-        setCreateFailedSave({ onTryAgain: retry });
-      })
-      .finally(() => {
-        setRoutineBusy(false);
-      });
+    const attempt = () =>
+      createProgramFromRoutineWithDetails(client, routinesClient, routineId)
+        .then((result) => {
+          setCreateFailedSave(null);
+          const routineName = result.program.routine_origin?.routine_name;
+          if (routineName && !options?.openPublishSheet) {
+            showToast({ message: programCreatedFromRoutineToast(routineName) });
+          }
+          setPickerOpen(false);
+          setOpen(false);
+          goToBuilder(result.program.code, options?.openPublishSheet ?? false);
+        })
+        .catch(() => {
+          setCreateFailedSave({ onTryAgain: attempt });
+        })
+        .finally(() => {
+          setRoutineBusy(false);
+        });
+    void attempt();
   };
 
   return (
@@ -128,7 +127,10 @@ export function ProgramsNewPage() {
         />
       ) : null}
       {createFailedSave ? (
-        <ProgramCreateFailedSaveStatus onTryAgain={createFailedSave.onTryAgain} />
+        <ProgramCreateFailedSaveStatus
+          onTryAgain={createFailedSave.onTryAgain}
+          busy={routineBusy}
+        />
       ) : null}
       <NewProgramSheet
         open={open && !pickerOpen}
@@ -138,11 +140,11 @@ export function ProgramsNewPage() {
         }}
         onFromScratch={() => {
           const run = () => {
-            setCreateFailedSave(null);
             const programId = crypto.randomUUID();
             return client
               .createProgram({ program_id: programId })
               .then((result) => {
+                setCreateFailedSave(null);
                 navigate(
                   fillPhysioAppRoutePattern("programBuilder", {
                     programCode: result.program.code,

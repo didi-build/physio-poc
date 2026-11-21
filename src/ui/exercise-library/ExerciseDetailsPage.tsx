@@ -169,11 +169,11 @@ export function ExerciseDetailsPage() {
   const loopCaptionSuffix =
     details.category === "Strengthening" ? MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX : "";
 
-  const onSave = () => {
-    setSaveFailed(false);
-    void client
+  const onSave = () =>
+    client
       .saveToMyExercises(exerciseId)
       .then(({ undo }) => {
+        setSaveFailed(false);
         showToast({
           message: TOAST_SAVED_MY,
           onUndo: () => {
@@ -185,13 +185,12 @@ export function ExerciseDetailsPage() {
       .catch(() => {
         setSaveFailed(true);
       });
-  };
 
-  const onRemove = () => {
-    setRemoveFailed(false);
-    void client
+  const onRemove = () =>
+    client
       .removeFromMyExercises(exerciseId)
       .then(({ undo }) => {
+        setRemoveFailed(false);
         showToast({
           message: toastRemovedFromMy(title),
           onUndo: () => {
@@ -203,7 +202,6 @@ export function ExerciseDetailsPage() {
       .catch(() => {
         setRemoveFailed(true);
       });
-  };
 
   return (
     <section className="ex-page ex-details" aria-labelledby="ex-detail-heading">

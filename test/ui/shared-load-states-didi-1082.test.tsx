@@ -75,7 +75,10 @@ import {
   TRYING_AGAIN,
   BACK_TO_EXERCISES,
   BACK_TO_PROGRAMS,
+  BACK_TO_ROUTINES,
   BACK_TO_REQUESTS_AND_DRAFTS,
+  NOT_FOUND_HELPER_DRAFT,
+  NOT_FOUND_HELPER_PROGRAM,
   failedRemoveItem,
   failedSaveItem,
   itemLoadErrorPrimary,
@@ -183,7 +186,14 @@ describe("DIDI-1082 shared load states copy (pinned literals)", () => {
     expect(notFoundHelper("exercise")).toBe(
       "It may have been merged into another exercise.",
     );
+    expect(NOT_FOUND_HELPER_PROGRAM).toBe(
+      "It may have been deleted. Deleted programs stay in Recently deleted for 30 days.",
+    );
+    expect(NOT_FOUND_HELPER_DRAFT).toBe(
+      "It may have been approved or discarded. Approved exercises are in My exercises.",
+    );
     expect(BACK_TO_EXERCISES).toBe("Back to exercises");
+    expect(BACK_TO_REQUESTS_AND_DRAFTS).toBe("Back to requests and drafts");
   });
 
   it("pins FAILED_MERGE_EXERCISES literal", () => {
@@ -371,6 +381,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("exercise"))).toBeInTheDocument();
     });
     expect(screen.getByText(notFoundHelper("exercise"))).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: BACK_TO_EXERCISES });
+    expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("exercises"));
     expect(
       screen.queryByText(itemLoadErrorPrimary("exercise")),
     ).not.toBeInTheDocument();
@@ -398,6 +410,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("exercise"))).toBeInTheDocument();
     });
     expect(screen.getByText(notFoundHelper("exercise"))).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: BACK_TO_EXERCISES });
+    expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("exercises"));
     expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
   });
 
@@ -469,6 +483,94 @@ describe("DIDI-1082 shared load states behaviour", () => {
       screen.queryByRole("status", { name: loadingItemStatus("exercise") }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(loadingItemStatus("exercise"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("exercise-library-detail-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
+
+  it("does not expose loading item status on my copy when initial load failed (C1)", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({
+            getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+          })}
+          exerciseRequestsClient={stubRequestsClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(loadingItemStatus("exercise"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("exercise-library-mycopy-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
+
+  it("does not expose loading item status on routine details when initial load failed (C1)", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("routineDetail", { routineId: "rt-1" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({})}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={
+            {
+              getRoutineDetails: vi.fn().mockRejectedValue(new Error("network")),
+            } as unknown as RoutinesClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(loadingItemStatus("routine"))).not.toBeInTheDocument();
+    expect(screen.getByTestId("exercise-library-busy-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
+
+  it("shows not-found on routine details when load fails with not_found", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("routineDetail", { routineId: "rt-missing" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({})}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={
+            {
+              getRoutineDetails: vi
+                .fn()
+                .mockRejectedValue(new Error("routine_not_found")),
+            } as unknown as RoutinesClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(notFoundTitle("routine"))).toBeInTheDocument();
+    });
+    const back = screen.getByRole("link", { name: BACK_TO_ROUTINES });
+    expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("routines"));
   });
 
   it("shows Trying again while an async list retry is in flight", async () => {
@@ -610,9 +712,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
     await waitFor(() => {
       expect(screen.getByText(notFoundTitle("draft"))).toBeInTheDocument();
     });
-    expect(
-      screen.getAllByRole("link", { name: BACK_TO_REQUESTS_AND_DRAFTS }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getByText(NOT_FOUND_HELPER_DRAFT)).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: BACK_TO_REQUESTS_AND_DRAFTS });
+    expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("requests"));
     expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
     expect(screen.queryByText(itemLoadErrorPrimary("draft"))).not.toBeInTheDocument();
   });
@@ -722,9 +824,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
     await waitFor(() => {
       expect(screen.getByText(notFoundTitle("program"))).toBeInTheDocument();
     });
-    expect(
-      screen.getAllByRole("link", { name: BACK_TO_PROGRAMS }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getByText(NOT_FOUND_HELPER_PROGRAM)).toBeInTheDocument();
+    const back = screen.getByRole("link", { name: BACK_TO_PROGRAMS });
+    expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("programs"));
     expect(screen.getByTestId("programs-builder-error-slot")).toHaveTextContent(
       notFoundTitle("program"),
     );

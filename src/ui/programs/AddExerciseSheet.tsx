@@ -117,10 +117,9 @@ export function AddExerciseSheet({
       ? flattenMy(myListResult.sections)
       : ([] as MyExerciseListItem[]);
   const approved: ApprovedExerciseSummary[] = approvedResult?.exercises ?? [];
-  const myFiltered = myItems;
   const loading = tab === "mine" ? myLoading : approvedLoading;
   const loadFailed = tab === "mine" ? myLoadFailed : approvedLoadFailed;
-  const hasListContent = tab === "mine" ? myFiltered.length > 0 : approved.length > 0;
+  const hasListContent = tab === "mine" ? myItems.length > 0 : approved.length > 0;
   const showExerciseList = !loading && (!loadFailed || hasListContent);
   const initialListLoadFailed = sharedInitialLoadFailed(hasListContent, loadFailed);
   const reloadList = useCallback(() => {
@@ -131,7 +130,7 @@ export function AddExerciseSheet({
   }, [refreshApprovedSearch, refreshMyList, tab]);
 
   const showMyEmpty =
-    tab === "mine" && !loading && myFiltered.length === 0 && query.trim();
+    tab === "mine" && !loading && myItems.length === 0 && query.trim();
 
   return (
     <ConfirmSheet
@@ -193,7 +192,7 @@ export function AddExerciseSheet({
       ) : null}
       {showExerciseList && tab === "mine" ? (
         <ul className="pg-add-exercise-list">
-          {myFiltered.map((item) => (
+          {myItems.map((item) => (
             <li key={item.exercise_id}>
               <button
                 type="button"

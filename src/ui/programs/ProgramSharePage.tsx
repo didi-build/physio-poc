@@ -123,7 +123,6 @@ export function ProgramSharePage() {
     if (!shareView) {
       return;
     }
-    setExpirySaveFailed(false);
     try {
       const program = await client.getProgramByCode(programCode);
       const result = await client.setShareLinkExpiry(program.program_id, {
@@ -134,6 +133,7 @@ export function ProgramSharePage() {
       setShareView(result);
       setExpiry(next);
       setCustomDate(nextCustom);
+      setExpirySaveFailed(false);
       if (next === SHARE_LINK_EXPIRES_IN.never) {
         showToast({ message: LINK_SET_NEVER_TOAST });
       } else if (result.expires_at) {
@@ -205,12 +205,12 @@ export function ProgramSharePage() {
         <ProgramsBuilderErrorSlot
           loadFailed={loadFailed}
           hasContent={shareView !== null}
-          onTryAgain={() => {
-            setLoadFailed(false);
-            void load().catch(() => {
-              setLoadFailed(true);
-            });
-          }}
+          onTryAgain={() =>
+            load().then(
+              () => setLoadFailed(false),
+              () => setLoadFailed(true),
+            )
+          }
         />
       </section>
     );

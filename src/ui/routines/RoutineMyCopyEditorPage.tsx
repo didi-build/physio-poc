@@ -130,18 +130,17 @@ export function RoutineMyCopyEditorPage() {
     setDirty(true);
   };
 
-  const onSave = () => {
-    setSaveFailed(false);
-    void client
+  const onSave = () =>
+    client
       .updateMyCopy(routineId, rows)
       .then(() => {
+        setSaveFailed(false);
         showToast({ message: TOAST_SAVED_MY_COPY });
         navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
       })
       .catch(() => {
         setSaveFailed(true);
       });
-  };
 
   return (
     <section className="ex-page rt-my-copy" aria-labelledby="rt-my-copy-heading">

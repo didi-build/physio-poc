@@ -139,36 +139,34 @@ export function MyCopyEditorPage() {
 
   const titleField = details.resolved_text.find((field) => field.key === "title");
 
-  const applyUseLibrary = (key: TextOverrideKey) => {
-    setFailedSave(null);
-    void client
+  const applyUseLibrary = (key: TextOverrideKey) =>
+    client
       .updateMyCopy(exerciseId, { use_library_version: [key] })
       .then(() => {
+        setFailedSave(null);
         void refresh({ force: true });
       })
       .catch(() => {
         setFailedSave({ action: { kind: "switch_library_version" }, key });
       });
-  };
 
-  const applyKeepMine = (key: TextOverrideKey) => {
-    setFailedSave(null);
-    void client
+  const applyKeepMine = (key: TextOverrideKey) =>
+    client
       .updateMyCopy(exerciseId, { keep_mine: [key] })
       .then(() => {
+        setFailedSave(null);
         void refresh({ force: true });
       })
       .catch(() => {
         setFailedSave({ action: { kind: "keep_your_version" }, key });
       });
-  };
 
   const onRemove = () => {
     const name = titleField?.resolved ?? details.library.title;
-    setFailedSave(null);
-    void client
+    return client
       .removeFromMyExercises(exerciseId)
       .then(({ undo }) => {
+        setFailedSave(null);
         showToast({
           message: toastRemovedFromMy(name),
           onUndo: () => {

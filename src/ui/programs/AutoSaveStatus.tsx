@@ -3,16 +3,16 @@ import {
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
-  AUTO_SAVE_TRY_AGAIN,
   AUTO_SAVE_TRY_AGAIN_ARIA,
 } from "../copy/programs.js";
+import { SharedTryAgainButton } from "../shared-load-states/SharedLoadStates.js";
 import type { AutoSaveUiState } from "./use-program-auto-save.js";
 
 export type AutoSaveStatusProps = {
   state: AutoSaveUiState;
   failureAlertShown: boolean;
   failureMessage: string;
-  onTryAgain: () => void;
+  onTryAgain: () => void | Promise<void>;
   className?: string;
   showFailureAlert?: boolean;
 };
@@ -52,14 +52,11 @@ export function AutoSaveStatus({
               {failureMessage}
             </p>
           ) : null}
-          <button
-            type="button"
+          <SharedTryAgainButton
+            onTryAgain={onTryAgain}
             className="pg-btn pg-btn--secondary"
-            aria-label={AUTO_SAVE_TRY_AGAIN_ARIA}
-            onClick={onTryAgain}
-          >
-            {AUTO_SAVE_TRY_AGAIN}
-          </button>
+            ariaLabel={AUTO_SAVE_TRY_AGAIN_ARIA}
+          />
         </>
       ) : null}
     </div>

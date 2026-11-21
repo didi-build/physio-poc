@@ -113,7 +113,6 @@ export function PickRoutineForProgramSheet({
       return;
     }
     setLoading(true);
-    setLoadFailed(false);
     setSelectedId(preselectedRoutineId ?? null);
     try {
       const [community, mine] = await Promise.all([
@@ -139,6 +138,7 @@ export function PickRoutineForProgramSheet({
         }
       }
       const loaded = [...byId.values()];
+      setLoadFailed(false);
       setRoutines(loaded);
       if (
         preselectedRoutineId &&

@@ -353,7 +353,6 @@ export function ExerciseLibraryPage({
       return;
     }
     setSubmittingRequest(true);
-    setSubmitRequestFailed(false);
     try {
       const result = await requestsClient.submitRequest({
         requested_name: requestedName,
@@ -372,6 +371,7 @@ export function ExerciseLibraryPage({
         return;
       }
       if (result.outcome === "created") {
+        setSubmitRequestFailed(false);
         setSubmittedRequestName(requestedName);
         onRequestsChanged?.();
         void refreshInProgressCount();

@@ -2,16 +2,16 @@ import { DRAFT_SAVED_UNTIL_PUBLISH, DRAFT_SAVING } from "../copy/routines.js";
 import {
   AUTO_SAVE_FAILURE_HELPER,
   AUTO_SAVE_NOT_SAVED,
-  AUTO_SAVE_TRY_AGAIN,
   AUTO_SAVE_TRY_AGAIN_ARIA,
 } from "../copy/programs.js";
+import { SharedTryAgainButton } from "../shared-load-states/SharedLoadStates.js";
 import type { AutoSaveUiState } from "../programs/use-program-auto-save.js";
 
 export type RoutineAutoSaveStatusProps = {
   state: AutoSaveUiState;
   failureAlertShown: boolean;
   failureMessage: string;
-  onTryAgain: () => void;
+  onTryAgain: () => void | Promise<void>;
 };
 
 export function RoutineAutoSaveStatus({
@@ -44,14 +44,11 @@ export function RoutineAutoSaveStatus({
               {failureMessage}
             </p>
           ) : null}
-          <button
-            type="button"
+          <SharedTryAgainButton
+            onTryAgain={onTryAgain}
             className="ex-secondary-btn"
-            aria-label={AUTO_SAVE_TRY_AGAIN_ARIA}
-            onClick={onTryAgain}
-          >
-            {AUTO_SAVE_TRY_AGAIN}
-          </button>
+            ariaLabel={AUTO_SAVE_TRY_AGAIN_ARIA}
+          />
         </>
       ) : null}
     </div>

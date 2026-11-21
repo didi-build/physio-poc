@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type RefObject } from "react";
 import { Link } from "react-router-dom";
 import {
   LIST_LOAD_ERROR_SECONDARY,
@@ -28,12 +28,18 @@ type TryAgainProps = {
   className?: string;
 };
 
-function TryAgainButton({
+/** Shared manual retry control (spec L34/L88/L89). */
+export function SharedTryAgainButton({
   onTryAgain,
   disabled,
   className,
   ariaLabel,
-}: TryAgainProps & { ariaLabel?: string }) {
+  focusAlertOnFailureRef,
+}: TryAgainProps & {
+  ariaLabel?: string;
+  /** When set, failed retries move focus to this alert container (failed-save spec). */
+  focusAlertOnFailureRef?: RefObject<HTMLElement | null>;
+}) {
   const [retrying, setRetrying] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const busy = disabled || retrying;
@@ -43,13 +49,20 @@ function TryAgainButton({
       return;
     }
     setRetrying(true);
+    let succeeded = true;
     void Promise.resolve(onTryAgain())
-      .catch(() => {})
+      .catch(() => {
+        succeeded = false;
+      })
       .finally(() => {
         setRetrying(false);
-        buttonRef.current?.focus();
+        if (!succeeded && focusAlertOnFailureRef?.current) {
+          focusAlertOnFailureRef.current.focus();
+        } else {
+          buttonRef.current?.focus();
+        }
       });
-  }, [busy, onTryAgain]);
+  }, [busy, focusAlertOnFailureRef, onTryAgain]);
 
   return (
     <button
@@ -91,7 +104,7 @@ function AlertBanner({
         <p className="sls-banner-primary">{primary}</p>
         {secondary ? <p className="sls-banner-secondary">{secondary}</p> : null}
       </div>
-      <TryAgainButton
+      <SharedTryAgainButton
         onTryAgain={onTryAgain}
         className="sls-try-again sls-try-again--banner"
       />
@@ -299,17 +312,28 @@ export function SharedFailedSaveAlert({
   message,
   onTryAgain,
   testId = "shared-failed-save-alert",
+  retryDisabled = false,
 }: {
   message: string;
   onTryAgain: () => void | Promise<void>;
   testId?: string;
+  retryDisabled?: boolean;
 }) {
+  const alertRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="sls-failed-save" role="alert" data-testid={testId}>
+    <div
+      ref={alertRef}
+      className="sls-failed-save"
+      role="alert"
+      tabIndex={-1}
+      data-testid={testId}
+    >
       <p className="sls-failed-save-message">{message}</p>
-      <TryAgainButton
+      <SharedTryAgainButton
         onTryAgain={onTryAgain}
+        disabled={retryDisabled}
         className="sls-back-button sls-failed-save-retry"
+        focusAlertOnFailureRef={alertRef}
       />
     </div>
   );
