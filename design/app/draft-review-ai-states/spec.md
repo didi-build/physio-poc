@@ -20,6 +20,11 @@ Parent flows (search, request, requests list, approved) stay in [exercise-reques
 
 Source: `DrBoard.tsx` / `BFillsInPlace.tsx`, revision `471080825279098880`. Board captures: [overview](mockups/00-magicpath-board-overview.png), [full board](mockups/00-magicpath-board-full.png) (390 px and 1280 px columns on one canvas). Per-state frames use `data-frame="{state}-390"` and `data-frame="{state}-1280"` in that revision. No design-preview chrome in build.
 
+**Mockup caveats (QA, Nov 21, 2026, [DIDI-1210](https://linear.app/didi-build/issue/DIDI-1210) R1 on PR 143):**
+
+- The committed board PNGs show only the **top** of the 390 px column (states 1a, 1b, and 2 in the overview crop). Build follows the MagicPath frames at [bright-air-5265](https://designs.magicpath.ai/v1/bright-air-5265) (revision `471080825279098880`) and the `data-frame` ids in the states table, not the cropped PNGs alone.
+- In those generating frames, **Approve** may look enabled in the exploration art. **This spec wins:** **Approve** and **Regenerate** stay disabled until text and both images exist. Re-render of board PNGs is not required for this follow-up.
+
 ## Variant B behaviour
 
 | Topic | Rule |
@@ -28,7 +33,7 @@ Source: `DrBoard.tsx` / `BFillsInPlace.tsx`, revision `471080825279098880`. Boar
 | Progress strip | While the **first draft** is not complete, a teal **AI drafting** strip (with indeterminate bar) **replaces** the amber **Draft, not approved** banner. When the draft is complete, the banner returns. |
 | Section order (phone) | **Images** card above **Exercise details**, matching `DraftReviewPage` DOM order. At **1280 px**, two columns: text left, images right (existing `.ex-review-grid`). |
 | Text then images | Server orders text before images. **Exercise details** shows **Generating** until text exists, then read-only field copy (no **Edit** links). **Images** shows **Generating** until both stills exist. |
-| Approve / Regenerate | **Approve** and **Regenerate** stay **disabled** until text and both images are ready (no half-approved draft). Nothing half-filled is shown as an approved-quality draft. No extra hint line under the buttons: the progress strip and section **Generating** labels explain the wait (Designer pick, `a887af34`). |
+| Approve / Regenerate | **Approve** and **Regenerate** stay **disabled** until text and both images are ready (no half-approved draft). Nothing half-filled is shown as an approved-quality draft. No extra hint line under the buttons: the progress strip and section **Generating** labels explain the wait (Designer pick G12, [DIDI-1210](https://linear.app/didi-build/issue/DIDI-1210) comment `e87bf516`). |
 | Edit | No per-field **Edit** and no **Edit all** until the whole first draft is ready. |
 | Motion | Start and end stills use the existing **browser transition** between images (`ExerciseMotion.tsx`). **No AI video** is generated, shown, or regenerated on this page. |
 | AI image tag | **No** "AI image" tag on stills on this page (`673158e8`). Removal elsewhere is [DIDI-1268](https://linear.app/didi-build/issue/DIDI-1268), not this PR. |
@@ -58,7 +63,7 @@ Reused sheet chrome from [exercise-requests/spec.md](../exercise-requests/spec.m
 
 | # | State | What it shows | MagicPath frame (390 / 1280) |
 | -- | -- | -- | -- |
-| 01 | gen-text | Strip + title; **Exercise details** generating; **Images** waiting; disabled **Approve** / **Regenerate**; `{n} of 5 left today` | `genText-390` / `genText-1280` |
+| 01 | gen-text | Strip + title; **Exercise details** **Generating**; **Images** **Generating**; disabled **Approve** / **Regenerate**; `{n} of 5 left today` | `genText-390` / `genText-1280` |
 | 02 | gen-images | Text sections filled read-only; **Images** generating | `genImages-390` / `genImages-1280` |
 | 03 | elsewhere | Same as 01 or 02 plus string 8 in the strip | `elsewhere-390` / `elsewhere-1280` |
 | 04 | fail-text | String 1; **Regenerate text** retry; no draft body | `failText-390` / `failText-1280` |
@@ -98,7 +103,7 @@ Reused sheet chrome from [exercise-requests/spec.md](../exercise-requests/spec.m
 | Id | String / choice | Citation |
 | -- | -- | -- |
 | G11 | **Try again** as the visible label for image-generation or image-regenerate failure retry | DIDI-594 `a887af34` item 24 (Designer pick under the standing rule; matches `AUTO_SAVE_TRY_AGAIN` / prior **Try again** lock `fed76bfb`) |
-| G12 | No helper text under disabled **Approve** during the first draft; progress strip and **Generating** only | Designer pick under the standing rule (`a887af34`; progress wording is already approved reuse) |
+| G12 | No helper text under disabled **Approve** during the first draft; progress strip and **Generating** only | Designer pick under the standing rule ([DIDI-1210](https://linear.app/didi-build/issue/DIDI-1210) comment `e87bf516`; standing rule on DIDI-594 `a887af34`) |
 
 ### Reused from [exercise-requests/spec.md](../exercise-requests/spec.md)
 
@@ -134,7 +139,7 @@ Includes **AI drafting**, **Usually ready in a minute**, **Generating**, **Appro
 | Regenerate text vs daily 5 | Text regen uses server cap only (`8b02e1ef`) | Undecided in v12 |
 | First draft vs counter | First draft free; counter is regenerates only (`8b02e1ef`) | Undecided |
 | In progress elsewhere | Generating UI + G8 (`8b02e1ef`) | Not specified |
-| Hint under disabled **Approve** | None during first generation (G12, `a887af34`) | MagicPath exploration proposed a one-line hint |
+| Hint under disabled **Approve** | None during first generation (G12, `e87bf516`) | MagicPath exploration proposed a one-line hint |
 
 ## Locked Product direction (verbatim from DIDI-594)
 
@@ -171,7 +176,7 @@ Includes **AI drafting**, **Usually ready in a minute**, **Generating**, **Appro
 3. No AI video and no AI image tag on this page (`8b02e1ef`, `673158e8`).
 4. Mobile first at **390 px**; **1280 px** uses the existing two-column review grid.
 5. No gallery components in the Physio POC (spec and mockups only).
-6. No **Approve** toolbar hint during first generation (G12, `a887af34`).
+6. No **Approve** toolbar hint during first generation (G12, `e87bf516`).
 
 ## Build notes
 
@@ -181,5 +186,6 @@ Includes **AI drafting**, **Usually ready in a minute**, **Generating**, **Appro
 
 ## Changes
 
-- **Nov 21, 2026**: DIDI-1210 PR follow-up. G12: no **Approve** hint during first generation (Designer pick, `a887af34`). https://linear.app/didi-build/issue/DIDI-1210
+- **Nov 21, 2026**: DIDI-1210 QA follow-up (PR 143 R1). G12 cites `e87bf516`; mockup caveats (cropped PNGs, disabled **Approve**); state 01 uses **Generating** for **Images**; README Features row. https://linear.app/didi-build/issue/DIDI-1210
+- **Nov 21, 2026**: DIDI-1210 PR follow-up. G12: no **Approve** hint during first generation (Designer pick, `e87bf516`). https://linear.app/didi-build/issue/DIDI-1210
 - **Nov 21, 2026**: DIDI-1210. Variant B draft review AI states: generating, in progress elsewhere, failures, daily limit, Regenerate text, sheet rewords, cap rules, copy table, is/was for video and AI image tag. Diadem locks `f0d278ce`, `cfbd2e59`, `8b02e1ef`, `673158e8`, `b8ac5450`; Designer picks G11 to G12 under `a887af34`. Unblocks [DIDI-1215](https://linear.app/didi-build/issue/DIDI-1215). https://linear.app/didi-build/issue/DIDI-1210

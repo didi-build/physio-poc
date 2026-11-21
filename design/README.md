@@ -16,6 +16,7 @@ Approved design for the Physio POC web app and AI assistant connector. Diadem ap
 | Exercise library (My exercises, All exercises, details, edit for everyone, versions, duplicates and merge, media regeneration) | [app/exercise-library](app/exercise-library/spec.md) | 42 | https://linear.app/didi-build/issue/DIDI-810 |
 | Body region picker (exercise form chips plus typeahead, multi-region, r8 AI pending) | [app/body-region-picker](app/body-region-picker/spec.md) | 14 | https://linear.app/didi-build/issue/DIDI-1253 · [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256) |
 | Exercise requests (similar check, request form, conflicts, drafts and review) | [app/exercise-requests](app/exercise-requests/spec.md) | 18 | https://linear.app/didi-build/issue/DIDI-810 |
+| Draft review AI generation states (variant B: generating, failure, limit, Regenerate text) | [app/draft-review-ai-states](app/draft-review-ai-states/spec.md) | 2 | https://linear.app/didi-build/issue/DIDI-1210 |
 | Routines (community and My routines, update flag, drafts, publish, versions, remove) | [app/routines](app/routines/spec.md) | 46 | https://linear.app/didi-build/issue/DIDI-853 |
 | Similar routine warning (New routine, variant B inline card) | [app/similar-routine-warning](app/similar-routine-warning/spec.md) | 12 | https://linear.app/didi-build/issue/DIDI-1226 |
 | Programs (list and search, builder, codes and names, publish sheet, share link, link page, delete and restore) | [app/programs](app/programs/spec.md) | 67 | https://linear.app/didi-build/issue/DIDI-810 |
