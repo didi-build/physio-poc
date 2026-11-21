@@ -42,6 +42,8 @@ import { mappedFailedSaveMessage } from "../../src/ui/shared-load-states/failed-
 import {
   SharedListLoadErrorBanner,
   SharedRefreshFailureBanner,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
 } from "../../src/ui/shared-load-states/SharedLoadStates.js";
 import { isLoadNotFoundError } from "../../src/ui/shared-load-states/classify-load-error.js";
 import { AUTO_SAVE_NOT_SAVED } from "../../src/ui/copy/programs.js";
@@ -140,6 +142,13 @@ describe("DIDI-1082 shared load states copy (pinned literals)", () => {
 });
 
 describe("DIDI-1082 shared load states behaviour", () => {
+  it("applies refresh-failure only when cached content is present", () => {
+    expect(sharedRefreshFailed(true, true)).toBe(true);
+    expect(sharedRefreshFailed(false, true)).toBe(false);
+    expect(sharedInitialLoadFailed(false, true)).toBe(true);
+    expect(sharedInitialLoadFailed(true, true)).toBe(false);
+  });
+
   it("classifies not_found errors for not-found UI", () => {
     expect(isLoadNotFoundError({ code: "exercise_not_found" })).toBe(true);
     expect(isLoadNotFoundError(new Error("routine_not_found"))).toBe(true);
