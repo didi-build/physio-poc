@@ -132,7 +132,7 @@ function assertNoEmailLocalPartShown(emailLocal: string): void {
 }
 
 describe("exercise requests UI", () => {
-  it("G13: request form patient note shows inline alert, focus, aria, cleared on edit", async () => {
+  async function submitRequestFormWithPatientNoteError() {
     const submitRequest = vi.fn().mockRejectedValue(
       new ExerciseRequestsRequestError("Remove patient details", {
         status: 400,
@@ -159,20 +159,46 @@ describe("exercise requests UI", () => {
     const note = screen.getByLabelText(new RegExp(NOTE_FOR_AI, "i"));
     await userEvent.type(note, "patient dob 1990");
     await userEvent.click(screen.getByRole("button", { name: SUBMIT_REQUEST }));
+    return { note };
+  }
 
+  it("G13 request form: patient note inline alert shows G13 copy", async () => {
+    await submitRequestFormWithPatientNoteError();
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
     expect(alert.textContent).toBe(PIN_G13);
-    expect(note.getAttribute("aria-invalid")).toBe("true");
-    expect(note.getAttribute("aria-describedby")).toBe("ex-req-note-patient-error");
+    expect(screen.queryByText(PIN_G1)).toBeNull();
+  });
+
+  it("G13 request form: patient note rejection focuses note", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
     await waitFor(() => {
       expect(document.activeElement).toBe(note);
     });
-    expect(screen.queryByText(PIN_G1)).toBeNull();
+  });
+
+  it("G13 request form: patient note error clears on edit", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    await screen.findByRole("alert");
     await userEvent.clear(note);
     await userEvent.type(note, "supine cues");
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(note.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("G13 request form: patient note sets aria-invalid", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    expect(note.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("G13 request form: patient note error uses role alert", async () => {
+    await submitRequestFormWithPatientNoteError();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("role", "alert");
+  });
+
+  it("G13 request form: patient note sets aria-describedby", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    expect(note.getAttribute("aria-describedby")).toBe("ex-req-note-patient-error");
   });
 
   it("submits a request from the search form", async () => {

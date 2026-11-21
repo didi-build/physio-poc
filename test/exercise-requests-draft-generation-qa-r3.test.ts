@@ -114,7 +114,7 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         apiKey: "super-secret-api-key",
         fetchImpl,
       });
-      const envelope = await handleRequest(
+      const responsePromise = handleRequest(
         authedJsonRequest(exerciseRequestRegenerateTextPath(requestId), cookie, {
           method: "POST",
           body: JSON.stringify({ note: "shorter cues" }),
@@ -128,10 +128,11 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
           raw,
         };
       });
-      await expect(envelope).toMatchObject({
+      await expect(responsePromise).resolves.toMatchObject({
         status: 502,
         body: REGEN_TEXT_FAILED_BODY,
       });
+      const envelope = await responsePromise;
       expect(fetchImpl).toHaveBeenCalledTimes(2);
       expect(envelope.raw).not.toContain("super-secret-api-key");
     } finally {

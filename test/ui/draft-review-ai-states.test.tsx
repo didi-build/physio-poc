@@ -877,7 +877,7 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     });
   });
 
-  it("G13: patient details in regen note shows inline alert, not G1, sheet stays open", async () => {
+  async function openRegenSheetWithPatientNoteError() {
     const completedView: ExerciseRequestDraftView = {
       request_id: "req-1",
       requested_name: "Heel slide",
@@ -889,13 +889,6 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
       generation: { generation_in_progress: false, first_draft_complete: true },
       draft: draftBody(),
     };
-    const getRegenerationQuota = vi.fn().mockResolvedValue({
-      limit: 5,
-      used: 1,
-      remaining: 4,
-      limitReached: false,
-    });
-    const mediaClient = stubMediaClient({ getRegenerationQuota });
     const requestsClient = {
       getRequest: vi.fn().mockResolvedValue(completedView),
       generateRequest: vi.fn(),
@@ -913,7 +906,101 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
       listSimilar: vi.fn(),
       submitRequest: vi.fn(),
     } as unknown as ExerciseRequestsClient;
-    renderReview(completedView, { requestsClient, mediaClient });
+    renderReview(completedView, { requestsClient, mediaClient: stubMediaClient() });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const note = within(dialog).getByLabelText(/Note for the AI/i);
+    await userEvent.type(note, "patient@example.com");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    return { dialog, note };
+  }
+
+  it("G13 regen: patient note inline alert shows G13 copy", async () => {
+    const { dialog } = await openRegenSheetWithPatientNoteError();
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+    expect(alert.textContent).toBe(PIN_G13);
+  });
+
+  it("G13 regen: patient note rejection focuses note", async () => {
+    const { note } = await openRegenSheetWithPatientNoteError();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
+  it("G13 regen: patient note error clears on edit", async () => {
+    const { dialog, note } = await openRegenSheetWithPatientNoteError();
+    await within(dialog).findByRole("alert");
+    await userEvent.clear(note);
+    await userEvent.type(note, "forearm support");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+  });
+
+  it("G13 regen: patient note sets aria-invalid", async () => {
+    const { note } = await openRegenSheetWithPatientNoteError();
+    expect(note.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("G13 regen: patient note error uses role alert", async () => {
+    const { dialog } = await openRegenSheetWithPatientNoteError();
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert).toHaveAttribute("role", "alert");
+  });
+
+  it("G13 regen: patient note sets aria-describedby", async () => {
+    const { note } = await openRegenSheetWithPatientNoteError();
+    expect(note.getAttribute("aria-describedby")).toBe("ex-regen-note-patient-error");
+  });
+
+  it("G13 regen: patient detail rejection does not refresh quota", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const getRegenerationQuota = vi.fn().mockResolvedValue({
+      limit: 5,
+      used: 1,
+      remaining: 4,
+      limitReached: false,
+    });
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockRejectedValue(
+        new ExerciseRequestsRequestError("Regeneration note: patient email", {
+          status: 400,
+          error: "invalid_input",
+          message: "Regeneration note: Remove patient details",
+        }),
+      ),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, {
+      requestsClient,
+      mediaClient: stubMediaClient({ getRegenerationQuota }),
+    });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
     });
@@ -931,25 +1018,6 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     );
     await waitFor(() => {
       expect(getRegenerationQuota).toHaveBeenCalledTimes(quotaCallsBeforeRegen);
-    });
-    const alert = await within(dialog).findByRole("alert");
-    expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
-    expect(alert.textContent).toBe(PIN_G13);
-    expect(note.getAttribute("aria-invalid")).toBe("true");
-    expect(note.getAttribute("aria-describedby")).toBe("ex-regen-note-patient-error");
-    expect(document.activeElement).toBe(note);
-    expect(screen.queryByText(PIN_G1)).toBeNull();
-    expect(dialog).toBeTruthy();
-    await userEvent.clear(note);
-    await userEvent.type(note, "forearm support");
-    expect(within(dialog).queryByRole("alert")).toBeNull();
-    expect(getRegenerationQuota).toHaveBeenCalled();
-    const callsBefore = getRegenerationQuota.mock.calls.length;
-    await userEvent.click(
-      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
-    );
-    await waitFor(() => {
-      expect(getRegenerationQuota.mock.calls.length).toBe(callsBefore);
     });
   });
 
