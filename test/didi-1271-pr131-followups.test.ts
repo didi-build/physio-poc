@@ -260,6 +260,7 @@ describe("DIDI-1271 fake DeepInfra provider warning (production Worker)", () => 
         event: WORKER_FAKE_DEEPINFRA_PROVIDER_LOG_EVENT,
         missing_secret_name: WORKER_FAKE_DEEPINFRA_PROVIDER_MISSING_SECRET_NAME,
       });
+      expect(Object.keys(parsed).sort()).toEqual(["event", "missing_secret_name"]);
       for (const line of logSpy.mock.calls.map((call) => String(call[0]))) {
         expect(line).not.toContain(SENTINEL_DEEPINFRA_KEY);
       }
