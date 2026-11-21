@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
-  listLoadErrorPrimary,
   listTokenForSurface,
   loadingListVisible,
   TRY_AGAIN,

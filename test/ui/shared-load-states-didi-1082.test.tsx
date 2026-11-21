@@ -871,7 +871,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
       renderApp: (hangFn: ReturnType<typeof vi.fn>) => (
         <PhysioApp
           exerciseLibraryClient={mockClient({
-            listMyExercises: hangFn,
+            listMyExercises: hangFn as ExerciseLibraryClient["listMyExercises"],
             searchApproved: vi.fn(),
           })}
           exerciseRequestsClient={stubRequestsClient()}
