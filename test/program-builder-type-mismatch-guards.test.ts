@@ -10,6 +10,7 @@ import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
+  seedExercise,
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
@@ -388,6 +389,138 @@ describe("type-mismatch ownership guards (DIDI-1106)", () => {
           rowId,
           "stretching",
           view.draft_updated_at,
+        ),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const after = await rowsRepo.findById(rowId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("undoTypeMismatchPlaceholderLink rejects when the stored exercise request is no longer approved", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-guard-u3a"),
+        "u3a@example.com",
+      );
+      await seedApprovedExerciseVersion(storage, owner);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [owner, TS, FIXTURE_VERSION_ID],
+      );
+      const service = new ProgramBuilderService(storage);
+      const programId = id("prog-guard-u3a");
+      const reqId = id("req-guard-u3a");
+      const rowId = id("row-guard-u3a");
+      await service.createProgram(owner, { programId });
+      const requests = new ExerciseRequestsRepository(storage);
+      await requests.insert({
+        id: reqId,
+        requestedName: "Quad set",
+        requestedBy: owner,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      await service.addPlaceholderRow(owner, programId, {
+        rowId,
+        exerciseRequestId: reqId,
+        prescriptionType: "isometric",
+      });
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [FIXTURE_EXERCISE_ID, TS, reqId],
+      );
+      const view = await service.getProgram(owner, programId);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "stretching",
+        view.draft_updated_at,
+      );
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'open', updated_at = ? WHERE id = ?`,
+        [TS, reqId],
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const before = await rowsRepo.findById(rowId);
+      await expect(
+        service.undoTypeMismatchPlaceholderLink(
+          owner,
+          programId,
+          rowId,
+          linked.program.draft_updated_at,
+        ),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const after = await rowsRepo.findById(rowId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("undoTypeMismatchPlaceholderLink rejects when the stored exercise id no longer matches the linked row", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-guard-u4a"),
+        "u4a@example.com",
+      );
+      await seedApprovedExerciseVersion(storage, owner);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [owner, TS, FIXTURE_VERSION_ID],
+      );
+      const service = new ProgramBuilderService(storage);
+      const programId = id("prog-guard-u4a");
+      const reqId = id("req-guard-u4a");
+      const rowId = id("row-guard-u4a");
+      await service.createProgram(owner, { programId });
+      const requests = new ExerciseRequestsRepository(storage);
+      await requests.insert({
+        id: reqId,
+        requestedName: "Quad set",
+        requestedBy: owner,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      await service.addPlaceholderRow(owner, programId, {
+        rowId,
+        exerciseRequestId: reqId,
+        prescriptionType: "isometric",
+      });
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [FIXTURE_EXERCISE_ID, TS, reqId],
+      );
+      const view = await service.getProgram(owner, programId);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "stretching",
+        view.draft_updated_at,
+      );
+      const otherExerciseId = id("ex-guard-u4a");
+      await seedExercise(storage, owner, otherExerciseId);
+      await storage.run(
+        `UPDATE exercise_requests SET exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [otherExerciseId, TS, reqId],
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const before = await rowsRepo.findById(rowId);
+      await expect(
+        service.undoTypeMismatchPlaceholderLink(
+          owner,
+          programId,
+          rowId,
+          linked.program.draft_updated_at,
         ),
       ).rejects.toMatchObject({ code: "invalid_input" });
       const after = await rowsRepo.findById(rowId);
