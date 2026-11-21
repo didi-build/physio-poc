@@ -17,6 +17,8 @@ import {
   typeMismatchCardFlagMany,
   typeMismatchLinkTypeAriaLabel,
   typeMismatchLinkedToast,
+  TYPE_MISMATCH_PUBLISH_NOTICE_T18,
+  TYPE_MISMATCH_PUBLISH_NOTICE_T19,
   typeMismatchPublishFixAriaLabel,
   typeMismatchRowTypeLine,
   typeMismatchShowMeAriaLabel,
@@ -53,6 +55,12 @@ describe("DIDI-1106 program type-mismatch copy pins", () => {
     );
     expect(typeMismatchPublishFixAriaLabel("Bridge marching")).toBe(
       "Fix for Bridge marching",
+    );
+    expect(TYPE_MISMATCH_PUBLISH_NOTICE_T18).toBe(
+      "Fix or remove the exercises that didn't link.",
+    );
+    expect(TYPE_MISMATCH_PUBLISH_NOTICE_T19).toBe(
+      "Fix or remove the exercises that didn't link, then publish.",
     );
   });
 });

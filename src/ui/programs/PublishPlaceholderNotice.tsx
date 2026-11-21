@@ -3,14 +3,13 @@ import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import { Link } from "react-router-dom";
 import type { ProgramBuilderRow } from "../../services/programs/types.js";
 import {
-  PLACEHOLDER_BLOCK_BODY_ONE,
   PLACEHOLDER_BLOCK_HEADING,
   PLACEHOLDER_NONE_LEFT,
   PLACEHOLDER_REVIEW_DRAFT,
-  placeholderBlockBodyMany,
   placeholderRemovedLive,
   placeholderReviewDraftFor,
 } from "../copy/program-publish.js";
+import { publishPlaceholderNoticeBody } from "./publish-placeholder-notice-body.js";
 import { PENDING_REVIEW_BADGE, removeRowAriaLabel } from "../copy/programs.js";
 import {
   TYPE_MISMATCH_DIDNT_LINK_BADGE,
@@ -73,79 +72,83 @@ export function PublishPlaceholderNotice({
       </h3>
       {listEmpty ? null : (
         <p className="pg-placeholder-notice-body">
-          {/* TODO(DIDI-1106, Linear ede2e466): publish notice body for mixed didn't-link rows stays on DIDI-1186 copy until approved. */}
-          {placeholders.length === 1
-            ? PLACEHOLDER_BLOCK_BODY_ONE
-            : placeholderBlockBodyMany(placeholders.length)}
+          {publishPlaceholderNoticeBody(placeholders)}
         </p>
       )}
       {listEmpty ? null : (
         <ul className="pg-placeholder-list">
-          {placeholders.map((row) => {
-            const title = row.text_snapshot.title;
-            const isTypeMismatch = row.placeholder_state === "type_mismatch";
-            return (
-              <li key={row.id} className="pg-placeholder-row">
-                <span className="pg-placeholder-name">{title}</span>
-                <span className="pg-placeholder-badge">
-                  {isTypeMismatch
-                    ? TYPE_MISMATCH_DIDNT_LINK_BADGE
-                    : PENDING_REVIEW_BADGE}
-                </span>
-                {isTypeMismatch ? (
-                  <Link
-                    className="pg-link-btn"
-                    to={fillPhysioAppRoutePattern("programBuilder", {
-                      programCode,
-                    })}
+          {placeholders
+            .slice()
+            .reverse()
+            .map((row) => {
+              const title = row.text_snapshot.title;
+              const isTypeMismatch = row.placeholder_state === "type_mismatch";
+              return (
+                <li key={row.id} className="pg-placeholder-row">
+                  <span className="pg-placeholder-name">{title}</span>
+                  <span className="pg-placeholder-badge">
+                    {isTypeMismatch
+                      ? TYPE_MISMATCH_DIDNT_LINK_BADGE
+                      : PENDING_REVIEW_BADGE}
+                  </span>
+                  {isTypeMismatch ? (
+                    <Link
+                      className="pg-link-btn"
+                      to={fillPhysioAppRoutePattern("programBuilder", {
+                        programCode,
+                      })}
+                      onClick={() => {
+                        onFixTypeMismatch(row.id);
+                      }}
+                      aria-label={typeMismatchPublishFixAriaLabel(title)}
+                    >
+                      {TYPE_MISMATCH_FIX}
+                    </Link>
+                  ) : (
+                    <Link
+                      className="pg-link-btn"
+                      to={fillPhysioAppRoutePattern("requestReview", {
+                        requestId: row.exercise_request_id ?? "",
+                      })}
+                    >
+                      {PLACEHOLDER_REVIEW_DRAFT}
+                      <span className="sr-only">
+                        {placeholderReviewDraftFor(title)}
+                      </span>
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    className="pg-icon-btn pg-icon-btn--remove"
+                    aria-label={removeRowAriaLabel(title)}
                     onClick={() => {
-                      onFixTypeMismatch(row.id);
+                      const removedIndex = placeholders.findIndex(
+                        (p) => p.id === row.id,
+                      );
+                      onRemove(row.id);
+                      const remaining = placeholders.filter((p) => p.id !== row.id);
+                      const removed = placeholderRemovedLive(title);
+                      if (remaining.length === 0) {
+                        setLiveMessage(`${removed} ${PLACEHOLDER_NONE_LEFT}`);
+                        noticeRef.current?.querySelector("h3")?.focus();
+                      } else {
+                        setLiveMessage(removed);
+                        const focusIndex = nextRemoveButtonIndex(
+                          removedIndex,
+                          remaining.length,
+                        );
+                        focusPlaceholderReviewDraftInNotice(
+                          noticeRef.current,
+                          remaining[focusIndex]!.text_snapshot.title,
+                        );
+                      }
                     }}
-                    aria-label={typeMismatchPublishFixAriaLabel(title)}
                   >
-                    {TYPE_MISMATCH_FIX}
-                  </Link>
-                ) : (
-                  <Link
-                    className="pg-link-btn"
-                    to={fillPhysioAppRoutePattern("requestReview", {
-                      requestId: row.exercise_request_id ?? "",
-                    })}
-                  >
-                    {PLACEHOLDER_REVIEW_DRAFT}
-                    <span className="sr-only">{placeholderReviewDraftFor(title)}</span>
-                  </Link>
-                )}
-                <button
-                  type="button"
-                  className="pg-icon-btn pg-icon-btn--remove"
-                  aria-label={removeRowAriaLabel(title)}
-                  onClick={() => {
-                    const removedIndex = placeholders.findIndex((p) => p.id === row.id);
-                    onRemove(row.id);
-                    const remaining = placeholders.filter((p) => p.id !== row.id);
-                    const removed = placeholderRemovedLive(title);
-                    if (remaining.length === 0) {
-                      setLiveMessage(`${removed} ${PLACEHOLDER_NONE_LEFT}`);
-                      noticeRef.current?.querySelector("h3")?.focus();
-                    } else {
-                      setLiveMessage(removed);
-                      const focusIndex = nextRemoveButtonIndex(
-                        removedIndex,
-                        remaining.length,
-                      );
-                      focusPlaceholderReviewDraftInNotice(
-                        noticeRef.current,
-                        remaining[focusIndex]!.text_snapshot.title,
-                      );
-                    }
-                  }}
-                >
-                  ×
-                </button>
-              </li>
-            );
-          })}
+                    ×
+                  </button>
+                </li>
+              );
+            })}
         </ul>
       )}
       {showRepublishLine && publishedAt ? (

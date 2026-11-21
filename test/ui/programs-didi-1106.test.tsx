@@ -159,13 +159,78 @@ describe("DIDI-1106 type-mismatch UI", () => {
         />
       </MemoryRouter>,
     );
-    const names = screen.getAllByText(/Mismatch first|Awaiting second/);
-    expect(names[0]).toHaveTextContent("Mismatch first");
+    const rows = screen.getAllByRole("listitem");
+    expect(within(rows[0]!).getByText("Awaiting second")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("Mismatch first")).toBeInTheDocument();
     expect(screen.getByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).toBeInTheDocument();
     expect(screen.getByText(PENDING_REVIEW_BADGE)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Fix for Mismatch first" }),
     ).toHaveTextContent(TYPE_MISMATCH_FIX);
+  });
+
+  it("shows T19 notice body when every publish placeholder is type_mismatch", () => {
+    render(
+      <MemoryRouter>
+        <PublishPlaceholderNotice
+          placeholders={[
+            mismatchRow("a", 0, "Heel slide"),
+            mismatchRow("b", 1, "Bridge marching"),
+          ]}
+          programCode="PRG-1234"
+          showRepublishLine={false}
+          publishedAt={null}
+          onRemove={() => {}}
+          onFixTypeMismatch={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Fix or remove the exercises that didn't link, then publish.",
+    );
+  });
+
+  it("shows approved notice body then T18 for a mixed publish placeholder list", () => {
+    render(
+      <MemoryRouter>
+        <PublishPlaceholderNotice
+          placeholders={[
+            mismatchRow("a", 0, "Heel slide"),
+            {
+              ...mismatchRow("b", 1, "Awaiting draft"),
+              placeholder_state: "awaiting_approval",
+              type_mismatch_approved_category: undefined,
+            },
+          ]}
+          programCode="PRG-1234"
+          showRepublishLine={false}
+          publishedAt={null}
+          onRemove={() => {}}
+          onFixTypeMismatch={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "2 exercises are placeholders. Approve each draft or remove it from this program, then publish. Fix or remove the exercises that didn't link.",
+    );
+  });
+
+  it("pins publish-sheet Fix accessible name as a literal", () => {
+    render(
+      <MemoryRouter>
+        <PublishPlaceholderNotice
+          placeholders={[mismatchRow("a", 0, "Heel slide")]}
+          programCode="PRG-9999"
+          showRepublishLine={false}
+          publishedAt={null}
+          onRemove={() => {}}
+          onFixTypeMismatch={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: "Fix for Heel slide" }),
+    ).toBeInTheDocument();
   });
 
   it("shows programs list card flag for type-mismatch count", () => {

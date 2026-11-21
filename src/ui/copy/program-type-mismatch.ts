@@ -51,6 +51,12 @@ export function typeMismatchLinkTypeAriaLabel(
   return `Link ${exercise} as ${typeLabel}`;
 }
 
+export const TYPE_MISMATCH_PUBLISH_NOTICE_T18 =
+  "Fix or remove the exercises that didn't link.";
+
+export const TYPE_MISMATCH_PUBLISH_NOTICE_T19 =
+  "Fix or remove the exercises that didn't link, then publish.";
+
 export function typeMismatchPublishFixAriaLabel(name: string): string {
   return `Fix for ${name}`;
 }
