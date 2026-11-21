@@ -30,7 +30,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Library update prompt | "Library update for {exercise}": "Programs aren't updated on their own. Update it, or keep your original." with "Update to vN" / "Keep my original" |
 | Publish to the live link? | Program card (name, code, exercise count); "Program name (required)" field on a first publish or when the program has no name; "First publish" or "Changes since {time}"; Share link with Copy (or "No link yet..." on a first publish or closed link); Link expires (1 week, 30 days, 90 days, 1 year default, Never, Pick a date); "Publish now" / "Not yet" |
 | Name required | Empty name: red field, "Add a program name to publish. Use something you will recognise, not the patient's name.", Publish now disabled |
-| Placeholders block publish (DIDI-1186) | Any exercise row still a placeholder ("Pending review"): the Publish sheet shows an amber notice listing each placeholder with "Review draft" and Remove, and Publish now is disabled. Same treatment on first publish, republish and Use for a patient. See "Publish blocked by placeholders (DIDI-1186)" below |
+| Placeholders block publish (DIDI-1186) | Any exercise row still a placeholder: the Publish sheet shows an amber notice listing each placeholder, and Publish now is disabled. **awaiting_approval** rows use **Pending review**, **Review draft**, and Remove; **type_mismatch** rows use **Didn't link**, **Fix**, and Remove ([program-type-mismatch/spec.md](../program-type-mismatch/spec.md)). Notice body wording depends on list mix (**T18**, **T19**, `a3f73814`). Same treatment on first publish, republish and Use for a patient. See "Publish blocked by placeholders (DIDI-1186)" below |
 | Use for a patient | From a routine: the copy is created (code, routine name prefilled) and the practitioner lands on the Publish sheet. Publish now creates the link; Not yet keeps it as a draft ("Kept as a draft. Find it in Programs by name or code {code}.") and it shows in Programs as "Not published yet" |
 | Sent copy | Opening a sent program from Programs edits only that patient's copy |
 | Delete | Sheet "Delete this program?": moves to Recently deleted, restorable for 30 days, closes its share link |
@@ -210,8 +210,10 @@ The existing "Publish to the live link?" sheet (WebAppClickableConcept.tsx :1381
 
 Notice contents, in order:
 1. Heading with the alert icon (I.alert): "Approve or remove placeholders to publish".
-2. Body: "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." For one: "One exercise is a placeholder. Approve each draft or remove it from this program, then publish."
-   **Open:** When the list mixes `awaiting_approval` and `type_mismatch` placeholders, this body may read awkwardly for didn't-link rows. Do not reword until Diadem approves; see [program-type-mismatch/spec.md](../program-type-mismatch/spec.md).
+2. Body (depends on placeholder mix; publish stays blocked until the list is empty):
+   - **Awaiting only** (every row `awaiting_approval`): approved Nov 8 body unchanged. "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." For one: "One exercise is a placeholder. Approve each draft or remove it from this program, then publish."
+   - **Mixed** (at least one `awaiting_approval` and at least one `type_mismatch`): same approved body as above, then a second sentence: **Fix or remove the exercises that didn't link.** (**T18**, **Designer pick**, `a3f73814` on DIDI-1105).
+   - **Didn't-link only** (every row `type_mismatch`, no `awaiting_approval`): **Fix or remove the exercises that didn't link, then publish.** (**T19**, **Designer pick**, `a3f73814` on DIDI-1105).
 3. One list item per placeholder, in **builder order**. Same row layout for every placeholder. Badge and link action depend on `placeholder_state` ([program-type-mismatch/spec.md](../program-type-mismatch/spec.md), **Designer pick** `b650a678` on DIDI-1105): **awaiting_approval** keeps **Pending review**, **Review draft**, and Remove; **type_mismatch** shows **Didn't link**, **Fix** (in the **Review draft** slot), and Remove. **Fix** closes the sheet and opens the builder with that row's **Fix** panel expanded.
 4. Republish only: "Not live yet. Your patient still sees the version published {pub.at}."
 
@@ -244,7 +246,7 @@ Tokens are existing ones from design/reference/web-app/generated/WebAppClickable
 - **Focus after Remove:** moves to the next placeholder's "Review draft" or "Fix" (or the previous one if it was the last row). When the list empties, focus moves to the notice heading ("No placeholders left. You can publish.", `tabIndex={-1}`) so the practitioner hears the state, then continues to Publish now.
 - **Focus after Review draft:** the draft opens for review. On return to the sheet, focus goes back to that row's "Review draft" if it is still a placeholder; if it was approved, focus follows the Remove rule above.
 - **Focus after Fix** (`type_mismatch` only, **Designer pick**, `b650a678`): the sheet closes and focus moves to that row's **Fix** control in the builder with the inline panel open. Returning to the publish sheet later follows the existing sheet open focus rule.
-- **Accessible names:** "Review draft for {name}"; **Fix for {name}** on `type_mismatch` rows (**Designer pick**, `b650a678`); Remove uses the existing "Remove {name}"; the notice is named by its heading "Approve or remove placeholders to publish" (or "No placeholders left. You can publish.").
+- **Accessible names:** "Review draft for {name}"; **Fix for {name}** on `type_mismatch` rows (**Designer pick**, `a3f73814`); Remove uses the existing "Remove {name}"; the notice is named by its heading "Approve or remove placeholders to publish" (or "No placeholders left. You can publish.").
 - No automatic approval, omission or publication anywhere in this flow.
 
 ### Approved copy (Diadem, Nov 8, 2026, 1:56 PM ET)
@@ -252,12 +254,14 @@ Tokens are existing ones from design/reference/web-app/generated/WebAppClickable
 | Element | String |
 | -- | -- |
 | Notice heading | Approve or remove placeholders to publish |
-| Notice body, {n} | {n} exercises are placeholders. Approve each draft or remove it from this program, then publish. |
-| Notice body, one | One exercise is a placeholder. Approve each draft or remove it from this program, then publish. |
+| Notice body, {n} (awaiting only) | {n} exercises are placeholders. Approve each draft or remove it from this program, then publish. |
+| Notice body, one (awaiting only) | One exercise is a placeholder. Approve each draft or remove it from this program, then publish. |
+| Notice body, mixed | Approved body above, then **Fix or remove the exercises that didn't link.** (**T18**, **Designer pick**, `a3f73814`) |
+| Notice body, didn't-link only | Fix or remove the exercises that didn't link, then publish. (**T19**, **Designer pick**, `a3f73814`) |
 | Row action | Review draft (`awaiting_approval` only) |
 | Row action, accessible name | Review draft for {name} |
 | Row action (`type_mismatch`) | Fix (reuses builder **Fix**, [program-type-mismatch/spec.md](../program-type-mismatch/spec.md) **T4**). **Designer pick**, `b650a678` |
-| Row action, accessible name (`type_mismatch`) | Fix for {name}. **Designer pick**, `b650a678` |
+| Row action, accessible name (`type_mismatch`) | Fix for {name}. **Designer pick**, `a3f73814` |
 | After a removal (live region) | Removed {name} from this program. |
 | List empty | No placeholders left. You can publish. |
 
@@ -1084,7 +1088,8 @@ Not printed (DIDI-1192, CTO, Nov 9, 2026): "This link works until {exp.date}." a
 
 ## Changes
 
-- **Nov 21, 2026**: DIDI-1105 PR #142 QA R1. Publish notice: `type_mismatch` rows use **Didn't link**, **Fix**, and Remove in builder order (**Designer pick**, `b650a678`); notice body **Open** when mixed. https://linear.app/didi-build/issue/DIDI-1105
+- **Nov 21, 2026**: DIDI-1105 follow-up. Publish notice body **T18** / **T19** (`a3f73814`); States overview lists both placeholder kinds. https://linear.app/didi-build/issue/DIDI-1105
+- **Nov 21, 2026**: DIDI-1105 PR #142 QA R1. Publish notice: `type_mismatch` rows use **Didn't link**, **Fix**, and Remove in builder order (**Designer pick**, `b650a678`). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 cross-reference. Programs list flags for type-mismatch placeholders ("1 exercise didn't link" / "{n} exercises didn't link") and builder behaviour live in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 10, 2026**: DIDI-1192. Diadem approved E7: "Yes, approve E7" (12:08 AM ET), and "Video", "Previous" and "Next" with the print detail (12:09 AM ET). The link page shows one carousel per exercise (the start to end loop, then Start, then End) with round dots, a play-triangle dot, a separate focus ring and subtle chevrons from 1024 px. On phone: title, carousel, dose, notes. From 1024 px: text left, carousel right, page 64rem (was 42rem). The dose is three lines with bold numbers, frequency last. Print and PDF: text, Start, End in three columns, "Images didn't load." across the image columns, no video, no controls, no expiry line. Missing start or end images block publish on the program and routine sheets, server-enforced, Remove only (CTO rulings, DIDI-1193; copy approved Nov 9, 11:31 AM ET). Supersedes variant D (Nov 9, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 
