@@ -485,9 +485,12 @@ describe("DeepInfra exercise draft generator", () => {
   });
 
   it("maps timeout to typed failure without raw AbortError", async () => {
+    vi.useFakeTimers();
+    let abortSignal: AbortSignal | undefined;
     const fetchImpl = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
         new Promise((_resolve, reject) => {
+          abortSignal = init?.signal ?? undefined;
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted", "AbortError"));
           });
@@ -509,19 +512,23 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
-          practitionerId: practitioner,
-          requestedName: "Timeout",
-          formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toSatisfy((err: unknown) => {
+      const inflight = service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Timeout",
+        formOpenedAt: FORM_OPENED,
+      });
+      inflight.catch(() => {});
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(abortSignal?.aborted).toBe(true);
+      await expect(inflight).rejects.toSatisfy((err: unknown) => {
         expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
         expect((err as Error).cause).toBeUndefined();
         return true;
       });
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
+      vi.useRealTimers();
       storage.close();
     }
   });
