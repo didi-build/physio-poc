@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
+import { handleExerciseMediaRequest } from "../src/http/routes/exercise-media.js";
+import { exerciseMediaDraftStillPath } from "../src/exercise-media-api-paths.js";
 import {
   exerciseRequestGeneratePath,
   exerciseRequestPath,
@@ -14,6 +16,7 @@ import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-
 import {
   openMigratedDatabase,
   seedDraftingExerciseRequest,
+  seedExercise,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { FailingFakeImageGeneration } from "./helpers/failing-fake-image-generation.js";
@@ -54,6 +57,7 @@ function deps(
       mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
       exerciseDraftGenerator,
       exerciseMediaImages,
+      extraRouteHandlers: [handleExerciseMediaRequest],
     },
     cookie: auth.createSessionCookieHeader(),
   };
@@ -247,6 +251,10 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
       expect(response.status).toBe(403);
       const body = (await response.json()) as { error?: string };
       expect(body.error).toBe("generation_not_requester");
+      expect(body).toMatchObject({ error: "generation_not_requester" });
+      expect(String((body as { error?: string }).error)).toBe(
+        "generation_not_requester",
+      );
     } finally {
       storage.close();
     }
@@ -280,6 +288,125 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
       expect(second.status).toBe(202);
       const payload = (await second.json()) as { outcome: string };
       expect(payload.outcome).toBe("in_progress");
+      expect(payload).toMatchObject({ outcome: "in_progress" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("first generate does not consume the five-a-day media regen counter at quota", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-gen-quota-skip"),
+        "quota-skip@example.com",
+      );
+      const capExerciseId = await seedExercise(storage, practitioner);
+      for (let i = 0; i < 5; i += 1) {
+        await storage.run(
+          `INSERT INTO media_regenerations (
+            id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            id(`regen-cap-${i}`),
+            practitioner,
+            capExerciseId,
+            null,
+            "both",
+            0,
+            FORM_OPENED,
+          ],
+        );
+      }
+      const { cookie, deps: bundle } = deps(
+        storage,
+        practitioner,
+        "quota-skip@example.com",
+      );
+      const created = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Quota skip draft",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const { request_id: requestId } = (await created.json()) as {
+        request_id: string;
+      };
+      const generated = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        bundle,
+      );
+      expect(generated.status).toBe(200);
+      const count = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+        [practitioner],
+      );
+      expect(count?.c).toBe(5);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("draft still GET is limited to the exercise owner", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(
+        storage,
+        id("pr-still-own"),
+        "still-own@example.com",
+      );
+      const other = await seedPractitioner(
+        storage,
+        id("pr-still-other"),
+        "still-other@example.com",
+      );
+      const { generateResponse, cookie, bundle } = await submitAndGenerate(
+        storage,
+        requester,
+        "still-own@example.com",
+      );
+      expect(generateResponse.status).toBe(200);
+      const payload = (await generateResponse.json()) as {
+        view: { draft: { exercise_version_id: string } | null };
+      };
+      const versionId = payload.view.draft?.exercise_version_id;
+      expect(versionId).toBeTruthy();
+      const ownStill = await handleRequest(
+        new Request(`${BASE}${exerciseMediaDraftStillPath(versionId!, "start")}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      expect(ownStill.status).toBe(200);
+
+      const otherAuth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: other,
+          email: "still-other@example.com",
+          displayName: "Other",
+        },
+      });
+      const foreignStill = await handleRequest(
+        new Request(`${BASE}${exerciseMediaDraftStillPath(versionId!, "start")}`, {
+          headers: { cookie: otherAuth.createSessionCookieHeader() },
+        }),
+        deps(storage, other, "still-other@example.com").deps,
+      );
+      expect(foreignStill.status).toBe(404);
+      const body = (await foreignStill.json()) as { error?: string };
+      expect(body.error).toBe("version_not_found");
+      expect(body).toEqual({
+        error: "version_not_found",
+        message: "Exercise version not found",
+      });
     } finally {
       storage.close();
     }

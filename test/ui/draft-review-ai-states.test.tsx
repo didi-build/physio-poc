@@ -55,7 +55,13 @@ afterEach(() => {
 const PIN_G1 = "The AI couldn't write the text.";
 const PIN_G2 = "The AI couldn't make the images. The text is kept.";
 const PIN_G3 = "You can try again tomorrow.";
+const PIN_G4 = "Text only";
+const PIN_G5 = "All the written fields. Images stay.";
+const PIN_G6 = "Regenerate text";
+const PIN_G7 = "Regenerating the text. Everything else stays usable.";
 const PIN_G8 = "Already started. This page updates when the draft is ready.";
+const PIN_G9 = "Text and images";
+const PIN_G10 = "Start and end images. Text stays.";
 const PIN_G11 = "Try again";
 
 function draftBody(
@@ -227,6 +233,7 @@ describe("Draft review AI states (DIDI-1210)", () => {
     expect(await screen.findByText(DRAFT_AI_TEXT_FAILURE)).toBeTruthy();
     expect(screen.getByText(PIN_G1)).toBeTruthy();
     expect(screen.getByRole("button", { name: DRAFT_REGENERATE_TEXT })).toBeTruthy();
+    expect(screen.getByRole("button", { name: PIN_G6 })).toBeTruthy();
   });
 
   it("keeps Approve and Regenerate disabled until the first draft is complete", async () => {
@@ -466,15 +473,13 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(REGENERATE_SHEET_TITLE)).toBeTruthy();
     expect(within(dialog).getByText(DRAFT_REGEN_SCOPE_ALL_LABEL)).toBeTruthy();
-    expect(within(dialog).getByText("Text and images")).toBeTruthy();
+    expect(within(dialog).getByText(PIN_G9)).toBeTruthy();
     expect(within(dialog).getByText(DRAFT_REGEN_TEXT_ONLY_LABEL)).toBeTruthy();
-    expect(within(dialog).getByText("Text only")).toBeTruthy();
+    expect(within(dialog).getByText(PIN_G4)).toBeTruthy();
     expect(within(dialog).getByText(DRAFT_REGEN_TEXT_ONLY_HINT)).toBeTruthy();
-    expect(
-      within(dialog).getByText("All the written fields. Images stay."),
-    ).toBeTruthy();
+    expect(within(dialog).getByText(PIN_G5)).toBeTruthy();
     expect(within(dialog).getByText(DRAFT_REGEN_SCOPE_IMAGES_HINT)).toBeTruthy();
-    expect(within(dialog).getByText("Start and end images. Text stays.")).toBeTruthy();
+    expect(within(dialog).getByText(PIN_G10)).toBeTruthy();
     expect(screen.queryByText("The 6s loop")).toBeNull();
     expect(screen.queryByText("Regenerate video")).toBeNull();
   });
@@ -523,9 +528,7 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
       within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
     );
     expect(await screen.findByText(DRAFT_REGENERATING_TEXT)).toBeTruthy();
-    expect(
-      screen.getByText("Regenerating the text. Everything else stays usable."),
-    ).toBeTruthy();
+    expect(screen.getByText(PIN_G7)).toBeTruthy();
     resolveText({ view: completedView });
     await waitFor(() => {
       expect(requestsClient.regenerateDraftText).toHaveBeenCalledWith(
