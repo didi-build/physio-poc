@@ -203,7 +203,16 @@ export function ProgramSharePage() {
   if (loadFailed || !shareView) {
     return (
       <section className="pg-share">
-        <ProgramsBuilderErrorSlot />
+        <ProgramsBuilderErrorSlot
+          loadFailed={loadFailed}
+          hasContent={shareView !== null}
+          onTryAgain={() => {
+            setLoadFailed(false);
+            void load().catch(() => {
+              setLoadFailed(true);
+            });
+          }}
+        />
       </section>
     );
   }

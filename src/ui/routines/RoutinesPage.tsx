@@ -38,10 +38,8 @@ import {
   flaggedBanner,
   toastSavedToMy,
 } from "../copy/routines.js";
-import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import { RoutinesListBusyState, RoutinesListLoadBanner } from "./RoutinesStates.js";
 import { RoutineListCard } from "./RoutineListCard.js";
 import {
   DEFAULT_ROUTINE_FILTERS,
@@ -179,7 +177,11 @@ export function RoutinesPage() {
   const listEmpty =
     !loading && !loadFailed && (tab === "all" ? community.length === 0 : myCount === 0);
 
-  const showListContent = !loading && !loadFailed;
+  const hasCachedContent = snapshot !== null;
+  const showListContent =
+    !loading &&
+    hasCachedContent &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
 
   const onSaveCommunity = (routineId: string, name: string) => {
     void client.saveToMyRoutines(routineId).then(({ undo }) => {
@@ -270,7 +272,11 @@ export function RoutinesPage() {
         conditionOptions={conditionOptions}
       />
 
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
+      <RoutinesListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={reload}
+      />
 
       <div
         id="routines-tabpanel"
@@ -280,7 +286,9 @@ export function RoutinesPage() {
         data-testid="routines-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loading || (loadFailed && !hasCachedContent) ? (
+          <RoutinesListBusyState />
+        ) : null}
 
         {listEmpty ? (
           <div className="pg-empty" data-testid="routines-empty">

@@ -19,7 +19,6 @@ import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
   BROWSE_ALL,
-  BACK_LIBRARY,
   IN_LIBRARY,
   LIB_HEADING,
   LIB_MY_DESCRIPTION,
@@ -54,8 +53,9 @@ import { TOAST_UNDO } from "../copy/nav.js";
 import { ExerciseListCard, type ExerciseCardModel } from "./ExerciseListCard.js";
 import {
   ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
+  ExerciseLibraryListLoadBanner,
 } from "./ExerciseLibraryStates.js";
+import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
 import { FiltersSortPanel, LibrarySearchBar } from "./FiltersSortPanel.js";
 import {
   DEFAULT_FILTERS,
@@ -376,7 +376,10 @@ export function ExerciseLibraryPage({
   const hasSimilar = allExercises.length > 0 || similarDrafts.length > 0;
   const showLeadInCard = showNoExactMatch && !hasSimilar;
 
-  const showListContent = !loading && !loadFailed;
+  const hasCachedContent = snapshot !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showListContent =
+    !loading && hasCachedContent && (!loadFailed || refreshLoadFailed);
   const showRequestCard =
     showListContent &&
     tab === "all" &&
@@ -384,11 +387,6 @@ export function ExerciseLibraryPage({
 
   return (
     <section className="ex-page ex-library-page" aria-labelledby="ex-lib-heading">
-      {loadFailed ? (
-        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
-          {BACK_LIBRARY}
-        </Link>
-      ) : null}
       <h1 id="ex-lib-heading" className="ex-page-title">
         {LIB_HEADING}
       </h1>
@@ -434,14 +432,22 @@ export function ExerciseLibraryPage({
       </div>
       <FiltersSortPanel filters={filters} onChange={setFilters} />
 
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
+      <ExerciseLibraryListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={() => {
+          void reload();
+        }}
+      />
 
       <div
         className="ex-library-main"
         data-testid="exercise-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loading || (loadFailed && !hasCachedContent) ? (
+          <ExerciseLibraryBusyState />
+        ) : null}
 
         {showListContent && tab === "mine" ? (
           myListState === "nothing_in_my_exercises_matches" && mySearchQuery ? (

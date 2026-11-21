@@ -33,6 +33,7 @@ import {
 import { ProgramListCard } from "./ProgramListCard.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
+import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
 
 type ProgramsListSnapshot = {
@@ -122,6 +123,7 @@ export function ProgramsListPage() {
     void refresh({ force: true });
   }, [refresh]);
 
+  const hasCachedContent = snapshot !== null;
   const items = snapshot?.items ?? [];
   const totalCount = snapshot?.totalCount ?? 0;
   const matchedCode = snapshot?.matchedCode ?? null;
@@ -141,10 +143,12 @@ export function ProgramsListPage() {
     [items.length, totalCount, trimmedQuery.length, originFilter],
   );
 
-  const showEmpty =
-    !loading && !loadFailed && totalCount === 0 && trimmedQuery.length === 0;
-  const showNoMatch =
-    !loading && !loadFailed && trimmedQuery.length > 0 && items.length === 0;
+  const showListContent =
+    !loading &&
+    hasCachedContent &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
+  const showEmpty = showListContent && totalCount === 0 && trimmedQuery.length === 0;
+  const showNoMatch = showListContent && trimmedQuery.length > 0 && items.length === 0;
 
   const openNewSheet = () => {
     setNewSheetOpen(true);
@@ -238,8 +242,12 @@ export function ProgramsListPage() {
         ) : null}
       </div>
 
-      {loading ? <ProgramsListBusyState /> : null}
-      {loadFailed ? <ProgramsListErrorSlot /> : null}
+      {loading || (loadFailed && !hasCachedContent) ? <ProgramsListBusyState /> : null}
+      <ProgramsListErrorSlot
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={load}
+      />
 
       {showEmpty ? (
         <div className="pg-empty" data-testid="programs-empty">
@@ -272,7 +280,7 @@ export function ProgramsListPage() {
         </div>
       ) : null}
 
-      {!loading && !loadFailed && items.length > 0 ? (
+      {showListContent && items.length > 0 ? (
         <ul className="pg-card-list">
           {items.map((item) => (
             <li key={item.program_id}>

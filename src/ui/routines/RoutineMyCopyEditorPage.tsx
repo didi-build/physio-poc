@@ -13,16 +13,18 @@ import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
-  BACK_ROUTINES,
   MY_COPY_EDITOR_INTRO,
   SAVE_MY_COPY,
   TOAST_SAVED_MY_COPY,
 } from "../copy/routines.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-  ExerciseLibraryErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 
 export function RoutineMyCopyEditorPage() {
   const { routineId = "" } = useParams();
@@ -30,7 +32,7 @@ export function RoutineMyCopyEditorPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
-  const [mutationFailed, setMutationFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [dirty, setDirty] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -41,8 +43,10 @@ export function RoutineMyCopyEditorPage() {
       : null;
   const {
     data: details,
-    loading,
+    loading: cacheLoading,
     loadFailed,
+    failureKind,
+    refresh,
   } = useSessionCachedRead<RoutineDetailsResult>({
     cacheKey,
     enabled: routineId.length > 0 && sessionReady,
@@ -55,32 +59,65 @@ export function RoutineMyCopyEditorPage() {
     setDirty(false);
   }, [details]);
 
-  if (sessionState.status === "error") {
-    return (
-      <section className="ex-page rt-my-copy" aria-labelledby="rt-my-copy-heading">
-        <ExerciseLibraryDetailErrorSlot />
-      </section>
-    );
-  }
-
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
   const showContent =
     !loading &&
-    !loadFailed &&
+    !showNotFound &&
+    (!loadFailed || refreshLoadFailed) &&
     details !== null &&
     !details.is_draft &&
     details.my_copy !== null;
 
+  const reload = () => {
+    void refresh({ force: true });
+  };
+
   if (!showContent) {
+    const pageTitle = details && !details.is_draft ? details.community.name : "Routine";
     return (
-      <section className="ex-page rt-my-copy" aria-labelledby="rt-my-copy-heading">
-        <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
-          {BACK_ROUTINES}
-        </Link>
-        <h1 id="rt-my-copy-heading" className="ex-page-title">
-          {details && !details.is_draft ? details.community.name : "Routine"}
-        </h1>
-        {loading ? <ExerciseLibraryBusyState /> : null}
-        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+      <section
+        className="ex-page rt-my-copy"
+        aria-labelledby="rt-my-copy-heading"
+        aria-busy={loading ? true : undefined}
+      >
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routines")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 id="rt-my-copy-heading" className="ex-page-title">
+                {pageTitle}
+              </h1>
+            ) : null}
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={
+                (loadFailed && failureKind === "error") ||
+                sessionState.status === "error"
+              }
+              hasContent={hasCachedContent}
+              onTryAgain={reload}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
@@ -95,7 +132,7 @@ export function RoutineMyCopyEditorPage() {
   };
 
   const onSave = () => {
-    setMutationFailed(false);
+    setSaveFailed(false);
     void client
       .updateMyCopy(routineId, rows)
       .then(() => {
@@ -103,7 +140,7 @@ export function RoutineMyCopyEditorPage() {
         navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
       })
       .catch(() => {
-        setMutationFailed(true);
+        setSaveFailed(true);
       });
   };
 
@@ -120,9 +157,10 @@ export function RoutineMyCopyEditorPage() {
       </h1>
       <p className="ex-page-intro">{MY_COPY_EDITOR_INTRO}</p>
 
-      {mutationFailed ? (
-        <ExerciseLibraryErrorSlot
-          message={undefined}
+      {saveFailed ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage({ kind: "save_or_edit", item: "routine" })}
+          onTryAgain={onSave}
           testId="routine-my-copy-mutation-error-slot"
         />
       ) : null}

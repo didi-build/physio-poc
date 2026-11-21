@@ -686,11 +686,12 @@ describe("Programs builder save UX (QA round 1)", () => {
       expect(deleteProgram).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("programs-delete-program-error-slot"),
+      ).toBeInTheDocument();
     });
-    expect(
-      await screen.findByRole("textbox", { name: "Program name" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
   });
 
   it("warns before shell nav when the builder has unsaved edits", async () => {

@@ -19,9 +19,11 @@ import {
   toastVersionRestored,
 } from "../copy/routines.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { RoutineRestoreConfirmSheet } from "./RoutineRestoreConfirmSheet.js";
 
 export function RoutineVersionHistoryPage() {
@@ -34,7 +36,13 @@ export function RoutineVersionHistoryPage() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const sessionReady = usePractitionerSession().status === "ready";
 
-  const { data, loading, loadFailed, refresh } = useSessionCachedRead({
+  const {
+    data,
+    loading: cacheLoading,
+    loadFailed,
+    failureKind,
+    refresh,
+  } = useSessionCachedRead({
     cacheKey: routineId.length > 0 && sessionReady ? `rt-versions:${routineId}` : null,
     enabled: routineId.length > 0 && sessionReady,
     fetcher: (signal) => client.getRoutineVersionHistory(routineId, { signal }),
@@ -58,23 +66,55 @@ export function RoutineVersionHistoryPage() {
         });
         void refresh({ force: true });
       })
+      .catch(() => {
+        // TODO(DIDI-1273): failed-save copy not approved
+      })
       .finally(() => {
         setRestoreBusy(false);
       });
   };
 
-  if (loadFailed) {
-    return (
-      <section className="ex-page rt-versions">
-        <ExerciseLibraryDetailErrorSlot />
-      </section>
-    );
-  }
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = data !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && data !== null;
 
-  if (loading || !data) {
+  const reload = () => {
+    void refresh({ force: true });
+  };
+
+  if (!showContent) {
     return (
-      <section className="ex-page rt-versions" aria-busy>
-        <ExerciseLibraryBusyState />
+      <section className="ex-page rt-versions" aria-busy={loading ? true : undefined}>
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routineDetail", { routineId })}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={loadFailed && failureKind === "error"}
+              hasContent={hasCachedContent}
+              onTryAgain={reload}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }

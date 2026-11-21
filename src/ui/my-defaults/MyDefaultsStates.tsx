@@ -1,17 +1,50 @@
-import { MY_DEFAULTS_PAGE_ERROR_MESSAGE } from "../copy/my-defaults-states.js";
-import { ExerciseLibraryBusyState } from "../exercise-library/ExerciseLibraryStates.js";
+import {
+  SharedListLoadErrorBanner,
+  SharedListLoadingState,
+  SharedRefreshFailureBanner,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+
+type RetryHandler = () => void | Promise<void>;
 
 export function MyDefaultsBusyState() {
-  return <ExerciseLibraryBusyState />;
+  return (
+    <SharedListLoadingState surface="defaults" testId="my-defaults-busy-skeleton" />
+  );
 }
 
-export function MyDefaultsErrorSlot() {
-  if (typeof MY_DEFAULTS_PAGE_ERROR_MESSAGE !== "string") {
+export function MyDefaultsErrorSlot({
+  loadFailed = true,
+  hasContent = false,
+  onTryAgain,
+}: {
+  loadFailed?: boolean;
+  hasContent?: boolean;
+  onTryAgain?: RetryHandler;
+} = {}) {
+  if (!onTryAgain) {
     return <div data-testid="my-defaults-error-slot" className="ex-error-slot" />;
   }
-  return (
-    <p className="ex-error" role="alert" data-testid="my-defaults-error-slot">
-      {MY_DEFAULTS_PAGE_ERROR_MESSAGE}
-    </p>
-  );
+  if (!loadFailed) {
+    return null;
+  }
+  if (sharedRefreshFailed(hasContent, loadFailed)) {
+    return (
+      <SharedRefreshFailureBanner
+        onTryAgain={onTryAgain}
+        testId="my-defaults-error-slot"
+      />
+    );
+  }
+  if (sharedInitialLoadFailed(hasContent, loadFailed)) {
+    return (
+      <SharedListLoadErrorBanner
+        surface="defaults"
+        onTryAgain={onTryAgain}
+        testId="my-defaults-error-slot"
+      />
+    );
+  }
+  return null;
 }

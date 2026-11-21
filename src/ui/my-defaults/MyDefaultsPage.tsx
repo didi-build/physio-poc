@@ -30,6 +30,7 @@ import {
 } from "../copy/my-defaults.js";
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
 import { TypeDefaultsFootnote } from "./TypeDefaultsFootnote.js";
+import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
 import { MyDefaultsBusyState, MyDefaultsErrorSlot } from "./MyDefaultsStates.js";
 import { myDefaultsPendingCopySlots } from "../copy/my-defaults-pending-copy.js";
 
@@ -109,7 +110,14 @@ export function MyDefaultsPage() {
       });
   };
 
-  const showContent = !loading && !loadFailed && page !== null;
+  const hasCachedContent = cachedPage !== null;
+  const showContent =
+    !loading &&
+    page !== null &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
+  const reload = () => {
+    void refresh({ force: true });
+  };
 
   return (
     <section
@@ -128,8 +136,12 @@ export function MyDefaultsPage() {
       </h1>
       <p className="ex-page-intro md-page-intro">{MY_DEFAULTS_INTRO}</p>
 
-      {loading ? <MyDefaultsBusyState /> : null}
-      {loadFailed ? <MyDefaultsErrorSlot /> : null}
+      {loading || (loadFailed && !hasCachedContent) ? <MyDefaultsBusyState /> : null}
+      <MyDefaultsErrorSlot
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={reload}
+      />
 
       {showContent ? (
         <>

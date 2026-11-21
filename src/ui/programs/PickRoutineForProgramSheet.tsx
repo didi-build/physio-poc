@@ -12,10 +12,7 @@ import {
   NEW_PROGRAM_ROUTINE_PICKER_BODY,
   NEW_PROGRAM_ROUTINE_PICKER_TITLE,
 } from "../copy/programs.js";
-import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
 
 export type PickRoutineForProgramSheetProps = {
   open: boolean;
@@ -98,6 +95,7 @@ export function PickRoutineForProgramSheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (deepLinkRead === "failed" && selectedId === deepLinkRoutineId) {
@@ -148,7 +146,7 @@ export function PickRoutineForProgramSheet({
       .finally(() => {
         setLoading(false);
       });
-  }, [client, open, preselectedRoutineId]);
+  }, [client, open, preselectedRoutineId, loadAttempt]);
 
   const selected = routines.find((item) => item.routine_id === selectedId) ?? null;
   const createBlocked = deepLinkBlocksCreate(
@@ -184,9 +182,17 @@ export function PickRoutineForProgramSheet({
         </div>
       }
     >
-      {loading ? <ExerciseLibraryBusyState /> : null}
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
-      {!loading && !loadFailed ? (
+      {loading || (loadFailed && routines.length === 0) ? (
+        <ProgramsListBusyState />
+      ) : null}
+      <ProgramsListErrorSlot
+        loadFailed={loadFailed}
+        hasContent={routines.length > 0}
+        onTryAgain={() => {
+          setLoadAttempt((value) => value + 1);
+        }}
+      />
+      {!loading && (!loadFailed || routines.length > 0) ? (
         <ul className="pg-routine-pick-list" aria-busy={busy ? true : undefined}>
           {routines.map((routine) => (
             <li key={routine.routine_id}>

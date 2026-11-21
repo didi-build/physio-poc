@@ -57,6 +57,8 @@ import { DeleteProgramSheetBody } from "./DeleteProgramSheetBody.js";
 import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
@@ -88,6 +90,7 @@ export function ProgramBuilderPage({
   const programRef = useRef(program);
   programRef.current = program;
   const [loadFailed, setLoadFailed] = useState(false);
+  const [deleteProgramFailed, setDeleteProgramFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const [nameDraft, setNameDraft] = useState("");
@@ -193,6 +196,7 @@ export function ProgramBuilderPage({
     data: cachedProgram,
     loading,
     loadFailed: builderLoadFailed,
+    refresh: refreshBuilder,
   } = useSessionCachedRead<ProgramBuilderView>({
     cacheKey: builderCacheKey,
     enabled: trimmedProgramCode.length > 0 && sessionReady,
@@ -522,6 +526,7 @@ export function ProgramBuilderPage({
     if (!program) {
       return;
     }
+    setDeleteProgramFailed(false);
     void client
       .deleteProgram(program.program_id)
       .then((result) => {
@@ -530,7 +535,7 @@ export function ProgramBuilderPage({
         navigate(fillPhysioAppRoutePattern("programs"), { replace: true });
       })
       .catch(() => {
-        setDeleteOpen(false);
+        setDeleteProgramFailed(true);
       });
   };
 
@@ -554,9 +559,17 @@ export function ProgramBuilderPage({
   }
 
   if (loadFailed || !builderView) {
+    const hasCachedBuilder = cachedProgram !== null;
     return (
       <section className="pg-builder">
-        <ProgramsBuilderErrorSlot />
+        <ProgramsBuilderErrorSlot
+          loadFailed={builderLoadFailed || loadFailed}
+          hasContent={hasCachedBuilder}
+          onTryAgain={() => {
+            setLoadFailed(false);
+            void refreshBuilder({ force: true });
+          }}
+        />
       </section>
     );
   }
@@ -1042,6 +1055,7 @@ export function ProgramBuilderPage({
         titleId="pg-delete-title"
         onClose={() => {
           setDeleteOpen(false);
+          setDeleteProgramFailed(false);
         }}
         footer={
           <>
@@ -1050,6 +1064,7 @@ export function ProgramBuilderPage({
               className="pg-btn pg-btn--secondary"
               onClick={() => {
                 setDeleteOpen(false);
+                setDeleteProgramFailed(false);
               }}
             >
               {CANCEL}
@@ -1065,6 +1080,16 @@ export function ProgramBuilderPage({
         }
       >
         <DeleteProgramSheetBody program={displayProgram} />
+        {deleteProgramFailed ? (
+          <SharedFailedSaveAlert
+            message={mappedFailedSaveMessage({
+              kind: "delete_or_remove",
+              item: "program",
+            })}
+            onTryAgain={onDeleteProgram}
+            testId="programs-delete-program-error-slot"
+          />
+        ) : null}
       </ConfirmSheet>
 
       <PublishSheet

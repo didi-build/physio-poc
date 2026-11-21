@@ -24,7 +24,11 @@ import {
 import type { ExerciseDetailsResult } from "../../src/services/exercise-library/types.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
 import {
-  BACK_LIBRARY,
+  BACK_TO_EXERCISES,
+  loadingListVisible,
+  listTokenForSurface,
+} from "../../src/ui/copy/shared-load-states.js";
+import {
   EXERCISE_DETAILS,
   KEEP_MINE,
   LIB_HEADING,
@@ -94,8 +98,18 @@ function renderPhysio(initialEntry: string, client: ExerciseLibraryClient) {
   );
 }
 
-function expectLibraryErrorChrome(pageHeading: string) {
-  expect(screen.getByRole("link", { name: BACK_LIBRARY })).toBeInTheDocument();
+function expectListErrorChrome(pageHeading: string) {
+  expect(screen.getByRole("heading", { name: pageHeading })).toBeInTheDocument();
+  expect(screen.getAllByRole("navigation", { name: "Main" }).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByRole("link", { name: NAV_TAB_EXERCISES }).length,
+  ).toBeGreaterThan(0);
+  expect(screen.getByTestId("shell-brand-mark")).toHaveTextContent("D");
+  expect(screen.getByTestId("shell-account-avatar")).toHaveTextContent("T");
+}
+
+function expectDetailErrorChrome(pageHeading: string) {
+  expect(screen.getByRole("link", { name: BACK_TO_EXERCISES })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: pageHeading })).toBeInTheDocument();
   expect(screen.getAllByRole("navigation", { name: "Main" }).length).toBeGreaterThan(0);
   expect(
@@ -698,10 +712,9 @@ describe("Exercise library UI", () => {
 
     const main = await screen.findByTestId("exercise-library-main");
     expect(main).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByTestId("exercise-library-busy-skeleton")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(
+      screen.getByText(loadingListVisible(listTokenForSurface("exercises"))),
+    ).toBeInTheDocument();
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
@@ -767,7 +780,7 @@ describe("Exercise library UI", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(NO_SAVED_WITH_FILTERS)).not.toBeInTheDocument();
-    expectLibraryErrorChrome(LIB_HEADING);
+    expectListErrorChrome(LIB_HEADING);
     assertListLoadErrorCopyMine();
   });
 
@@ -798,7 +811,7 @@ describe("Exercise library UI", () => {
     expect(
       screen.queryByRole("heading", { name: noExactMatchHeading("Missing") }),
     ).not.toBeInTheDocument();
-    expectLibraryErrorChrome(LIB_HEADING);
+    expectListErrorChrome(LIB_HEADING);
     assertListLoadErrorCopyAll();
   });
 
@@ -840,7 +853,7 @@ describe("Exercise library UI", () => {
         screen.getByTestId("exercise-library-detail-error-slot"),
       ).toBeInTheDocument();
     });
-    expectLibraryErrorChrome(EXERCISE_DETAILS);
+    expectDetailErrorChrome(EXERCISE_DETAILS);
     assertDetailLoadErrorCopy();
   });
 
@@ -859,7 +872,7 @@ describe("Exercise library UI", () => {
         screen.getByTestId("exercise-library-detail-error-slot"),
       ).toBeInTheDocument();
     });
-    expectLibraryErrorChrome(MY_COPY);
+    expectDetailErrorChrome(MY_COPY);
     assertMyCopyLoadErrorCopy();
   });
 

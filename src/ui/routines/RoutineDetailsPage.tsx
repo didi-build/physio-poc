@@ -71,11 +71,18 @@ import {
   resolveRoutineProgramSource,
 } from "../programs/program-from-routine.js";
 import { ROUTINE_DETAIL_HEADING } from "../copy/routines.js";
+import { ExerciseLibraryErrorSlot } from "../exercise-library/ExerciseLibraryStates.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-  ExerciseLibraryErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  mappedFailedSaveMessage,
+  type MappedFailedSaveAction,
+} from "../shared-load-states/failed-save.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { formatListDate } from "../exercise-library/library-filters.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
@@ -122,6 +129,7 @@ export function RoutineDetailsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [mutationFailed, setMutationFailed] = useState(false);
+  const [failedSave, setFailedSave] = useState<MappedFailedSaveAction | null>(null);
   const [routineProgramBusy, setRoutineProgramBusy] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
   const [draftPublishOpen, setDraftPublishOpen] = useState(false);
@@ -142,8 +150,9 @@ export function RoutineDetailsPage() {
       : null;
   const {
     data: details,
-    loading,
+    loading: cacheLoading,
     loadFailed,
+    failureKind,
     refresh,
   } = useSessionCachedRead<RoutineDetailsResult>({
     cacheKey,
@@ -162,7 +171,12 @@ export function RoutineDetailsPage() {
     void refresh({ force: true });
   };
 
-  const showDetailContent = !loading && !loadFailed && details !== null;
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showDetailContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && details !== null;
   const name = details?.is_draft
     ? (details.draft.name ?? ROUTINE_DETAIL_HEADING)
     : (details?.community.name ?? ROUTINE_DETAIL_HEADING);
@@ -179,14 +193,6 @@ export function RoutineDetailsPage() {
     [details, source],
   );
 
-  if (sessionState.status === "error") {
-    return (
-      <section className="ex-page rt-detail" aria-labelledby="rt-detail-heading">
-        <ExerciseLibraryDetailErrorSlot />
-      </section>
-    );
-  }
-
   if (!showDetailContent) {
     return (
       <section
@@ -194,14 +200,41 @@ export function RoutineDetailsPage() {
         aria-labelledby="rt-detail-heading"
         aria-busy={loading ? true : undefined}
       >
-        <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
-          {BACK_ROUTINES}
-        </Link>
-        <h1 id="rt-detail-heading" className="ex-page-title">
-          {name}
-        </h1>
-        {loading ? <ExerciseLibraryBusyState /> : null}
-        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routines")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 id="rt-detail-heading" className="ex-page-title">
+                {name}
+              </h1>
+            ) : null}
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={
+                (loadFailed && failureKind === "error") ||
+                sessionState.status === "error"
+              }
+              hasContent={hasCachedContent}
+              onTryAgain={load}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
@@ -405,12 +438,14 @@ export function RoutineDetailsPage() {
         load();
       })
       .catch(() => {
+        // TODO(DIDI-1273): failed-save copy not approved
         setMutationFailed(true);
       });
   };
 
   const onRemove = () => {
     setMutationFailed(false);
+    setFailedSave(null);
     void client
       .removeFromMyRoutines(routineId)
       .then(({ undo }) => {
@@ -418,6 +453,7 @@ export function RoutineDetailsPage() {
           message: toastRemovedFromMy(community.name),
           onUndo: () => {
             setMutationFailed(false);
+            setFailedSave(null);
             void client
               .applyUndo(routineId, undo)
               .then(load)
@@ -429,7 +465,7 @@ export function RoutineDetailsPage() {
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setFailedSave({ kind: "delete_or_remove", item: "routine" });
       });
   };
 
@@ -453,6 +489,7 @@ export function RoutineDetailsPage() {
         load();
       })
       .catch(() => {
+        // TODO(DIDI-1273): failed-save copy not approved
         setMutationFailed(true);
       });
   };
@@ -481,6 +518,7 @@ export function RoutineDetailsPage() {
         );
       })
       .catch(() => {
+        // TODO(DIDI-1273): failed-save copy not approved
         setMutationFailed(true);
       })
       .finally(() => {
@@ -490,6 +528,7 @@ export function RoutineDetailsPage() {
 
   const onKeep = () => {
     setMutationFailed(false);
+    setFailedSave(null);
     void client
       .keepMyCopyVersion(routineId)
       .then(({ undo }) => {
@@ -509,7 +548,7 @@ export function RoutineDetailsPage() {
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setFailedSave({ kind: "keep_your_version" });
       });
   };
 
@@ -619,6 +658,19 @@ export function RoutineDetailsPage() {
         {community.name}
       </h1>
 
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage(failedSave)}
+          onTryAgain={() => {
+            if (failedSave.kind === "delete_or_remove") {
+              onRemove();
+            } else if (failedSave.kind === "keep_your_version") {
+              onKeep();
+            }
+          }}
+          testId="routine-detail-mutation-error-slot"
+        />
+      ) : null}
       {mutationFailed ? (
         <ExerciseLibraryErrorSlot
           message={undefined}

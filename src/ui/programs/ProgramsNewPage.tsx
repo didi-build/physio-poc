@@ -114,7 +114,15 @@ export function ProgramsNewPage() {
 
   return (
     <section className="pg-page ex-page">
-      {createFailed ? <ProgramsListErrorSlot /> : null}
+      {createFailed ? (
+        <ProgramsListErrorSlot
+          loadFailed
+          hasContent={false}
+          onTryAgain={() => {
+            setCreateFailed(false);
+          }}
+        />
+      ) : null}
       <NewProgramSheet
         open={open && !pickerOpen}
         onClose={close}
