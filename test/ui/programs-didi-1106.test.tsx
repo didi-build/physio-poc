@@ -14,11 +14,15 @@ import { PublishPlaceholderNotice } from "../../src/ui/programs/PublishPlacehold
 import { ProgramListCard } from "../../src/ui/programs/ProgramListCard.js";
 import {
   TYPE_MISMATCH_BANNER_ONE,
+  TYPE_MISMATCH_CARD_FLAG_ONE,
   TYPE_MISMATCH_DIDNT_LINK_BADGE,
   TYPE_MISMATCH_FIX,
   TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED,
   TYPE_MISMATCH_SHOW_ME,
+  typeMismatchLinkTypeAriaLabel,
+  typeMismatchRowTypeLine,
 } from "../../src/ui/copy/program-type-mismatch.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 import { PENDING_REVIEW_BADGE } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
@@ -98,7 +102,9 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(
       within(article).getByText(TYPE_MISMATCH_DIDNT_LINK_BADGE),
     ).toBeInTheDocument();
-    expect(within(article).getByText("Row type: Isometric")).toBeInTheDocument();
+    expect(
+      within(article).queryByText(typeMismatchRowTypeLine(TYPE_LABELS.isometric)),
+    ).toBeInTheDocument();
     expect(
       within(article).getByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
     ).toBeInTheDocument();
@@ -137,9 +143,14 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(fix).toHaveAttribute("aria-expanded", "true");
     const panel = document.getElementById("pg-row-fix-panel-row-1");
     expect(panel).not.toHaveAttribute("hidden");
+    expect(
+      within(article).queryByRole("button", {
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.isometric),
+      }),
+    ).toBeInTheDocument();
     await userEvent.click(
       within(article).getByRole("button", {
-        name: "Link Bridge marching as Isometric",
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.isometric),
       }),
     );
     expect(onLink).toHaveBeenCalledWith("isometric");
@@ -354,7 +365,7 @@ describe("DIDI-1106 type-mismatch UI", () => {
         <ProgramListCard item={item} matchedCode={null} />
       </MemoryRouter>,
     );
-    expect(screen.getByText("1 exercise didn't link")).toBeInTheDocument();
+    expect(screen.queryByText(TYPE_MISMATCH_CARD_FLAG_ONE)).toBeInTheDocument();
   });
 
   it("shows programs list card flag for type-mismatch count", () => {

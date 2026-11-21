@@ -22,6 +22,7 @@ import type {
   ProgramBuilderView,
 } from "../../src/services/programs/types.js";
 import {
+  TYPE_MISMATCH_DIDNT_LINK_BADGE,
   TYPE_MISMATCH_HINT_CONCENTRIC,
   TYPE_MISMATCH_HINT_ECCENTRIC,
   TYPE_MISMATCH_HINT_ISOMETRIC,
@@ -238,6 +239,11 @@ describe("DIDI-1106 programs wiring", () => {
     );
     const article = await screen.findByRole("article", { name: /Bridge marching/i });
     await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
+    expect(
+      within(article).queryByRole("button", {
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+      }),
+    ).toBeInTheDocument();
     await userEvent.click(
       within(article).getByRole("button", {
         name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
@@ -251,7 +257,15 @@ describe("DIDI-1106 programs wiring", () => {
         "2026-10-24T12:00:00.000Z",
       );
     });
-    const undoButton = await screen.findByRole("button", { name: TOAST_UNDO });
+    await waitFor(() => {
+      expect(
+        screen.queryByText(
+          typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
+    });
+    const undoButton = screen.getByRole("button", { name: TOAST_UNDO });
     await userEvent.click(undoButton);
     await waitFor(() => {
       expect(undoButton).toHaveAttribute("aria-busy", "true");
@@ -356,6 +370,11 @@ describe("DIDI-1106 programs wiring", () => {
     );
     const article = await screen.findByRole("article", { name: /Bridge marching/i });
     await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
+    expect(
+      within(article).queryByRole("button", {
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+      }),
+    ).toBeInTheDocument();
     await userEvent.click(
       within(article).getByRole("button", {
         name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
@@ -363,7 +382,7 @@ describe("DIDI-1106 programs wiring", () => {
     );
     await waitFor(() => {
       expect(
-        screen.getByText(
+        screen.queryByText(
           typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
         ),
       ).toBeInTheDocument();
@@ -371,7 +390,7 @@ describe("DIDI-1106 programs wiring", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: TOAST_UNDO }));
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
+      expect(screen.queryByRole("alert")).toHaveTextContent(
         TYPE_MISMATCH_UNDO_LINK_FAILURE,
       );
     });
@@ -380,6 +399,11 @@ describe("DIDI-1106 programs wiring", () => {
         typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
       ),
     ).toBeNull();
+    expect(
+      within(screen.getByRole("alert")).queryByRole("button", {
+        name: TOAST_UNDO,
+      }),
+    ).toBeInTheDocument();
     expect(
       within(screen.getByRole("alert")).getByRole("button", { name: TOAST_UNDO }),
     ).toBeEnabled();
@@ -390,12 +414,14 @@ describe("DIDI-1106 programs wiring", () => {
     await waitFor(() => {
       expect(screen.queryByRole("alert")).toBeNull();
     });
+    await waitFor(() => {
+      expect(screen.queryByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).toBeInTheDocument();
+    });
+    const restoredArticle = screen.getByRole("article", { name: /Bridge marching/i });
+    expect(restoredArticle).toBeInTheDocument();
+    await userEvent.click(within(restoredArticle).getByRole("button", { name: "Fix" }));
     expect(
-      screen.getByRole("article", { name: /Bridge marching/i }),
-    ).toBeInTheDocument();
-    await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
-    expect(
-      within(article).getByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
+      within(restoredArticle).queryByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
     ).toBeInTheDocument();
   });
 });
