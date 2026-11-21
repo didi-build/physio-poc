@@ -12,11 +12,7 @@ import {
 import { openAiJsonSchemaResponseFormat } from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import { createWorkerProductionAppDependencies } from "../src/adapters/workers/create-worker-production-app-dependencies.js";
-import {
-  resetWorkerFakeDeepinfraProviderLogForTests,
-  WORKER_FAKE_DEEPINFRA_PROVIDER_LOG_EVENT,
-  WORKER_FAKE_DEEPINFRA_PROVIDER_MISSING_SECRET_NAME,
-} from "../src/adapters/workers/worker-fake-deepinfra-provider-log.js";
+import { resetWorkerFakeDeepinfraProviderLogForTests } from "../src/adapters/workers/worker-fake-deepinfra-provider-log.js";
 import { resetWorkerProductionAuthCacheForTests } from "../src/adapters/workers/create-app-dependencies.js";
 import { buildWorkerProductionAuthEnv } from "./helpers/worker-production-auth-test-utils.js";
 import { openWorkerAuthTestDatabase } from "./helpers/worker-auth-d1-fixture.js";
@@ -29,6 +25,7 @@ import {
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
 
 const SENTINEL_DEEPINFRA_KEY = "fixture-sentinel-deepinfra-key-never-log";
@@ -102,6 +99,14 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
     }
   });
 
+  it("returns an empty string when the HTTP response body is null", async () => {
+    const text = await readHttpResponseTextWithByteCap(
+      new Response(null, { status: 204 }),
+      1024,
+    );
+    expect(text).toBe("");
+  });
+
   it("Z01: accepts HTTP responses when content-length equals the byte cap", async () => {
     const payload = "{}";
     const text = await readHttpResponseTextWithByteCap(
@@ -131,7 +136,7 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
           "INSERT INTO exercise_suggested_body_regions (exercise_id, label) VALUES (?, ?)",
           [exerciseId, label81],
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/CHECK constraint failed/);
     } finally {
       storage.close();
     }
@@ -150,6 +155,7 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
   });
 
   it("T02: aborts the upstream request when the timeout elapses (fake timers)", async () => {
+    vi.useFakeTimers();
     let abortSignal: AbortSignal | undefined;
     const fetchImpl = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
@@ -165,26 +171,18 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
       fetchImpl,
       timeoutMs: 50,
     });
-    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    try {
-      const inflight = client.complete({
-        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        messages: [{ role: "user", content: "Exercise name: Heel slide\nNote: None" }],
-        response_format: openAiJsonSchemaResponseFormat(),
-      });
-      const timerCall = setTimeoutSpy.mock.calls.find((call) => call[1] === 50);
-      expect(timerCall).toBeDefined();
-      const onTimeout = timerCall?.[0];
-      expect(typeof onTimeout).toBe("function");
-      (onTimeout as () => void)();
-      await expect(inflight).rejects.toMatchObject({
-        code: "deepinfra_exercise_draft_timeout",
-      });
-      expect(abortSignal?.aborted).toBe(true);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-    } finally {
-      setTimeoutSpy.mockRestore();
-    }
+    const inflight = client.complete({
+      model: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+      messages: [{ role: "user", content: "Exercise name: Heel slide\nNote: None" }],
+      response_format: openAiJsonSchemaResponseFormat(),
+    });
+    inflight.catch(() => {});
+    await vi.advanceTimersByTimeAsync(50);
+    expect(abortSignal?.aborted).toBe(true);
+    await expect(inflight).rejects.toMatchObject({
+      code: "deepinfra_exercise_draft_timeout",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("Z02: resolves draft generation when the streamed JSON body length equals the cap", async () => {
@@ -259,7 +257,7 @@ describe("DIDI-1271 fake DeepInfra provider warning (production Worker)", () => 
       const warningLogs = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line) =>
-          String(line).includes(WORKER_FAKE_DEEPINFRA_PROVIDER_LOG_EVENT),
+          String(line).includes("physio_worker_fake_deepinfra_provider"),
         );
       expect(warningLogs).toHaveLength(1);
       const parsed = JSON.parse(String(warningLogs[0])) as {
@@ -267,10 +265,9 @@ describe("DIDI-1271 fake DeepInfra provider warning (production Worker)", () => 
         missing_secret_name: string;
       };
       expect(parsed).toEqual({
-        event: WORKER_FAKE_DEEPINFRA_PROVIDER_LOG_EVENT,
-        missing_secret_name: WORKER_FAKE_DEEPINFRA_PROVIDER_MISSING_SECRET_NAME,
+        event: "physio_worker_fake_deepinfra_provider",
+        missing_secret_name: "PHYSIO_DEEPINFRA_API_KEY",
       });
-      expect(Object.keys(parsed).sort()).toEqual(["event", "missing_secret_name"]);
       for (const line of logSpy.mock.calls.map((call) => String(call[0]))) {
         expect(line).not.toContain(SENTINEL_DEEPINFRA_KEY);
       }
@@ -291,12 +288,44 @@ describe("DIDI-1271 fake DeepInfra provider warning (production Worker)", () => 
       });
       createWorkerProductionAppDependencies(env);
       const warningLogs = logSpy.mock.calls.filter((call) =>
-        String(call[0]).includes(WORKER_FAKE_DEEPINFRA_PROVIDER_LOG_EVENT),
+        String(call[0]).includes("physio_worker_fake_deepinfra_provider"),
       );
       expect(warningLogs).toHaveLength(0);
       for (const line of logSpy.mock.calls.map((call) => String(call[0]))) {
         expect(line).not.toContain(SENTINEL_DEEPINFRA_KEY);
       }
+    } finally {
+      logSpy.mockRestore();
+      storage.close();
+    }
+  });
+
+  it("logs one warning and uses fake providers when PHYSIO_DEEPINFRA_API_KEY is blank whitespace", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { d1, storage } = await openWorkerAuthTestDatabase();
+    try {
+      const deps = createWorkerProductionAppDependencies(
+        buildWorkerProductionAuthEnv({
+          PHYSIO_DB: d1,
+          PHYSIO_MEDIA: createFakeR2Bucket(),
+          PHYSIO_DEEPINFRA_API_KEY: "   ",
+        }),
+      );
+      const warningLogs = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line) =>
+          String(line).includes("physio_worker_fake_deepinfra_provider"),
+        );
+      expect(warningLogs).toHaveLength(1);
+      expect(JSON.parse(String(warningLogs[0]))).toEqual({
+        event: "physio_worker_fake_deepinfra_provider",
+        missing_secret_name: "PHYSIO_DEEPINFRA_API_KEY",
+      });
+      expect(deps.exerciseDraftGenerator).toBe(fakeExerciseDraftGenerator);
+      expect(deps.exerciseMediaImages).toBeInstanceOf(FakeImageGeneration);
+      expect(deps.exerciseMediaImages).not.toBeInstanceOf(
+        DeepInfraFluxKleinImageGeneration,
+      );
     } finally {
       logSpy.mockRestore();
       storage.close();
