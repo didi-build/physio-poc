@@ -417,7 +417,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
           expect(within(dialog).getByText("Knee routine for UI")).toBeInTheDocument();
         });
         await waitFor(() => {
-          expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+          expect(
+            screen.getByTestId("program-create-failed-save-alert"),
+          ).toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -543,7 +545,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
         await waitFor(() => {
-          expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+          expect(
+            screen.getByTestId("program-create-failed-save-alert"),
+          ).toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -586,7 +590,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
         await waitFor(() => {
-          expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+          expect(
+            screen.getByTestId("program-create-failed-save-alert"),
+          ).toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -629,7 +635,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
         await waitFor(() => {
-          expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+          expect(
+            screen.getByTestId("program-create-failed-save-alert"),
+          ).toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -668,7 +676,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         );
         await waitFor(() => {
           expect(createFromRoutineSpy).toHaveBeenCalledTimes(1);
-          expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+          expect(
+            screen.getByTestId("program-create-failed-save-alert"),
+          ).toBeInTheDocument();
         });
       } finally {
         close();

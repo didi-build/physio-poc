@@ -2,7 +2,14 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -742,7 +749,8 @@ describe("Exercise library UI", () => {
     const skeleton = await screen.findByTestId("exercise-library-busy-skeleton");
     const section = skeleton.closest("section");
     expect(section).toHaveAttribute("aria-busy", "true");
-    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+    expect(within(skeleton).getByRole("status")).toBeInTheDocument();
+    expect(skeleton.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("renders a visual-only busy state while My copy loads", async () => {
@@ -763,7 +771,8 @@ describe("Exercise library UI", () => {
     const skeleton = await screen.findByTestId("exercise-library-busy-skeleton");
     const section = skeleton.closest("section");
     expect(section).toHaveAttribute("aria-busy", "true");
-    expect(skeleton).toHaveAttribute("aria-hidden", "true");
+    expect(within(skeleton).getByRole("status")).toBeInTheDocument();
+    expect(skeleton.querySelector('[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("does not show My exercises empty state copy when load fails", async () => {

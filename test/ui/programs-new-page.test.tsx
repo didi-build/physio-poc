@@ -137,7 +137,7 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(
       screen.getByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE }),
     ).toBeInTheDocument();
-    expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+    expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
   });
 
   it("does not show the error slot when create succeeds (C3)", async () => {
@@ -153,13 +153,17 @@ describe("Programs new page (integration, jsdom)", () => {
         />
       </MemoryRouter>,
     );
-    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-create-failed-save-alert"),
+    ).not.toBeInTheDocument();
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
     });
-    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-create-failed-save-alert"),
+    ).not.toBeInTheDocument();
   });
 
   it("clears the error slot at the start of each retry attempt (C4)", async () => {
@@ -184,15 +188,21 @@ describe("Programs new page (integration, jsdom)", () => {
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
     });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("program-create-failed-save-alert"),
+      ).not.toBeInTheDocument();
     });
     rejectSecond?.(new Error("fail again"));
     await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
     });
     expect(createProgram).toHaveBeenCalledTimes(2);
   });

@@ -44,7 +44,11 @@ export function AutoSaveStatus({
         <>
           <p className="pg-autosave-helper">{AUTO_SAVE_FAILURE_HELPER}</p>
           {failureAlertShown && showFailureAlert ? (
-            <p className="pg-autosave-alert" role="alert">
+            <p
+              className="pg-autosave-alert"
+              role="alert"
+              data-testid="programs-autosave-failed-save-alert"
+            >
               {failureMessage}
             </p>
           ) : null}

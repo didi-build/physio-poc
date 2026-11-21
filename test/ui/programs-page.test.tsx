@@ -28,6 +28,7 @@ import {
   RECENTLY_DELETED_EMPTY,
   RESTORE,
   AUTO_SAVE_NOT_SAVED,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
   deletedProgramToast,
   libraryUpdatesToReviewFlag,
   listCountLabel,
@@ -332,8 +333,8 @@ describe("Programs UI (integration, jsdom)", () => {
     await screen.findByText(listCountLabel(2)!);
   });
 
-  it("redirects to list when by-code lookup fails", async () => {
-    const getProgramByCode = vi.fn().mockRejectedValue(new Error("not found"));
+  it("shows builder item error when by-code lookup fails", async () => {
+    const getProgramByCode = vi.fn().mockRejectedValue(new Error("network"));
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
@@ -345,9 +346,7 @@ describe("Programs UI (integration, jsdom)", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: PROGRAMS_PAGE_TITLE, level: 1 }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("programs-builder-error-slot")).toBeInTheDocument();
     });
     expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST", expectReadCacheSignal);
     expect(
@@ -450,7 +449,9 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(screen.getAllByText(AUTO_SAVE_NOT_SAVED).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
-    await userEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]!);
+    await userEvent.click(
+      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });
