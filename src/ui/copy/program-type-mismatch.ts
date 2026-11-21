@@ -34,6 +34,9 @@ export function typeMismatchLinkedToast(exercise: string, typeLabel: string): st
 
 export const TYPE_MISMATCH_UNDO = "Undo";
 
+/** Designer pick DIDI-1106 comment 1198f8fb (failed Undo after link). */
+export const TYPE_MISMATCH_UNDO_LINK_FAILURE = "Couldn't undo the link. Try again.";
+
 export const TYPE_MISMATCH_CARD_FLAG_ONE = "1 exercise didn't link";
 
 export function typeMismatchCardFlagMany(count: number): string {

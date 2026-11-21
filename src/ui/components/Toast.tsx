@@ -11,7 +11,9 @@ import { TOAST_UNDO } from "../copy/nav.js";
 
 export type ToastPayload = {
   message: string;
-  onUndo?: () => void;
+  onUndo?: () => void | Promise<void>;
+  /** Failed-save styling per design/app/shared-load-states/spec.md */
+  variant?: "default" | "alert";
 };
 
 type ToastContextValue = {
@@ -55,9 +57,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        aria-live="polite"
+        aria-live={toast?.variant === "alert" ? undefined : "polite"}
         aria-atomic="true"
-        className={toast ? "shell-toast" : "shell-toast-live sr-only"}
+        role={toast?.variant === "alert" ? "alert" : undefined}
+        className={
+          toast
+            ? `shell-toast${toast.variant === "alert" ? " shell-toast--alert" : ""}`
+            : "shell-toast-live sr-only"
+        }
       >
         {toast ? (
           <>
@@ -75,9 +82,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   setUndoBusy(true);
                   const result = toast.onUndo?.();
                   if (result && typeof (result as Promise<void>).then === "function") {
-                    void (result as Promise<void>).finally(() => {
-                      dismissToast();
-                    });
+                    void (result as Promise<void>)
+                      .then(() => {
+                        dismissToast();
+                      })
+                      .catch(() => {
+                        setUndoBusy(false);
+                      });
                     return;
                   }
                   setUndoBusy(false);

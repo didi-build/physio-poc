@@ -322,6 +322,59 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
     }
   });
 
+  it("rejects unexpected keys on undo when the linked row would otherwise revert", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-undo-extra"),
+        "undo-extra@example.com",
+      );
+      const programId = id("prog-undo-extra");
+      const reqId = id("req-undo-extra");
+      const rowId = id("row-undo-extra");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      const service = new ProgramBuilderService(storage);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "stretching",
+        draftUpdatedAt,
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowBefore = await rowsRepo.findById(rowId);
+      const { deps, cookie } = apiDeps(storage, owner);
+      const url = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              draft_updated_at: linked.program.draft_updated_at,
+              forged: true,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(INVALID_INPUT_BODY);
+      const rowAfter = await rowsRepo.findById(rowId);
+      expect(rowAfter).toEqual(rowBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("refuses stale draft_updated_at on link without writing", async () => {
     const storage = await openMigratedDatabase();
     try {

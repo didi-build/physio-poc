@@ -13,6 +13,7 @@ import {
   TYPE_MISMATCH_REASON_STRETCHING_APPROVED,
   TYPE_MISMATCH_SHOW_ME,
   TYPE_MISMATCH_UNDO,
+  TYPE_MISMATCH_UNDO_LINK_FAILURE,
   typeMismatchBannerMany,
   typeMismatchCardFlag,
   typeMismatchCardFlagMany,
@@ -47,6 +48,7 @@ describe("DIDI-1106 program type-mismatch copy pins", () => {
       "Linked Bridge marching as Stretching.",
     );
     expect(TYPE_MISMATCH_UNDO).toBe("Undo");
+    expect(TYPE_MISMATCH_UNDO_LINK_FAILURE).toBe("Couldn't undo the link. Try again.");
     expect(TOAST_UNDO).toBe(TYPE_MISMATCH_UNDO);
     expect(TYPE_MISMATCH_CARD_FLAG_ONE).toBe("1 exercise didn't link");
     expect(typeMismatchCardFlag(0)).toBeNull();

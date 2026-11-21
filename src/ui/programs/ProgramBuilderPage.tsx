@@ -30,7 +30,6 @@ import { CANCEL } from "../copy/my-defaults.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   ADD_EXERCISE,
-  AUTO_SAVE_FAILURE_ALERT,
   AUTO_SAVE_NOTE,
   BUILDER_EMPTY_ROWS,
   BUILDER_ROWS_HINT,
@@ -62,7 +61,10 @@ import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
 import { TypeMismatchBuilderBanner } from "./TypeMismatchBuilderBanner.js";
-import { typeMismatchLinkedToast } from "../copy/program-type-mismatch.js";
+import {
+  TYPE_MISMATCH_UNDO_LINK_FAILURE,
+  typeMismatchLinkedToast,
+} from "../copy/program-type-mismatch.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
 import {
   ProgramsBuilderBusyState,
@@ -593,25 +595,35 @@ export function ProgramBuilderPage({
             return next;
           });
           if (result.undo) {
+            const programId = current.program_id;
+            const runUndoTypeMismatchLink = (): Promise<void> => {
+              const draftAt = programRef.current?.draft_updated_at;
+              if (!draftAt) {
+                showToast({
+                  message: TYPE_MISMATCH_UNDO_LINK_FAILURE,
+                  variant: "alert",
+                  onUndo: runUndoTypeMismatchLink,
+                });
+                return Promise.reject(new Error("missing_draft_updated_at"));
+              }
+              return client
+                .undoTypeMismatchPlaceholderLink(programId, rowId, draftAt)
+                .then((reverted) => {
+                  applyProgram(reverted.program);
+                  setNoteDrafts(noteDraftsFromProgram(reverted.program));
+                })
+                .catch(() => {
+                  showToast({
+                    message: TYPE_MISMATCH_UNDO_LINK_FAILURE,
+                    variant: "alert",
+                    onUndo: runUndoTypeMismatchLink,
+                  });
+                  throw new Error("undo_type_mismatch_failed");
+                });
+            };
             showToast({
               message: typeMismatchLinkedToast(exerciseTitle, TYPE_LABELS[type]),
-              onUndo: () => {
-                const programId = current.program_id;
-                const draftAt = programRef.current?.draft_updated_at;
-                if (!draftAt) {
-                  showToast({ message: AUTO_SAVE_FAILURE_ALERT });
-                  return;
-                }
-                return client
-                  .undoTypeMismatchPlaceholderLink(programId, rowId, draftAt)
-                  .then((reverted) => {
-                    applyProgram(reverted.program);
-                    setNoteDrafts(noteDraftsFromProgram(reverted.program));
-                  })
-                  .catch(() => {
-                    showToast({ message: AUTO_SAVE_FAILURE_ALERT });
-                  });
-              },
+              onUndo: runUndoTypeMismatchLink,
             });
           }
         })

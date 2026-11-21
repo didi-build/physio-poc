@@ -26,7 +26,10 @@ import {
   TYPE_MISMATCH_HINT_ECCENTRIC,
   TYPE_MISMATCH_HINT_ISOMETRIC,
   TYPE_MISMATCH_SHOW_ME,
+  TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED,
+  TYPE_MISMATCH_UNDO_LINK_FAILURE,
   typeMismatchLinkTypeAriaLabel,
+  typeMismatchLinkedToast,
   typeMismatchShowMeAriaLabel,
 } from "../../src/ui/copy/program-type-mismatch.js";
 import { TOAST_UNDO } from "../../src/ui/copy/nav.js";
@@ -249,5 +252,134 @@ describe("DIDI-1106 programs wiring", () => {
         "2026-10-24T12:01:00.000Z",
       );
     });
+  });
+
+  it("replaces the link toast with an alert when Undo fails, keeps Undo for retry, and leaves the row linked", async () => {
+    const row = mismatchRow();
+    const view: ProgramBuilderView = {
+      program_id: "prog-wire",
+      code: "PRG-WIRE",
+      name: null,
+      created_at: "2026-10-24T12:00:00.000Z",
+      draft_updated_at: "2026-10-24T12:00:00.000Z",
+      auto_save_status: { kind: "not_published_yet" },
+      draft_saved_at: "2026-10-24T12:00:00.000Z",
+      exercise_count: 1,
+      library_updates_to_review: 0,
+      type_mismatch_placeholder_count: 1,
+      rows: [row],
+      open_share_link: false,
+      share_link_status: "none",
+      last_sent_at: null,
+      deleted_at: null,
+      routine_origin: null,
+    };
+    const linkedView: ProgramBuilderView = {
+      ...view,
+      draft_updated_at: "2026-10-24T12:01:00.000Z",
+      type_mismatch_placeholder_count: 0,
+      rows: [
+        {
+          ...row,
+          kind: "exercise",
+          exercise_id: "ex-1",
+          exercise_version_id: "ver-1",
+          exercise_request_id: null,
+          placeholder_state: undefined,
+          prescription_type: "concentric",
+        },
+      ],
+    };
+    const linkTypeMismatchPlaceholder = vi.fn().mockResolvedValue({
+      program: linkedView,
+      undo: {
+        kind: "placeholder_type_mismatch_link",
+        row_id: row.id,
+      },
+    });
+    const undoTypeMismatchPlaceholderLink = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce({ program: view });
+    const getProgramByCode = vi
+      .fn()
+      .mockResolvedValueOnce(view)
+      .mockResolvedValue(linkedView);
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-WIRE"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+          programsClient={
+            {
+              listPrograms: vi
+                .fn()
+                .mockResolvedValue({ items: [], matched_code: null }),
+              listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+              createProgram: vi.fn(),
+              getProgram: vi.fn().mockResolvedValue(view),
+              getProgramByCode,
+              updateProgramName: vi.fn(),
+              deleteProgram: vi.fn(),
+              restoreProgram: vi.fn(),
+              addExerciseRow: vi.fn(),
+              reorderRows: vi.fn(),
+              duplicateRow: vi.fn(),
+              deleteRow: vi.fn(),
+              updateRow: vi.fn(),
+              applyLibraryUpdate: vi.fn(),
+              keepLibraryUpdate: vi.fn(),
+              addPlaceholderRow: vi.fn(),
+              linkTypeMismatchPlaceholder,
+              undoTypeMismatchPlaceholderLink,
+            } as unknown as ProgramsClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    const article = await screen.findByRole("article", { name: /Bridge marching/i });
+    await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
+    await userEvent.click(
+      within(article).getByRole("button", {
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+      }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: TOAST_UNDO }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        TYPE_MISMATCH_UNDO_LINK_FAILURE,
+      );
+    });
+    expect(
+      screen.queryByText(
+        typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
+      ),
+    ).toBeNull();
+    expect(
+      within(screen.getByRole("alert")).getByRole("button", { name: TOAST_UNDO }),
+    ).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: TOAST_UNDO }));
+    await waitFor(() => {
+      expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+    expect(
+      screen.getByRole("article", { name: /Bridge marching/i }),
+    ).toBeInTheDocument();
+    await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
+    expect(
+      within(article).getByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
+    ).toBeInTheDocument();
   });
 });
