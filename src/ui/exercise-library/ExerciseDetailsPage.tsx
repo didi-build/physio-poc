@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
@@ -106,9 +106,7 @@ export function ExerciseDetailsPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const load = () => {
-    void refresh({ force: true });
-  };
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
   const hasCachedContent = details !== null;
   const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);

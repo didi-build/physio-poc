@@ -162,9 +162,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     } catch {
       setFailedSave({
         message: didi1273FailedSaveMessage("request_draft_edits"),
-        onTryAgain: () => {
-          void patchField(patch);
-        },
+        onTryAgain: () => patchField(patch),
         testId: "request-draft-edits-failed-save-alert",
       });
     }
@@ -185,9 +183,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     } catch {
       setFailedSave({
         message: didi1273FailedSaveMessage("request_approve"),
-        onTryAgain: () => {
-          void approve();
-        },
+        onTryAgain: () => approve(),
         testId: "request-approve-failed-save-alert",
       });
     }

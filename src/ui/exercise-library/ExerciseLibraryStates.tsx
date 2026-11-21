@@ -61,26 +61,6 @@ export function ExerciseLibraryListLoadBanner({
   return null;
 }
 
-/** @deprecated Use ExerciseLibraryListLoadBanner with onTryAgain. */
-export function ExerciseLibraryListErrorSlot({
-  onTryAgain,
-}: {
-  onTryAgain?: RetryHandler;
-} = {}) {
-  if (!onTryAgain) {
-    return (
-      <div data-testid="exercise-library-list-error-slot" className="ex-error-slot" />
-    );
-  }
-  return (
-    <SharedListLoadErrorBanner
-      surface="exercises"
-      onTryAgain={onTryAgain}
-      testId="exercise-library-list-error-slot"
-    />
-  );
-}
-
 export function ExerciseLibraryDetailLoadBanner({
   loadFailed,
   hasContent,
@@ -99,26 +79,6 @@ export function ExerciseLibraryDetailLoadBanner({
         onTryAgain={onTryAgain}
         testId="exercise-library-detail-error-slot"
       />
-    );
-  }
-  return (
-    <SharedItemLoadErrorBanner
-      item={itemTokenForSurface("exercises")}
-      onTryAgain={onTryAgain}
-      testId="exercise-library-detail-error-slot"
-    />
-  );
-}
-
-/** @deprecated Use ExerciseLibraryDetailLoadBanner. */
-export function ExerciseLibraryDetailErrorSlot({
-  onTryAgain,
-}: {
-  onTryAgain?: RetryHandler;
-} = {}) {
-  if (!onTryAgain) {
-    return (
-      <div data-testid="exercise-library-detail-error-slot" className="ex-error-slot" />
     );
   }
   return (

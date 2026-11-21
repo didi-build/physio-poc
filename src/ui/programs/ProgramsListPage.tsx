@@ -180,11 +180,11 @@ export function ProgramsListPage() {
   const onRestore = (item: ProgramListItem) => {
     setRestoringId(item.program_id);
     setRestoreFailedId(null);
-    void client
+    return client
       .restoreProgram(item.program_id)
       .then((result) => {
         showToast({ message: restoredProgramToast(result.program.name) });
-        load();
+        return load();
       })
       .catch(() => {
         setRestoreFailedId(item.program_id);
@@ -312,9 +312,10 @@ export function ProgramsListPage() {
               const item = deletedItems.find(
                 (row) => row.program_id === restoreFailedId,
               );
-              if (item) {
-                onRestore(item);
+              if (!item) {
+                return Promise.resolve();
               }
+              return onRestore(item);
             }}
             testId="program-restore-failed-save-alert"
           />

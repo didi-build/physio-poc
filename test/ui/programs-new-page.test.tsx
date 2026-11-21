@@ -121,7 +121,7 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(screen.getByText(NEW_PROGRAM_FROM_SCRATCH)).toBeInTheDocument();
   });
 
-  it("keeps the sheet open and shows the empty error slot when create fails (C1, C2)", async () => {
+  it("keeps the sheet open and shows create failed-save alert when create fails (C1, C2)", async () => {
     const createProgram = vi.fn().mockRejectedValue(new Error("fail"));
     render(
       <MemoryRouter initialEntries={["/programs/new"]}>

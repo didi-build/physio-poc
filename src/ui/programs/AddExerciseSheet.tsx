@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import type {
   ApprovedExerciseSummary,
@@ -123,13 +123,12 @@ export function AddExerciseSheet({
   const hasListContent = tab === "mine" ? myFiltered.length > 0 : approved.length > 0;
   const showExerciseList = !loading && (!loadFailed || hasListContent);
   const initialListLoadFailed = sharedInitialLoadFailed(hasListContent, loadFailed);
-  const reloadList = () => {
+  const reloadList = useCallback(() => {
     if (tab === "mine") {
-      void refreshMyList({ force: true });
-      return;
+      return refreshMyList({ force: true });
     }
-    void refreshApprovedSearch({ force: true });
-  };
+    return refreshApprovedSearch({ force: true });
+  }, [refreshApprovedSearch, refreshMyList, tab]);
 
   const showMyEmpty =
     tab === "mine" && !loading && myFiltered.length === 0 && query.trim();

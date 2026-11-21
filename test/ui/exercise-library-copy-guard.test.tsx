@@ -5,12 +5,8 @@ import "./setup.js";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  EXERCISE_LIBRARY_DETAIL_ERROR_MESSAGE,
-  EXERCISE_LIBRARY_LIST_ERROR_MESSAGE,
-} from "../../src/ui/copy/exercise-library-states.js";
-import {
   ExerciseLibraryErrorSlot,
-  ExerciseLibraryDetailErrorSlot,
+  ExerciseLibraryListLoadBanner,
 } from "../../src/ui/exercise-library/ExerciseLibraryStates.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
 import {
@@ -58,20 +54,19 @@ function regionWithText(testId: string, text: string): HTMLElement {
 }
 
 describe("exercise library loading/error copy guard", () => {
-  it("keeps list and detail error copy slots undefined", () => {
-    expect(EXERCISE_LIBRARY_LIST_ERROR_MESSAGE).toBeUndefined();
-    expect(EXERCISE_LIBRARY_DETAIL_ERROR_MESSAGE).toBeUndefined();
-  });
-
   it("requires a non-empty unsourced phrase guard list", () => {
     assertUnsourcedGuardListNonEmpty();
     expect(UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS.length).toBeGreaterThan(0);
   });
 
-  it("allows empty loading/error regions when slots are undefined", () => {
+  it("allows empty loading/error regions when list banner has no failure", () => {
     const { container } = render(
       <>
-        <ExerciseLibraryDetailErrorSlot />
+        <ExerciseLibraryListLoadBanner
+          loadFailed={false}
+          hasContent={false}
+          onTryAgain={() => Promise.resolve()}
+        />
         <ExerciseLibraryErrorSlot
           message={undefined}
           testId="exercise-library-list-error-slot"
