@@ -381,7 +381,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("exercise"))).toBeInTheDocument();
     });
     expect(screen.getByText(notFoundHelper("exercise"))).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: BACK_TO_EXERCISES });
+    const slot = screen.getByTestId("exercise-library-detail-error-slot");
+    const back = within(slot).getByRole("link", { name: BACK_TO_EXERCISES });
     expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("exercises"));
     expect(
       screen.queryByText(itemLoadErrorPrimary("exercise")),
@@ -410,7 +411,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("exercise"))).toBeInTheDocument();
     });
     expect(screen.getByText(notFoundHelper("exercise"))).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: BACK_TO_EXERCISES });
+    const slot = screen.getByTestId("exercise-library-detail-error-slot");
+    const back = within(slot).getByRole("link", { name: BACK_TO_EXERCISES });
     expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("exercises"));
     expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
   });
@@ -569,7 +571,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
     await waitFor(() => {
       expect(screen.getByText(notFoundTitle("routine"))).toBeInTheDocument();
     });
-    const back = screen.getByRole("link", { name: BACK_TO_ROUTINES });
+    const slot = screen.getByTestId("exercise-library-detail-error-slot");
+    const back = within(slot).getByRole("link", { name: BACK_TO_ROUTINES });
     expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("routines"));
   });
 
@@ -713,7 +716,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("draft"))).toBeInTheDocument();
     });
     expect(screen.getByText(NOT_FOUND_HELPER_DRAFT)).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: BACK_TO_REQUESTS_AND_DRAFTS });
+    const slot = screen.getByTestId("exercise-request-detail-error-slot");
+    const back = within(slot).getByRole("link", { name: BACK_TO_REQUESTS_AND_DRAFTS });
     expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("requests"));
     expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
     expect(screen.queryByText(itemLoadErrorPrimary("draft"))).not.toBeInTheDocument();
@@ -825,11 +829,10 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("program"))).toBeInTheDocument();
     });
     expect(screen.getByText(NOT_FOUND_HELPER_PROGRAM)).toBeInTheDocument();
-    const back = screen.getByRole("link", { name: BACK_TO_PROGRAMS });
+    const slot = screen.getByTestId("programs-builder-error-slot");
+    const back = within(slot).getByRole("link", { name: BACK_TO_PROGRAMS });
     expect(back).toHaveAttribute("href", fillPhysioAppRoutePattern("programs"));
-    expect(screen.getByTestId("programs-builder-error-slot")).toHaveTextContent(
-      notFoundTitle("program"),
-    );
+    expect(slot).toHaveTextContent(notFoundTitle("program"));
   });
 
   it("shows not-found card when ExerciseLibraryClient details fetch returns 404 JSON", async () => {

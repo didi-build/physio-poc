@@ -13,12 +13,15 @@ import {
 } from "../../src/ui/api/exercise-library-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
-  AUTO_SAVE_TRY_AGAIN_ARIA,
   NEW_PROGRAM_FROM_ROUTINE,
   NEW_PROGRAM_FROM_SCRATCH,
   NEW_PROGRAM_SHEET_TITLE,
 } from "../../src/ui/copy/programs.js";
-import { failedSaveItem } from "../../src/ui/copy/shared-load-states.js";
+import {
+  TRYING_AGAIN,
+  TRY_AGAIN,
+  failedSaveItem,
+} from "../../src/ui/copy/shared-load-states.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 
 afterEach(() => {
@@ -166,9 +169,7 @@ describe("Programs new page (integration, jsdom)", () => {
       ).toBeInTheDocument();
     });
     expect(createProgram).toHaveBeenCalledTimes(1);
-    await userEvent.click(
-      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
     await waitFor(() => {
       expect(createProgram).toHaveBeenCalledTimes(2);
     });
@@ -201,7 +202,7 @@ describe("Programs new page (integration, jsdom)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("clears the error slot at the start of each retry attempt (C4)", async () => {
+  it("keeps create failed-save alert mounted with Trying again during retry (spec L39)", async () => {
     let rejectSecond: ((reason: Error) => void) | undefined;
     const createProgram = vi
       .fn()
@@ -227,17 +228,12 @@ describe("Programs new page (integration, jsdom)", () => {
         screen.getByTestId("program-create-failed-save-alert"),
       ).toBeInTheDocument();
     });
-    await userEvent.click(scratchOptionButton(sheet));
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId("program-create-failed-save-alert"),
-      ).not.toBeInTheDocument();
-    });
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
     rejectSecond?.(new Error("fail again"));
     await waitFor(() => {
-      expect(
-        screen.getByTestId("program-create-failed-save-alert"),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
     });
     expect(createProgram).toHaveBeenCalledTimes(2);
   });
