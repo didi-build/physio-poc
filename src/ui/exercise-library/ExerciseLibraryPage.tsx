@@ -55,7 +55,11 @@ import {
   ExerciseLibraryBusyState,
   ExerciseLibraryListLoadBanner,
 } from "./ExerciseLibraryStates.js";
-import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import {
+  SharedFailedSaveAlert,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { FiltersSortPanel, LibrarySearchBar } from "./FiltersSortPanel.js";
 import {
   DEFAULT_FILTERS,
@@ -162,6 +166,7 @@ export function ExerciseLibraryPage({
     (searchParams.get("q") ?? "").trim(),
   );
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [submitRequestFailed, setSubmitRequestFailed] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
   const location = useLocation();
@@ -346,6 +351,7 @@ export function ExerciseLibraryPage({
       return;
     }
     setSubmittingRequest(true);
+    setSubmitRequestFailed(false);
     try {
       const result = await requestsClient.submitRequest({
         requested_name: requestedName,
@@ -368,6 +374,8 @@ export function ExerciseLibraryPage({
         onRequestsChanged?.();
         void refreshInProgressCount();
       }
+    } catch {
+      setSubmitRequestFailed(true);
     } finally {
       setSubmittingRequest(false);
     }
@@ -655,21 +663,32 @@ export function ExerciseLibraryPage({
                   }}
                 />
               ) : (
-                <RequestForm
-                  exerciseName={reqExerciseName}
-                  onExerciseNameChange={setReqExerciseName}
-                  showNoneHeading={hasSimilar}
-                  leadHeading={
-                    showLeadInCard ? noExactMatchHeading(trimmedQuery) : undefined
-                  }
-                  leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
-                  note={reqNote}
-                  onNoteChange={setReqNote}
-                  onSubmit={() => {
-                    void submitRequest();
-                  }}
-                  submitting={submittingRequest}
-                />
+                <>
+                  {submitRequestFailed ? (
+                    <SharedFailedSaveAlert
+                      message={didi1273FailedSaveMessage("request_submit")}
+                      onTryAgain={() => {
+                        void submitRequest();
+                      }}
+                      testId="request-submit-failed-save-alert"
+                    />
+                  ) : null}
+                  <RequestForm
+                    exerciseName={reqExerciseName}
+                    onExerciseNameChange={setReqExerciseName}
+                    showNoneHeading={hasSimilar}
+                    leadHeading={
+                      showLeadInCard ? noExactMatchHeading(trimmedQuery) : undefined
+                    }
+                    leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
+                    note={reqNote}
+                    onNoteChange={setReqNote}
+                    onSubmit={() => {
+                      void submitRequest();
+                    }}
+                    submitting={submittingRequest}
+                  />
+                </>
               )
             ) : null}
           </>

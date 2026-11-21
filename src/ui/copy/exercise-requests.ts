@@ -44,6 +44,7 @@ export function toastMergedIntoDraft(name: string): string {
 
 export const REVIEW_BACK = "Requests";
 export const APPROVE = "Approve";
+export const DISCARD_DRAFT_REQUEST = "Discard draft";
 export const REGENERATE = "Regenerate";
 export const EDIT_ALL = "Edit all";
 export const APPROVE_FOOTNOTE =

@@ -122,6 +122,18 @@ export class ExerciseRequestsClient {
     ).then((response) => readJson<ExerciseRequestDraftView>(response));
   }
 
+  discardRequestDraft(requestId: string): Promise<{ ok: true }> {
+    const url = exerciseRequestPath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ action: "discard_draft" }),
+      }),
+    ).then((response) => readJson<{ ok: true }>(response));
+  }
+
   approveRequest(requestId: string): Promise<ApproveExerciseRequestResult> {
     const url = exerciseRequestApprovePath(requestId);
     return this.fetchFn(

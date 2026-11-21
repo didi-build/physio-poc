@@ -6,7 +6,6 @@ import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.j
 import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../../copy/programs-share.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import { ProgramsApiError, type ProgramsClient } from "../api/programs-client.js";
-import { publishApiUserMessage } from "./publish-api-user-message.js";
 import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
 import { PublishPlaceholderNotice } from "./PublishPlaceholderNotice.js";
@@ -18,6 +17,8 @@ import {
   isSameLinkPublish,
   savedCustomExpiryIsStale,
 } from "./share-link-ui.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import {
   EXPIRY_APPLIES_NEW_LINK,
   EXPIRY_APPLIES_RIGHT_AWAY,
@@ -219,10 +220,7 @@ export function PublishSheet({
           setMissingImagesFocusHeading(true);
           return;
         }
-        const message = publishApiUserMessage(error);
-        if (message) {
-          setPublishError(message);
-        }
+        setPublishError(didi1273FailedSaveMessage("program_publish"));
       }
     } finally {
       setPublishBusy(false);
@@ -245,9 +243,13 @@ export function PublishSheet({
       footer={
         <div className="pg-publish-sheet-footer">
           {publishError ? (
-            <p className="pg-publish-error" role="alert">
-              {publishError}
-            </p>
+            <SharedFailedSaveAlert
+              message={publishError}
+              onTryAgain={() => {
+                void runPublish();
+              }}
+              testId="program-publish-failed-save-alert"
+            />
           ) : null}
           <button type="button" className="pg-btn pg-btn--secondary" onClick={onNotYet}>
             {PUBLISH_NOT_YET}

@@ -27,6 +27,7 @@ import {
 import {
   AI_VIDEO_LOOP,
   APPROVE,
+  DISCARD_DRAFT_REQUEST,
   APPROVE_FOOTNOTE_SHARED,
   BASICS,
   DAILY_LIMIT_REACHED,
@@ -57,6 +58,8 @@ import {
   scopeForPick,
 } from "./RegenerateMediaSheet.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 
 export type DraftReviewPageProps = {
   onRequestsChanged?: () => void;
@@ -79,6 +82,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const [failedSave, setFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void;
+    testId: string;
+  } | null>(null);
 
   const detailCacheKey = useMemo(
     () =>
@@ -125,21 +133,60 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const loading = !sessionReady || viewLoading || quotaLoading;
 
   const patchField = async (patch: DraftFieldPatch) => {
-    const updated = await requestsClient.updateDraft(requestId, patch);
-    setViewOverride(updated);
-    void refreshView({ force: true });
+    setFailedSave(null);
+    try {
+      const updated = await requestsClient.updateDraft(requestId, patch);
+      setViewOverride(updated);
+      void refreshView({ force: true });
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_draft_edits"),
+        onTryAgain: () => {
+          void patchField(patch);
+        },
+        testId: "request-draft-edits-failed-save-alert",
+      });
+    }
+  };
+
+  const discardDraft = async () => {
+    setFailedSave(null);
+    try {
+      await requestsClient.discardRequestDraft(requestId);
+      onRequestsChanged?.();
+      navigate(fillPhysioAppRoutePattern("requests"));
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_discard_draft"),
+        onTryAgain: () => {
+          void discardDraft();
+        },
+        testId: "request-discard-draft-failed-save-alert",
+      });
+    }
   };
 
   const approve = async () => {
-    await requestsClient.approveRequest(requestId);
-    const own =
-      currentPractitioner.sessionIdentityReady &&
-      view?.requested_by === currentPractitioner.practitionerId;
-    showToast({
-      message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
-    });
-    onRequestsChanged?.();
-    navigate(fillPhysioAppRoutePattern("requests"));
+    setFailedSave(null);
+    try {
+      await requestsClient.approveRequest(requestId);
+      const own =
+        currentPractitioner.sessionIdentityReady &&
+        view?.requested_by === currentPractitioner.practitionerId;
+      showToast({
+        message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
+      });
+      onRequestsChanged?.();
+      navigate(fillPhysioAppRoutePattern("requests"));
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_approve"),
+        onTryAgain: () => {
+          void approve();
+        },
+        testId: "request-approve-failed-save-alert",
+      });
+    }
   };
 
   const runRegenerate = async () => {
@@ -147,6 +194,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       return;
     }
     setRegenBusy(true);
+    setFailedSave(null);
     try {
       const scope =
         regenMode === "start"
@@ -162,6 +210,14 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       await refreshQuota({ force: true });
       setRegenOpen(false);
       setRegenNote("");
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("exercise_regenerate_media"),
+        onTryAgain: () => {
+          void runRegenerate();
+        },
+        testId: "request-regenerate-media-failed-save-alert",
+      });
     } finally {
       setRegenBusy(false);
     }
@@ -208,6 +264,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={failedSave.message}
+          onTryAgain={failedSave.onTryAgain}
+          testId={failedSave.testId}
+        />
+      ) : null}
       <div className="ex-review-toolbar">
         <button
           type="button"
@@ -229,6 +292,16 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           }}
         >
           {REGENERATE}
+        </button>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          disabled={!draft || regenBusy}
+          onClick={() => {
+            void discardDraft();
+          }}
+        >
+          {DISCARD_DRAFT_REQUEST}
         </button>
         <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
       </div>

@@ -17,7 +17,6 @@ import { expectReadCacheSignal } from "./navigation-cache-read-expect.js";
 import {
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
-  AUTO_SAVE_TRY_AGAIN_ARIA,
   CARD_NO_EXERCISES_YET,
   CLEAR_SEARCH,
   DELETE_PROGRAM_SHEET_TITLE,
@@ -451,9 +450,7 @@ describe("Programs UI (integration, jsdom)", () => {
     expect(screen.getAllByText(AUTO_SAVE_NOT_SAVED).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: PUBLISH })[0]).toBeDisabled();
-    await userEvent.click(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
-    );
+    await userEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]!);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });

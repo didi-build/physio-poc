@@ -50,6 +50,25 @@ export const FAILED_SWITCH_TO_LIBRARY =
 
 export const FAILED_KEEP_YOUR_VERSION = "Couldn't keep your version. Try again.";
 
+/** Failed-save strings (Designer pick, DIDI-1273) — verbatim from spec.md */
+export const FAILED_REGENERATE_IMAGES = "Couldn't regenerate the images. Try again.";
+export const FAILED_RESTORE_THIS_VERSION = "Couldn't restore this version. Try again.";
+export const FAILED_MERGE_EXERCISES = "Couldn't merge the exercises. Try again.";
+export const FAILED_SAVE_DRAFT = "Couldn't save the draft. Try again.";
+export const FAILED_PUBLISH_ROUTINE = "Couldn't publish the routine. Try again.";
+export const FAILED_DISCARD_DRAFT = "Couldn't discard the draft. Try again.";
+export const FAILED_SWITCH_TO_THIS_VERSION =
+  "Couldn't switch to this version. Try again.";
+export const FAILED_PUBLISH_PROGRAM = "Couldn't publish the program. Try again.";
+export const FAILED_RESTORE_PROGRAM = "Couldn't restore the program. Try again.";
+export const FAILED_REMOVE_EXERCISE_FROM_BUILDER =
+  "Couldn't remove the exercise. Try again.";
+export const FAILED_SAVE_LINK_EXPIRY = "Couldn't save the link expiry. Try again.";
+export const FAILED_SUBMIT_REQUEST = "Couldn't submit the request. Try again.";
+export const FAILED_SAVE_DRAFT_EDITS = "Couldn't save your edits. Try again.";
+export const FAILED_APPROVE_DRAFT = "Couldn't approve the draft. Try again.";
+export const FAILED_SAVE_YOUR_DEFAULT = "Couldn't save your default. Try again.";
+
 export const BACK_TO_EXERCISES = "Back to exercises";
 export const BACK_TO_ROUTINES = "Back to routines";
 export const BACK_TO_PROGRAMS = "Back to programs";

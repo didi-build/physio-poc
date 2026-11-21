@@ -58,7 +58,10 @@ import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
 import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
-import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
+import {
+  mappedFailedSaveMessage,
+  programAutosaveFailedSaveMessage,
+} from "../shared-load-states/failed-save.js";
 import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
@@ -149,6 +152,9 @@ export function ProgramBuilderPage({
   }, [client]);
 
   const autoSave = useProgramAutoSave({});
+  const autosaveFailureMessage = programAutosaveFailedSaveMessage(
+    autoSave.lastFailedSaveKey,
+  );
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
 
@@ -649,6 +655,7 @@ export function ProgramBuilderPage({
               className="pg-autosave--phone"
               state={autoSave.state}
               failureAlertShown={autoSave.failureAlertShown}
+              failureMessage={autosaveFailureMessage}
               showFailureAlert={!isDesktopLayout}
               onTryAgain={autoSave.tryAgain}
             />
@@ -1021,6 +1028,7 @@ export function ProgramBuilderPage({
           shareLinkStatus={displayProgram.share_link_status}
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
+          failureMessage={autosaveFailureMessage}
           showFailureAlert={isDesktopLayout}
           publishAllowed={autoSave.publishAllowed}
           primaryDisabled={displayProgram.rows.length === 0}

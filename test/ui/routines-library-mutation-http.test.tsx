@@ -251,7 +251,7 @@ describe("Routines library mutation failures (HTTP → UI)", () => {
         await waitFor(() => {
           expect(
             document.querySelector(
-              '[data-testid="routine-detail-mutation-error-slot"]',
+              '[data-testid="routine-adopt-version-failed-save-alert"]',
             ),
           ).toBeInTheDocument();
         });

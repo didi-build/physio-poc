@@ -271,8 +271,8 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(within(banner).getByText(LIST_LOAD_ERROR_SECONDARY)).toBeInTheDocument();
   });
 
-  it("does not use locked save copy for unmapped builder autosave (DIDI-1273)", () => {
+  it("uses DIDI-1273 program builder autosave copy when autosave fails (DIDI-1273)", () => {
+    expect(failedSaveItem("program")).toBe("Couldn't save the program. Try again.");
     expect(AUTO_SAVE_NOT_SAVED).toBe("Not saved");
-    expect(AUTO_SAVE_NOT_SAVED).not.toBe(failedSaveItem("program"));
   });
 });

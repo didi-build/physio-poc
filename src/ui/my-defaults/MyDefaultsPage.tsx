@@ -30,7 +30,11 @@ import {
 } from "../copy/my-defaults.js";
 import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
 import { TypeDefaultsFootnote } from "./TypeDefaultsFootnote.js";
-import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import {
+  SharedFailedSaveAlert,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { MyDefaultsBusyState, MyDefaultsErrorSlot } from "./MyDefaultsStates.js";
 import { myDefaultsPendingCopySlots } from "../copy/my-defaults-pending-copy.js";
 
@@ -48,6 +52,11 @@ export function MyDefaultsPage() {
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const [savingExpiry, setSavingExpiry] = useState(false);
+  const [shareExpiryFailed, setShareExpiryFailed] = useState(false);
+  const [typeDefaultFailed, setTypeDefaultFailed] = useState<{
+    type: import("../../domain/exercise-types.js").PrescriptionType;
+    params: import("../../domain/exercise-params.js").ExerciseParams;
+  } | null>(null);
   const [pageOverride, setPageOverride] = useState<MyDefaultsPageView | null>(null);
 
   const pageCacheKey = useMemo(
@@ -85,6 +94,7 @@ export function MyDefaultsPage() {
       return;
     }
     setSavingExpiry(true);
+    setShareExpiryFailed(false);
     void client
       .updateShareLinkExpiry(expiresIn)
       .then((shareLinkExpiry) => {
@@ -103,7 +113,7 @@ export function MyDefaultsPage() {
         }
       })
       .catch(() => {
-        /* loadFailed from cache hook unchanged; prior page stays visible */
+        setShareExpiryFailed(true);
       })
       .finally(() => {
         setSavingExpiry(false);
@@ -134,6 +144,32 @@ export function MyDefaultsPage() {
       <h1 id="my-defaults-heading" className="ex-page-title md-page-title">
         {MY_DEFAULTS_PAGE_TITLE}
       </h1>
+      {shareExpiryFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("defaults_share_link")}
+          onTryAgain={() => {
+            if (effectiveExpiry) {
+              onExpiryChange(effectiveExpiry);
+            }
+          }}
+          testId="defaults-share-link-failed-save-alert"
+        />
+      ) : null}
+      {typeDefaultFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("defaults_exercise_type_row")}
+          onTryAgain={() => {
+            const failed = typeDefaultFailed;
+            if (!failed) {
+              return;
+            }
+            void client.upsertTypeDefault(failed.type, failed.params).catch(() => {
+              setTypeDefaultFailed(failed);
+            });
+          }}
+          testId="defaults-exercise-type-failed-save-alert"
+        />
+      ) : null}
       <p className="ex-page-intro md-page-intro">{MY_DEFAULTS_INTRO}</p>
 
       {loading || (loadFailed && !hasCachedContent) ? <MyDefaultsBusyState /> : null}
@@ -192,22 +228,29 @@ export function MyDefaultsPage() {
                 key={entry.type}
                 entry={entry}
                 onSave={(type, params) => {
-                  void client.upsertTypeDefault(type, params).then((updated) => {
-                    setPageOverride((current) =>
-                      current || cachedPage
-                        ? {
-                            ...(current ?? cachedPage)!,
-                            exercise_types: (current ?? cachedPage)!.exercise_types.map(
-                              (row) => (row.type === type ? updated : row),
-                            ),
-                          }
-                        : null,
-                    );
-                    void refresh({ force: true });
-                    showToast({
-                      message: savedYourTypeDefaultToast(TYPE_LABELS[type]),
+                  setTypeDefaultFailed(null);
+                  void client
+                    .upsertTypeDefault(type, params)
+                    .then((updated) => {
+                      setPageOverride((current) =>
+                        current || cachedPage
+                          ? {
+                              ...(current ?? cachedPage)!,
+                              exercise_types: (current ??
+                                cachedPage)!.exercise_types.map((row) =>
+                                row.type === type ? updated : row,
+                              ),
+                            }
+                          : null,
+                      );
+                      void refresh({ force: true });
+                      showToast({
+                        message: savedYourTypeDefaultToast(TYPE_LABELS[type]),
+                      });
+                    })
+                    .catch(() => {
+                      setTypeDefaultFailed({ type, params });
                     });
-                  });
                 }}
                 onReset={(type) => {
                   void client.resetTypeDefault(type).then((updated) => {

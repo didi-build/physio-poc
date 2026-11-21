@@ -33,7 +33,11 @@ import {
 import { ProgramListCard } from "./ProgramListCard.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
-import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import {
+  SharedFailedSaveAlert,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
 
 type ProgramsListSnapshot = {
@@ -57,6 +61,7 @@ export function ProgramsListPage() {
   const { showToast } = useToast();
   const [newSheetOpen, setNewSheetOpen] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [restoreFailedId, setRestoreFailedId] = useState<string | null>(null);
 
   const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
@@ -173,6 +178,7 @@ export function ProgramsListPage() {
 
   const onRestore = (item: ProgramListItem) => {
     setRestoringId(item.program_id);
+    setRestoreFailedId(null);
     void client
       .restoreProgram(item.program_id)
       .then((result) => {
@@ -180,7 +186,7 @@ export function ProgramsListPage() {
         load();
       })
       .catch(() => {
-        /* leave list unchanged */
+        setRestoreFailedId(item.program_id);
       })
       .finally(() => {
         setRestoringId(null);
@@ -295,6 +301,20 @@ export function ProgramsListPage() {
           {RECENTLY_DELETED}
         </h2>
         <p className="pg-deleted-intro">{RECENTLY_DELETED_INTRO}</p>
+        {restoreFailedId ? (
+          <SharedFailedSaveAlert
+            message={didi1273FailedSaveMessage("program_restore")}
+            onTryAgain={() => {
+              const item = deletedItems.find(
+                (row) => row.program_id === restoreFailedId,
+              );
+              if (item) {
+                onRestore(item);
+              }
+            }}
+            testId="program-restore-failed-save-alert"
+          />
+        ) : null}
         {deletedItems.length === 0 ? (
           <p className="pg-deleted-empty">{RECENTLY_DELETED_EMPTY}</p>
         ) : (

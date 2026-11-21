@@ -19,10 +19,12 @@ import {
   toastVersionRestored,
 } from "../copy/routines.js";
 import {
+  SharedFailedSaveAlert,
   SharedItemBackLink,
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { RoutineRestoreConfirmSheet } from "./RoutineRestoreConfirmSheet.js";
 
@@ -34,6 +36,7 @@ export function RoutineVersionHistoryPage() {
     null,
   );
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreFailed, setRestoreFailed] = useState(false);
   const sessionReady = usePractitionerSession().status === "ready";
 
   const {
@@ -53,6 +56,7 @@ export function RoutineVersionHistoryPage() {
       return;
     }
     setRestoreBusy(true);
+    setRestoreFailed(false);
     const fromVersion = restoreTarget.version_number;
     void client
       .restoreRoutineVersion(routineId, fromVersion)
@@ -67,7 +71,7 @@ export function RoutineVersionHistoryPage() {
         void refresh({ force: true });
       })
       .catch(() => {
-        // TODO(DIDI-1273): failed-save copy not approved
+        setRestoreFailed(true);
       })
       .finally(() => {
         setRestoreBusy(false);
@@ -130,6 +134,13 @@ export function RoutineVersionHistoryPage() {
       <h1 id="rt-versions-title" className="ex-page-title">
         {VERSION_HISTORY}
       </h1>
+      {restoreFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("routine_restore_version")}
+          onTryAgain={onRestore}
+          testId="routine-restore-version-failed-save-alert"
+        />
+      ) : null}
 
       <ul className="rt-version-list">
         {data.versions.map((version) => (

@@ -51,9 +51,7 @@ import {
   TYPE_LABELS,
 } from "../../src/ui/copy/my-defaults.js";
 import { PUBLISH_NOW } from "../../src/ui/copy/program-publish.js";
-import {
-  removeRowAriaLabel,
-} from "../../src/ui/copy/programs.js";
+import { removeRowAriaLabel } from "../../src/ui/copy/programs.js";
 import {
   PUBLISH_NOW as ROUTINE_PUBLISH_NOW,
   RESTORE_THIS_VERSION,
@@ -61,8 +59,15 @@ import {
   useVersionN,
 } from "../../src/ui/copy/routines.js";
 import { RESTORE } from "../../src/ui/copy/programs.js";
-import type { ProgramBuilderRow, ProgramBuilderView, ProgramListItem } from "../../src/services/programs/types.js";
-import type { RoutineDetailsDraft, RoutineExerciseRow } from "../../src/services/routines/types.js";
+import type {
+  ProgramBuilderRow,
+  ProgramBuilderView,
+  ProgramListItem,
+} from "../../src/services/programs/types.js";
+import type {
+  RoutineDetailsDraft,
+  RoutineExerciseRow,
+} from "../../src/services/routines/types.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
 import { FAKE_UI_PRACTITIONER_ID } from "./fake-practitioner-session-fixture.js";
 import { conflictState } from "./harness/fixtures.js";
@@ -108,9 +113,7 @@ function stubRequestsClient(
       library_matches: [],
       drafts_in_progress: [],
     }),
-    listInProgress: vi
-      .fn()
-      .mockResolvedValue({ requests: [], in_progress_count: 0 }),
+    listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
     ...overrides,
   } as unknown as ExerciseRequestsClient;
 }
@@ -130,9 +133,7 @@ function renderPhysio(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         exerciseLibraryClient={extras.exerciseLibraryClient ?? stubLibraryClient()}
-        exerciseRequestsClient={
-          extras.exerciseRequestsClient ?? stubRequestsClient()
-        }
+        exerciseRequestsClient={extras.exerciseRequestsClient ?? stubRequestsClient()}
         exerciseMediaClient={extras.exerciseMediaClient}
         programsClient={extras.programsClient}
         routinesClient={extras.routinesClient}
@@ -370,42 +371,39 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
   });
 
   it("shows exercise restore version failed-save copy on exercise details", async () => {
-    renderPhysio(
-      fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
-      {
-        exerciseLibraryClient: stubLibraryClient({
-          getExerciseDetails: vi.fn().mockResolvedValue({
-            exercise_id: "ex-1",
-            exercise_version_id: "ver-2",
-            version_number: 2,
-            category: "Stretching",
-            body_regions: ["knee"],
-            aliases: [],
-            allowed_prescription_types: ["stretching"],
-            usage_count: 0,
-            approved_at: "2026-01-01",
-            media_set_id: null,
-            in_my_exercises: true,
-            favourite: false,
-            library: {
-              title: "Heel slide",
-              description: "Desc",
-              steps: "[]",
-              equipment: null,
-              precautions: null,
-              cue_stretching: null,
-              cue_isometric: null,
-              cue_concentric: null,
-              cue_eccentric: null,
-            },
-            resolved_text: [],
-            param_overrides: {},
-            resolved_params_by_type: {},
-          }),
-          restoreExerciseVersion: vi.fn().mockRejectedValue(new Error("fail")),
+    renderPhysio(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }), {
+      exerciseLibraryClient: stubLibraryClient({
+        getExerciseDetails: vi.fn().mockResolvedValue({
+          exercise_id: "ex-1",
+          exercise_version_id: "ver-2",
+          version_number: 2,
+          category: "Stretching",
+          body_regions: ["knee"],
+          aliases: [],
+          allowed_prescription_types: ["stretching"],
+          usage_count: 0,
+          approved_at: "2026-01-01",
+          media_set_id: null,
+          in_my_exercises: true,
+          favourite: false,
+          library: {
+            title: "Heel slide",
+            description: "Desc",
+            steps: "[]",
+            equipment: null,
+            precautions: null,
+            cue_stretching: null,
+            cue_isometric: null,
+            cue_concentric: null,
+            cue_eccentric: null,
+          },
+          resolved_text: [],
+          param_overrides: {},
+          resolved_params_by_type: {},
         }),
-      },
-    );
+        restoreExerciseVersion: vi.fn().mockRejectedValue(new Error("fail")),
+      }),
+    });
 
     await waitFor(() => {
       expect(
@@ -472,7 +470,11 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
             condition_options: [],
           }),
           listMeBodyRegions: vi.fn().mockResolvedValue([
-            { body_region_id: "br-knee", label: "Knee", allowed_prescription_types: [] },
+            {
+              body_region_id: "br-knee",
+              label: "Knee",
+              allowed_prescription_types: [],
+            },
           ]),
         } as unknown as RoutinesClient,
       },

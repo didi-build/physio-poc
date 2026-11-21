@@ -67,7 +67,10 @@ import {
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
-import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
+import {
+  didi1273FailedSaveMessage,
+  mappedFailedSaveMessage,
+} from "../shared-load-states/failed-save.js";
 import { myCopyStatusLine } from "./my-copy-status.js";
 import { parseSteps } from "./library-filters.js";
 
@@ -84,6 +87,8 @@ export function ExerciseDetailsPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [removeFailed, setRemoveFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [restoreVersionFailed, setRestoreVersionFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const cacheKey =
@@ -172,6 +177,7 @@ export function ExerciseDetailsPage() {
     details.category === "Strengthening" ? MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX : "";
 
   const onSave = () => {
+    setSaveFailed(false);
     void client
       .saveToMyExercises(exerciseId)
       .then(({ undo }) => {
@@ -184,7 +190,22 @@ export function ExerciseDetailsPage() {
         load();
       })
       .catch(() => {
-        // TODO(DIDI-1273): failed-save copy not approved
+        setSaveFailed(true);
+      });
+  };
+
+  const onRestoreVersion = () => {
+    if (details.version_number <= 1) {
+      return;
+    }
+    setRestoreVersionFailed(false);
+    void client
+      .restoreExerciseVersion(exerciseId, details.version_number - 1)
+      .then(() => {
+        load();
+      })
+      .catch(() => {
+        setRestoreVersionFailed(true);
       });
   };
 
@@ -215,6 +236,23 @@ export function ExerciseDetailsPage() {
       <h1 id="ex-detail-heading" className="ex-page-title">
         {title}
       </h1>
+      {restoreVersionFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("exercise_restore_version")}
+          onTryAgain={onRestoreVersion}
+          testId="exercise-restore-version-failed-save-alert"
+        />
+      ) : null}
+      {saveFailed ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage({
+            kind: "save_or_edit",
+            item: "exercise",
+          })}
+          onTryAgain={onSave}
+          testId="exercise-detail-save-failed-save-alert"
+        />
+      ) : null}
       {removeFailed ? (
         <SharedFailedSaveAlert
           message={mappedFailedSaveMessage({
@@ -234,7 +272,13 @@ export function ExerciseDetailsPage() {
           <button type="button" className="ex-primary-btn" disabled>
             {EDIT_FOR_EVERYONE}
           </button>
-          <button type="button" className="ex-secondary-btn" disabled>
+          <button
+            type="button"
+            className="ex-secondary-btn"
+            disabled={details.version_number <= 1}
+            onClick={onRestoreVersion}
+            data-testid="exercise-restore-version"
+          >
             {HISTORY} ({details.version_number})
           </button>
         </div>

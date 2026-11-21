@@ -345,7 +345,7 @@ describe("Routines Undo rejection (HTTP → real Toast Undo)", () => {
         await waitFor(() => {
           expect(
             document.querySelector(
-              '[data-testid="routine-detail-mutation-error-slot"]',
+              '[data-testid="routine-adopt-version-failed-save-alert"]',
             ),
           ).toBeInTheDocument();
         });

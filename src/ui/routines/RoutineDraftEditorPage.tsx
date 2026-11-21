@@ -49,6 +49,7 @@ import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.
 import { useProgramAutoSave } from "../programs/use-program-auto-save.js";
 import { RoutineAuthoringExerciseList } from "./RoutineAuthoringExerciseList.js";
 import { RoutineAutoSaveStatus } from "./RoutineAutoSaveStatus.js";
+import { routineDraftAutosaveFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
@@ -659,7 +660,12 @@ export function RoutineDraftEditorPage({
         </h1>
         <span className="rt-tag rt-tag--draft">{TAG_DRAFT}</span>
       </div>
-      <RoutineAutoSaveStatus state={autoSave.state} />
+      <RoutineAutoSaveStatus
+        state={autoSave.state}
+        failureAlertShown={autoSave.failureAlertShown}
+        failureMessage={routineDraftAutosaveFailedSaveMessage()}
+        onTryAgain={autoSave.tryAgain}
+      />
 
       {validationIssues ? (
         <RoutinePublishValidationPanel issues={validationIssues} />

@@ -5,7 +5,6 @@ import "./setup.js";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AUTO_SAVE_FAILURE_ALERT,
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
@@ -22,19 +21,38 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
 
   it("renders saving and saved copy", () => {
     const { rerender } = render(
-      <AutoSaveStatus state="saving" failureAlertShown={false} onTryAgain={() => {}} />,
+      <AutoSaveStatus
+        state="saving"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={() => {}}
+      />,
     );
     expect(screen.getByText(AUTO_SAVE_SAVING)).toBeInTheDocument();
     rerender(
-      <AutoSaveStatus state="saved" failureAlertShown={false} onTryAgain={() => {}} />,
+      <AutoSaveStatus
+        state="saved"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={() => {}}
+      />,
     );
     expect(screen.getByText(AUTO_SAVE_SAVED)).toBeInTheDocument();
   });
 
   it("renders failure alert copy once", () => {
-    render(<AutoSaveStatus state="failed" failureAlertShown onTryAgain={vi.fn()} />);
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={vi.fn()}
+      />,
+    );
     expect(screen.getByText(AUTO_SAVE_NOT_SAVED)).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(AUTO_SAVE_FAILURE_ALERT);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't save the program. Try again.",
+    );
   });
 
   it("renders leave warning dialog", () => {
@@ -56,6 +74,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
           shareLinkStatus="open"
           saveUiState="saved"
           failureAlertShown={false}
+          failureMessage="Couldn't save the program. Try again."
           publishAllowed={false}
           primaryLabel="Share link"
           pendingChanges={false}
@@ -85,6 +104,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         shareLinkStatus="none"
         saveUiState="failed"
         failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
         publishAllowed={false}
         primaryLabel="Publish"
         pendingChanges={false}
@@ -99,7 +119,14 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
   });
 
   it("shows exactly one failure alert on the phone status autosave block", () => {
-    render(<AutoSaveStatus state="failed" failureAlertShown onTryAgain={vi.fn()} />);
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={vi.fn()}
+      />,
+    );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 });

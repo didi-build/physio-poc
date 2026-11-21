@@ -25,11 +25,7 @@ import type {
   ProgramBuilderView,
   ProgramListItem,
 } from "../../src/services/programs/types.js";
-import {
-  AUTO_SAVE_TRY_AGAIN_ARIA,
-  rowNotesSrOnlyLabel,
-  versionOfRowLabel,
-} from "../../src/ui/copy/programs.js";
+import { rowNotesSrOnlyLabel, versionOfRowLabel } from "../../src/ui/copy/programs.js";
 
 afterEach(() => {
   cleanup();
@@ -1018,9 +1014,7 @@ describe("Programs builder dev verification", () => {
       await vi.advanceTimersByTimeAsync(150);
     });
     await waitFor(() => expect(updateProgramName).toHaveBeenCalled());
-    await userEvent.click(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
-    );
+    await userEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]!);
     await waitFor(() =>
       expect(updateRow).toHaveBeenCalledWith("prog-1", "row-1", { note: "slow" }),
     );
@@ -1069,11 +1063,11 @@ describe("Programs builder dev verification", () => {
     await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(1));
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+        screen.getAllByRole("button", { name: "Try again" }).length,
       ).toBeGreaterThan(0);
     });
     const tryAgain = screen.getAllByRole("button", {
-      name: AUTO_SAVE_TRY_AGAIN_ARIA,
+      name: "Try again",
     })[0]!;
     await act(async () => {
       fireEvent.click(tryAgain);
@@ -1122,7 +1116,7 @@ describe("Programs builder dev verification", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+        screen.getAllByRole("button", { name: "Try again" }).length,
       ).toBeGreaterThan(0);
     });
     await userEvent.click(await screen.findByRole("button", { name: "Add exercise" }));
@@ -1134,12 +1128,10 @@ describe("Programs builder dev verification", () => {
       row_id: "add-row-2",
       exercise_id: "ex-heel",
     });
-    expect(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
-    ).toBeGreaterThan(0);
-    await userEvent.click(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
+    expect(screen.getAllByRole("button", { name: "Try again" }).length).toBeGreaterThan(
+      0,
     );
+    await userEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]!);
     await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(4));
     const rowIds = addExerciseRow.mock.calls.map(
       (call) => (call[1] as { row_id: string }).row_id,
@@ -1184,12 +1176,10 @@ describe("Programs builder dev verification", () => {
     await waitFor(() => expect(addExerciseRow).toHaveBeenCalledTimes(1));
     await waitFor(() => {
       expect(
-        screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }).length,
+        screen.getAllByRole("button", { name: "Try again" }).length,
       ).toBeGreaterThan(0);
     });
-    await userEvent.click(
-      screen.getAllByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA })[0]!,
-    );
+    await userEvent.click(screen.getAllByRole("button", { name: "Try again" })[0]!);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
     });

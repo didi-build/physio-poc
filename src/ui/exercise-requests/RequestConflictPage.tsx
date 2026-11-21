@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   fillPhysioAppRoutePattern,
@@ -7,6 +8,8 @@ import type { ConflictSimilarRequest } from "../../services/exercise-requests/ty
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import { useToast } from "../components/Toast.js";
 import { USE_THIS } from "../copy/exercise-library.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import {
   AI_DRAFTING,
   BACK_TO_EDIT,
@@ -39,6 +42,11 @@ export function RequestConflictPage() {
   const location = useLocation();
   const client = useExerciseRequestsApi();
   const { showToast } = useToast();
+  const [failedSave, setFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void;
+    testId: string;
+  } | null>(null);
   const state = location.state as RequestConflictLocationState | null;
 
   if (!state?.pending || !state.similar_request) {
@@ -55,25 +63,45 @@ export function RequestConflictPage() {
   const displayName = conflict.draft_title ?? conflict.requested_name;
 
   const resolve = async (resolution: "use_existing" | "merge" | "submit_anyway") => {
-    const result = await client.submitRequest({
-      requested_name: pending.requested_name,
-      exercise_note: pending.exercise_note,
-      form_opened_at,
-      resolution,
-      conflict_request_id: conflict.request_id,
-    });
-    if (result.outcome === "used_existing") {
-      showToast({ message: toastUsingExisting(displayName) });
-      navigate(fillPhysioAppRoutePattern("requests"));
-      return;
-    }
-    if (result.outcome === "merged") {
-      showToast({ message: toastMergedIntoDraft(displayName) });
-      navigate(fillPhysioAppRoutePattern("requests"));
-      return;
-    }
-    if (result.outcome === "created") {
-      navigate(fillPhysioAppRoutePattern("requests"));
+    setFailedSave(null);
+    try {
+      const result = await client.submitRequest({
+        requested_name: pending.requested_name,
+        exercise_note: pending.exercise_note,
+        form_opened_at,
+        resolution,
+        conflict_request_id: conflict.request_id,
+      });
+      if (result.outcome === "used_existing") {
+        showToast({ message: toastUsingExisting(displayName) });
+        navigate(fillPhysioAppRoutePattern("requests"));
+        return;
+      }
+      if (result.outcome === "merged") {
+        showToast({ message: toastMergedIntoDraft(displayName) });
+        navigate(fillPhysioAppRoutePattern("requests"));
+        return;
+      }
+      if (result.outcome === "created") {
+        navigate(fillPhysioAppRoutePattern("requests"));
+      }
+    } catch {
+      const message =
+        resolution === "merge"
+          ? didi1273FailedSaveMessage("exercise_merge")
+          : resolution === "submit_anyway"
+            ? didi1273FailedSaveMessage("request_submit")
+            : didi1273FailedSaveMessage("request_submit");
+      setFailedSave({
+        message,
+        onTryAgain: () => {
+          void resolve(resolution);
+        },
+        testId:
+          resolution === "merge"
+            ? "exercise-merge-failed-save-alert"
+            : "request-submit-failed-save-alert",
+      });
     }
   };
 
@@ -89,6 +117,13 @@ export function RequestConflictPage() {
       <h1 id="ex-conflict-heading" className="ex-page-title">
         {CONFLICT_HEADING}
       </h1>
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={failedSave.message}
+          onTryAgain={failedSave.onTryAgain}
+          testId={failedSave.testId}
+        />
+      ) : null}
       <div className="ex-conflict-alert" role="status">
         <p>{CONFLICT_STATUS}</p>
       </div>
