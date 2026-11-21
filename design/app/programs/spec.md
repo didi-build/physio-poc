@@ -211,7 +211,7 @@ The existing "Publish to the live link?" sheet (WebAppClickableConcept.tsx :1381
 Notice contents, in order:
 1. Heading with the alert icon (I.alert): "Approve or remove placeholders to publish".
 2. Body: "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." For one: "One exercise is a placeholder. Approve each draft or remove it from this program, then publish."
-3. One list item per placeholder: exercise name, the existing "Pending review" badge, "Review draft" link button, Remove icon button.
+3. One list item per placeholder: exercise name, badge and row actions depend on `placeholder_state` ([program-type-mismatch/spec.md](../program-type-mismatch/spec.md)): **awaiting_approval** uses the existing **Pending review** badge with **Review draft** and Remove; **type_mismatch** uses **Didn't link** with Remove only (no **Review draft**; **Designer pick**, DIDI-594 comment `a887af34`).
 4. Republish only: "Not live yet. Your patient still sees the version published {pub.at}."
 
 When the last placeholder is removed or approved, the heading switches to the check icon (I.check, text-teal-700) and "No placeholders left. You can publish.", the body and list go away, and Publish now follows the other publish requirements.
@@ -1079,6 +1079,7 @@ Not printed (DIDI-1192, CTO, Nov 9, 2026): "This link works until {exp.date}." a
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1105 follow-up. Publish placeholder notice: `type_mismatch` rows use **Didn't link** and Remove only (**Designer pick**, DIDI-594 `a887af34`). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 cross-reference. Programs list flags for type-mismatch placeholders ("1 exercise didn't link" / "{n} exercises didn't link") and builder behaviour live in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 10, 2026**: DIDI-1192. Diadem approved E7: "Yes, approve E7" (12:08 AM ET), and "Video", "Previous" and "Next" with the print detail (12:09 AM ET). The link page shows one carousel per exercise (the start to end loop, then Start, then End) with round dots, a play-triangle dot, a separate focus ring and subtle chevrons from 1024 px. On phone: title, carousel, dose, notes. From 1024 px: text left, carousel right, page 64rem (was 42rem). The dose is three lines with bold numbers, frequency last. Print and PDF: text, Start, End in three columns, "Images didn't load." across the image columns, no video, no controls, no expiry line. Missing start or end images block publish on the program and routine sheets, server-enforced, Remove only (CTO rulings, DIDI-1193; copy approved Nov 9, 11:31 AM ET). Supersedes variant D (Nov 9, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 

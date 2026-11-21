@@ -24,6 +24,27 @@ MagicPath project: 466877433694535680 (DIDI-1105 exploration boards). Baseline a
 
 **Diadem, Nov 21, 2026, 12:57 AM EST** (verbatim, card flag and banner plural): `yes this is a proof of concept, we don't need to be too stingy with the wording` (scoped to the card flag and singular or plural builder banner copy listed in the Locks section below, not a blanket grant of new strings).
 
+### CTO locks (DIDI-594)
+
+| Comment | Locks |
+| -- | -- |
+| `2bdbb75b` | Option **B** (brightly-cloud-4843) for DIDI-1105 skipped placeholder notification |
+| `7e4a9711` | Strings T1 to T13, Q22 (keep sets and reps), Q23 (Programs card shows a flag); banner second line dropped |
+| `c8a1509f` | Programs card flag and builder banner: **T5**, **T6**, **T14**, **T15** |
+
+### Standing rule and Designer picks (DIDI-594 comment `a887af34`)
+
+**Diadem, Nov 21, 2026, 12:58 AM EST** (Designer's chat, relayed on `a887af34`), verbatim:
+
+> going forward please pick something reasonable. only ask me if it's a true product decision that you are unsure about
+
+Small design and string choices are recorded as **Designer pick** (not Diadem's words). CTO reviewed the DIDI-1105 picks below under this rule.
+
+| Topic | Designer pick (`a887af34`) |
+| -- | -- |
+| Reverse mismatch reason | **Approved as stretching. Change the type to link it.** Mirrors approved **T3** |
+| Publish sheet rows for `type_mismatch` | Same list row layout as [DIDI-1186](../programs/spec.md#publish-blocked-by-placeholders-didi-1186): exercise name, badge **Didn't link** (not **Pending review**), **Remove** only. No **Review draft** (draft already approved; fix in builder via **Fix**) |
+
 ## API signal (DIDI-1106, not designed here)
 
 Per DIDI-1106 comment `56b379c5` (CTO, Oct 30, 2026, 7:35 AM ET), `getProgram` returns `placeholder_state` on placeholder rows only, derived at read time:
@@ -46,7 +67,7 @@ Linked rows omit the field. Until this spec merged, `request_closed` had no UI (
 | Builder, skipped row (Fix open) | Same row | **Fix** sets `aria-expanded="true"` and `aria-controls` the inline choice panel. Panel lists each allowed strengthening type (Isometric, Concentric, Eccentric) with its hint, or only **Stretching** with the existing stretch hint in the reverse case (see Reverse mismatch). **Pick another exercise** opens the existing **Add exercise** sheet to replace this row (same entry point as v12 **Add exercise**, scoped to this row). Choosing a type links the row to the approved version and shows the link toast. |
 | Builder, after link | Row | Linked row (purple type line, dose box, cues as today). Toast **Linked {exercise} as {type}.** with **Undo**. |
 | Programs list card | Programs | When the program has one or more `type_mismatch` placeholders, show an amber flag: **1 exercise didn't link** (one) or **{n} exercises didn't link** (more than one), same wording as the builder banner heading. Reuse the library-updates flag placement pattern on the card ([programs/spec.md](../programs/spec.md) States). |
-| Publish | Publish sheet | A `type_mismatch` row is still a placeholder. **Publish now** stays disabled while any placeholder remains ([DIDI-1186](../programs/spec.md#publish-blocked-by-placeholders-didi-1186)). How each `type_mismatch` row appears in the placeholder notice list is **unresolved** (see Unresolved approvals). |
+| Publish | Publish sheet | A `type_mismatch` row is still a placeholder. **Publish now** stays disabled while any placeholder remains ([DIDI-1186](../programs/spec.md#publish-blocked-by-placeholders-didi-1186)). Rows with `type_mismatch` appear in the placeholder notice list with badge **Didn't link** and **Remove** only (**Designer pick**, `a887af34`). Rows with `awaiting_approval` keep **Pending review** and **Review draft**. |
 
 ## Behaviour
 
@@ -70,7 +91,7 @@ Strengthening exercise **Bridge marching** approved while the row type is **Stre
 
 ### Reverse mismatch
 
-Approved **stretching** exercise on an Isometric, Concentric, or Eccentric row: the only type choice is **Stretching**. Reuse the existing stretch type hint **Hold a stretch** (`design/reference/web-app/generated/programModel.ts` `TYPE_HINT.stretching`, same as `src/ui/copy/exercise-library.ts` `TYPE_STRETCH_HINT`). **No approved reason sentence** for this case (only the strengthening-on-stretching reason is locked). Do not invent reverse reason text in the UI until Diadem approves it.
+Approved **stretching** exercise on an Isometric, Concentric, or Eccentric row: the only type choice is **Stretching**. Reuse the existing stretch type hint **Hold a stretch** (`design/reference/web-app/generated/programModel.ts` `TYPE_HINT.stretching`, same as `src/ui/copy/exercise-library.ts` `TYPE_STRETCH_HINT`). Reason line **Approved as stretching. Change the type to link it.** (**Designer pick**, `a887af34`, mirrors **T3**).
 
 ## Layout and accessibility (variant B)
 
@@ -108,8 +129,11 @@ Derived from revision `466879152478384129` (`SkippedRowCore.tsx`, `PhysioShell.t
 | T13 | Undo | Toast action; restores skipped state | 12:53 AM EST |
 | T14 | 1 exercise didn't link | Programs list card flag (one) | 12:53 AM EST (Q23) |
 | T15 | {n} exercises didn't link | Programs list card flag (more than one) | 12:57 AM EST |
+| T16 | Approved as stretching. Change the type to link it. | Reason line (stretching approved, strengthening row). **Designer pick** (`a887af34`) | Nov 21, 2026 |
 
 Type names **Isometric**, **Concentric**, **Eccentric**, **Stretching** reuse existing copy (`TYPE_LABELS` / programs builder).
+
+Reason lines: use **T3** when the approved exercise category is strengthening and the row type does not fit; use **T16** when the approved category is stretching and the row type is strengthening.
 
 ### Reused unchanged
 
@@ -129,16 +153,13 @@ Type names **Isometric**, **Concentric**, **Eccentric**, **Stretching** reuse ex
 | Close | MagicPath preview toggles **Fix** to **Close** when open; not in Nov 21 approval. |
 | Link as {type} / sheet actions from option C | Not variant B. |
 
-### Unresolved approvals
+### Out of scope (follow-up ticket)
 
-| Need | Notes |
+| Topic | Rule |
 | -- | -- |
-| Reverse mismatch reason | When the approved exercise is stretching and the row is strengthening, only **Stretching** is offered. No locked reason sentence. |
-| Publish sheet row for `type_mismatch` | DIDI-1186 lists placeholders with **Pending review**. Skipped rows may need **Didn't link** or a different action than **Review draft** (draft already approved). No Diadem lock yet. |
-| `request_closed` row UI | Out of scope; show as `awaiting_approval` per DIDI-1106 until designed. |
-| CTO lock comments on DIDI-594 | Diadem relayed Nov 21 approvals to CTO (`2bdbb75b`, `7e4a9711`, `c8a1509f` cited in task). Confirm on Linear before dev treats strings as CTO-locked. |
+| `request_closed` row UI | Render like `awaiting_approval` per DIDI-1106 comment `56b379c5` until a separate design spec covers it. |
 
-Suggested accessible names (build notes, pending Diadem unless already covered by visible text):
+Suggested accessible names (**Designer pick** where noted, `a887af34`):
 
 | Control | Suggested accessible name |
 | -- | -- |
@@ -174,7 +195,8 @@ Suggested accessible names (build notes, pending Diadem unless already covered b
 
 | Topic | Was | Is |
 | -- | -- | -- |
-| Skipped row after approval | Looked like **Pending review** ("Placeholder. It links to the real exercise once you approve the draft.") even when the draft was already approved (baseline exploration) | `type_mismatch` rows show **Didn't link**, row type, approved reason (strengthening case), and **Fix** |
+| Skipped row after approval | Looked like **Pending review** ("Placeholder. It links to the real exercise once you approve the draft.") even when the draft was already approved (baseline exploration) | `type_mismatch` rows show **Didn't link**, row type, reason (**T3** or **T16**), and **Fix** |
+| Publish sheet placeholder list | Every placeholder showed **Pending review** and **Review draft** (DIDI-1186) | `type_mismatch` rows show **Didn't link** and **Remove** only (**Designer pick**, `a887af34`) |
 | Practitioner feedback | None | Variant **B** banner plus compact row |
 | Banner body | Exploration proposed a second line about the patient seeing a placeholder | **Removed.** Heading only (**T5** / **T6**) plus **Show me**, because placeholders never publish (DIDI-1186) |
 | Programs list | No flag for skipped link | Card flag reuses banner heading copy (**T14** / **T15**) |
@@ -204,6 +226,8 @@ No gallery components in the Physio POC app ([DIDI-1105](https://linear.app/didi
 6. `request_closed` deferred; treat as `awaiting_approval` in UI until specified.
 7. Programs card flag reuses banner heading strings.
 8. Link toast with **Undo** restores skipped state.
+9. Publish sheet lists `type_mismatch` placeholders with **Didn't link**, not **Pending review** (**Designer pick**, `a887af34`).
+10. Reverse mismatch reason **T16** (**Designer pick**, `a887af34`).
 
 ## Build notes
 
@@ -215,4 +239,5 @@ No gallery components in the Physio POC app ([DIDI-1105](https://linear.app/didi
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1105 follow-up (PR #142). CTO locks `2bdbb75b`, `7e4a9711`, `c8a1509f` recorded. **T16** and publish-sheet `type_mismatch` rows as **Designer pick** (`a887af34`). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105. Diadem approved variant B, strings T1 to T15, Q22 dose preservation, Q23 Programs card flag, banner plural (12:57 AM EST). Spec, mockup reference, and product direction alignment. Unblocks [DIDI-1106](https://linear.app/didi-build/issue/DIDI-1106). https://linear.app/didi-build/issue/DIDI-1105
