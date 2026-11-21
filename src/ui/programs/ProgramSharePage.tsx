@@ -145,6 +145,7 @@ export function ProgramSharePage() {
       }
     } catch {
       setExpirySaveFailed(true);
+      throw new Error("expiry_save_failed");
     }
   };
 
@@ -253,9 +254,7 @@ export function ProgramSharePage() {
       {expirySaveFailed ? (
         <SharedFailedSaveAlert
           message={didi1273FailedSaveMessage("program_link_expiry")}
-          onTryAgain={() => {
-            void onExpiryChange(expiry, customDate);
-          }}
+          onTryAgain={() => onExpiryChange(expiry, customDate)}
           testId="program-link-expiry-failed-save-alert"
         />
       ) : null}

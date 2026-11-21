@@ -378,6 +378,7 @@ export function ExerciseLibraryPage({
       }
     } catch {
       setSubmitRequestFailed(true);
+      throw new Error("submit_request_failed");
     } finally {
       setSubmittingRequest(false);
     }
@@ -669,9 +670,7 @@ export function ExerciseLibraryPage({
                   {submitRequestFailed ? (
                     <SharedFailedSaveAlert
                       message={didi1273FailedSaveMessage("request_submit")}
-                      onTryAgain={() => {
-                        void submitRequest();
-                      }}
+                      onTryAgain={submitRequest}
                       testId="request-submit-failed-save-alert"
                     />
                   ) : null}
@@ -686,7 +685,7 @@ export function ExerciseLibraryPage({
                     note={reqNote}
                     onNoteChange={setReqNote}
                     onSubmit={() => {
-                      void submitRequest();
+                      void submitRequest().catch(() => {});
                     }}
                     submitting={submittingRequest}
                   />

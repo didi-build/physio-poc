@@ -184,6 +184,7 @@ export function ExerciseDetailsPage() {
       })
       .catch(() => {
         setSaveFailed(true);
+        throw new Error("save_failed");
       });
 
   const onRemove = () =>
@@ -201,6 +202,7 @@ export function ExerciseDetailsPage() {
       })
       .catch(() => {
         setRemoveFailed(true);
+        throw new Error("remove_failed");
       });
 
   return (
@@ -371,14 +373,26 @@ export function ExerciseDetailsPage() {
             >
               {EDIT_MY_COPY}
             </button>
-            <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+            <button
+              type="button"
+              className="ex-link-btn ex-danger"
+              onClick={() => {
+                void onRemove().catch(() => {});
+              }}
+            >
               {REMOVE}
             </button>
           </>
         ) : (
           <>
             <p>{SAVE_TO_EDIT}</p>
-            <button type="button" className="ex-primary-btn" onClick={onSave}>
+            <button
+              type="button"
+              className="ex-primary-btn"
+              onClick={() => {
+                void onSave().catch(() => {});
+              }}
+            >
               {ADD_TO_MY}
             </button>
           </>

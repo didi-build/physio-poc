@@ -154,9 +154,10 @@ export function ProgramsNewPage() {
               })
               .catch(() => {
                 setCreateFailedSave({ onTryAgain: run });
+                throw new Error("create_failed");
               });
           };
-          void run();
+          void run().catch(() => {});
         }}
       />
       <PickRoutineForProgramSheet

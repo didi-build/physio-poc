@@ -505,11 +505,11 @@ export function RoutineDetailsPage() {
       });
   };
 
-  const onAdopt = () => {
-    setFailedSaveAlert(null);
-    void client
+  const onAdopt = () =>
+    client
       .adoptCommunityVersion(routineId)
       .then(({ undo, adopted_version }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastAdoptedVersion(adopted_version),
           onUndo: () => {
@@ -533,8 +533,8 @@ export function RoutineDetailsPage() {
           onTryAgain: onAdopt,
           testId: "routine-adopt-version-failed-save-alert",
         });
+        throw new Error("adopt_failed");
       });
-  };
 
   const startProgramFromRoutine = (openPublishSheet: boolean) => {
     if (!details) {
@@ -600,7 +600,13 @@ export function RoutineDetailsPage() {
         </button>
       ) : null}
       {saved && behind && !flagged && myCopy ? (
-        <button type="button" className="ex-secondary-btn" onClick={onAdopt}>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          onClick={() => {
+            void onAdopt().catch(() => {});
+          }}
+        >
           {UPDATE_MY_COPY} {community.version_number}
         </button>
       ) : null}
@@ -761,7 +767,13 @@ export function RoutineDetailsPage() {
               </p>
             ) : null}
             <div className="rt-update-actions">
-              <button type="button" className="ex-primary-btn" onClick={onAdopt}>
+              <button
+                type="button"
+                className="ex-primary-btn"
+                onClick={() => {
+                  void onAdopt().catch(() => {});
+                }}
+              >
                 {useVersionN(community.version_number)}
               </button>
               <button type="button" className="ex-secondary-btn" onClick={onKeep}>

@@ -235,6 +235,9 @@ describe("Programs new page (integration, jsdom)", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
     });
+    expect(document.activeElement).toBe(
+      screen.getByTestId("program-create-failed-save-alert"),
+    );
     expect(createProgram).toHaveBeenCalledTimes(2);
   });
 });

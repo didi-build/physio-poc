@@ -140,6 +140,7 @@ export function RoutineMyCopyEditorPage() {
       })
       .catch(() => {
         setSaveFailed(true);
+        throw new Error("save_failed");
       });
 
   return (
@@ -191,7 +192,9 @@ export function RoutineMyCopyEditorPage() {
         type="button"
         className="ex-primary-btn"
         disabled={!dirty}
-        onClick={onSave}
+        onClick={() => {
+          void onSave().catch(() => {});
+        }}
         data-testid="save-my-copy"
       >
         {SAVE_MY_COPY}

@@ -148,6 +148,7 @@ export function MyCopyEditorPage() {
       })
       .catch(() => {
         setFailedSave({ action: { kind: "switch_library_version" }, key });
+        throw new Error("switch_library_failed");
       });
 
   const applyKeepMine = (key: TextOverrideKey) =>
@@ -159,6 +160,7 @@ export function MyCopyEditorPage() {
       })
       .catch(() => {
         setFailedSave({ action: { kind: "keep_your_version" }, key });
+        throw new Error("keep_mine_failed");
       });
 
   const onRemove = () => {
@@ -179,6 +181,7 @@ export function MyCopyEditorPage() {
         setFailedSave({
           action: { kind: "delete_or_remove", item: "exercise" },
         });
+        throw new Error("remove_failed");
       });
   };
 
@@ -203,18 +206,15 @@ export function MyCopyEditorPage() {
           message={mappedFailedSaveMessage(failedSave.action)}
           onTryAgain={() => {
             if (failedSave.action.kind === "delete_or_remove") {
-              onRemove();
-            } else if (
-              failedSave.action.kind === "switch_library_version" &&
-              failedSave.key
-            ) {
-              applyUseLibrary(failedSave.key);
-            } else if (
-              failedSave.action.kind === "keep_your_version" &&
-              failedSave.key
-            ) {
-              applyKeepMine(failedSave.key);
+              return onRemove();
             }
+            if (failedSave.action.kind === "switch_library_version" && failedSave.key) {
+              return applyUseLibrary(failedSave.key);
+            }
+            if (failedSave.action.kind === "keep_your_version" && failedSave.key) {
+              return applyKeepMine(failedSave.key);
+            }
+            return undefined;
           }}
           testId="exercise-mycopy-failed-save-alert"
         />
@@ -285,7 +285,13 @@ export function MyCopyEditorPage() {
       >
         {SEE_LIBRARY_DETAILS}
       </button>
-      <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+      <button
+        type="button"
+        className="ex-link-btn ex-danger"
+        onClick={() => {
+          void onRemove().catch(() => {});
+        }}
+      >
         {REMOVE_FROM_MY}
       </button>
       <span className="sr-only">{TOAST_UNDO}</span>

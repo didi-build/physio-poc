@@ -232,10 +232,12 @@ export function ProgramShareLinkPanel({
               customDate={customDate}
               defaultChoice={SHARE_LINK_EXPIRES_IN.one_year}
               onChange={(next) => {
-                void onExpiryChange(next, customDate);
+                void onExpiryChange(next, customDate).catch(() => {});
               }}
               onCustomDateChange={(nextCustom) => {
-                void onExpiryChange(SHARE_LINK_EXPIRES_IN.custom_date, nextCustom);
+                void onExpiryChange(SHARE_LINK_EXPIRES_IN.custom_date, nextCustom).catch(
+                  () => {},
+                );
               }}
             />
             {expiry === SHARE_LINK_EXPIRES_IN.never ? (
@@ -261,7 +263,7 @@ export function ProgramShareLinkPanel({
                   type="button"
                   className="pg-btn pg-btn--secondary"
                   onClick={() => {
-                    void onExpiryChange(SHARE_LINK_EXPIRES_IN.never, "");
+                    void onExpiryChange(SHARE_LINK_EXPIRES_IN.never, "").catch(() => {});
                   }}
                 >
                   {SHARE_SET_TO_NEVER}
