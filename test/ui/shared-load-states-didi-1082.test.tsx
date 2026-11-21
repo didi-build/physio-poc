@@ -29,7 +29,8 @@ import {
 } from "../../src/ui/api/exercise-requests-client.js";
 import { HttpResponseError } from "../../src/ui/api/http-response-error.js";
 import type { MyDefaultsClient } from "../../src/ui/api/my-defaults-client.js";
-import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import { programByCodePath } from "../../src/programs-api-paths.js";
 import {
   RoutinesClient,
   setRoutinesClientForTests,
@@ -616,6 +617,88 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(screen.queryByText(itemLoadErrorPrimary("draft"))).not.toBeInTheDocument();
   });
 
+  it("B11 void mutant killer: draft review item load Try again shows Trying again while refresh promise is in flight", async () => {
+    const draftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting" as const,
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "kojo@example.com",
+      exercise_id: "ex-1",
+      draft: {
+        exercise_version_id: "ver-1",
+        version_number: 1,
+        title: "Heel slide",
+        description: "Desc",
+        equipment: "",
+        starting_position: "",
+        steps: "",
+        common_mistakes: "",
+        regressions: "",
+        progressions: "",
+        precautions: "",
+        cue_stretching: null,
+        cue_isometric: null,
+        cue_concentric: null,
+        cue_eccentric: null,
+      },
+    };
+    let resolveHang!: (value: typeof draftView) => void;
+    const hang = new Promise<typeof draftView>((resolve) => {
+      resolveHang = resolve;
+    });
+    const getRequest = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockImplementation(() => hang);
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-1" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({})}
+          exerciseRequestsClient={
+            {
+              getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+              listSimilar: vi.fn().mockResolvedValue({
+                library_matches: [],
+                drafts_in_progress: [],
+              }),
+              getRequest,
+            } as unknown as ExerciseRequestsClient
+          }
+          exerciseMediaClient={
+            {
+              getRegenerationQuota: vi.fn().mockResolvedValue({
+                limit: 5,
+                used: 0,
+                remaining: 5,
+                limitReached: false,
+              }),
+            } as unknown as ExerciseMediaClient
+          }
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    resolveHang(draftView);
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: TRYING_AGAIN }),
+      ).not.toBeInTheDocument();
+    });
+    expect(getRequest).toHaveBeenCalledTimes(2);
+  });
+
   it("shows not-found on program builder when program load fails with not_found", async () => {
     render(
       <MemoryRouter
@@ -727,6 +810,49 @@ describe("DIDI-1082 shared load states behaviour", () => {
       expect(screen.getByText(notFoundTitle("draft"))).toBeInTheDocument();
     });
     expect(screen.queryByText(itemLoadErrorPrimary("draft"))).not.toBeInTheDocument();
+  });
+
+  it("shows not-found on program builder when ProgramsClient fetch returns 404 JSON", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
+      const path =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.pathname
+            : input.url;
+      if (path === programByCodePath("PRG-MISS")) {
+        return new Response(JSON.stringify({ message: "Program not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ message: "Not found" }), { status: 404 });
+    });
+    const programsClient = new ProgramsClient({ fetchFn });
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("programBuilder", { programCode: "PRG-MISS" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({})}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={programsClient}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(notFoundTitle("program"))).toBeInTheDocument();
+    });
+    expect(
+      screen.getAllByRole("link", { name: BACK_TO_PROGRAMS }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(itemLoadErrorPrimary("program"))).not.toBeInTheDocument();
+    expect(fetchFn).toHaveBeenCalledWith(
+      programByCodePath("PRG-MISS"),
+      expect.anything(),
+    );
   });
 
   it.each([
