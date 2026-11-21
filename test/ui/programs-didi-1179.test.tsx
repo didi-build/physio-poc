@@ -59,6 +59,7 @@ const LIST_ITEM: ProgramListItem = {
   draft_updated_at: "2026-10-24T12:00:00.000Z",
   auto_save_status: { kind: "not_published_yet" },
   library_updates_to_review: 0,
+  type_mismatch_placeholder_count: 0,
   share_link_status: "none",
   last_sent_at: "2026-10-24T12:00:00.000Z",
   deleted_at: null,
