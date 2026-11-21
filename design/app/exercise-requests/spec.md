@@ -316,6 +316,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1210. First-draft generating, in progress elsewhere, failure, daily limit, and Regenerate text behaviour for draft review live in [draft-review-ai-states/spec.md](../draft-review-ai-states/spec.md). https://linear.app/didi-build/issue/DIDI-1210
 - **Oct 23, 2026**: First concept: search, no result, request, draft review directions A, B and C; direction A kept. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Any practitioner can see and approve a request; requested by and approved by. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827
 - **Oct 24, 2026**: Similar exercises on submit, Merge my changes, no requester notification, regeneration cap. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-828, https://linear.app/didi-build/issue/DIDI-829
