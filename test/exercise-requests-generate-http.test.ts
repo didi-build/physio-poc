@@ -286,9 +286,16 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         bundle,
       );
       expect(second.status).toBe(202);
-      const payload = (await second.json()) as { outcome: string };
+      const payload = (await second.json()) as {
+        outcome: string;
+        started_elsewhere?: boolean;
+      };
       expect(payload.outcome).toBe("in_progress");
-      expect(payload).toMatchObject({ outcome: "in_progress" });
+      expect(payload.started_elsewhere).toBe(false);
+      expect(payload).toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
     } finally {
       storage.close();
     }
