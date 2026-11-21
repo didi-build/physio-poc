@@ -130,7 +130,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const {
     data: quota,
-    loading: quotaLoading,
     refresh: refreshQuota,
   } = useSessionCachedRead<
     Awaited<ReturnType<typeof mediaClient.getRegenerationQuota>>
@@ -146,7 +145,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const view = viewOverride ?? cachedView ?? null;
   const hasCachedView = cachedView !== null;
-  const viewInitialLoadFailed = viewLoadFailed && !hasCachedView;
   const pageLoading = !sessionReady || (viewLoading && !viewLoadFailed);
   const showNotFound =
     !pageLoading && viewLoadFailed && viewFailureKind === "not_found";
