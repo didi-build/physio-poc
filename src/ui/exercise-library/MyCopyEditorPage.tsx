@@ -39,6 +39,7 @@ import {
 import {
   SharedFailedSaveAlert,
   SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
@@ -125,12 +126,10 @@ export function MyCopyEditorPage() {
             <ExerciseLibraryDetailLoadBanner
               loadFailed={loadFailed && failureKind === "error"}
               hasContent={hasCachedContent}
-              onTryAgain={() => {
-                void refresh({ force: true });
-              }}
+              onTryAgain={() => refresh({ force: true })}
             />
             {loadFailed && !hasCachedContent && !loading ? (
-              <ExerciseLibraryItemBusyState />
+              <SharedItemSkeletonPlaceholders testId="exercise-library-mycopy-skeleton" />
             ) : null}
           </>
         )}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type {
   CommunityRoutineSummary,
   MyRoutineSavedItem,
@@ -102,58 +102,61 @@ export function PickRoutineForProgramSheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [loadAttempt, setLoadAttempt] = useState(0);
-
   useEffect(() => {
     if (deepLinkRead === "failed" && selectedId === deepLinkRoutineId) {
       setSelectedId(null);
     }
   }, [deepLinkRead, deepLinkRoutineId, selectedId]);
 
-  useEffect(() => {
+  const loadPickableRoutines = useCallback(async () => {
     if (!open) {
       return;
     }
     setLoading(true);
     setLoadFailed(false);
     setSelectedId(preselectedRoutineId ?? null);
-    void Promise.all([client.searchCommunity({ limit: 50 }), client.listMyRoutines({})])
-      .then(async ([community, mine]) => {
-        const byId = new Map<string, PickableRoutine>();
-        for (const item of community.routines) {
-          byId.set(item.routine_id, mapCommunity(item));
-        }
-        for (const item of mine.saved) {
-          byId.set(item.routine_id, mapSaved(item));
-        }
-        if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
-          try {
-            const details = await client.getRoutineDetails(preselectedRoutineId);
-            const mapped = mapDetailsToPickable(preselectedRoutineId, details);
-            if (mapped) {
-              byId.set(preselectedRoutineId, mapped);
-            }
-          } catch {
-            /* deep-link validation or list error handled on ProgramsNewPage */
+    try {
+      const [community, mine] = await Promise.all([
+        client.searchCommunity({ limit: 50 }),
+        client.listMyRoutines({}),
+      ]);
+      const byId = new Map<string, PickableRoutine>();
+      for (const item of community.routines) {
+        byId.set(item.routine_id, mapCommunity(item));
+      }
+      for (const item of mine.saved) {
+        byId.set(item.routine_id, mapSaved(item));
+      }
+      if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
+        try {
+          const details = await client.getRoutineDetails(preselectedRoutineId);
+          const mapped = mapDetailsToPickable(preselectedRoutineId, details);
+          if (mapped) {
+            byId.set(preselectedRoutineId, mapped);
           }
+        } catch {
+          /* deep-link validation or list error handled on ProgramsNewPage */
         }
-        const loaded = [...byId.values()];
-        setRoutines(loaded);
-        if (
-          preselectedRoutineId &&
-          loaded.some((item) => item.routine_id === preselectedRoutineId)
-        ) {
-          setSelectedId(preselectedRoutineId);
-        }
-      })
-      .catch(() => {
-        setLoadFailed(true);
-        setRoutines([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [client, open, preselectedRoutineId, loadAttempt]);
+      }
+      const loaded = [...byId.values()];
+      setRoutines(loaded);
+      if (
+        preselectedRoutineId &&
+        loaded.some((item) => item.routine_id === preselectedRoutineId)
+      ) {
+        setSelectedId(preselectedRoutineId);
+      }
+    } catch {
+      setLoadFailed(true);
+      setRoutines([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [client, open, preselectedRoutineId]);
+
+  useEffect(() => {
+    void loadPickableRoutines();
+  }, [loadPickableRoutines]);
 
   const hasCachedRoutines = routines.length > 0;
   const initialListLoadFailed = sharedInitialLoadFailed(hasCachedRoutines, loadFailed);
@@ -198,9 +201,7 @@ export function PickRoutineForProgramSheet({
       <RoutinesListLoadBanner
         loadFailed={loadFailed}
         hasContent={hasCachedRoutines}
-        onTryAgain={() => {
-          setLoadAttempt((value) => value + 1);
-        }}
+        onTryAgain={loadPickableRoutines}
       />
       {!loading && (!loadFailed || hasCachedRoutines) ? (
         <ul className="pg-routine-pick-list" aria-busy={busy ? true : undefined}>

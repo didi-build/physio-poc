@@ -184,6 +184,13 @@ describe("DIDI-1082 shared load states behaviour", () => {
         }),
       ),
     ).toBe(true);
+    expect(
+      isLoadNotFoundError(
+        new HttpResponseError("Exercise not found", {
+          status: 500,
+        }),
+      ),
+    ).toBe(true);
   });
 
   it("renders SharedListLoadingState with visible loading copy, sr-only status without ellipsis, and aria-hidden skeleton list", () => {

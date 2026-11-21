@@ -5,6 +5,7 @@ import type {
   DraftFieldPatch,
   ExerciseRequestDraftView,
 } from "../../services/exercise-requests/types.js";
+import { HttpResponseError } from "../api/http-response-error.js";
 import { useExerciseMediaApi } from "../api/exercise-media-context.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import {
@@ -213,7 +214,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       await refreshQuota({ force: true });
       setRegenOpen(false);
       setRegenNote("");
-    } catch {
+    } catch (error) {
+      const dailyLimit =
+        error instanceof HttpResponseError && error.code === "daily_limit_reached";
+      if (dailyLimit) {
+        await refreshQuota({ force: true });
+        return;
+      }
       setRegenFailedSave({
         message: didi1273FailedSaveMessage("exercise_regenerate_media"),
         onTryAgain: () => runRegenerate(),

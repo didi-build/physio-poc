@@ -126,9 +126,7 @@ export function ProgramsListPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const load = useCallback(() => {
-    void refresh({ force: true });
-  }, [refresh]);
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
   const hasCachedContent = snapshot !== null;
   const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);

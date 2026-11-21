@@ -11,6 +11,7 @@ import {
   listLoadErrorPrimary,
   listTokenForSurface,
   loadingItemStatus,
+  loadingListStatus,
   loadingListVisible,
   notFoundHelper,
   notFoundTitle,
@@ -111,10 +112,15 @@ export function SharedListLoadingState({
       <div className="sls-progress" aria-hidden="true">
         <div className="sls-progress-segment" />
       </div>
-      <p className="sls-loading-visible" role="status">
-        {loadingListVisible(list)}
+      <p className="sls-loading-visible">{loadingListVisible(list)}</p>
+      <p className="sr-only" role="status">
+        {loadingListStatus(list)}
       </p>
-      <ul className="sls-skeleton-list" aria-hidden="true">
+      <ul
+        className="sls-skeleton-list"
+        aria-hidden="true"
+        data-testid="sls-skeleton-list"
+      >
         {Array.from({ length: 4 }, (_, index) => (
           <li key={index} className="sls-skeleton-row">
             <div className="sls-skeleton-thumb" />
@@ -135,7 +141,12 @@ export function SharedListSkeletonPlaceholders({
   testId?: string;
 }) {
   return (
-    <ul className="sls-skeleton-list" aria-hidden="true" data-testid={testId}>
+    <ul
+      className="sls-skeleton-list"
+      aria-hidden="true"
+      data-testid={testId}
+      data-sls-skeleton-list=""
+    >
       {Array.from({ length: 4 }, (_, index) => (
         <li key={index} className="sls-skeleton-row">
           <div className="sls-skeleton-thumb" />
@@ -164,11 +175,26 @@ export function SharedItemLoadingState({
       <p className="sr-only" role="status">
         {loadingItemStatus(item)}
       </p>
-      <div aria-hidden="true">
+      <div aria-hidden="true" data-testid="sls-item-skeleton-bars">
         <p className="ex-busy-skeleton ex-busy-skeleton--title" />
         <p className="ex-busy-skeleton ex-busy-skeleton--line" />
         <p className="ex-busy-skeleton ex-busy-skeleton--line ex-busy-skeleton--short" />
       </div>
+    </div>
+  );
+}
+
+/** Skeleton-only placeholders for initial item load failure (no loading status). */
+export function SharedItemSkeletonPlaceholders({
+  testId = "shared-load-item-skeleton",
+}: {
+  testId?: string;
+}) {
+  return (
+    <div className="sls-item-skeleton" data-testid={testId} aria-hidden="true">
+      <p className="ex-busy-skeleton ex-busy-skeleton--title" />
+      <p className="ex-busy-skeleton ex-busy-skeleton--line" />
+      <p className="ex-busy-skeleton ex-busy-skeleton--line ex-busy-skeleton--short" />
     </div>
   );
 }

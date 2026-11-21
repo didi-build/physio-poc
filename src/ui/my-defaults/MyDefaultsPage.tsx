@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
@@ -129,9 +129,7 @@ export function MyDefaultsPage() {
     !loading &&
     page !== null &&
     (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
-  const reload = () => {
-    void refresh({ force: true });
-  };
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
 
   return (
     <section
@@ -165,11 +163,16 @@ export function MyDefaultsPage() {
           onTryAgain={() => {
             const failed = typeDefaultFailed;
             if (!failed) {
-              return;
+              return Promise.resolve();
             }
-            void client.upsertTypeDefault(failed.type, failed.params).catch(() => {
-              setTypeDefaultFailed(failed);
-            });
+            return client
+              .upsertTypeDefault(failed.type, failed.params)
+              .then(() => {
+                setTypeDefaultFailed(null);
+              })
+              .catch(() => {
+                setTypeDefaultFailed(failed);
+              });
           }}
           testId="defaults-exercise-type-failed-save-alert"
         />

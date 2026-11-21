@@ -115,9 +115,7 @@ export function RequestsAndDraftsPage() {
       <ExerciseRequestsListLoadBanner
         loadFailed={loadFailed}
         hasContent={hasCachedContent}
-        onTryAgain={() => {
-          void refresh({ force: true });
-        }}
+        onTryAgain={() => refresh({ force: true })}
       />
 
       {loading && !initialListLoadFailed ? <ExerciseRequestsListBusyState /> : null}

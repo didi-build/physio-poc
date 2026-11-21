@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FROM_ROUTINE_ID_QUERY_PARAM,
@@ -9,11 +9,11 @@ import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { PickRoutineForProgramSheet } from "./PickRoutineForProgramSheet.js";
-import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
-import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { SharedItemLoadErrorBanner } from "../shared-load-states/SharedLoadStates.js";
 import { createProgramFromRoutineWithDetails } from "./program-from-routine.js";
 import { programCreatedFromRoutineToast } from "../copy/programs.js";
 import { useToast } from "../components/Toast.js";
+import { ProgramCreateFailedSaveStatus } from "./ProgramCreateFailedSaveStatus.js";
 
 export function ProgramsNewPage() {
   const client = useProgramsApi();
@@ -30,6 +30,7 @@ export function ProgramsNewPage() {
   const [deepLinkRead, setDeepLinkRead] = useState<
     "idle" | "pending" | "ok" | "failed"
   >(() => (initialFromRoutine ? "pending" : "idle"));
+  const [deepLinkRoutineLoadFailed, setDeepLinkRoutineLoadFailed] = useState(false);
   const [open, setOpen] = useState(
     () => !initialFromRoutine && !openRoutinePickerOnMount,
   );
@@ -37,7 +38,7 @@ export function ProgramsNewPage() {
     () => Boolean(initialFromRoutine) || openRoutinePickerOnMount,
   );
   const [createFailedSave, setCreateFailedSave] = useState<{
-    onTryAgain: () => void;
+    onTryAgain: () => void | Promise<void>;
   } | null>(null);
   const [routineBusy, setRoutineBusy] = useState(false);
 
@@ -58,6 +59,37 @@ export function ProgramsNewPage() {
       { replace: true },
     );
   };
+
+  const loadDeepLinkRoutine = useCallback(async () => {
+    if (!initialFromRoutine || !sessionReady) {
+      return;
+    }
+    setDeepLinkRoutineLoadFailed(false);
+    setDeepLinkRead("pending");
+    try {
+      const details = await routinesClient.getRoutineDetails(initialFromRoutine);
+      if (details.is_draft) {
+        throw new Error("Routine is not published");
+      }
+      setDeepLinkRead("ok");
+    } catch {
+      setDeepLinkRead("failed");
+      setDeepLinkRoutineLoadFailed(true);
+    }
+  }, [initialFromRoutine, routinesClient, sessionReady]);
+
+  useEffect(() => {
+    if (!initialFromRoutine) {
+      setDeepLinkRead("idle");
+      setDeepLinkRoutineLoadFailed(false);
+      return;
+    }
+    if (!sessionReady) {
+      setDeepLinkRead("pending");
+      return;
+    }
+    void loadDeepLinkRoutine();
+  }, [initialFromRoutine, sessionReady, loadDeepLinkRoutine]);
 
   const createFromPickedRoutine = (
     routineId: string,
@@ -86,50 +118,17 @@ export function ProgramsNewPage() {
       });
   };
 
-  useEffect(() => {
-    if (!initialFromRoutine) {
-      setDeepLinkRead("idle");
-      return;
-    }
-    if (!sessionReady) {
-      setDeepLinkRead("pending");
-      return;
-    }
-    setDeepLinkRead("pending");
-    let cancelled = false;
-    void routinesClient
-      .getRoutineDetails(initialFromRoutine)
-      .then((details) => {
-        if (details.is_draft) {
-          throw new Error("Routine is not published");
-        }
-        if (!cancelled) {
-          setDeepLinkRead("ok");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDeepLinkRead("failed");
-          setCreateFailedSave({
-            onTryAgain: () => {
-              createFromPickedRoutine(initialFromRoutine);
-            },
-          });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [initialFromRoutine, routinesClient, sessionReady]);
-
   return (
     <section className="pg-page ex-page">
-      {createFailedSave ? (
-        <SharedFailedSaveAlert
-          message={didi1273FailedSaveMessage("program_builder_autosave")}
-          onTryAgain={createFailedSave.onTryAgain}
-          testId="program-create-failed-save-alert"
+      {deepLinkRoutineLoadFailed ? (
+        <SharedItemLoadErrorBanner
+          item="routine"
+          onTryAgain={loadDeepLinkRoutine}
+          testId="program-new-deep-link-routine-load-error"
         />
+      ) : null}
+      {createFailedSave ? (
+        <ProgramCreateFailedSaveStatus onTryAgain={createFailedSave.onTryAgain} />
       ) : null}
       <NewProgramSheet
         open={open && !pickerOpen}
@@ -141,7 +140,7 @@ export function ProgramsNewPage() {
           const run = () => {
             setCreateFailedSave(null);
             const programId = crypto.randomUUID();
-            void client
+            return client
               .createProgram({ program_id: programId })
               .then((result) => {
                 navigate(
@@ -155,7 +154,7 @@ export function ProgramsNewPage() {
                 setCreateFailedSave({ onTryAgain: run });
               });
           };
-          run();
+          void run();
         }}
       />
       <PickRoutineForProgramSheet

@@ -122,7 +122,7 @@ function draftDetails(rows: RoutineExerciseRow[]): RoutineDetailsDraft {
 describe("Routine publish validation panel", () => {
   it("shows a validation alert without Try again", () => {
     render(
-      <RoutinePublishValidationPanel issues={["missing_name", "missing_exercise"]} />,
+      <RoutinePublishValidationPanel issues={["missing_name", "missing_exercises"]} />,
     );
     const panel = screen.getByTestId("rt-publish-validation");
     expect(panel).toHaveAttribute("role", "alert");

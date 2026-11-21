@@ -142,9 +142,7 @@ export function RoutinesPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const reload = useCallback(() => {
-    void refresh({ force: true });
-  }, [refresh]);
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
 
   const community = snapshot?.tab === "all" ? snapshot.community : [];
   const communityTotal = snapshot?.tab === "all" ? snapshot.communityTotal : 0;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
@@ -20,6 +20,7 @@ import {
 import {
   SharedFailedSaveAlert,
   SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
@@ -71,9 +72,7 @@ export function RoutineMyCopyEditorPage() {
     !details.is_draft &&
     details.my_copy !== null;
 
-  const reload = () => {
-    void refresh({ force: true });
-  };
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
 
   if (!showContent) {
     const pageTitle = details && !details.is_draft ? details.community.name : "Routine";
@@ -114,7 +113,7 @@ export function RoutineMyCopyEditorPage() {
               testId="exercise-library-detail-error-slot"
             />
             {loadFailed && !hasCachedContent && !loading ? (
-              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
             ) : null}
           </>
         )}

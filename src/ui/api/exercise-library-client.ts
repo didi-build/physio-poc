@@ -6,6 +6,7 @@ import type {
   MyExercisesListResult,
   SearchApprovedExercisesResult,
 } from "../../services/exercise-library/types.js";
+import { HttpResponseError } from "./http-response-error.js";
 import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import {
   EXERCISE_LIBRARY_APPROVED_SEARCH_PATH,
@@ -43,8 +44,14 @@ export type MyExercisesListParams = {
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message ?? `Request failed (${response.status})`);
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+    };
+    throw new HttpResponseError(body.message ?? `Request failed (${response.status})`, {
+      code: body.error,
+      status: response.status,
+    });
   }
   return (await response.json()) as T;
 }

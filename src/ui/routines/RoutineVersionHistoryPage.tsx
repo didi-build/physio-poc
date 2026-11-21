@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { RoutineVersionHistoryItem } from "../../services/routines/types.js";
@@ -21,6 +21,7 @@ import {
 import {
   SharedFailedSaveAlert,
   SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
@@ -85,9 +86,7 @@ export function RoutineVersionHistoryPage() {
   const showContent =
     !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && data !== null;
 
-  const reload = () => {
-    void refresh({ force: true });
-  };
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
 
   if (!showContent) {
     return (
@@ -115,7 +114,7 @@ export function RoutineVersionHistoryPage() {
               testId="exercise-library-detail-error-slot"
             />
             {loadFailed && !hasCachedContent && !loading ? (
-              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
             ) : null}
           </>
         )}

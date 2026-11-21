@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PublishValidationIssue } from "../../services/routines/types.js";
 import { RoutinesAuthoringError } from "../api/routines-client.js";
@@ -75,6 +75,7 @@ import {
   SharedFailedSaveAlert,
   SharedItemBackLink,
   SharedNotFoundState,
+  SharedItemSkeletonPlaceholders,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
 import {
@@ -170,9 +171,7 @@ export function RoutineDetailsPage() {
     }
   }, [details?.my_copy]);
 
-  const load = () => {
-    void refresh({ force: true });
-  };
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
   const loading = !sessionReady || cacheLoading;
   const hasCachedContent = details !== null;
@@ -234,7 +233,7 @@ export function RoutineDetailsPage() {
               testId="exercise-library-detail-error-slot"
             />
             {loadFailed && !hasCachedContent && !loading ? (
-              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
             ) : null}
           </>
         )}

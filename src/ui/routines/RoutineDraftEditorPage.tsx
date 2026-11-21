@@ -787,6 +787,7 @@ export function RoutineDraftEditorPage({
           type="button"
           className="ex-primary-btn"
           data-testid="rt-draft-publish"
+          disabled={autoSave.state === "failed"}
           onClick={tryPublish}
         >
           {PUBLISH}
