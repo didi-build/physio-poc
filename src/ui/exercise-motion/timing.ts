@@ -8,11 +8,6 @@ export function exerciseMotionLibraryVideoLoopCaption(): string {
   return `Video, ${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s loop`;
 }
 
-/** Draft review screen figcaption: AI video, 6s loop */
-export function exerciseMotionDraftReviewVideoLoopCaption(): string {
-  return `AI video, ${EXERCISE_MOTION_LOOP_DURATION_SECONDS}s loop`;
-}
-
 export function exerciseMotionStartAlt(name: string): string {
   return `${name}, start position`;
 }

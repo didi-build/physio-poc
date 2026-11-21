@@ -56,7 +56,6 @@ export const STARTING_POSITION = "Starting position";
 export const IMAGES = "Images";
 export const CHOOSE_IMAGE = "Choose image";
 export const SWIPE_END = "Swipe to see the end position.";
-export const AI_VIDEO_LOOP = "AI video, 6s loop";
 export const GENERATING = "Generating";
 export const REGENERATE_START_IMAGE = "Regenerate start image";
 export const REGENERATE_END_IMAGE = "Regenerate end image";

@@ -14,6 +14,7 @@ import {
 } from "react-router-dom";
 import { DraftReviewPage } from "../../src/ui/exercise-requests/DraftReviewPage.js";
 import {
+  ExerciseRequestsRequestError,
   setExerciseRequestsClientForTests,
   type ExerciseRequestsClient,
 } from "../../src/ui/api/exercise-requests-client.js";
@@ -32,7 +33,10 @@ import {
   REGENERATE_EVERYTHING,
   REGEN_SCOPE_IMAGES_LABEL,
   REGENERATE_SHEET_TITLE,
+  EDIT_ALL,
+  editFieldLabel,
 } from "../../src/ui/copy/exercise-requests.js";
+import { TITLE_FIELD } from "../../src/ui/copy/exercise-library.js";
 import {
   DRAFT_AI_IMAGE_FAILURE,
   DRAFT_AI_LIMIT_TRY_TOMORROW,
@@ -44,6 +48,7 @@ import {
   DRAFT_REGEN_TEXT_ONLY_LABEL,
   DRAFT_REGENERATE_TEXT,
   DRAFT_REGENERATING_TEXT,
+  DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS,
 } from "../../src/ui/copy/draft-review-ai-states.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../../src/ui/copy/programs.js";
 import { NavigationTestProviders } from "./navigation-test-providers.js";
@@ -71,6 +76,8 @@ const PIN_G8 = "Already started. This page updates when the draft is ready.";
 const PIN_G9 = "Text and images";
 const PIN_G10 = "Start and end images. Text stays.";
 const PIN_G11 = "Try again";
+const PIN_G13 =
+  "Remove patient details from the note, like names or dates of birth, then try again.";
 
 function draftBody(
   title = "Heel slide",
@@ -866,6 +873,121 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     await waitFor(() => {
       expect(requestsClient.regenerateDraftText).toHaveBeenCalledTimes(1);
       expect(mediaClient.regenerateDraftMedia).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("G13: patient details in regen note shows inline alert, not G1, sheet stays open", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const getRegenerationQuota = vi.fn().mockResolvedValue({
+      limit: 5,
+      used: 1,
+      remaining: 4,
+      limitReached: false,
+    });
+    const mediaClient = stubMediaClient({ getRegenerationQuota });
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockRejectedValue(
+        new ExerciseRequestsRequestError("Regeneration note: patient email", {
+          status: 400,
+          error: "invalid_input",
+          message: "Regeneration note: Remove patient details",
+        }),
+      ),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const note = within(dialog).getByLabelText(/Note for the AI/i);
+    await userEvent.type(note, "patient@example.com");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+    expect(alert.textContent).toBe(PIN_G13);
+    expect(note.getAttribute("aria-invalid")).toBe("true");
+    expect(note.getAttribute("aria-describedby")).toBe("ex-regen-note-patient-error");
+    expect(document.activeElement).toBe(note);
+    expect(screen.queryByText(PIN_G1)).toBeNull();
+    expect(dialog).toBeTruthy();
+    await userEvent.clear(note);
+    await userEvent.type(note, "forearm support");
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(getRegenerationQuota).toHaveBeenCalled();
+    const callsBefore = getRegenerationQuota.mock.calls.length;
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    await waitFor(() => {
+      expect(getRegenerationQuota.mock.calls.length).toBe(callsBefore);
+    });
+  });
+
+  it("shows Edit all and per-field edit links only when the first draft is ready", async () => {
+    const readyView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    renderReview(readyView);
+    await waitFor(() => {
+      expect(screen.getByText(EDIT_ALL)).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: editFieldLabel(TITLE_FIELD) }),
+      ).toBeTruthy();
+    });
+    const generatingView: ExerciseRequestDraftView = {
+      ...readyView,
+      exercise_id: null,
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: null,
+    };
+    cleanup();
+    setExerciseRequestsClientForTests(null);
+    setExerciseMediaClientForTests(null);
+    renderReview(generatingView, {
+      generateResult: {
+        outcome: "in_progress",
+        view: generatingView,
+        started_elsewhere: true,
+      },
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(EDIT_ALL)).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: editFieldLabel(TITLE_FIELD) }),
+      ).toBeNull();
     });
   });
 

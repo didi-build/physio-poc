@@ -214,32 +214,58 @@ export function createDeepInfraExerciseDraftGenerator(
         ],
         response_format: openAiJsonSchemaResponseFormat(),
       };
-      const completion = await client.complete(completionRequest);
-      const validated = parseAndValidateExerciseDraftAiPayload(
-        JSON.parse(completion.contentJson) as unknown,
-      );
-      if (!validated || !cueShapeValid(validated)) {
-        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
+      let lastFailure: DeepInfraExerciseDraftError | null = null;
+      for (let attempt = 0; attempt < MAX_AI_ATTEMPTS; attempt += 1) {
+        try {
+          const completion = await client.complete(completionRequest);
+          let parsedJson: unknown;
+          try {
+            parsedJson = JSON.parse(completion.contentJson);
+          } catch {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          const validated = parseAndValidateExerciseDraftAiPayload(parsedJson);
+          if (!validated || !cueShapeValid(validated)) {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          await deps.versions.updateDraftFields(input.existingVersionId, {
+            title: validated.title,
+            description: draftDescription(validated),
+            equipment: validated.equipment,
+            startingPosition: validated.starting_position,
+            steps: validated.steps,
+            commonMistakes: validated.common_mistakes,
+            regressions: validated.regressions,
+            progressions: validated.progressions,
+            precautions: validated.precautions,
+            cueStretching: validated.cue_stretching,
+            cueIsometric: validated.cue_isometric,
+            cueConcentric: validated.cue_concentric,
+            cueEccentric: validated.cue_eccentric,
+          });
+          return {
+            exerciseId: input.existingExerciseId,
+            versionId: input.existingVersionId,
+          };
+        } catch (error) {
+          if (error instanceof FreeTextValidationError) {
+            throw deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+          }
+          throw error;
+        }
       }
-      await deps.versions.updateDraftFields(input.existingVersionId, {
-        title: validated.title,
-        description: draftDescription(validated),
-        equipment: validated.equipment,
-        startingPosition: validated.starting_position,
-        steps: validated.steps,
-        commonMistakes: validated.common_mistakes,
-        regressions: validated.regressions,
-        progressions: validated.progressions,
-        precautions: validated.precautions,
-        cueStretching: validated.cue_stretching,
-        cueIsometric: validated.cue_isometric,
-        cueConcentric: validated.cue_concentric,
-        cueEccentric: validated.cue_eccentric,
-      });
-      return {
-        exerciseId: input.existingExerciseId,
-        versionId: input.existingVersionId,
-      };
+      throw (
+        lastFailure ??
+        deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid")
+      );
     }
     const completionRequest: DeepInfraChatCompletionRequest = {
       model: modelId,

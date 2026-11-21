@@ -36,10 +36,12 @@ import {
   DRAFT_AI_LIMIT_TRY_TOMORROW,
   DRAFT_AI_TEXT_FAILURE,
   DRAFT_GENERATION_STARTED_ELSEWHERE,
+  DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS,
   DRAFT_REGENERATE_TEXT,
   DRAFT_REGENERATING_TEXT,
 } from "../copy/draft-review-ai-states.js";
 import { ExerciseMediaRequestError } from "../api/exercise-media-client.js";
+import { ExerciseRequestsRequestError } from "../api/exercise-requests-client.js";
 import {
   AI_DRAFTING,
   APPROVE,
@@ -47,6 +49,7 @@ import {
   BASICS,
   DAILY_LIMIT_REACHED,
   DRAFT_NOT_APPROVED,
+  EDIT_ALL,
   EXERCISE_DETAILS,
   GENERATING,
   IMAGES,
@@ -68,11 +71,8 @@ import {
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
 import { DraftTextField } from "./DraftTextField.js";
-import {
-  RegenerateMediaSheet,
-  type RegeneratePick,
-  scopeForPick,
-} from "./RegenerateMediaSheet.js";
+import { RegenerateMediaSheet, type RegeneratePick } from "./RegenerateMediaSheet.js";
+import { isPatientDetailNoteInvalidInput } from "./patient-detail-note-error.js";
 import { requestedByLabel } from "./requested-by-label.js";
 
 type GenerationFailure = "text" | "images" | "daily" | null;
@@ -100,6 +100,10 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
+  const [regenNotePatientError, setRegenNotePatientError] = useState<string | null>(
+    null,
+  );
+  const regenNoteRef = useRef<HTMLTextAreaElement>(null);
   const [textRegenBusy, setTextRegenBusy] = useState(false);
   const [generationStartedElsewhere, setGenerationStartedElsewhere] = useState(false);
   const [startStillUrl, setStartStillUrl] = useState<string | null>(null);
@@ -227,6 +231,19 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [generationFailure]);
 
   useEffect(() => {
+    if (regenNotePatientError) {
+      regenNoteRef.current?.focus();
+    }
+  }, [regenNotePatientError]);
+
+  const onRegenNoteChange = (value: string) => {
+    setRegenNote(value);
+    if (regenNotePatientError) {
+      setRegenNotePatientError(null);
+    }
+  };
+
+  useEffect(() => {
     const versionId = view?.draft?.exercise_version_id;
     if (
       !firstDraftComplete ||
@@ -285,8 +302,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         window.clearInterval(timer);
       };
     }
+    if (isRequester && ownGenerateInFlight) {
+      return undefined;
+    }
     if (
-      (isRequester && (generationInProgress || ownGenerateInFlight)) ||
+      (isRequester && generationInProgress) ||
       (!firstDraftComplete && view.draft && generationFailure === null)
     ) {
       const timer = window.setInterval(() => {
@@ -327,9 +347,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     if (error.detail.status === 429 || error.detail.error === "daily_limit_reached") {
       return `${DAILY_LIMIT_REACHED} ${DRAFT_AI_LIMIT_TRY_TOMORROW}`;
     }
-    if (error.detail.status === 400 || error.detail.error === "invalid_input") {
-      return DRAFT_AI_TEXT_FAILURE;
-    }
     return DRAFT_AI_IMAGE_FAILURE;
   };
 
@@ -342,13 +359,26 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     }
     setRegenBusy(true);
     setRegenError(null);
+    setRegenNotePatientError(null);
     try {
       if (regenMode === "general" && (regenPick === "text" || regenPick === "all")) {
         setTextRegenBusy(true);
-        const result = await requestsClient.regenerateDraftText(
-          requestId,
-          regenNote.trim() || null,
-        );
+        let result;
+        try {
+          result = await requestsClient.regenerateDraftText(
+            requestId,
+            regenNote.trim() || null,
+          );
+        } catch (error) {
+          if (
+            error instanceof ExerciseRequestsRequestError &&
+            isPatientDetailNoteInvalidInput(error.detail)
+          ) {
+            setRegenNotePatientError(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+            return;
+          }
+          throw error;
+        }
         if (result.outcome === "text_failed") {
           setRegenError(DRAFT_AI_TEXT_FAILURE);
           return;
@@ -372,7 +402,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           ? ("start" as const)
           : regenMode === "end"
             ? ("end" as const)
-            : scopeForPick("images");
+            : ("both" as const);
       await mediaClient.regenerateDraftMedia({
         exerciseVersionId: view.draft.exercise_version_id,
         scope,
@@ -389,11 +419,20 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       setStartStillUrl(start);
       setEndStillUrl(end);
     } catch (error) {
+      if (
+        error instanceof ExerciseMediaRequestError &&
+        isPatientDetailNoteInvalidInput(error.detail)
+      ) {
+        setRegenNotePatientError(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+        return;
+      }
       if (error instanceof ExerciseMediaRequestError) {
         setRegenError(mapRegenMediaError(error));
+      } else if (error instanceof ExerciseRequestsRequestError) {
+        setRegenError(DRAFT_AI_TEXT_FAILURE);
       } else {
         setRegenError(
-          regenMode === "general" && regenPick === "text"
+          regenMode === "general" && (regenPick === "text" || regenPick === "all")
             ? DRAFT_AI_TEXT_FAILURE
             : DRAFT_AI_IMAGE_FAILURE,
         );
@@ -602,6 +641,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           <div className="ex-review-fields">
             <div className="ex-review-fields-head">
               <h2 className="ex-section-title">{EXERCISE_DETAILS}</h2>
+              {canEdit ? <span className="ex-muted">{EDIT_ALL}</span> : null}
             </div>
             {detailsGenerating ? (
               <p className="ex-requests-wait" role="status">
@@ -661,13 +701,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         mode={regenMode}
         quota={quota}
         note={regenNote}
-        onNoteChange={setRegenNote}
+        onNoteChange={onRegenNoteChange}
         pick={regenPick}
         onPickChange={setRegenPick}
         onConfirm={() => {
           void runRegenerate();
         }}
         busy={regenBusy}
+        notePatientDetailError={regenNotePatientError}
+        noteInputRef={regenNoteRef}
       />
     </section>
   );

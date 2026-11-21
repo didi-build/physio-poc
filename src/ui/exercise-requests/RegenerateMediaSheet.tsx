@@ -26,9 +26,11 @@ import {
   regenLeftText,
 } from "../copy/exercise-requests.js";
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
-import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
+import type { RefObject } from "react";
 
 export type RegeneratePick = "all" | "images" | "text";
+
+export const REGEN_NOTE_PATIENT_ERROR_ID = "ex-regen-note-patient-error";
 
 export type RegenerateMediaSheetProps = {
   open: boolean;
@@ -41,6 +43,8 @@ export type RegenerateMediaSheetProps = {
   onPickChange: (pick: RegeneratePick) => void;
   onConfirm: () => void;
   busy?: boolean;
+  notePatientDetailError?: string | null;
+  noteInputRef?: RefObject<HTMLTextAreaElement | null>;
 };
 
 export function RegenerateMediaSheet({
@@ -54,6 +58,8 @@ export function RegenerateMediaSheet({
   onPickChange,
   onConfirm,
   busy = false,
+  notePatientDetailError = null,
+  noteInputRef,
 }: RegenerateMediaSheetProps) {
   const remaining = quota?.remaining ?? REGEN_DAILY_CAP;
   const limitReached = quota?.limitReached ?? false;
@@ -135,23 +141,25 @@ export function RegenerateMediaSheet({
       </label>
       <textarea
         id="ex-regen-note"
+        ref={noteInputRef}
         className="ex-textarea"
         rows={2}
         placeholder={REGEN_NOTE_PLACEHOLDER}
         value={note}
+        aria-invalid={notePatientDetailError ? true : undefined}
+        aria-describedby={
+          notePatientDetailError ? REGEN_NOTE_PATIENT_ERROR_ID : undefined
+        }
         onChange={(event) => {
           onNoteChange(event.target.value);
         }}
       />
+      {notePatientDetailError ? (
+        <p id={REGEN_NOTE_PATIENT_ERROR_ID} className="ex-regen-limit" role="alert">
+          {notePatientDetailError}
+        </p>
+      ) : null}
       <p className="ex-regen-footnote">{REGEN_UNDO_HINT}</p>
     </ConfirmSheet>
   );
-}
-
-/** Maps general-sheet image picks to media API scopes (start/end/both). Text uses regenerate-text. */
-export function scopeForPick(
-  pick: Exclude<RegeneratePick, "text" | "all">,
-): MediaRegenerationScope {
-  void pick;
-  return "both";
 }

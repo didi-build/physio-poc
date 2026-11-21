@@ -19,7 +19,7 @@ export async function underDraftGenerationLock<T>(input: {
   const lockedAt = await input.requests.getDraftGenerationLockedAt(input.requestId);
   if (isLockFresh(lockedAt, input.now)) {
     const view = await input.loadView();
-    return { kind: "in_progress", view, started_elsewhere: false };
+    return { kind: "in_progress", view, started_elsewhere: true };
   }
 
   const lockHeldAt = input.now;

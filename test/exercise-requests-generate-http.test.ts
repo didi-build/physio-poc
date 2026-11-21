@@ -291,10 +291,10 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         started_elsewhere?: boolean;
       };
       expect(payload.outcome).toBe("in_progress");
-      expect(payload.started_elsewhere).toBe(false);
+      expect(payload.started_elsewhere).toBe(true);
       expect(payload).toMatchObject({
         outcome: "in_progress",
-        started_elsewhere: false,
+        started_elsewhere: true,
       });
     } finally {
       storage.close();

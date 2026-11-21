@@ -10,6 +10,9 @@ import type {
 } from "../../services/exercise-library/types.js";
 import type { DraftInProgressSummary } from "../../services/exercise-requests/types.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { ExerciseRequestsRequestError } from "../api/exercise-requests-client.js";
+import { DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS } from "../copy/draft-review-ai-states.js";
+import { isPatientDetailNoteInvalidInput } from "../exercise-requests/patient-detail-note-error.js";
 import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
 import {
   useCurrentPractitionerIdentity,
@@ -158,6 +161,8 @@ export function ExerciseLibraryPage({
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
   const [reqNote, setReqNote] = useState("");
+  const [reqNotePatientError, setReqNotePatientError] = useState<string | null>(null);
+  const reqNoteRef = useRef<HTMLInputElement>(null);
   const [reqExerciseName, setReqExerciseName] = useState(() =>
     (searchParams.get("q") ?? "").trim(),
   );
@@ -340,12 +345,26 @@ export function ExerciseLibraryPage({
     }
   };
 
+  useEffect(() => {
+    if (reqNotePatientError) {
+      reqNoteRef.current?.focus();
+    }
+  }, [reqNotePatientError]);
+
+  const onReqNoteChange = (value: string) => {
+    setReqNote(value);
+    if (reqNotePatientError) {
+      setReqNotePatientError(null);
+    }
+  };
+
   const submitRequest = async () => {
     const requestedName = reqExerciseName.trim();
     if (!requestedName || submittingRequest) {
       return;
     }
     setSubmittingRequest(true);
+    setReqNotePatientError(null);
     try {
       const result = await requestsClient.submitRequest({
         requested_name: requestedName,
@@ -367,6 +386,15 @@ export function ExerciseLibraryPage({
         setSubmittedRequestName(requestedName);
         onRequestsChanged?.();
         void refreshInProgressCount();
+      }
+    } catch (error) {
+      if (
+        error instanceof ExerciseRequestsRequestError &&
+        isPatientDetailNoteInvalidInput(error.detail)
+      ) {
+        setReqNotePatientError(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+      } else {
+        throw error;
       }
     } finally {
       setSubmittingRequest(false);
@@ -658,11 +686,13 @@ export function ExerciseLibraryPage({
                   }
                   leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
                   note={reqNote}
-                  onNoteChange={setReqNote}
+                  onNoteChange={onReqNoteChange}
                   onSubmit={() => {
                     void submitRequest();
                   }}
                   submitting={submittingRequest}
+                  notePatientDetailError={reqNotePatientError}
+                  noteInputRef={reqNoteRef}
                 />
               )
             ) : null}

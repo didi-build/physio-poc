@@ -13,3 +13,6 @@ export const DRAFT_GENERATION_STARTED_ELSEWHERE =
   "Already started. This page updates when the draft is ready.";
 export const DRAFT_REGEN_SCOPE_ALL_LABEL = "Text and images";
 export const DRAFT_REGEN_SCOPE_IMAGES_HINT = "Start and end images. Text stays.";
+/** G13 — regen note rejected for patient details (400, no AI call). */
+export const DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS =
+  "Remove patient details from the note, like names or dates of birth, then try again.";
