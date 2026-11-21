@@ -28,6 +28,7 @@ const FIXTURE = {
   GOOGLE_CLIENT_SECRET: "fixture-google-client-secret",
   BETTER_AUTH_SECRET: "fixture-better-auth-secret-32chx",
   PHYSIO_ALLOWED_GOOGLE_EMAILS: "coach@example.com",
+  PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-api-key",
   CLOUDFLARE_API_TOKEN: "fixture-cloudflare-api-token",
   CLOUDFLARE_ACCOUNT_ID: "00000000-0000-4000-8000-000000000001",
 };

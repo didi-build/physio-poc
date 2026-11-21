@@ -3,6 +3,7 @@ import { requiresPractitionerSession } from "../auth/public-routes.js";
 import { signInPathWithReturnTo } from "../auth/return-to.js";
 import type { AuthPort, PractitionerSession } from "../auth/auth-port.js";
 import type { ImageGenerationPort } from "../storage/ports/image-generation.js";
+import type { ExerciseDraftGenerator } from "../services/exercise-requests/exercise-draft-generator-types.js";
 import type { ObjectStoragePort } from "../storage/ports/object-storage.js";
 import type { SqlStoragePort } from "../storage/ports/sql-storage.js";
 import type { PhysioServerConfig } from "./config.js";
@@ -72,6 +73,8 @@ export type AppDependencies = {
   extraRouteHandlers?: AppRouteHandler[];
   /** Image generation port for exercise media routes (production Worker; optional Node dev override). */
   exerciseMediaImages?: ImageGenerationPort;
+  /** Exercise request draft generator (DeepInfra in production when configured). */
+  exerciseDraftGenerator?: ExerciseDraftGenerator;
 };
 
 export const MCP_PATH = "/mcp";

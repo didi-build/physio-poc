@@ -179,12 +179,43 @@ describe("QA round 3: exercise versions repository (integration, SQLite)", () =>
   });
 });
 
+describe("DIDI-1008: AI draft version insert status (unit)", () => {
+  it("buildInsertAiDraftBatchStatement pins exercise_versions.status to draft (M10)", () => {
+    const storage = BetterSqliteStorage.openInMemory();
+    try {
+      const versions = new ExerciseVersionsRepository(storage);
+      const stmt = versions.buildInsertAiDraftBatchStatement({
+        id: id("ver-ai-draft-status"),
+        exerciseId: id("ex-ai-draft-status"),
+        title: "Heel slide",
+        description: "Gentle knee flexion stretch.",
+        equipment: "Mat",
+        startingPosition: "Supine.",
+        steps: "Slide heel.",
+        commonMistakes: "Rushing",
+        regressions: "Smaller range",
+        progressions: "Hold longer",
+        precautions: "Stop if pain",
+        cueStretching: "Move slowly",
+        cueIsometric: null,
+        cueConcentric: null,
+        cueEccentric: null,
+        createdAt: TS,
+      });
+      expect(stmt.sql).toMatch(/,\s*1,\s*'draft',\s*NULL,\s*NULL,/);
+      expect(stmt.sql).not.toMatch(/'approved'/);
+    } finally {
+      storage.close();
+    }
+  });
+});
+
 describe("QA round 3: foreign key list (integration, SQLite)", () => {
-  it("lists exactly 43 foreign keys and each uses ON DELETE RESTRICT", async () => {
+  it("lists exactly 44 foreign keys and each uses ON DELETE RESTRICT", async () => {
     const storage = await openMigratedDatabase();
     try {
       const fks = await foreignKeysAcrossSchema(storage);
-      expect(fks).toHaveLength(43);
+      expect(fks).toHaveLength(44);
       for (const fk of fks) {
         expect(fk.on_delete).toBe("RESTRICT");
       }

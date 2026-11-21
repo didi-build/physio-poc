@@ -34,8 +34,8 @@ import { ProgramBuilderService } from "../programs/program-builder-service.js";
 import {
   appendMergeToDraftRequest,
   fakeExerciseDraftGenerator,
-  type ExerciseDraftGenerator,
 } from "./fake-draft-generator.js";
+import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import type {
   ApproveExerciseRequestResult,

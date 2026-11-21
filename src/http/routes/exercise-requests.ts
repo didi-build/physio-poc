@@ -14,6 +14,7 @@ import {
   type DraftFieldPatch,
   type SubmitResolution,
 } from "../../services/exercise-requests/index.js";
+import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
 
@@ -27,7 +28,9 @@ const SUBMIT_RESOLUTIONS = new Set<SubmitResolution>([
 ]);
 
 function service(deps: AppDependencies): ExerciseRequestsService {
-  return new ExerciseRequestsService(deps.sql, deps.config);
+  return new ExerciseRequestsService(deps.sql, deps.config, {
+    draftGenerator: deps.exerciseDraftGenerator,
+  });
 }
 
 function errorResponse(error: unknown): Response {
@@ -42,6 +45,9 @@ function errorResponse(error: unknown): Response {
       { error: "invalid_input", message: error.message },
       { status: 400, headers: JSON_HEADERS },
     );
+  }
+  if (error instanceof DeepInfraExerciseDraftError) {
+    return Response.json({ error: error.code }, { status: 502, headers: JSON_HEADERS });
   }
   if (error instanceof ExerciseRequestsServiceError) {
     const status =
