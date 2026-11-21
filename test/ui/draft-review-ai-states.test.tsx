@@ -5,7 +5,13 @@ import "./setup.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import {
+  createMemoryRouter,
+  MemoryRouter,
+  Route,
+  Routes,
+  RouterProvider,
+} from "react-router-dom";
 import { DraftReviewPage } from "../../src/ui/exercise-requests/DraftReviewPage.js";
 import {
   setExerciseRequestsClientForTests,
@@ -550,6 +556,100 @@ describe("Draft review generate orchestration (DIDI-1215)", () => {
       expect(generateRequest).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("shows text failure when page-open generate throws (B4)", async () => {
+    const generatingView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: false, first_draft_complete: false },
+      draft: null,
+    };
+    const generateRequest = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(generatingView),
+      generateRequest,
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(generatingView, { requestsClient });
+    await waitFor(() => {
+      expect(generateRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.getByText(DRAFT_AI_TEXT_FAILURE)).toBeTruthy();
+  });
+
+  it("starts generate after navigating to another drafting request (B1a)", async () => {
+    mockMinWidth1024(true);
+    const draftingView = (requestId: string): ExerciseRequestDraftView => ({
+      request_id: requestId,
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: false, first_draft_complete: false },
+      draft: null,
+    });
+    const generateRequest = vi.fn().mockImplementation(async () => ({
+      outcome: "in_progress" as const,
+      view: draftingView("req-1"),
+      started_elsewhere: false,
+    }));
+    const getRequest = vi
+      .fn()
+      .mockImplementation(async (id: string) => draftingView(id));
+    const requestsClient = {
+      getRequest,
+      generateRequest,
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    setExerciseRequestsClientForTests(requestsClient);
+    const mediaClient = stubMediaClient();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/requests/:requestId",
+          element: (
+            <NavigationTestProviders>
+              <ExerciseRequestsApiProvider client={requestsClient}>
+                <ExerciseMediaApiProvider client={mediaClient}>
+                  <ToastProvider>
+                    <DraftReviewPage />
+                  </ToastProvider>
+                </ExerciseMediaApiProvider>
+              </ExerciseRequestsApiProvider>
+            </NavigationTestProviders>
+          ),
+        },
+      ],
+      { initialEntries: ["/requests/req-1"] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitFor(() => {
+      expect(generateRequest).toHaveBeenCalledTimes(1);
+    });
+    await router.navigate("/requests/req-2");
+    await waitFor(() => {
+      expect(generateRequest).toHaveBeenCalledTimes(2);
+    });
+  });
 
   it("calls generate once after text failure when cached reads refresh", async () => {
     const generatingView: ExerciseRequestDraftView = {
