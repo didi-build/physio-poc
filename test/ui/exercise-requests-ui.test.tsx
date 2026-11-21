@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,19 +25,22 @@ import {
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   DESCRIPTION_FIELD,
+  NOTE_FOR_AI,
   SIMILAR_SECTION,
   SUBMIT_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
 import {
   APPROVE,
   CONFLICT_HEADING,
-  DAILY_LIMIT_REACHED,
   MERGE_MY_CHANGES,
+  DAILY_LIMIT_REACHED,
   REGENERATE,
   REQUESTED_BY,
   REQUESTS_HEADING,
   TOAST_APPROVE_OWN,
 } from "../../src/ui/copy/exercise-requests.js";
+import { DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS } from "../../src/ui/copy/draft-review-ai-states.js";
+import { ExerciseRequestsRequestError } from "../../src/ui/api/exercise-requests-client.js";
 import type { PractitionerSessionClient } from "../../src/ui/api/practitioner-session-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
@@ -90,11 +93,20 @@ function renderApp(
     ...stubLibraryClient(),
     ...exerciseLibrary,
   } as ExerciseLibraryClient;
+  const requestsClient = {
+    generateRequest: vi.fn().mockResolvedValue({
+      outcome: "complete",
+      view: {
+        generation: { generation_in_progress: false, first_draft_complete: true },
+      },
+    }),
+    ...requests,
+  } as ExerciseRequestsClient;
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         exerciseLibraryClient={library}
-        exerciseRequestsClient={requests as ExerciseRequestsClient}
+        exerciseRequestsClient={requestsClient}
         exerciseMediaClient={media as ExerciseMediaClient}
         programsClient={stubProgramsClient()}
         practitionerSessionClient={practitionerSessionClient}
@@ -104,6 +116,11 @@ function renderApp(
 }
 
 const OWN_REQUEST_EMAIL_LOCAL = "xrequestedbylocalunique77";
+
+const PIN_G13 =
+  "Remove patient details from the note, like names or dates of birth, then try again.";
+const PIN_G1 =
+  "We couldn't write the exercise description after several tries. Try again or draft this manually.";
 
 function assertNoEmailLocalPartShown(emailLocal: string): void {
   const lower = emailLocal.toLowerCase();
@@ -115,6 +132,75 @@ function assertNoEmailLocalPartShown(emailLocal: string): void {
 }
 
 describe("exercise requests UI", () => {
+  async function submitRequestFormWithPatientNoteError() {
+    const submitRequest = vi.fn().mockRejectedValue(
+      new ExerciseRequestsRequestError("Remove patient details", {
+        status: 400,
+        error: "invalid_input",
+        message: "Remove patient details from note",
+      }),
+    );
+    const listSimilar = vi.fn().mockResolvedValue({
+      library_matches: [],
+      drafts_in_progress: [],
+    });
+    const getInProgressCount = vi.fn().mockResolvedValue({ in_progress_count: 0 });
+
+    renderApp(`${physioAppExerciseSearchPath("Heel slide")}`, {
+      submitRequest,
+      listSimilar,
+      getInProgressCount,
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: SUBMIT_REQUEST })).toBeEnabled();
+    });
+    const note = screen.getByLabelText(new RegExp(NOTE_FOR_AI, "i"));
+    await userEvent.type(note, "patient dob 1990");
+    await userEvent.click(screen.getByRole("button", { name: SUBMIT_REQUEST }));
+    return { note };
+  }
+
+  it("G13 request form: patient note inline alert shows G13 copy", async () => {
+    await submitRequestFormWithPatientNoteError();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+    expect(alert.textContent).toBe(PIN_G13);
+    expect(screen.queryByText(PIN_G1)).toBeNull();
+  });
+
+  it("G13 request form: patient note rejection focuses note", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(note);
+    });
+  });
+
+  it("G13 request form: patient note error clears on edit", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    await screen.findByRole("alert");
+    await userEvent.clear(note);
+    await userEvent.type(note, "supine cues");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("G13 request form: patient note sets aria-invalid", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    expect(note.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("G13 request form: patient note error uses role alert", async () => {
+    await submitRequestFormWithPatientNoteError();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveAttribute("role", "alert");
+  });
+
+  it("G13 request form: patient note sets aria-describedby", async () => {
+    const { note } = await submitRequestFormWithPatientNoteError();
+    expect(note.getAttribute("aria-describedby")).toBe("ex-req-note-patient-error");
+  });
+
   it("submits a request from the search form", async () => {
     const submitRequest = vi.fn().mockResolvedValue({
       outcome: "created",
@@ -230,6 +316,7 @@ describe("exercise requests UI", () => {
       },
       {
         getRegenerationQuota: vi.fn(),
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
       },
     );
 
@@ -296,6 +383,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -340,6 +428,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,
@@ -382,6 +471,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -411,6 +501,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 5,
@@ -421,9 +512,12 @@ describe("exercise requests UI", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
+      expect(screen.getByText("0 of 5 left today")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: REGENERATE })).toBeDisabled();
+    expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
   });
 
   it("lists in-progress requests", async () => {
@@ -598,6 +692,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -627,6 +722,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,

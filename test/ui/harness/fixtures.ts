@@ -27,6 +27,10 @@ const draftView = {
   requested_by: DEV_PRACTITIONER_ID,
   requested_by_email: "kojo@example.com",
   exercise_id: "ex-layout-1",
+  generation: {
+    generation_in_progress: false,
+    first_draft_complete: true,
+  },
   draft: {
     exercise_version_id: "ver-layout-1",
     version_number: 1,
@@ -232,6 +236,7 @@ export function harnessFixture(
       limitReached: false,
     }),
     regenerateDraftMedia: async () => undefined,
+    draftStillObjectUrl: async () => null,
   } as unknown as ExerciseMediaClient;
 
   switch (id) {

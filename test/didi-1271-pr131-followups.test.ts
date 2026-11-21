@@ -23,6 +23,7 @@ import {
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import { testExerciseMediaService } from "./helpers/exercise-requests-generate-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
@@ -81,11 +82,20 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await service.submitRequest({
+      const created = await service.submitRequest({
         practitionerId: practitioner,
         requestedName: "Heel slide",
         exerciseNote: "  rehab version  ",
         formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+      await service.generateRequest({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        mediaService: testExerciseMediaService(storage),
       });
       const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
       const messages = (
@@ -220,13 +230,22 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
+      const created = await service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
       await expect(
-        service.submitRequest({
+        service.generateRequest({
           practitionerId: practitioner,
-          requestedName: "Heel slide",
-          formOpenedAt: FORM_OPENED,
+          requestId: created.request_id,
+          mediaService: testExerciseMediaService(storage),
         }),
-      ).resolves.toBeDefined();
+      ).resolves.toMatchObject({ outcome: "complete" });
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();

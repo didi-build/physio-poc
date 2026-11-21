@@ -12,7 +12,10 @@ import {
   openWorkerAuthTestDatabase,
   seedPractitioner,
 } from "./helpers/worker-auth-d1-fixture.js";
-import { seedPractitioner as seedExercisePractitioner } from "./helpers/exercise-sqlite-fixture.js";
+import {
+  seedDraftingExerciseRequest,
+  seedPractitioner as seedExercisePractitioner,
+} from "./helpers/exercise-sqlite-fixture.js";
 import { buildWorkerProductionAuthEnv } from "./helpers/worker-production-auth-test-utils.js";
 import { DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import {
@@ -86,11 +89,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       const versions = new ExerciseVersionsRepository(storage);
       const draftGenerator = deps.exerciseDraftGenerator;
       expect(draftGenerator).toBeDefined();
+      const requestId = id("req-worker-wire");
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
       await expect(
         draftGenerator!(
           {
             sql: storage,
-            requestId: id("req-worker-wire"),
+            requestId,
             requestedName: "Heel slide",
             exerciseNote: null,
             requestedBy: practitioner,
@@ -146,11 +155,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     const versions = new ExerciseVersionsRepository(deps.sql);
     const draftGenerator = deps.exerciseDraftGenerator;
     expect(draftGenerator).toBeDefined();
+    const requestId = id("req-node-wire");
+    await seedDraftingExerciseRequest(deps.sql, {
+      requestId,
+      practitionerId: practitioner,
+      requestedName: "Heel slide",
+    });
     await expect(
       draftGenerator!(
         {
           sql: deps.sql,
-          requestId: id("req-node-wire"),
+          requestId,
           requestedName: "Heel slide",
           exerciseNote: null,
           requestedBy: practitioner,
@@ -211,11 +226,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     );
     const requests = new ExerciseRequestsRepository(deps.sql);
     const versions = new ExerciseVersionsRepository(deps.sql);
+    const requestId = id("req-node-model");
+    await seedDraftingExerciseRequest(deps.sql, {
+      requestId,
+      practitionerId: practitioner,
+      requestedName: "Heel slide",
+    });
     await expect(
       deps.exerciseDraftGenerator!(
         {
           sql: deps.sql,
-          requestId: id("req-node-model"),
+          requestId,
           requestedName: "Heel slide",
           exerciseNote: null,
           requestedBy: practitioner,

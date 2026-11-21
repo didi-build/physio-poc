@@ -201,6 +201,49 @@ export async function handleExerciseMediaRequest(
     }
   }
 
+  const stillMatch = /^\/api\/me\/exercise-versions\/([^/]+)\/media\/(start|end)$/.exec(
+    path,
+  );
+  if (stillMatch && request.method === "GET") {
+    const practitionerId = requirePractitioner(sessionPractitioner);
+    if (practitionerId instanceof Response) {
+      return practitionerId;
+    }
+    const exerciseVersionId = stillMatch[1] ?? "";
+    const which = stillMatch[2] as "start" | "end";
+    try {
+      const image = await mediaService(deps).getDraftStillImage({
+        practitionerId,
+        exerciseVersionId,
+        which,
+      });
+      if (!image) {
+        return serveJson(
+          { error: "media_not_found", message: "Media not available" },
+          404,
+        );
+      }
+      return withServeCacheControl(
+        new Response(
+          new Blob([Uint8Array.from(image.body)], { type: image.contentType }),
+          {
+            status: 200,
+            headers: {
+              "content-type": image.contentType,
+              "cache-control": "no-store",
+            },
+          },
+        ),
+      );
+    } catch (error) {
+      const response = routeErrorResponse(error);
+      if (response) {
+        return withServeCacheControl(response);
+      }
+      throw error;
+    }
+  }
+
   const versionMatch = EXERCISE_MEDIA_ME_VERSION_PATH.exec(path);
   if (!versionMatch) {
     return null;

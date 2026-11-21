@@ -15,6 +15,7 @@ import {
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
 import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import {
   ExerciseRequestsServiceError,
   isExerciseAliasUniqueConstraintError,
@@ -28,25 +29,83 @@ export type {
   ExerciseDraftGeneratorDeps,
 } from "./exercise-draft-generator-types.js";
 
+export type FakeExerciseDraftGeneratorOptions = {
+  failText?: boolean;
+};
+
+export function createFakeExerciseDraftGenerator(
+  options: FakeExerciseDraftGeneratorOptions = {},
+): ExerciseDraftGenerator {
+  return async (input, deps) => {
+    if (options.failText) {
+      throw new DeepInfraExerciseDraftError("deepinfra_exercise_draft_request_failed");
+    }
+    return fakeExerciseDraftGenerator(input, deps);
+  };
+}
+
+export type DelayedFakeExerciseDraftGeneratorOptions =
+  FakeExerciseDraftGeneratorOptions & {
+    delayMs?: number;
+  };
+
+/** Wraps the fake generator with an awaitable delay for concurrent generate tests. */
+export function createDelayedFakeExerciseDraftGenerator(
+  options: DelayedFakeExerciseDraftGeneratorOptions = {},
+): ExerciseDraftGenerator {
+  const inner = createFakeExerciseDraftGenerator(options);
+  const delayMs = options.delayMs ?? 200;
+  return async (input, deps) => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, delayMs);
+    });
+    return inner(input, deps);
+  };
+}
+
 /** Test and local stub: creates a stretch draft with the requested title. */
+const FAKE_DRAFT_REGEN_SENTINEL = "Regenerated draft text";
+
 export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
+  if (input.existingExerciseId && input.existingVersionId) {
+    const noteSuffix =
+      input.regenerationNote && input.regenerationNote.trim().length > 0
+        ? ` ${input.regenerationNote.trim()}`
+        : "";
+    await deps.versions.updateDraftFields(input.existingVersionId, {
+      description: `${FAKE_DRAFT_REGEN_SENTINEL}.${noteSuffix}`.trim(),
+      steps: "1. Perform the movement with control.",
+      equipment: "None",
+      startingPosition: "Start in a comfortable position.",
+    });
+    return {
+      exerciseId: input.existingExerciseId,
+      versionId: input.existingVersionId,
+    };
+  }
+
+  const existing = await deps.requests.findById(input.requestId);
+  if (!existing) {
+    await input.sql.batch([
+      deps.requests.buildInsertBatchStatement({
+        id: input.requestId,
+        requestedName: input.requestedName,
+        note: input.exerciseNote,
+        requestedBy: input.requestedBy,
+        status: "drafting",
+        createdAt: input.now,
+        updatedAt: input.now,
+      }),
+    ]);
+  }
   const exerciseId = generateOpaqueEntityId();
   const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);
 
   const batchStatements: SqlBatchStatement[] = [
-    deps.requests.buildInsertBatchStatement({
-      id: input.requestId,
-      requestedName: input.requestedName,
-      note: input.exerciseNote,
-      requestedBy: input.requestedBy,
-      status: "open",
-      createdAt: input.now,
-      updatedAt: input.now,
-    }),
     deps.exercises.buildInsertBatchStatement({
       id: exerciseId,
       category: "stretch",

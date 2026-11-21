@@ -4,6 +4,7 @@ import { handleRequest } from "../src/http/app.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { generateOpaqueEntityId } from "../src/domain/opaque-entity-id.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
 import {
   ProgramPublishService,
   ProgramPublishServiceError,
@@ -714,7 +715,7 @@ describe("DIDI-1011 program publish HTTP (integration)", () => {
       const requests = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T11:00:00.000Z",
       });
-      const submitted = await requests.submitRequest({
+      const submitted = await submitRequestWithGeneratedDraft(requests, storage, {
         practitionerId: owner,
         requestedName: "Approved move",
         formOpenedAt: "2026-10-30T10:00:00.000Z",
