@@ -135,4 +135,64 @@ describe("getProgram placeholder_state (DIDI-1106)", () => {
       storage.close();
     }
   });
+
+  it("attaches practitioner B request on B program and keeps A rows isolated on link", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(storage, id("ph-b5-a"), "b5a@example.com");
+      const ownerB = await seedPractitioner(storage, id("ph-b5-b"), "b5b@example.com");
+      await seedApprovedExerciseVersion(storage, ownerB);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [ownerB, TS, FIXTURE_VERSION_ID],
+      );
+      const requestB = id("req-b5-b");
+      await seedOpenExerciseRequest(storage, ownerB, requestB, "B owner draft");
+      const service = new ProgramBuilderService(storage);
+      const programB = id("prog-b5-b");
+      const rowB = id("row-b5-b");
+      await service.createProgram(ownerB, { programId: programB });
+      await service.addPlaceholderRow(ownerB, programB, {
+        rowId: rowB,
+        exerciseRequestId: requestB,
+        prescriptionType: "stretching",
+      });
+      await markExerciseRequestApproved(storage, requestB, FIXTURE_EXERCISE_ID);
+      const viewB = await service.getProgram(ownerB, programB);
+      expect(viewB.rows[0]?.placeholder_state).toBe("type_mismatch");
+      expect(viewB.type_mismatch_placeholder_count).toBe(1);
+
+      const requestA = id("req-b5-a");
+      await seedOpenExerciseRequest(storage, ownerA, requestA, "A draft");
+      const programA = id("prog-b5-a");
+      const rowA = id("row-b5-a");
+      await service.createProgram(ownerA, { programId: programA });
+      await service.addPlaceholderRow(ownerA, programA, {
+        rowId: rowA,
+        exerciseRequestId: requestA,
+        prescriptionType: "stretching",
+      });
+      const rowForeign = id("row-b5-foreign");
+      await storage.run(
+        `INSERT INTO program_rows (
+          id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+          prescription_type, params_json, text_snapshot_json, note
+        ) VALUES (?, ?, 1, NULL, NULL, ?, 'stretching', '{}', ?, NULL)`,
+        [rowForeign, programA, requestB, JSON.stringify({ title: "B owner draft" })],
+      );
+      const viewA = await service.getProgram(ownerA, programA);
+      expect(viewA.type_mismatch_placeholder_count).toBe(0);
+      await expect(
+        service.linkTypeMismatchPlaceholderRow(
+          ownerA,
+          programA,
+          rowForeign,
+          "stretching",
+          viewA.draft_updated_at,
+        ),
+      ).rejects.toMatchObject({ code: "exercise_request_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
 });

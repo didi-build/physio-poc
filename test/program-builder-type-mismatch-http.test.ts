@@ -26,6 +26,16 @@ import { id } from "./helpers/opaque-test-ids.js";
 
 const BASE = "https://physio.test.example";
 
+const PROGRAM_NOT_FOUND_BODY = {
+  error: "program_not_found",
+  message: "Program not found",
+} as const;
+
+const EXERCISE_REQUEST_NOT_FOUND_BODY = {
+  error: "exercise_request_not_found",
+  message: "Exercise request not found",
+} as const;
+
 function apiDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   practId: string,
@@ -47,6 +57,43 @@ function apiDeps(
     },
     cookie: auth.createSessionCookieHeader(),
   };
+}
+
+async function seedTypeMismatchRow(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  owner: string,
+  programId: string,
+  rowId: string,
+  reqId: string,
+  prescriptionType: "stretching" | "isometric" = "isometric",
+): Promise<{ draftUpdatedAt: string }> {
+  await seedApprovedExerciseVersion(storage, owner);
+  await storage.run(
+    `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+    [owner, TS, FIXTURE_VERSION_ID],
+  );
+  const service = new ProgramBuilderService(storage);
+  await service.createProgram(owner, { programId });
+  const requests = new ExerciseRequestsRepository(storage);
+  await requests.insert({
+    id: reqId,
+    requestedName: "Bridge marching",
+    requestedBy: owner,
+    status: "open",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+  await service.addPlaceholderRow(owner, programId, {
+    rowId,
+    exerciseRequestId: reqId,
+    prescriptionType,
+  });
+  await storage.run(
+    `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+    [FIXTURE_EXERCISE_ID, TS, reqId],
+  );
+  const view = await service.getProgram(owner, programId);
+  return { draftUpdatedAt: view.draft_updated_at };
 }
 
 describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
@@ -122,35 +169,16 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         id("ph-stale"),
         "stale@example.com",
       );
-      await seedApprovedExerciseVersion(storage, owner);
-      await storage.run(
-        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
-        [owner, TS, FIXTURE_VERSION_ID],
-      );
-      const service = new ProgramBuilderService(storage);
       const programId = id("prog-stale-link");
       const reqId = id("req-stale");
       const rowId = id("row-stale");
-      await service.createProgram(owner, { programId });
-      const requests = new ExerciseRequestsRepository(storage);
-      await requests.insert({
-        id: reqId,
-        requestedName: "Hold",
-        requestedBy: owner,
-        status: "open",
-        createdAt: TS,
-        updatedAt: TS,
-      });
-      await service.addPlaceholderRow(owner, programId, {
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
         rowId,
-        exerciseRequestId: reqId,
-        prescriptionType: "stretching",
-      });
-      await storage.run(
-        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
-        [FIXTURE_EXERCISE_ID, TS, reqId],
+        reqId,
       );
-      const view = await service.getProgram(owner, programId);
       const rowsRepo = new ProgramRowsRepository(storage);
       const rowBefore = await rowsRepo.findById(rowId);
       const { deps, cookie } = apiDeps(storage, owner);
@@ -173,8 +201,202 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
       const body = (await response.json()) as { error: string };
       expect(body.error).toBe("stale_write");
       const rowAfter = await rowsRepo.findById(rowId);
-      expect(rowAfter?.exercise_request_id).toBe(rowBefore?.exercise_request_id);
-      expect(view.draft_updated_at).not.toBe("1970-01-01T00:00:00.000Z");
+      expect(rowAfter).toEqual(rowBefore);
+      expect(draftUpdatedAt).not.toBe("1970-01-01T00:00:00.000Z");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("refuses stale draft_updated_at on undo HTTP without reverting a linked row", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-stale-undo"),
+        "stale-undo@example.com",
+      );
+      const programId = id("prog-stale-undo");
+      const reqId = id("req-stale-undo");
+      const rowId = id("row-stale-undo");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      const service = new ProgramBuilderService(storage);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "stretching",
+        draftUpdatedAt,
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowBefore = await rowsRepo.findById(rowId);
+      expect(rowBefore?.exercise_request_id).toBeNull();
+      const { deps, cookie } = apiDeps(storage, owner);
+      const url = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              draft_updated_at: "1970-01-01T00:00:00.000Z",
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(409);
+      const body = (await response.json()) as { error: string; message: string };
+      expect(body.error).toBe("stale_write");
+      const rowAfter = await rowsRepo.findById(rowId);
+      expect(rowAfter).toEqual(rowBefore);
+      expect(linked.program.draft_updated_at).not.toBe("1970-01-01T00:00:00.000Z");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns program_not_found for another practitioner's link and undo without changing rows", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(storage, id("ph-xa"), "xa@example.com");
+      const ownerB = await seedPractitioner(storage, id("ph-xb"), "xb@example.com");
+      const programId = id("prog-cross-tm");
+      const reqId = id("req-cross-tm");
+      const rowId = id("row-cross-tm");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        ownerA,
+        programId,
+        rowId,
+        reqId,
+      );
+      const service = new ProgramBuilderService(storage);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        ownerA,
+        programId,
+        rowId,
+        "stretching",
+        draftUpdatedAt,
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowBefore = await rowsRepo.findById(rowId);
+      const { deps, cookie } = apiDeps(storage, ownerB);
+
+      const linkUrl = `${BASE}${programRowLinkTypeMismatchPath(programId, rowId)}`;
+      const linkResponse = await handleRequest(
+        new Request(
+          linkUrl,
+          mutatingAppApiRequestInit(linkUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              prescription_type: "stretching",
+              draft_updated_at: linked.program.draft_updated_at,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(linkResponse.status).toBe(404);
+      await expect(linkResponse.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+
+      const undoUrl = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const undoResponse = await handleRequest(
+        new Request(
+          undoUrl,
+          mutatingAppApiRequestInit(undoUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              draft_updated_at: linked.program.draft_updated_at,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undoResponse.status).toBe(404);
+      await expect(undoResponse.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+      const rowAfter = await rowsRepo.findById(rowId);
+      expect(rowAfter).toEqual(rowBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("refuses link on a row tied to another practitioner's request with exercise_request_not_found unchanged", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(
+        storage,
+        id("ph-iso-a"),
+        "iso-a@example.com",
+      );
+      const ownerB = await seedPractitioner(
+        storage,
+        id("ph-iso-b"),
+        "iso-b@example.com",
+      );
+      const programId = id("prog-iso");
+      const reqB = id("req-b-owned");
+      const rowForeign = id("row-foreign-req");
+      await seedApprovedExerciseVersion(storage, ownerB);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [ownerB, TS, FIXTURE_VERSION_ID],
+      );
+      const service = new ProgramBuilderService(storage);
+      await service.createProgram(ownerA, { programId });
+      const requests = new ExerciseRequestsRepository(storage);
+      await requests.insert({
+        id: reqB,
+        requestedName: "Other owner draft",
+        requestedBy: ownerB,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [FIXTURE_EXERCISE_ID, TS, reqB],
+      );
+      await storage.run(
+        `INSERT INTO program_rows (
+          id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+          prescription_type, params_json, text_snapshot_json, note
+        ) VALUES (?, ?, 0, NULL, NULL, ?, 'stretching', '{}', ?, NULL)`,
+        [rowForeign, programId, reqB, JSON.stringify({ title: "Other owner draft" })],
+      );
+      const view = await service.getProgram(ownerA, programId);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const before = await rowsRepo.findById(rowForeign);
+      const { deps, cookie } = apiDeps(storage, ownerA);
+      const url = `${BASE}${programRowLinkTypeMismatchPath(programId, rowForeign)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              prescription_type: "stretching",
+              draft_updated_at: view.draft_updated_at,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(404);
+      await expect(response.json()).resolves.toEqual(EXERCISE_REQUEST_NOT_FOUND_BODY);
+      const after = await rowsRepo.findById(rowForeign);
+      expect(after).toEqual(before);
     } finally {
       storage.close();
     }

@@ -5,7 +5,9 @@ import {
   programRowDuplicatePath,
   programRowLibraryUpdateApplyPath,
   programRowLibraryUpdateKeepPath,
+  programRowLinkTypeMismatchPath,
   programRowPath,
+  programRowUndoTypeMismatchLinkPath,
   programRowsPath,
   programRowsReorderPath,
   programsDeletedListPath,
@@ -48,6 +50,8 @@ export function programBuilderHttpRouteCases(
     { method: "POST", path: programRowDuplicatePath(programId, rowId) },
     { method: "POST", path: programRowLibraryUpdateApplyPath(programId, rowId) },
     { method: "POST", path: programRowLibraryUpdateKeepPath(programId, rowId) },
+    { method: "POST", path: programRowLinkTypeMismatchPath(programId, rowId) },
+    { method: "POST", path: programRowUndoTypeMismatchLinkPath(programId, rowId) },
   ];
 }
 
@@ -153,6 +157,12 @@ export function programBuilderHttpJsonBody(
       row_id: ctx.rowId,
       exercise_id: ctx.exerciseId,
     });
+  }
+  if (routeCase.path.endsWith("/link-type-mismatch")) {
+    return JSON.stringify({ prescription_type: "stretching" });
+  }
+  if (routeCase.path.endsWith("/undo-type-mismatch-link")) {
+    return JSON.stringify({});
   }
   return JSON.stringify({});
 }
