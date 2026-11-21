@@ -30,6 +30,7 @@ import { CANCEL } from "../copy/my-defaults.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   ADD_EXERCISE,
+  AUTO_SAVE_FAILURE_ALERT,
   AUTO_SAVE_NOTE,
   BUILDER_EMPTY_ROWS,
   BUILDER_ROWS_HINT,
@@ -63,7 +64,6 @@ import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
 import { TypeMismatchBuilderBanner } from "./TypeMismatchBuilderBanner.js";
 import { typeMismatchLinkedToast } from "../copy/program-type-mismatch.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
-import type { ProgramPlaceholderTypeMismatchUndo } from "../../services/programs/types.js";
 import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
@@ -518,7 +518,7 @@ export function ProgramBuilderPage({
   };
 
   const openFixForRow = useCallback(
-    (rowId: string, options?: { highlight?: boolean }) => {
+    (rowId: string, options?: { highlight?: boolean; focusFix?: boolean }) => {
       setFixOpenRowIds((prev) => new Set(prev).add(rowId));
       if (options?.highlight) {
         setHighlightRowId(rowId);
@@ -527,7 +527,18 @@ export function ProgramBuilderPage({
         }, 2_000);
       }
       const element = rowElementsRef.current.get(rowId);
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (typeof element?.scrollIntoView === "function") {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (options?.focusFix) {
+        window.requestAnimationFrame(() => {
+          const article = rowElementsRef.current.get(rowId);
+          const fix = article?.querySelector<HTMLButtonElement>(
+            ".pg-row-type-mismatch-fix",
+          );
+          fix?.focus();
+        });
+      }
     },
     [],
   );
@@ -559,6 +570,7 @@ export function ProgramBuilderPage({
             current.program_id,
             rowId,
             type,
+            current.draft_updated_at,
           );
           applyProgram(result.program);
           setNoteDrafts(noteDraftsFromProgram(result.program));
@@ -567,20 +579,20 @@ export function ProgramBuilderPage({
             next.delete(rowId);
             return next;
           });
-          const undo = result.undo;
-          if (undo) {
+          if (result.undo) {
             showToast({
               message: typeMismatchLinkedToast(exerciseTitle, TYPE_LABELS[type]),
               onUndo: () => {
+                const programId = current.program_id;
+                const draftAt = programRef.current?.draft_updated_at;
                 void client
-                  .undoTypeMismatchPlaceholderLink(
-                    current.program_id,
-                    rowId,
-                    undo as ProgramPlaceholderTypeMismatchUndo,
-                  )
+                  .undoTypeMismatchPlaceholderLink(programId, rowId, draftAt)
                   .then((reverted) => {
                     applyProgram(reverted.program);
                     setNoteDrafts(noteDraftsFromProgram(reverted.program));
+                  })
+                  .catch(() => {
+                    showToast({ message: AUTO_SAVE_FAILURE_ALERT });
                   });
               },
             });
@@ -606,7 +618,7 @@ export function ProgramBuilderPage({
       return;
     }
     fixDeepLinkHandledRef.current = fixRowId;
-    openFixForRow(fixRowId, { highlight: true });
+    openFixForRow(fixRowId, { highlight: true, focusFix: true });
     const next = new URLSearchParams(searchParams);
     next.delete(TYPE_MISMATCH_FIX_ROW_QUERY_PARAM);
     setSearchParams(next, { replace: true });
@@ -1180,6 +1192,7 @@ export function ProgramBuilderPage({
       <AddExerciseSheet
         open={addExerciseOpen}
         onClose={() => {
+          replaceMismatchRowIdRef.current = null;
           setAddExerciseOpen(false);
         }}
         onPickExercise={onAddExercise}
@@ -1304,7 +1317,7 @@ export function ProgramBuilderPage({
             return;
           }
           fixDeepLinkHandledRef.current = null;
-          openFixForRow(rowId, { highlight: true });
+          openFixForRow(rowId, { highlight: true, focusFix: true });
         }}
       />
 

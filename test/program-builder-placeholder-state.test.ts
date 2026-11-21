@@ -96,12 +96,21 @@ describe("getProgram placeholder_state (DIDI-1106)", () => {
         exerciseRequestId: requestApproved,
         prescriptionType: "stretching",
       });
-      await seedOpenExerciseRequest(storage, ownerB, id("req-other"), "Other owner");
-      await service.addPlaceholderRow(ownerA, programId, {
-        rowId: rowOtherRequest,
-        exerciseRequestId: requestOpen,
-        prescriptionType: "stretching",
-      });
+      const requestOther = id("req-other");
+      await seedOpenExerciseRequest(storage, ownerB, requestOther, "Other owner");
+      await storage.run(
+        `INSERT INTO program_rows (
+          id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+          prescription_type, params_json, text_snapshot_json, note
+        ) VALUES (?, ?, ?, NULL, NULL, ?, 'stretching', '{}', ?, NULL)`,
+        [
+          rowOtherRequest,
+          programId,
+          4,
+          requestOther,
+          JSON.stringify({ title: "Other owner" }),
+        ],
+      );
 
       await storage.run(
         `UPDATE exercise_requests SET status = 'withdrawn', updated_at = ? WHERE id = ?`,
@@ -120,6 +129,7 @@ describe("getProgram placeholder_state (DIDI-1106)", () => {
       expect(byId.get(rowLinked)?.kind).toBe("exercise");
       expect(byId.get(rowLinked)?.placeholder_state).toBeUndefined();
       expect(byId.get(rowOtherRequest)?.placeholder_state).toBe("awaiting_approval");
+      expect(byId.get(rowOtherRequest)?.text_snapshot.title).toBe("Other owner");
       expect(view.type_mismatch_placeholder_count).toBe(1);
     } finally {
       storage.close();

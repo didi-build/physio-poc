@@ -1194,6 +1194,9 @@
 }
 
 .pg-row-badge--mismatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   background: rgb(255 237 213);
   color: #c2410c;
 }

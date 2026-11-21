@@ -5,7 +5,6 @@ import type {
   ProgramMutationResult,
   ProgramMutationWithUndoResult,
   ProgramOriginFilter,
-  ProgramPlaceholderTypeMismatchUndo,
   ProgramSearchResult,
 } from "../../services/programs/types.js";
 import type { ProgramListItem } from "../../services/programs/types.js";
@@ -311,12 +310,17 @@ export class ProgramsClient {
     programId: string,
     rowId: string,
     prescriptionType: PrescriptionType,
+    draftUpdatedAt?: string,
   ): Promise<ProgramMutationWithUndoResult> {
+    const body: Record<string, string> = { prescription_type: prescriptionType };
+    if (draftUpdatedAt) {
+      body.draft_updated_at = draftUpdatedAt;
+    }
     return this.fetchFn(
       programRowLinkTypeMismatchPath(programId, rowId),
       withJsonContentType({
         method: "POST",
-        body: JSON.stringify({ prescription_type: prescriptionType }),
+        body: JSON.stringify(body),
       }),
     ).then((response) => readJson<ProgramMutationWithUndoResult>(response));
   }
@@ -324,13 +328,15 @@ export class ProgramsClient {
   undoTypeMismatchPlaceholderLink(
     programId: string,
     rowId: string,
-    undo: ProgramPlaceholderTypeMismatchUndo,
+    draftUpdatedAt?: string,
   ): Promise<ProgramMutationResult> {
+    const body =
+      draftUpdatedAt === undefined ? {} : { draft_updated_at: draftUpdatedAt };
     return this.fetchFn(
       programRowUndoTypeMismatchLinkPath(programId, rowId),
       withJsonContentType({
         method: "POST",
-        body: JSON.stringify({ undo }),
+        body: JSON.stringify(body),
       }),
     ).then((response) => readJson<ProgramMutationResult>(response));
   }

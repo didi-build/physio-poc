@@ -80,6 +80,23 @@ export type ProgramBuilderRowCardProps = {
   rowRef?: (element: HTMLElement | null) => void;
 };
 
+function MismatchBadgeAlertIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      width={14}
+      height={14}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className="pg-row-badge-icon"
+    >
+      <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    </svg>
+  );
+}
+
 function RowGripIcon() {
   return (
     <svg aria-hidden viewBox="0 0 24 24" width={20} height={20} fill="currentColor">
@@ -317,6 +334,7 @@ export function ProgramBuilderRowCard({
           {isTypeMismatch ? (
             <p className="pg-row-meta-line">
               <span className="pg-row-badge pg-row-badge--mismatch">
+                <MismatchBadgeAlertIcon />
                 {TYPE_MISMATCH_DIDNT_LINK_BADGE}
               </span>
             </p>
@@ -398,39 +416,43 @@ export function ProgramBuilderRowCard({
           >
             {TYPE_MISMATCH_FIX}
           </button>
-          {fixPanelOpen ? (
-            <div id={fixPanelId} className="pg-row-type-mismatch-panel">
-              {fixTypeOptions.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className="pg-row-type-mismatch-choice"
-                  aria-label={typeMismatchLinkTypeAriaLabel(title, TYPE_LABELS[type])}
-                  disabled={actionsDisabled}
-                  onClick={() => {
-                    onLinkMismatchType?.(type);
-                  }}
-                >
-                  <span className="pg-row-type-mismatch-choice-label">
-                    {TYPE_LABELS[type]}
-                  </span>
-                  <span className="pg-row-type-mismatch-choice-hint">
-                    {hintForFixType(type)}
-                  </span>
-                </button>
-              ))}
+          <div
+            id={fixPanelId}
+            className={`pg-row-type-mismatch-panel${
+              fixPanelOpen ? "" : " pg-row-type-mismatch-panel--collapsed"
+            }`}
+            hidden={!fixPanelOpen}
+          >
+            {fixTypeOptions.map((type) => (
               <button
+                key={type}
                 type="button"
-                className="pg-row-type-mismatch-pick"
+                className="pg-row-type-mismatch-choice"
+                aria-label={typeMismatchLinkTypeAriaLabel(title, TYPE_LABELS[type])}
                 disabled={actionsDisabled}
                 onClick={() => {
-                  onPickAnotherExercise?.();
+                  onLinkMismatchType?.(type);
                 }}
               >
-                {TYPE_MISMATCH_PICK_ANOTHER_EXERCISE}
+                <span className="pg-row-type-mismatch-choice-label">
+                  {TYPE_LABELS[type]}
+                </span>
+                <span className="pg-row-type-mismatch-choice-hint">
+                  {hintForFixType(type)}
+                </span>
               </button>
-            </div>
-          ) : null}
+            ))}
+            <button
+              type="button"
+              className="pg-row-type-mismatch-pick"
+              disabled={actionsDisabled}
+              onClick={() => {
+                onPickAnotherExercise?.();
+              }}
+            >
+              {TYPE_MISMATCH_PICK_ANOTHER_EXERCISE}
+            </button>
+          </div>
         </div>
       ) : null}
       <>

@@ -18,5 +18,6 @@ export function derivePlaceholderState(
   if (requestStatus === "approved") {
     return "type_mismatch";
   }
-  return "awaiting_approval";
+  const _exhaustive: never = requestStatus;
+  throw new Error(`Unexpected exercise request status: ${_exhaustive}`);
 }

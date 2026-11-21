@@ -160,8 +160,8 @@ describe("DIDI-1106 type-mismatch UI", () => {
       </MemoryRouter>,
     );
     const rows = screen.getAllByRole("listitem");
-    expect(within(rows[0]!).getByText("Awaiting second")).toBeInTheDocument();
-    expect(within(rows[1]!).getByText("Mismatch first")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("Mismatch first")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("Awaiting second")).toBeInTheDocument();
     expect(screen.getByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).toBeInTheDocument();
     expect(screen.getByText(PENDING_REVIEW_BADGE)).toBeInTheDocument();
     expect(
@@ -231,6 +231,72 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(
       screen.getByRole("link", { name: "Fix for Heel slide" }),
     ).toBeInTheDocument();
+  });
+
+  it("renders linked exercise row without placeholder_state badge", () => {
+    const linked: ProgramBuilderRow = {
+      id: "linked-1",
+      position: 0,
+      kind: "exercise",
+      exercise_id: "ex-1",
+      exercise_version_id: "ver-1",
+      exercise_request_id: null,
+      pinned_version_number: 1,
+      prescription_type: "stretching",
+      params: {},
+      params_source: "global_defaults",
+      resolved_params: {},
+      resolved_params_source: "global_defaults",
+      text_snapshot: { title: "Heel slide linked" },
+      note: null,
+      library_update: null,
+      exercise_version_choices: [],
+    };
+    render(
+      <ProgramBuilderRowCard
+        row={linked}
+        index={0}
+        total={1}
+        noteDraft=""
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        onDuplicate={() => {}}
+        onRemove={() => {}}
+        onNoteChange={() => {}}
+        onTypeChange={() => {}}
+        onSelectVersion={() => {}}
+        onDoseAdjustOpen={() => {}}
+        onDoseDraftChange={() => {}}
+        onDoseAdjustClose={() => {}}
+        onDoseDraftDiscard={() => {}}
+        onParamsReset={() => {}}
+        doseDraft={undefined}
+        doseEditorOpen={false}
+        fixPanelOpen={false}
+      />,
+    );
+    expect(
+      screen.getByRole("article", { name: /Heel slide linked/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).not.toBeInTheDocument();
+    expect(screen.queryByText(PENDING_REVIEW_BADGE)).not.toBeInTheDocument();
+  });
+
+  it("renders type mismatch banner at 390px and 1280px layout classes", () => {
+    const originalWidth = window.innerWidth;
+    window.innerWidth = 390;
+    window.dispatchEvent(new Event("resize"));
+    const { unmount: unmountSmall } = render(
+      <TypeMismatchBuilderBanner count={2} onShowMe={() => {}} />,
+    );
+    expect(screen.getByRole("status")).toHaveClass("pg-type-mismatch-banner");
+    unmountSmall();
+    window.innerWidth = 1280;
+    window.dispatchEvent(new Event("resize"));
+    render(<TypeMismatchBuilderBanner count={2} onShowMe={() => {}} />);
+    expect(screen.getByRole("status")).toHaveClass("pg-type-mismatch-banner");
+    window.innerWidth = originalWidth;
+    window.dispatchEvent(new Event("resize"));
   });
 
   it("shows programs list card flag for type-mismatch count", () => {

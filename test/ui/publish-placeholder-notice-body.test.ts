@@ -46,6 +46,16 @@ describe("publishPlaceholderNoticeBody (DIDI-1106, CTO 110d77a1)", () => {
     );
   });
 
+  it("returns awaiting-only approved body without T18 when every row is pending review", () => {
+    const body = publishPlaceholderNoticeBody([
+      placeholderRow("a", "awaiting_approval"),
+      placeholderRow("b", "awaiting_approval"),
+    ]);
+    expect(body).toBe(
+      "2 exercises are placeholders. Approve each draft or remove it from this program, then publish.",
+    );
+  });
+
   it("uses plural approved body before T18 when mixed list has more than one row", () => {
     const body = publishPlaceholderNoticeBody([
       placeholderRow("a", "type_mismatch"),
