@@ -109,16 +109,17 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
 
   it("Z01: accepts HTTP responses when content-length equals the byte cap", async () => {
     const payload = "{}";
-    const text = await readHttpResponseTextWithByteCap(
-      new Response(payload, {
-        status: 200,
-        headers: {
-          "content-length": String(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES),
-        },
-      }),
-      DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
-    );
-    expect(text).toBe(payload);
+    await expect(
+      readHttpResponseTextWithByteCap(
+        new Response(payload, {
+          status: 200,
+          headers: {
+            "content-length": String(DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES),
+          },
+        }),
+        DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES,
+      ),
+    ).resolves.toBe(payload);
   });
 
   it("U07: migration 0012 rejects suggested body region labels longer than 80 characters", async () => {
