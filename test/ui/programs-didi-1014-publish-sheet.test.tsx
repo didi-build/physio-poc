@@ -306,9 +306,7 @@ describe("Publish sheet (DIDI-1014)", () => {
   it("shows a validation alert without Try again when publish is rejected for missing name", async () => {
     const publishProgram = vi
       .fn()
-      .mockRejectedValue(
-        new ProgramsApiError("name_required", "name_required"),
-      );
+      .mockRejectedValue(new ProgramsApiError("name_required", "name_required"));
     render(
       <MemoryRouter>
         <PublishSheet
@@ -378,8 +376,6 @@ describe("Publish sheet (DIDI-1014)", () => {
       expect(alert).toHaveTextContent(didi1273FailedSaveMessage("program_publish"));
     });
     expect(within(dialog).getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
-    expect(
-      within(dialog).queryByTestId("program-publish-validation-alert"),
-    ).toBeNull();
+    expect(within(dialog).queryByTestId("program-publish-validation-alert")).toBeNull();
   });
 });

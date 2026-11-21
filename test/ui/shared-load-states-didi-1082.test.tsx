@@ -187,14 +187,18 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("renders SharedListLoadingState with visible loading copy, sr-only status without ellipsis, and aria-hidden skeleton list", () => {
-    render(<SharedListLoadingState surface="programs" testId="programs-list-loading" />);
+    render(
+      <SharedListLoadingState surface="programs" testId="programs-list-loading" />,
+    );
     const root = screen.getByTestId("programs-list-loading");
     expect(
       within(root).getByText(loadingListVisible(listTokenForSurface("programs"))),
     ).toBeInTheDocument();
     const status = within(root).getByRole("status");
     expect(status).toHaveClass("sr-only");
-    expect(status).toHaveTextContent(loadingListStatus(listTokenForSurface("programs")));
+    expect(status).toHaveTextContent(
+      loadingListStatus(listTokenForSurface("programs")),
+    );
     expect(status.textContent).not.toMatch(/\.\.\.$/);
     expect(within(root).getByTestId("sls-skeleton-list")).toHaveAttribute(
       "aria-hidden",
@@ -276,14 +280,12 @@ describe("DIDI-1082 shared load states behaviour", () => {
       >
         <PhysioApp
           exerciseLibraryClient={mockClient({
-            getExerciseDetails: vi
-              .fn()
-              .mockRejectedValue(
-                new HttpResponseError("Exercise not found", {
-                  code: "exercise_not_found",
-                  status: 404,
-                }),
-              ),
+            getExerciseDetails: vi.fn().mockRejectedValue(
+              new HttpResponseError("Exercise not found", {
+                code: "exercise_not_found",
+                status: 404,
+              }),
+            ),
           })}
           exerciseRequestsClient={stubRequestsClient()}
         />

@@ -18,7 +18,10 @@ import {
   NEW_PROGRAM_ROUTINE_PICKER_TITLE,
   builderOriginBannerTitle,
 } from "../../src/ui/copy/programs.js";
-import { itemLoadErrorPrimary, TRY_AGAIN } from "../../src/ui/copy/shared-load-states.js";
+import {
+  itemLoadErrorPrimary,
+  TRY_AGAIN,
+} from "../../src/ui/copy/shared-load-states.js";
 import { openMigratedDatabase } from "../helpers/exercise-sqlite-fixture.js";
 import {
   publishRoutine,

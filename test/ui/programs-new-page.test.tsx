@@ -161,7 +161,9 @@ describe("Programs new page (integration, jsdom)", () => {
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
     });
     expect(createProgram).toHaveBeenCalledTimes(1);
     await userEvent.click(
