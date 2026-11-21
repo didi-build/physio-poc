@@ -14,7 +14,7 @@ One shared pattern for every Physio list and detail surface at first load, reloa
 | -- | -- | -- | -- |
 | **C. Keep the page, banner with Try again** (final) | https://designs.magicpath.ai/v1/gladly-room-2758 | 466879036132560896 | 466879036132560897 |
 
-MagicPath project: DIDI-1080 Physio loading and load-error states (466877428799770624). Source: `LoadStatesCore.tsx` / `OptionCKeepThePageBannerWithTryAgain.tsx`, revision `466879036132560897`. Mockups crop the board `main` column only (no design preview chrome). Phone viewport 390 px wide; desktop 1280 px wide. Content column `max-w-3xl` (768 px) centred inside the shared `max-w-6xl` gutter from [design/README.md](../../README.md).
+MagicPath project: DIDI-1080 Physio loading and load-error states (466877428799770624). Source: `LoadStatesCore.tsx` / `OptionCKeepThePageBannerWithTryAgain.tsx`, revision `466879036132560897`. Mockups are full-frame page captures at 390 px (phone) and 1280 px (desktop), without MagicPath preview controls, with nav matching DIDI-1173 (three primary tabs; Requests only in the account dropdown). Content column `max-w-3xl` (768 px) centred inside the shared `max-w-6xl` gutter from [design/README.md](../../README.md).
 
 ### Approvals (Diadem, Designer chat, ET)
 
@@ -30,7 +30,7 @@ MagicPath project: DIDI-1080 Physio loading and load-error states (4668774287997
 
 | Topic | Rule |
 | -- | -- |
-| Variant | **Option C only.** Keep page chrome (nav, headings where applicable). Report load and refresh failures in an amber banner with **Try again**. Do not use option A (centred card), option B (full-page dead state), or baseline (blank error slot). |
+| Variant | **Option C only.** Keep page chrome (nav, headings where applicable). Report load and refresh failures in an amber banner with **Try again**. Do not ship option A (quiet skeleton with specific inline errors), option B (spinner with text, one generic error), or baseline (blank error slot). Exploration labels: DIDI-1080 ticket comment `b147c7e1`. |
 | Retry | **No automatic retry.** Retry runs only when the user taps **Try again**. On failure after retry, focus stays on **Try again** (button stays disabled with **Trying again...** while the request runs). |
 | Initial list load error | Heading stays visible. Amber banner with list strings and **Try again**. Content below may show skeleton placeholders (see mockups). |
 | Refresh failure after content loaded | Previously loaded content **stays on screen**. Banner: "Couldn't refresh. You're seeing what loaded earlier." with **Try again**. |
@@ -39,8 +39,8 @@ MagicPath project: DIDI-1080 Physio loading and load-error states (4668774287997
 | Failed save | Short inline **alert** (`role="alert"`) with the approved one-line message and a separate **Try again** button (same retry behaviour as banners). Not the list refresh banner. |
 | Copy | No patient information, status codes, or server error details in any string. |
 | Layout | Mobile first at 390 px; at 1280 px the state UI lives in the same centred column (max 768 px) as other app pages. |
-| Refresh vs list load error | **Designer pick** (DIDI-594 `a887af34`): One rule on every surface. If the screen already shows data, keep that data and show the refresh-failure banner. If nothing is on screen yet, show the initial list load error. Item surfaces use the same rule for their body (loaded item vs empty skeleton). |
-| My defaults | **Designer pick** (DIDI-594 `a887af34`): List states only: loading and list load error (plus refresh failure when settings were already visible). No not-found or item-load states; it is a single settings surface, not a library list with detail routes. |
+| Refresh vs list load error | One rule on every surface (option C, DIDI-594 lock `2bdbb75b`): If the screen already shows data, keep that data and show the refresh-failure banner. If nothing is on screen yet, show the initial list load error. Item surfaces use the same rule for their body (loaded item vs empty skeleton). |
+| My defaults | **Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): List states only: loading and list load error (plus refresh failure when settings were already visible). No not-found or item-load states; it is a single settings surface, not a library list with detail routes. |
 
 ### `{list}` and `{item}` tokens
 
@@ -122,7 +122,7 @@ Last two lines use fixed wording (library exercise field conflict), not `{item}`
 
 ### Failed-save mapping by action type
 
-**Designer pick** (DIDI-594 `a887af34`): Map the alert string by **action type**, not by HTTP verb. Developer maps any new action by the same types. No new strings.
+Per DIDI-594 lock `fed76bfb` ("change the wording so it matching the error") and Designer response to QA R1 on [DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`, map the four locked strings (`7e4a9711`) only when the action truly matches. Map by **action type**; developer maps any new action by type once wording exists. No new strings in this spec.
 
 | Action type | Alert string |
 | -- | -- |
@@ -131,33 +131,44 @@ Last two lines use fixed wording (library exercise field conflict), not `{item}`
 | Switch to the library version | Couldn't switch to the library version. Try again. |
 | Keep your own version | Couldn't keep your version. Try again. |
 
-#### Known actions (by screen)
+#### Mapped actions (locked strings apply)
 
 | Screen | Action (from feature specs) | Action type | `{item}` when used |
 | -- | -- | -- | -- |
 | Exercise library | Save as version N+1 (Edit for everyone) | Save or edit | exercise |
 | Exercise library | Edit my copy save | Save or edit | exercise |
-| Exercise library | Restore this version | Save or edit | exercise |
-| Exercise library | Merge (confirm) | Save or edit | exercise |
-| Exercise library | Regenerate media (confirm) | Save or edit | exercise |
 | Exercise library | Remove from My exercises | Delete or remove | exercise |
 | Exercise library | Use library version (field conflict) | Switch to the library version | (fixed string) |
 | Exercise library | Keep mine (field conflict) | Keep your own version | (fixed string) |
-| Routines | Draft autosave; Edit for everyone save; Edit my copy save; Restore this version | Save or edit | routine |
-| Routines | Publish now (community publish) | Save or edit | routine |
+| Routines | Edit for everyone save | Save or edit | routine |
+| Routines | Edit my copy save | Save or edit | routine |
 | Routines | Remove from My routines | Delete or remove | routine |
-| Routines | Discard draft | Delete or remove | routine |
-| Routines | Use version N (adopt community on saved copy) | Save or edit | routine |
 | Routines | Keep mine (decline community update) | Keep your own version | (fixed string) |
-| Programs | Builder autosave; publish / republish save | Save or edit | program |
-| Programs | Restore from Recently deleted | Save or edit | program |
 | Programs | Delete program (confirm) | Delete or remove | program |
-| Programs | Remove exercise row from builder | Save or edit | program |
-| Requests and drafts | Submit request; draft review edits; Approve | Save or edit | draft |
-| Requests and drafts | Discard or dismiss draft (when implemented as delete) | Delete or remove | draft |
-| My defaults | Save share-link default | Save or edit | program |
-| My defaults | Save exercise-type default row | Save or edit | exercise |
-| Publish or share sheet | Save per-program expiry (programs spec) | Save or edit | program |
+
+#### Open: needs Diadem (no string in this spec)
+
+| Screen | Action | Why open |
+| -- | -- | -- |
+| Exercise library | Regenerate media (confirm) | Not a save; conflicts with DIDI-1210 image-failure copy |
+| Exercise library | Restore this version | Locked save string does not match restore |
+| Exercise library | Merge (confirm) | Locked save string does not match merge |
+| Routines | Draft autosave | Wording not approved for autosave failure |
+| Routines | Publish now (community publish) | Publish is not the same as save in copy |
+| Routines | Discard draft | Remove string does not match discard |
+| Routines | Use version N (adopt community on saved copy) | Not switch or save as locked |
+| Routines | Restore this version | Locked save string does not match restore |
+| Programs | Builder autosave | Wording not approved (programs spec still has its own save-failure block until wired) |
+| Programs | Publish / republish | Publish is not the same as save in copy |
+| Programs | Restore from Recently deleted | Locked save string does not match restore |
+| Programs | Remove exercise row from builder | Wording not approved |
+| Programs | Save per-program expiry (Publish or share sheet) | Wording not approved |
+| Requests and drafts | Submit request | Not approved |
+| Requests and drafts | Draft review edits | Not approved |
+| Requests and drafts | Approve | Approve is not save |
+| Requests and drafts | Discard or dismiss draft | Wording not approved |
+| My defaults | Save share-link default | Success copy is already **Saved your … default**; failure string not approved |
+| My defaults | Save exercise-type default row | Same as above |
 
 ## Layout and accessibility (option C)
 
@@ -181,7 +192,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Primary text | `text-sm font-semibold text-amber-900` |
 | **Try again** | Ghost-style control on the right; min height 44 px; teal text |
 
-**Designer pick** (DIDI-594 `a887af34`): The approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). MagicPath revision `466879036132560897` shows only the primary line in the banner; build follows both approved strings using this two-line banner body.
+**Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): The approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). MagicPath revision `466879036132560897` shows only the primary line in the banner; build and mockups 02 and 04 include both lines.
 
 ### Not found
 
@@ -200,7 +211,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Message | One semibold line (includes **Try again** as words) |
 | **Try again** button | Bordered secondary button, same retry behaviour as banners |
 
-**Designer pick** (DIDI-594 `a887af34`): Failed-save alert layout follows mockup `06-failed-save`; placement is directly under the screen or sheet title on whichever surface triggered the save.
+**Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): Failed-save alert layout follows mockup `06-failed-save`; placement is directly under the screen or sheet title on whichever surface triggered the save.
 
 ## States (mockups)
 
@@ -213,7 +224,8 @@ Exercises screen is the canonical capture; the same patterns apply on the other 
 | 03 | refresh error | Heading, banner, **previous list content visible**, **Try again** |
 | 04 | item error | **Back to exercises**, banner, placeholder detail region |
 | 05 | not found | **Back to exercises**, card with not-found copy, **Back to exercises** button |
-| 06 | failed save | Representative edit surface with save alert (routine sample in mockup) |
+| 06 | failed save | Full page with nav chrome; edit surface with save alert (routine sample) |
+| 07 | item loading | **Back to exercises**, skeleton only; screen reader **Loading exercise** (no visible loading line) |
 
 | # | Phone | Desktop |
 | -- | -- | -- |
@@ -223,6 +235,7 @@ Exercises screen is the canonical capture; the same patterns apply on the other 
 | 04 item error | [phone](mockups/04-item-error-phone.png) | [desktop](mockups/04-item-error-desktop.png) |
 | 05 not found | [phone](mockups/05-not-found-phone.png) | [desktop](mockups/05-not-found-desktop.png) |
 | 06 failed save | [phone](mockups/06-failed-save-phone.png) | [desktop](mockups/06-failed-save-desktop.png) |
+| 07 item loading | [phone](mockups/07-item-loading-phone.png) | [desktop](mockups/07-item-loading-desktop.png) |
 
 ## Locked Product direction (verbatim from DIDI-594)
 
@@ -244,3 +257,4 @@ Exercises screen is the canonical capture; the same patterns apply on the other 
 
 - **Nov 21, 2026**: DIDI-1080. Option C approved; strings locked `fed76bfb` and `7e4a9711`; variant lock `2bdbb75b`. Blocks [DIDI-1082](https://linear.app/didi-build/issue/DIDI-1082) until merged. https://linear.app/didi-build/issue/DIDI-1080
 - **Nov 21, 2026**: Designer picks on DIDI-594 `a887af34`: refresh vs list load error rule, My defaults scope, failed-save action-type mapping and known-actions table (no new strings).
+- **Nov 21, 2026**: QA R1 fixes. Narrow failed-save mapping; Open rows for non-matching actions (`6e041ed6`). Recaptured mockups (390 / 1280, DIDI-1173 nav, banner secondary line, item loading). Cite `2bdbb75b` for refresh rule. https://github.com/didi-build/physio-poc/pull/144#pullrequestreview-6003519268

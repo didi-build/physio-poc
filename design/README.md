@@ -14,7 +14,7 @@ Approved design for the Physio POC web app and AI assistant connector. Diadem ap
 | Feature | Folder | Mockups | Dev ticket |
 | -- | -- | -- | -- |
 | Exercise library (My exercises, All exercises, details, edit for everyone, versions, duplicates and merge, media regeneration) | [app/exercise-library](app/exercise-library/spec.md) | 42 | https://linear.app/didi-build/issue/DIDI-810 |
-| Shared loading, load-error, refresh, not-found and failed-save (all primary surfaces) | [app/shared-load-states](app/shared-load-states/spec.md) | 12 | https://linear.app/didi-build/issue/DIDI-1080 · blocks [DIDI-1082](https://linear.app/didi-build/issue/DIDI-1082) |
+| Shared loading, load-error, refresh, not-found and failed-save (all primary surfaces) | [app/shared-load-states](app/shared-load-states/spec.md) | 14 | https://linear.app/didi-build/issue/DIDI-1080 · blocks [DIDI-1082](https://linear.app/didi-build/issue/DIDI-1082) |
 | Body region picker (exercise form chips plus typeahead, multi-region, r8 AI pending) | [app/body-region-picker](app/body-region-picker/spec.md) | 14 | https://linear.app/didi-build/issue/DIDI-1253 · [DIDI-1256](https://linear.app/didi-build/issue/DIDI-1256) |
 | Exercise requests (similar check, request form, conflicts, drafts and review) | [app/exercise-requests](app/exercise-requests/spec.md) | 18 | https://linear.app/didi-build/issue/DIDI-810 |
 | Routines (community and My routines, update flag, drafts, publish, versions, remove) | [app/routines](app/routines/spec.md) | 46 | https://linear.app/didi-build/issue/DIDI-853 |
