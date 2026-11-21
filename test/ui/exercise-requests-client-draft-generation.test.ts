@@ -65,7 +65,7 @@ describe("ExerciseRequestsClient draft generation outcomes (C1–C3)", () => {
     });
   });
 
-  it("C4 maps regenerate-text 502 text_failed without throwing Request failed", async () => {
+  it("C4 regenerateDraftText maps 502 text_failed without throwing Request failed", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       jsonResponse(
         {

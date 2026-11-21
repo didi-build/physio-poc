@@ -924,9 +924,13 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
       .getByText(PIN_G4)
       .closest("label") as HTMLLabelElement;
     await userEvent.click(textOnlyLabel);
+    const quotaCallsBeforeRegen = getRegenerationQuota.mock.calls.length;
     await userEvent.click(
       within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
     );
+    await waitFor(() => {
+      expect(getRegenerationQuota).toHaveBeenCalledTimes(quotaCallsBeforeRegen);
+    });
     const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
     expect(alert.textContent).toBe(PIN_G13);
@@ -1109,12 +1113,12 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     });
     expect(screen.queryByText(PIN_G8)).toBeNull();
     resolveGenerate({
-      outcome: "complete",
-      view: {
-        ...generatingView,
-        generation: { generation_in_progress: false, first_draft_complete: true },
-        draft: draftBody(),
-      },
+      outcome: "in_progress",
+      started_elsewhere: true,
+      view: generatingView,
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(PIN_G8)).toBeNull();
     });
   });
 
