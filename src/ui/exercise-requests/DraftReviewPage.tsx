@@ -465,7 +465,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   });
   const title = draft?.title ?? view.requested_name;
   const showElsewhere =
-    generationStartedElsewhere ||
+    (generationStartedElsewhere && !(isRequester && ownGenerateInFlight)) ||
     (!isRequester && generationInProgress && generationFailure === null);
   const detailsGenerating = !draft;
   const imagesGenerating =

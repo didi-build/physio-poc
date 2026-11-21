@@ -532,6 +532,14 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         [requestId],
       );
       expect(row?.exercise_id).toBeNull();
+      const exerciseCount = await tracking.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercises",
+      );
+      const versionCount = await tracking.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercise_versions",
+      );
+      expect(exerciseCount?.count).toBe(0);
+      expect(versionCount?.count).toBe(0);
     } finally {
       storage.close();
     }

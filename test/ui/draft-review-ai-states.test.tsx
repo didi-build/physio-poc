@@ -1033,3 +1033,398 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     ).toBeDisabled();
   });
 });
+
+describe("Draft review QA R3 UI (U5–U27)", () => {
+  it("U5 shows G8 when generate returns started_elsewhere", async () => {
+    renderReview(
+      {
+        request_id: "req-1",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: null,
+        generation: { generation_in_progress: true, first_draft_complete: false },
+        draft: null,
+      },
+      {
+        generateResult: {
+          outcome: "in_progress",
+          view: {
+            request_id: "req-1",
+            requested_name: "Heel slide",
+            exercise_note: null,
+            status: "drafting",
+            requested_by: FAKE_UI_PRACTITIONER_ID,
+            requested_by_email: "k@example.com",
+            exercise_id: null,
+            generation: { generation_in_progress: true, first_draft_complete: false },
+            draft: null,
+          },
+          started_elsewhere: true,
+        },
+      },
+    );
+    await waitFor(() => {
+      expect(screen.getByText(DRAFT_GENERATION_STARTED_ELSEWHERE)).toBeTruthy();
+      expect(screen.getByText(PIN_G8)).toBeTruthy();
+    });
+  });
+
+  it("U17 hides G8 during the requester's own generate call", async () => {
+    let resolveGenerate: (
+      value: Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>,
+    ) => void = () => {};
+    const generatePromise = new Promise<
+      Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>
+    >((resolve) => {
+      resolveGenerate = resolve;
+    });
+    const generatingView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: null,
+    };
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(generatingView),
+      generateRequest: vi.fn().mockReturnValue(generatePromise),
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(generatingView, { requestsClient });
+    await waitFor(() => {
+      expect(requestsClient.generateRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText(PIN_G8)).toBeNull();
+    resolveGenerate({
+      outcome: "complete",
+      view: {
+        ...generatingView,
+        generation: { generation_in_progress: false, first_draft_complete: true },
+        draft: draftBody(),
+      },
+    });
+  });
+
+  it("G8 on reload: requester sees elsewhere copy when started_elsewhere is true", async () => {
+    const generatingView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: draftBody(),
+    };
+    renderReview(generatingView, {
+      generateResult: {
+        outcome: "in_progress",
+        view: generatingView,
+        started_elsewhere: true,
+      },
+    });
+    await waitFor(() => {
+      expect(screen.getByText(PIN_G8)).toBeTruthy();
+    });
+  });
+
+  it("U19 moves focus to Regenerate text on G1 text failure", async () => {
+    renderReview(
+      {
+        request_id: "req-1",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: null,
+        generation: { generation_in_progress: false, first_draft_complete: false },
+        draft: null,
+      },
+      {
+        generateResult: {
+          outcome: "text_failed",
+          error: "deepinfra_exercise_draft_request_failed",
+          view: null,
+        },
+      },
+    );
+    const retry = await screen.findByRole("button", { name: DRAFT_REGENERATE_TEXT });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(retry);
+    });
+  });
+
+  it("U20 moves focus to Try again on G2 image failure", async () => {
+    renderReview(
+      {
+        request_id: "req-1",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: "ex-1",
+        generation: { generation_in_progress: false, first_draft_complete: false },
+        draft: draftBody(),
+      },
+      {
+        generateResult: {
+          outcome: "images_failed",
+          view: {
+            request_id: "req-1",
+            requested_name: "Heel slide",
+            exercise_note: null,
+            status: "drafting",
+            requested_by: FAKE_UI_PRACTITIONER_ID,
+            requested_by_email: "k@example.com",
+            exercise_id: "ex-1",
+            generation: { generation_in_progress: false, first_draft_complete: false },
+            draft: draftBody(),
+          },
+        },
+      },
+    );
+    const retry = await screen.findByRole("button", { name: AUTO_SAVE_TRY_AGAIN });
+    await waitFor(() => {
+      expect(document.activeElement).toBe(retry);
+    });
+  });
+
+  it("U21 does not poll getRequest during ownGenerateInFlight", async () => {
+    let resolveGenerate: (
+      value: Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>,
+    ) => void = () => {};
+    const generatePromise = new Promise<
+      Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>
+    >((resolve) => {
+      resolveGenerate = resolve;
+    });
+    const generatingView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: null,
+    };
+    const getRequest = vi.fn().mockResolvedValue(generatingView);
+    const requestsClient = {
+      getRequest,
+      generateRequest: vi.fn().mockReturnValue(generatePromise),
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(generatingView, { requestsClient });
+    await waitFor(() => {
+      expect(requestsClient.generateRequest).toHaveBeenCalledTimes(1);
+    });
+    const callsAfterOpen = getRequest.mock.calls.length;
+    await new Promise((resolve) => {
+      setTimeout(resolve, 2500);
+    });
+    expect(getRequest.mock.calls.length).toBe(callsAfterOpen);
+    resolveGenerate({
+      outcome: "complete",
+      view: {
+        ...generatingView,
+        generation: { generation_in_progress: false, first_draft_complete: true },
+        draft: draftBody(),
+      },
+    });
+  });
+
+  it("U22 does not show Generating beside image failure G2", async () => {
+    renderReview(
+      {
+        request_id: "req-1",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: "ex-1",
+        generation: { generation_in_progress: false, first_draft_complete: false },
+        draft: draftBody(),
+      },
+      {
+        generateResult: {
+          outcome: "images_failed",
+          view: {
+            request_id: "req-1",
+            requested_name: "Heel slide",
+            exercise_note: null,
+            status: "drafting",
+            requested_by: FAKE_UI_PRACTITIONER_ID,
+            requested_by_email: "k@example.com",
+            exercise_id: "ex-1",
+            generation: { generation_in_progress: false, first_draft_complete: false },
+            draft: draftBody(),
+          },
+        },
+      },
+    );
+    await screen.findByText(PIN_G2);
+    expect(screen.queryByText(GENERATING)).toBeNull();
+  });
+
+  it("U26 pins regenerate-text G1 failure copy literally", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockResolvedValue({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+        view: null,
+      }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_AI_TEXT_FAILURE);
+    expect(alert.textContent).toBe(PIN_G1);
+  });
+
+  it("U27 pins regenerate started_elsewhere copy literally", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockResolvedValue({
+        outcome: "in_progress",
+        started_elsewhere: true,
+        view: completedView,
+      }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_GENERATION_STARTED_ELSEWHERE);
+    expect(alert.textContent).toBe(PIN_G8);
+  });
+
+  it("Text and images text step failure shows G1 not G2", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockResolvedValue({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+        view: null,
+      }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const allLabel = within(dialog)
+      .getByText(PIN_G9)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(allLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: REGENERATE_EVERYTHING }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(PIN_G1)).toBeTruthy();
+    });
+    expect(screen.queryByText(PIN_G2)).toBeNull();
+    expect(mediaClient.regenerateDraftMedia).not.toHaveBeenCalled();
+  });
+});

@@ -82,10 +82,13 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
       );
       expect(response.status).toBe(502);
       const payload = await response.json();
-      expect(payload).toMatchObject({
+      const EXPECTED_UPSTREAM_FAIL = {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_request_failed",
-      });
+        view: null,
+      } as const;
+      expect(payload).toEqual(EXPECTED_UPSTREAM_FAIL);
+      expect(JSON.stringify(payload)).not.toContain("key");
     } finally {
       storage.close();
     }

@@ -65,6 +65,28 @@ describe("ExerciseRequestsClient draft generation outcomes (C1–C3)", () => {
     });
   });
 
+  it("C4 maps regenerate-text 502 text_failed without throwing Request failed", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          outcome: "text_failed",
+          error: "deepinfra_exercise_draft_request_failed",
+          view: null,
+        },
+        502,
+      ),
+    );
+    const result = await clientWith(fetchFn as unknown as FetchFn).regenerateDraftText(
+      "req-1",
+      "note",
+    );
+    expect(result).toEqual({
+      outcome: "text_failed",
+      error: "deepinfra_exercise_draft_request_failed",
+      view: null,
+    });
+  });
+
   it("C3 maps 429 daily_limit without throwing Request failed", async () => {
     const view = { request_id: "req-1", generation: { first_draft_complete: false } };
     const fetchFn = vi
