@@ -218,6 +218,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     void load();
     return () => {
       cancelled = true;
+    };
+  }, [view?.draft?.exercise_version_id, firstDraftComplete, mediaClient]);
+
+  useEffect(() => {
+    return () => {
       if (startStillUrl?.startsWith("blob:")) {
         URL.revokeObjectURL(startStillUrl);
       }
@@ -225,8 +230,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         URL.revokeObjectURL(endStillUrl);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revoke prior blob URLs on version change
-  }, [view?.draft?.exercise_version_id, firstDraftComplete, mediaClient]);
+  }, [startStillUrl, endStillUrl]);
 
   useEffect(() => {
     if (!view || !isRequester || firstDraftComplete || generateStarted.current) {
