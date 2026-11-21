@@ -12,6 +12,11 @@ import {
   placeholderReviewDraftFor,
 } from "../copy/program-publish.js";
 import { PENDING_REVIEW_BADGE, removeRowAriaLabel } from "../copy/programs.js";
+import {
+  TYPE_MISMATCH_DIDNT_LINK_BADGE,
+  TYPE_MISMATCH_FIX,
+  typeMismatchPublishFixAriaLabel,
+} from "../copy/program-type-mismatch.js";
 import { notLiveStillPublishedHelper } from "../copy/program-publish.js";
 import {
   focusPlaceholderReviewDraftInNotice,
@@ -20,16 +25,20 @@ import {
 
 export type PublishPlaceholderNoticeProps = {
   placeholders: readonly ProgramBuilderRow[];
+  programCode: string;
   showRepublishLine: boolean;
   publishedAt: string | null;
   onRemove: (rowId: string) => void;
+  onFixTypeMismatch: (rowId: string) => void;
 };
 
 export function PublishPlaceholderNotice({
   placeholders,
+  programCode,
   showRepublishLine,
   publishedAt,
   onRemove,
+  onFixTypeMismatch,
 }: PublishPlaceholderNoticeProps) {
   const headingId = useId();
   const listEmpty = placeholders.length === 0;
@@ -64,6 +73,7 @@ export function PublishPlaceholderNotice({
       </h3>
       {listEmpty ? null : (
         <p className="pg-placeholder-notice-body">
+          {/* TODO(DIDI-1106, Linear ede2e466): publish notice body for mixed didn't-link rows stays on DIDI-1186 copy until approved. */}
           {placeholders.length === 1
             ? PLACEHOLDER_BLOCK_BODY_ONE
             : placeholderBlockBodyMany(placeholders.length)}
@@ -71,50 +81,71 @@ export function PublishPlaceholderNotice({
       )}
       {listEmpty ? null : (
         <ul className="pg-placeholder-list">
-          {placeholders.map((row) => (
-            <li key={row.id} className="pg-placeholder-row">
-              <span className="pg-placeholder-name">{row.text_snapshot.title}</span>
-              <span className="pg-placeholder-badge">{PENDING_REVIEW_BADGE}</span>
-              <Link
-                className="pg-link-btn"
-                to={fillPhysioAppRoutePattern("requestReview", {
-                  requestId: row.exercise_request_id ?? "",
-                })}
-              >
-                {PLACEHOLDER_REVIEW_DRAFT}
-                <span className="sr-only">
-                  {placeholderReviewDraftFor(row.text_snapshot.title)}
+          {placeholders.map((row) => {
+            const title = row.text_snapshot.title;
+            const isTypeMismatch = row.placeholder_state === "type_mismatch";
+            return (
+              <li key={row.id} className="pg-placeholder-row">
+                <span className="pg-placeholder-name">{title}</span>
+                <span className="pg-placeholder-badge">
+                  {isTypeMismatch
+                    ? TYPE_MISMATCH_DIDNT_LINK_BADGE
+                    : PENDING_REVIEW_BADGE}
                 </span>
-              </Link>
-              <button
-                type="button"
-                className="pg-icon-btn pg-icon-btn--remove"
-                aria-label={removeRowAriaLabel(row.text_snapshot.title)}
-                onClick={() => {
-                  const removedIndex = placeholders.findIndex((p) => p.id === row.id);
-                  onRemove(row.id);
-                  const remaining = placeholders.filter((p) => p.id !== row.id);
-                  const removed = placeholderRemovedLive(row.text_snapshot.title);
-                  if (remaining.length === 0) {
-                    setLiveMessage(`${removed} ${PLACEHOLDER_NONE_LEFT}`);
-                    noticeRef.current?.querySelector("h3")?.focus();
-                  } else {
-                    setLiveMessage(removed);
-                    const focusIndex = nextRemoveButtonIndex(
-                      removedIndex,
-                      remaining.length,
-                    );
-                    focusPlaceholderReviewDraftInNotice(
-                      noticeRef.current,
-                      remaining[focusIndex]!.text_snapshot.title,
-                    );
-                  }
-                }}
-              >
-                ×
-              </button>
-            </li>
-          ))}
+                {isTypeMismatch ? (
+                  <Link
+                    className="pg-link-btn"
+                    to={fillPhysioAppRoutePattern("programBuilder", {
+                      programCode,
+                    })}
+                    onClick={() => {
+                      onFixTypeMismatch(row.id);
+                    }}
+                    aria-label={typeMismatchPublishFixAriaLabel(title)}
+                  >
+                    {TYPE_MISMATCH_FIX}
+                  </Link>
+                ) : (
+                  <Link
+                    className="pg-link-btn"
+                    to={fillPhysioAppRoutePattern("requestReview", {
+                      requestId: row.exercise_request_id ?? "",
+                    })}
+                  >
+                    {PLACEHOLDER_REVIEW_DRAFT}
+                    <span className="sr-only">{placeholderReviewDraftFor(title)}</span>
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  className="pg-icon-btn pg-icon-btn--remove"
+                  aria-label={removeRowAriaLabel(title)}
+                  onClick={() => {
+                    const removedIndex = placeholders.findIndex((p) => p.id === row.id);
+                    onRemove(row.id);
+                    const remaining = placeholders.filter((p) => p.id !== row.id);
+                    const removed = placeholderRemovedLive(title);
+                    if (remaining.length === 0) {
+                      setLiveMessage(`${removed} ${PLACEHOLDER_NONE_LEFT}`);
+                      noticeRef.current?.querySelector("h3")?.focus();
+                    } else {
+                      setLiveMessage(removed);
+                      const focusIndex = nextRemoveButtonIndex(
+                        removedIndex,
+                        remaining.length,
+                      );
+                      focusPlaceholderReviewDraftInNotice(
+                        noticeRef.current,
+                        remaining[focusIndex]!.text_snapshot.title,
+                      );
+                    }
+                  }}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
       {showRepublishLine && publishedAt ? (

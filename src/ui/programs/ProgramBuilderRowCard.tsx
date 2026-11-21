@@ -29,6 +29,19 @@ import {
   rowNotesSrOnlyLabel,
   versionOfRowLabel,
 } from "../copy/programs.js";
+import {
+  TYPE_MISMATCH_DIDNT_LINK_BADGE,
+  TYPE_MISMATCH_FIX,
+  TYPE_MISMATCH_HINT_CONCENTRIC,
+  TYPE_MISMATCH_HINT_ECCENTRIC,
+  TYPE_MISMATCH_HINT_ISOMETRIC,
+  TYPE_MISMATCH_PICK_ANOTHER_EXERCISE,
+  TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED,
+  TYPE_MISMATCH_REASON_STRETCHING_APPROVED,
+  typeMismatchLinkTypeAriaLabel,
+  typeMismatchRowTypeLine,
+} from "../copy/program-type-mismatch.js";
+import { TYPE_STRETCH_HINT } from "../copy/exercise-library.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
 import { ProgramRowParamEditor } from "./ProgramRowParamEditor.js";
 import { ProgramRowVersionPicker } from "./ProgramRowVersionPicker.js";
@@ -59,6 +72,12 @@ export type ProgramBuilderRowCardProps = {
   onDoseDraftDiscard: () => void;
   onParamsReset: () => void;
   actionsDisabled?: boolean;
+  fixPanelOpen?: boolean;
+  onToggleFix?: () => void;
+  onLinkMismatchType?: (type: PrescriptionType) => void;
+  onPickAnotherExercise?: () => void;
+  rowHighlight?: boolean;
+  rowRef?: (element: HTMLElement | null) => void;
 };
 
 function RowGripIcon() {
@@ -174,6 +193,9 @@ function StrengthCategoryIcon() {
 }
 
 function rowStripeClass(row: ProgramBuilderRow): string {
+  if (row.placeholder_state === "type_mismatch") {
+    return "pg-row--stripe-mismatch";
+  }
   if (row.kind === "placeholder") {
     return "pg-row--stripe-pending";
   }
@@ -216,9 +238,19 @@ export function ProgramBuilderRowCard({
   onDoseDraftDiscard,
   onParamsReset,
   actionsDisabled = false,
+  fixPanelOpen = false,
+  onToggleFix,
+  onLinkMismatchType,
+  onPickAnotherExercise,
+  rowHighlight = false,
+  rowRef,
 }: ProgramBuilderRowCardProps) {
   const title = row.text_snapshot.title;
   const titleId = `pg-row-title-${row.id}`;
+  const fixPanelId = `pg-row-fix-panel-${row.id}`;
+  const reasonId = `pg-row-mismatch-reason-${row.id}`;
+  const isTypeMismatch = row.placeholder_state === "type_mismatch";
+  const isPendingPlaceholder = row.kind === "placeholder" && !isTypeMismatch;
   const versionOptions = versionNumbersForRow(row);
   const selectedVersionNumber = row.pinned_version_number ?? versionOptions[0] ?? 1;
   const kind = rowCategoryKind(row);
@@ -230,9 +262,34 @@ export function ProgramBuilderRowCard({
     ? "pg-row-dose-box pg-row-dose-box--edited"
     : "pg-row-dose-box";
 
+  const mismatchReason =
+    row.type_mismatch_approved_category === "stretching"
+      ? TYPE_MISMATCH_REASON_STRETCHING_APPROVED
+      : TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED;
+  const fixTypeOptions: PrescriptionType[] =
+    row.type_mismatch_approved_category === "stretching"
+      ? ["stretching"]
+      : ["isometric", "concentric", "eccentric"];
+
+  function hintForFixType(type: PrescriptionType): string {
+    if (type === "isometric") {
+      return TYPE_MISMATCH_HINT_ISOMETRIC;
+    }
+    if (type === "concentric") {
+      return TYPE_MISMATCH_HINT_CONCENTRIC;
+    }
+    if (type === "eccentric") {
+      return TYPE_MISMATCH_HINT_ECCENTRIC;
+    }
+    return TYPE_STRETCH_HINT;
+  }
+
   return (
     <article
-      className={`pg-row ${rowStripeClass(row)}`}
+      ref={rowRef}
+      className={`pg-row ${rowStripeClass(row)}${
+        rowHighlight ? " pg-row--highlight" : ""
+      }`}
       aria-labelledby={titleId}
       tabIndex={0}
       onKeyDown={(event) => {
@@ -257,7 +314,13 @@ export function ProgramBuilderRowCard({
           <h3 id={titleId} className="pg-row-title">
             {title}
           </h3>
-          {row.kind === "placeholder" ? (
+          {isTypeMismatch ? (
+            <p className="pg-row-meta-line">
+              <span className="pg-row-badge pg-row-badge--mismatch">
+                {TYPE_MISMATCH_DIDNT_LINK_BADGE}
+              </span>
+            </p>
+          ) : isPendingPlaceholder ? (
             <p className="pg-row-meta-line">
               <span className="pg-row-badge pg-row-badge--amber">
                 {PENDING_REVIEW_BADGE}
@@ -309,13 +372,69 @@ export function ProgramBuilderRowCard({
           </button>
         </div>
       </div>
-      {row.kind === "placeholder" ? (
+      {isPendingPlaceholder ? (
         <p className="pg-row-placeholder-note pg-row-placeholder-note--below-header">
           {PLACEHOLDER_ROW_NOTE}
         </p>
       ) : null}
+      {isTypeMismatch ? (
+        <div className="pg-row-type-mismatch-body">
+          <p className="pg-row-type-mismatch-line">
+            {typeMismatchRowTypeLine(TYPE_LABELS[row.prescription_type])}
+          </p>
+          <p id={reasonId} className="pg-row-type-mismatch-reason">
+            {mismatchReason}
+          </p>
+          <button
+            type="button"
+            className="pg-row-type-mismatch-fix"
+            aria-expanded={fixPanelOpen}
+            aria-controls={fixPanelId}
+            aria-describedby={reasonId}
+            disabled={actionsDisabled}
+            onClick={() => {
+              onToggleFix?.();
+            }}
+          >
+            {TYPE_MISMATCH_FIX}
+          </button>
+          {fixPanelOpen ? (
+            <div id={fixPanelId} className="pg-row-type-mismatch-panel">
+              {fixTypeOptions.map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  className="pg-row-type-mismatch-choice"
+                  aria-label={typeMismatchLinkTypeAriaLabel(title, TYPE_LABELS[type])}
+                  disabled={actionsDisabled}
+                  onClick={() => {
+                    onLinkMismatchType?.(type);
+                  }}
+                >
+                  <span className="pg-row-type-mismatch-choice-label">
+                    {TYPE_LABELS[type]}
+                  </span>
+                  <span className="pg-row-type-mismatch-choice-hint">
+                    {hintForFixType(type)}
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="pg-row-type-mismatch-pick"
+                disabled={actionsDisabled}
+                onClick={() => {
+                  onPickAnotherExercise?.();
+                }}
+              >
+                {TYPE_MISMATCH_PICK_ANOTHER_EXERCISE}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <>
-        {row.prescription_type !== "stretching" ? (
+        {!isTypeMismatch && row.prescription_type !== "stretching" ? (
           <div
             className="pg-row-type-segmented"
             role="radiogroup"

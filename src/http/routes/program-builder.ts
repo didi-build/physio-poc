@@ -622,6 +622,85 @@ export async function handleProgramBuilderRequest(
       }
     }
 
+    if (
+      segments.length === 4 &&
+      segments[2] &&
+      segments[3] === "link-type-mismatch" &&
+      request.method === "POST"
+    ) {
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const rowId = rowIdRaw;
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
+      }
+      const prescriptionType = parsePrescriptionType(body.prescription_type);
+      if (!prescriptionType) {
+        return Response.json(
+          {
+            error: "invalid_input",
+            message: `prescriptionType must be one of: ${PRESCRIPTION_TYPES.join(", ")}`,
+          },
+          { status: 400, headers: JSON_HEADERS },
+        );
+      }
+      try {
+        const result = await service(deps).linkTypeMismatchPlaceholderRow(
+          practitionerId,
+          programId,
+          rowId,
+          prescriptionType,
+        );
+        return Response.json(result, { headers: JSON_HEADERS });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] &&
+      segments[3] === "undo-type-mismatch-link" &&
+      request.method === "POST"
+    ) {
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
+      }
+      const undo = body.undo;
+      if (!undo || typeof undo !== "object") {
+        return Response.json(
+          { error: "invalid_input", message: "undo is required" },
+          { status: 400, headers: JSON_HEADERS },
+        );
+      }
+      try {
+        const result = await service(deps).undoTypeMismatchPlaceholderLink(
+          practitionerId,
+          programId,
+          undo as import("../../services/programs/types.js").ProgramPlaceholderTypeMismatchUndo,
+        );
+        return Response.json(result, { headers: JSON_HEADERS });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    }
+
     if (segments.length === 4 && segments[2] && segments[3] === "duplicate") {
       const rowIdRaw = safeDecodePathSegment(segments[2]!);
       if (rowIdRaw === null) {

@@ -286,6 +286,8 @@ export function listCountLabel(total: number, visible?: number): string | null {
 export const LIBRARY_UPDATES_TO_REVIEW_SINGULAR = "1 library update to review";
 
 /** design/app/programs/spec.md States table line 23 for counts 2+. */
+export { typeMismatchCardFlag } from "./program-type-mismatch.js";
+
 export function libraryUpdatesToReviewFlag(count: number): string | null {
   if (count <= 0) {
     return null;

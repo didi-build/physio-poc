@@ -1,4 +1,5 @@
 import type { PrescriptionType } from "../../domain/exercise-types.js";
+import type { PlaceholderState } from "./placeholder-state.js";
 import type { ExerciseParams } from "../../domain/exercise-params.js";
 import type { ResolvedParamsSource } from "../../domain/resolve-exercise-params.js";
 import type { ProgramRowTextSnapshot } from "../../domain/program-types.js";
@@ -44,6 +45,24 @@ export type ProgramBuilderRow = {
   exercise_version_choices: readonly ProgramExerciseVersionChoice[];
   /** False when media is complete; advisory for publish sheet (DIDI-1193). */
   lacks_start_or_end_image?: boolean;
+  /** Present on placeholder rows only (DIDI-1106). */
+  placeholder_state?: PlaceholderState;
+  /** Approved exercise category when placeholder_state is type_mismatch (reason copy). */
+  type_mismatch_approved_category?: "strengthening" | "stretching";
+};
+
+export type ProgramPlaceholderTypeMismatchUndo = {
+  kind: "placeholder_type_mismatch_link";
+  row_id: string;
+  exercise_request_id: string;
+  prescription_type: PrescriptionType;
+  params: ExerciseParams;
+  note: string | null;
+  text_snapshot: ProgramRowTextSnapshot;
+};
+
+export type ProgramMutationWithUndoResult = ProgramMutationResult & {
+  undo?: ProgramPlaceholderTypeMismatchUndo;
 };
 
 export type ProgramRoutineOriginView = {
@@ -64,6 +83,7 @@ export type ProgramBuilderView = {
   draft_saved_at: string;
   exercise_count: number;
   library_updates_to_review: number;
+  type_mismatch_placeholder_count: number;
   rows: ProgramBuilderRow[];
   open_share_link: boolean;
   share_link_status: ShareLinkStatus;
@@ -80,6 +100,7 @@ export type ProgramListItem = {
   draft_updated_at: string;
   auto_save_status: ProgramAutoSaveStatus;
   library_updates_to_review: number;
+  type_mismatch_placeholder_count: number;
   share_link_status: ShareLinkStatus;
   last_sent_at: string | null;
   deleted_at: string | null;

@@ -585,6 +585,59 @@ export class ExerciseRequestsRepository {
     );
   }
 
+  async findManyByIds(requestIds: readonly string[]): Promise<
+    Map<
+      string,
+      {
+        id: string;
+        requested_name: string;
+        note: string | null;
+        requested_by: string;
+        status: ExerciseRequestStatus;
+        exercise_id: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    >
+  > {
+    const unique = [...new Set(requestIds)];
+    const map = new Map<
+      string,
+      {
+        id: string;
+        requested_name: string;
+        note: string | null;
+        requested_by: string;
+        status: ExerciseRequestStatus;
+        exercise_id: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    >();
+    if (unique.length === 0) {
+      return map;
+    }
+    const placeholders = unique.map(() => "?").join(", ");
+    const rows = await this.sql.all<{
+      id: string;
+      requested_name: string;
+      note: string | null;
+      requested_by: string;
+      status: ExerciseRequestStatus;
+      exercise_id: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+       FROM exercise_requests WHERE id IN (${placeholders})`,
+      unique as unknown as import("../../storage/ports/sql-storage.js").SqlBindings,
+    );
+    for (const row of rows) {
+      map.set(row.id, row);
+    }
+    return map;
+  }
+
   async insert(input: {
     id: string;
     requestedName: string;

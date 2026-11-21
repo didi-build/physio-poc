@@ -68,6 +68,7 @@ import {
   parsePractitionerTextOverrides,
   resolveParamsForProgramRow,
 } from "./row-resolution.js";
+import { derivePlaceholderState } from "./placeholder-state.js";
 import type {
   ProgramAutoSaveStatus,
   ProgramBuilderRow,
@@ -75,7 +76,9 @@ import type {
   ProgramLibraryUpdatePrompt,
   ProgramListItem,
   ProgramMutationResult,
+  ProgramMutationWithUndoResult,
   ProgramOriginFilter,
+  ProgramPlaceholderTypeMismatchUndo,
   ProgramSearchResult,
   RoutineProgramSource,
   RoutineSentProgramStats,
@@ -758,6 +761,142 @@ export class ProgramBuilderService {
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
+  async linkTypeMismatchPlaceholderRow(
+    practitionerId: string,
+    programId: string,
+    rowId: string,
+    prescriptionType: PrescriptionType,
+  ): Promise<ProgramMutationWithUndoResult> {
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    const targetType = this.parsePrescriptionTypeLiteral(prescriptionType);
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
+    if (!row.exercise_request_id || row.exercise_id || row.exercise_version_id) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const requestId = row.exercise_request_id;
+    const request = await this.exerciseRequests.findById(requestId);
+    if (!request || derivePlaceholderState(request.status) !== "type_mismatch") {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    if (!request.exercise_id) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const version = await this.libraryRead.getLatestApprovedByExerciseId(
+      request.exercise_id,
+    );
+    if (!version) {
+      throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
+    }
+    this.assertPrescriptionAllowed(version, targetType);
+    const undo: ProgramPlaceholderTypeMismatchUndo = {
+      kind: "placeholder_type_mismatch_link",
+      row_id: row.id,
+      exercise_request_id: requestId,
+      prescription_type: row.prescription_type,
+      params: parseExerciseParamsJson(row.params_json),
+      note: row.note,
+      text_snapshot: this.parseRowTextSnapshot(row.text_snapshot_json),
+    };
+    const program = await this.programs.findById(validatedProgramId);
+    const resolved = await this.resolveRowDefaults(
+      program!.created_by,
+      version,
+      targetType,
+    );
+    const params = filterExerciseParamsForPrescriptionType(
+      parseExerciseParamsJson(row.params_json),
+      targetType,
+    );
+    const textSnapshot = buildProgramRowTextSnapshot({
+      version,
+      overrides: resolved.overrides,
+      prescriptionType: targetType,
+    });
+    const draftUpdatedAt = this.now();
+    if (targetType !== row.prescription_type) {
+      try {
+        await this.rows.replaceRow({
+          id: row.id,
+          programId: validatedProgramId,
+          position: row.position,
+          exerciseRequestId: requestId,
+          prescriptionType: targetType,
+          params,
+          textSnapshot: undo.text_snapshot,
+          note: row.note,
+          draftUpdatedAt,
+        });
+      } catch (err) {
+        this.mapRowWriteError(err);
+      }
+    }
+    const statements = this.rows.buildLinkPlaceholderRowBatchStatements({
+      programId: validatedProgramId,
+      rowId: row.id,
+      exerciseRequestId: requestId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      params,
+      textSnapshot,
+      draftUpdatedAt,
+      touchDraft: !program?.deleted_at,
+    });
+    try {
+      await this.sql.batch(statements);
+    } catch {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
+    return {
+      program: await this.buildProgramView(practitionerId, validatedProgramId),
+      undo,
+    };
+  }
+
+  async undoTypeMismatchPlaceholderLink(
+    practitionerId: string,
+    programId: string,
+    undo: ProgramPlaceholderTypeMismatchUndo,
+  ): Promise<ProgramMutationResult> {
+    if (undo.kind !== "placeholder_type_mismatch_link") {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const rowId = this.parseOpaqueId(undo.row_id, "Program row id");
+    await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    const row = await this.requireOwnedRow(validatedProgramId, rowId);
+    if (
+      !row.exercise_id ||
+      row.exercise_version_id === null ||
+      row.exercise_request_id
+    ) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const params = filterExerciseParamsForPrescriptionType(
+      undo.params,
+      undo.prescription_type,
+    );
+    try {
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: validatedProgramId,
+        position: row.position,
+        exerciseRequestId: undo.exercise_request_id,
+        prescriptionType: undo.prescription_type,
+        params,
+        textSnapshot: undo.text_snapshot,
+        note: undo.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
+  }
+
   async removeRow(
     practitionerId: string,
     programId: string,
@@ -947,13 +1086,24 @@ export class ProgramBuilderService {
     const program = await this.programs.findById(programId);
     this.assertProgramAccess(practitionerId, program, options);
     const rows = program.deleted_at ? [] : await this.rows.listForProgram(programId);
+    const requestIds = rows
+      .map((row) => row.exercise_request_id)
+      .filter((id): id is string => id !== null);
+    const requestsById = await this.exerciseRequests.findManyByIds(requestIds);
+    const approvedCategoryByRequestId =
+      await this.loadApprovedCategoryByRequestId(requestsById);
+    const placeholderContext = { requestsById, approvedCategoryByRequestId };
     const builderRows: ProgramBuilderRow[] = [];
     let libraryUpdates = 0;
+    let typeMismatchCount = 0;
     for (const row of rows) {
-      const built = await this.toBuilderRow(practitionerId, row);
+      const built = await this.toBuilderRow(practitionerId, row, placeholderContext);
       builderRows.push(built);
       if (built.library_update) {
         libraryUpdates += 1;
+      }
+      if (built.placeholder_state === "type_mismatch") {
+        typeMismatchCount += 1;
       }
     }
     const openLink = program.deleted_at
@@ -972,6 +1122,7 @@ export class ProgramBuilderService {
       draft_saved_at: program.draft_updated_at,
       exercise_count: builderRows.length,
       library_updates_to_review: libraryUpdates,
+      type_mismatch_placeholder_count: typeMismatchCount,
       rows: builderRows,
       open_share_link: openShareLink,
       share_link_status: computeShareLinkStatus({
@@ -999,6 +1150,7 @@ export class ProgramBuilderService {
       draft_updated_at: view.draft_updated_at,
       auto_save_status: view.auto_save_status,
       library_updates_to_review: view.library_updates_to_review,
+      type_mismatch_placeholder_count: view.type_mismatch_placeholder_count,
       share_link_status: view.share_link_status,
       last_sent_at: view.last_sent_at,
       deleted_at: view.deleted_at,
@@ -1006,9 +1158,46 @@ export class ProgramBuilderService {
     };
   }
 
+  private async loadApprovedCategoryByRequestId(
+    requestsById: Map<
+      string,
+      {
+        status: import("../../domain/exercise-types.js").ExerciseRequestStatus;
+        exercise_id: string | null;
+      }
+    >,
+  ): Promise<Map<string, "strengthening" | "stretching">> {
+    const categories = new Map<string, "strengthening" | "stretching">();
+    for (const [requestId, request] of requestsById) {
+      if (request.status !== "approved" || !request.exercise_id) {
+        continue;
+      }
+      const version = await this.libraryRead.getLatestApprovedByExerciseId(
+        request.exercise_id,
+      );
+      if (!version) {
+        continue;
+      }
+      categories.set(
+        requestId,
+        version.category === "stretch" ? "stretching" : "strengthening",
+      );
+    }
+    return categories;
+  }
+
   private async toBuilderRow(
     practitionerId: string,
     row: ProgramRow,
+    placeholderContext: {
+      requestsById: Map<
+        string,
+        {
+          status: import("../../domain/exercise-types.js").ExerciseRequestStatus;
+        }
+      >;
+      approvedCategoryByRequestId: Map<string, "strengthening" | "stretching">;
+    },
   ): Promise<ProgramBuilderRow> {
     const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     const params = parseExerciseParamsJson(row.params_json);
@@ -1021,6 +1210,14 @@ export class ProgramBuilderService {
         resolved.params,
         row.prescription_type,
       );
+      const request = placeholderContext.requestsById.get(row.exercise_request_id);
+      const placeholder_state = request
+        ? derivePlaceholderState(request.status)
+        : "awaiting_approval";
+      const type_mismatch_approved_category =
+        placeholder_state === "type_mismatch"
+          ? placeholderContext.approvedCategoryByRequestId.get(row.exercise_request_id)
+          : undefined;
       return {
         id: row.id,
         position: row.position,
@@ -1039,6 +1236,8 @@ export class ProgramBuilderService {
         library_update: null,
         exercise_version_choices: [],
         lacks_start_or_end_image: false,
+        placeholder_state,
+        ...(type_mismatch_approved_category ? { type_mismatch_approved_category } : {}),
       };
     }
     const pinned = await this.libraryRead.getApprovedVersionById(
