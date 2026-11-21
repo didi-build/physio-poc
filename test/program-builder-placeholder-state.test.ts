@@ -177,11 +177,14 @@ describe("getProgram placeholder_state (DIDI-1106)", () => {
         `INSERT INTO program_rows (
           id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
           prescription_type, params_json, text_snapshot_json, note
-        ) VALUES (?, ?, 1, NULL, NULL, ?, 'stretching', '{}', ?, NULL)`,
+        ) VALUES (?, ?, 1, NULL, NULL, ?, 'isometric', '{}', ?, NULL)`,
         [rowForeign, programA, requestB, JSON.stringify({ title: "B owner draft" })],
       );
       const viewA = await service.getProgram(ownerA, programA);
-      expect(viewA.type_mismatch_placeholder_count).toBe(0);
+      expect(viewA.type_mismatch_placeholder_count).toBe(1);
+      expect(viewA.rows.find((row) => row.id === rowForeign)?.placeholder_state).toBe(
+        "type_mismatch",
+      );
       await expect(
         service.linkTypeMismatchPlaceholderRow(
           ownerA,

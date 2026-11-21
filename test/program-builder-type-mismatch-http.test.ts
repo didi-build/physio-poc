@@ -12,10 +12,6 @@ import {
   seedPractitioner,
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
-import {
-  programRowLinkTypeMismatchPath,
-  programRowUndoTypeMismatchLinkPath,
-} from "./helpers/program-builder-http-paths.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import {
   MCP_TEST_CONFIG,
@@ -23,6 +19,11 @@ import {
 } from "./mcp-server-test-utils.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { programBuilderHttpRouteCases } from "./helpers/program-builder-http-route-cases.js";
+import {
+  programRowLinkTypeMismatchPath,
+  programRowUndoTypeMismatchLinkPath,
+} from "./helpers/program-builder-http-paths.js";
 
 const BASE = "https://physio.test.example";
 
@@ -97,6 +98,19 @@ async function seedTypeMismatchRow(
 }
 
 describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
+  it("pins link and undo routes in programBuilderHttpRouteCases", () => {
+    const programId = id("prog-route-pin");
+    const rowId = id("row-route-pin");
+    const cases = programBuilderHttpRouteCases(programId, rowId);
+    expect(cases).toContainEqual({
+      method: "POST",
+      path: programRowLinkTypeMismatchPath(programId, rowId),
+    });
+    expect(cases).toContainEqual({
+      method: "POST",
+      path: programRowUndoTypeMismatchLinkPath(programId, rowId),
+    });
+  });
   it("refuses undo forged body and leaves a linked row unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {
