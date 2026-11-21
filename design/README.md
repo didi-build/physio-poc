@@ -19,6 +19,7 @@ Approved design for the Physio POC web app and AI assistant connector. Diadem ap
 | Routines (community and My routines, update flag, drafts, publish, versions, remove) | [app/routines](app/routines/spec.md) | 46 | https://linear.app/didi-build/issue/DIDI-853 |
 | Similar routine warning (New routine, variant B inline card) | [app/similar-routine-warning](app/similar-routine-warning/spec.md) | 12 | https://linear.app/didi-build/issue/DIDI-1226 |
 | Programs (list and search, builder, codes and names, publish sheet, share link, link page, delete and restore) | [app/programs](app/programs/spec.md) | 67 | https://linear.app/didi-build/issue/DIDI-810 |
+| Program builder type-mismatch placeholder row (variant B banner, Didn't link row, Fix, Programs flag) | [app/program-type-mismatch](app/program-type-mismatch/spec.md) | 1 | https://linear.app/didi-build/issue/DIDI-1105 |
 | Share link expiry (My defaults, per-program expiry) | [app/settings-link-expiry](app/settings-link-expiry/spec.md) | 8 | https://linear.app/didi-build/issue/DIDI-810 |
 | AI assistant connector (Claude-style concept; same tools for ChatGPT, Copilot, Grok) | [connector/claude-connector](connector/claude-connector/spec.md) | 32 | https://linear.app/didi-build/issue/DIDI-810 |
 
