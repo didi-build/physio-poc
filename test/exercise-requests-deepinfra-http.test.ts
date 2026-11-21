@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
-import { exerciseRequestsCollectionPath } from "../src/exercise-requests-api-paths.js";
+import {
+  exerciseRequestGeneratePath,
+  exerciseRequestsCollectionPath,
+} from "../src/exercise-requests-api-paths.js";
 import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -59,7 +62,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         exerciseDraftGenerator: generator,
       };
-      const response = await handleRequest(
+      const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
           body: JSON.stringify({
@@ -69,9 +72,20 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         }),
         deps,
       );
+      const createdBody = (await created.json()) as { request_id: string };
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(createdBody.request_id), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
       expect(response.status).toBe(502);
       const payload = await response.json();
-      expect(payload).toEqual({ error: "deepinfra_exercise_draft_request_failed" });
+      expect(payload).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+      });
     } finally {
       storage.close();
     }
@@ -141,7 +155,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
         exerciseDraftGenerator: generator,
       };
-      const response = await handleRequest(
+      const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
           body: JSON.stringify({
@@ -151,9 +165,20 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         }),
         deps,
       );
+      const createdBody = (await created.json()) as { request_id: string };
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(createdBody.request_id), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
       expect(response.status).toBe(502);
       const payload = await response.json();
-      expect(payload).toEqual({ error: "deepinfra_exercise_draft_response_invalid" });
+      expect(payload).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_response_invalid",
+      });
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();

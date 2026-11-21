@@ -75,9 +75,9 @@ export const REGEN_NOTE_OPTIONAL = "(optional)";
 export const REGEN_NOTE_PLACEHOLDER =
   "For example: show forearm support, not straight arm";
 export const REGEN_UNDO_HINT = "You can undo afterwards. The previous version is kept.";
-export const REGEN_SCOPE_ALL_LABEL = "Text, images and video";
+export const REGEN_SCOPE_ALL_LABEL = "Text and images";
 export const REGEN_SCOPE_IMAGES_LABEL = "Images only";
-export const REGEN_SCOPE_IMAGES_HINT = "Start and end images. Text and video stay.";
+export const REGEN_SCOPE_IMAGES_HINT = "Start and end images. Text stays.";
 export const REGEN_SCOPE_VIDEO_LABEL = "The 6s loop";
 export const REGEN_SCOPE_VIDEO_HINT = "Text and images stay.";
 export const SAVE = "Save";

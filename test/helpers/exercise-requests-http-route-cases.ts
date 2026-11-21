@@ -1,6 +1,7 @@
 import {
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
+  exerciseRequestGeneratePath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -34,6 +35,10 @@ export const EXERCISE_REQUESTS_HTTP_ROUTE_TABLE: readonly ExerciseRequestsHttpRo
       method: "POST",
       path: exerciseRequestApprovePath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
     },
+    {
+      method: "POST",
+      path: exerciseRequestGeneratePath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+    },
   ];
 
 export function exerciseRequestsHttpRouteCases(
@@ -50,6 +55,7 @@ export function exerciseRequestsHttpRouteCases(
     { method: "GET", path: exerciseRequestPath(requestId) },
     { method: "PATCH", path: exerciseRequestDraftPath(requestId) },
     { method: "POST", path: exerciseRequestApprovePath(requestId) },
+    { method: "POST", path: exerciseRequestGeneratePath(requestId) },
   ];
 }
 
@@ -76,7 +82,7 @@ export function exerciseRequestsHttpJsonBody(
   if (routeCase.path.endsWith("/draft")) {
     return JSON.stringify({ title: "Edited title" });
   }
-  if (routeCase.path.endsWith("/approve")) {
+  if (routeCase.path.endsWith("/approve") || routeCase.path.endsWith("/generate")) {
     return "{}";
   }
   return undefined;

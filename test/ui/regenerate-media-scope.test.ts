@@ -7,7 +7,7 @@ describe("scopeForPick", () => {
     expect(scopeForPick("images")).toBe("both");
   });
 
-  it("rejects video-only picks until the visuals API supports them", () => {
-    expect(() => scopeForPick("video")).toThrow(/Video-only regeneration/);
+  it("rejects text-only picks until regenerate text is wired on the sheet confirm", () => {
+    expect(() => scopeForPick("text")).toThrow(/Text-only regeneration/);
   });
 });

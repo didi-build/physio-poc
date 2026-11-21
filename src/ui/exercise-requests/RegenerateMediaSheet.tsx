@@ -1,12 +1,17 @@
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
+  DRAFT_REGEN_SCOPE_ALL_LABEL,
+  DRAFT_REGEN_SCOPE_IMAGES_HINT,
+  DRAFT_REGEN_TEXT_ONLY_HINT,
+  DRAFT_REGEN_TEXT_ONLY_LABEL,
+  DRAFT_REGENERATE_TEXT,
+} from "../copy/draft-review-ai-states.js";
+import {
   DAILY_LIMIT_REACHED,
   REGEN_DAILY_CAP,
   REGEN_NOTE_LABEL,
   REGEN_NOTE_OPTIONAL,
   REGEN_NOTE_PLACEHOLDER,
-  REGEN_SCOPE_ALL_LABEL,
-  REGEN_SCOPE_IMAGES_HINT,
   REGEN_SCOPE_IMAGES_LABEL,
   REGEN_UNDO_HINT,
   REGENERATE_CHOOSE_HINT,
@@ -17,14 +22,13 @@ import {
   REGENERATE_START_IMAGE,
   REGENERATE_SHEET_TITLE,
   REGENERATE_THIS_IMAGE,
-  REGENERATE_VIDEO,
   WHAT_TO_REGENERATE,
   regenLeftText,
 } from "../copy/exercise-requests.js";
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
 
-export type RegeneratePick = "all" | "images" | "video";
+export type RegeneratePick = "all" | "images" | "text";
 
 export type RegenerateMediaSheetProps = {
   open: boolean;
@@ -67,7 +71,7 @@ export function RegenerateMediaSheet({
         ? REGENERATE_EVERYTHING
         : pick === "images"
           ? REGENERATE_IMAGES
-          : REGENERATE_VIDEO;
+          : DRAFT_REGENERATE_TEXT;
 
   return (
     <ConfirmSheet
@@ -103,8 +107,9 @@ export function RegenerateMediaSheet({
           <legend className="sr-only">{WHAT_TO_REGENERATE}</legend>
           {(
             [
-              ["all", REGEN_SCOPE_ALL_LABEL, ""],
-              ["images", REGEN_SCOPE_IMAGES_LABEL, REGEN_SCOPE_IMAGES_HINT],
+              ["all", DRAFT_REGEN_SCOPE_ALL_LABEL, ""],
+              ["images", REGEN_SCOPE_IMAGES_LABEL, DRAFT_REGEN_SCOPE_IMAGES_HINT],
+              ["text", DRAFT_REGEN_TEXT_ONLY_LABEL, DRAFT_REGEN_TEXT_ONLY_HINT],
             ] as const
           ).map(([id, label, hint]) => (
             <label key={id} className="ex-regen-scope-option">
@@ -144,8 +149,8 @@ export function RegenerateMediaSheet({
 
 /** Maps general-sheet picks to API scopes (start/end/both). Video-only regen is not wired yet. */
 export function scopeForPick(pick: RegeneratePick): MediaRegenerationScope {
-  if (pick === "video") {
-    throw new Error("Video-only regeneration is not available yet");
+  if (pick === "text") {
+    throw new Error("Text-only regeneration is not wired on this endpoint yet");
   }
   return "both";
 }

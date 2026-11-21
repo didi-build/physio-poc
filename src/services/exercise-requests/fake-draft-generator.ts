@@ -15,6 +15,7 @@ import {
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
 import { generateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import {
   ExerciseRequestsServiceError,
   isExerciseAliasUniqueConstraintError,
@@ -28,25 +29,45 @@ export type {
   ExerciseDraftGeneratorDeps,
 } from "./exercise-draft-generator-types.js";
 
+export type FakeExerciseDraftGeneratorOptions = {
+  failText?: boolean;
+};
+
+export function createFakeExerciseDraftGenerator(
+  options: FakeExerciseDraftGeneratorOptions = {},
+): ExerciseDraftGenerator {
+  return async (input, deps) => {
+    if (options.failText) {
+      throw new DeepInfraExerciseDraftError("deepinfra_exercise_draft_request_failed");
+    }
+    return fakeExerciseDraftGenerator(input, deps);
+  };
+}
+
 /** Test and local stub: creates a stretch draft with the requested title. */
 export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
+  const existing = await deps.requests.findById(input.requestId);
+  if (!existing) {
+    await input.sql.batch([
+      deps.requests.buildInsertBatchStatement({
+        id: input.requestId,
+        requestedName: input.requestedName,
+        note: input.exerciseNote,
+        requestedBy: input.requestedBy,
+        status: "drafting",
+        createdAt: input.now,
+        updatedAt: input.now,
+      }),
+    ]);
+  }
   const exerciseId = generateOpaqueEntityId();
   const versionId = generateOpaqueEntityId();
   const title = validateExerciseTitle(input.requestedName);
 
   const batchStatements: SqlBatchStatement[] = [
-    deps.requests.buildInsertBatchStatement({
-      id: input.requestId,
-      requestedName: input.requestedName,
-      note: input.exerciseNote,
-      requestedBy: input.requestedBy,
-      status: "open",
-      createdAt: input.now,
-      updatedAt: input.now,
-    }),
     deps.exercises.buildInsertBatchStatement({
       id: exerciseId,
       category: "stretch",

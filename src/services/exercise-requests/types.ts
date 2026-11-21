@@ -73,6 +73,24 @@ export type InProgressRequestsResult = {
   in_progress_count: number;
 };
 
+export type ExerciseRequestDraftGenerationMeta = {
+  /** Fresh lock held by another tab or request. */
+  generation_in_progress: boolean;
+  /** True when draft text and both draft stills exist. */
+  first_draft_complete: boolean;
+};
+
+export type GenerateExerciseRequestDraftResult =
+  | { outcome: "complete"; view: ExerciseRequestDraftView }
+  | {
+      outcome: "in_progress";
+      view: ExerciseRequestDraftView;
+      started_elsewhere: boolean;
+    }
+  | { outcome: "text_failed"; error: string; view: null }
+  | { outcome: "images_failed"; view: ExerciseRequestDraftView }
+  | { outcome: "daily_limit"; view: ExerciseRequestDraftView };
+
 export type ExerciseRequestDraftView = {
   request_id: string;
   requested_name: string;
@@ -81,6 +99,7 @@ export type ExerciseRequestDraftView = {
   requested_by: string;
   requested_by_email: string;
   exercise_id: string | null;
+  generation: ExerciseRequestDraftGenerationMeta;
   draft: {
     exercise_version_id: string;
     version_number: number;

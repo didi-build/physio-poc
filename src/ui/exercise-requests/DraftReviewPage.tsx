@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
@@ -25,13 +25,19 @@ import {
   TITLE_FIELD,
 } from "../copy/exercise-library.js";
 import {
-  AI_VIDEO_LOOP,
+  DRAFT_AI_IMAGE_FAILURE,
+  DRAFT_AI_LIMIT_TRY_TOMORROW,
+  DRAFT_AI_TEXT_FAILURE,
+  DRAFT_GENERATION_STARTED_ELSEWHERE,
+  DRAFT_REGENERATE_TEXT,
+} from "../copy/draft-review-ai-states.js";
+import {
+  AI_DRAFTING,
   APPROVE,
   APPROVE_FOOTNOTE_SHARED,
   BASICS,
   DAILY_LIMIT_REACHED,
   DRAFT_NOT_APPROVED,
-  EDIT_ALL,
   EXERCISE_DETAILS,
   GENERATING,
   IMAGES,
@@ -44,11 +50,13 @@ import {
   SWIPE_END,
   TOAST_APPROVE_OTHER,
   TOAST_APPROVE_OWN,
+  USUALLY_READY,
   regenLeftText,
 } from "../copy/exercise-requests.js";
+import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
+  DraftReviewExerciseStill,
   DraftReviewExerciseVideo,
-  LibraryDetailExerciseStill,
 } from "../exercise-visual/placements.js";
 import { DraftTextField } from "./DraftTextField.js";
 import {
@@ -57,6 +65,8 @@ import {
   scopeForPick,
 } from "./RegenerateMediaSheet.js";
 import { requestedByLabel } from "./requested-by-label.js";
+
+type GenerationFailure = "text" | "images" | "daily" | null;
 
 export type DraftReviewPageProps = {
   onRequestsChanged?: () => void;
@@ -74,11 +84,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [viewOverride, setViewOverride] = useState<ExerciseRequestDraftView | null>(
     null,
   );
+  const [generationFailure, setGenerationFailure] = useState<GenerationFailure>(null);
   const [regenOpen, setRegenOpen] = useState(false);
   const [regenMode, setRegenMode] = useState<"general" | "start" | "end">("general");
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const generateStarted = useRef(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -117,12 +129,93 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     fetcher: (signal) => mediaClient.getRegenerationQuota({ signal }),
   });
 
-  useEffect(() => {
-    setViewOverride(null);
-  }, [cachedView, requestId]);
-
   const view = viewOverride ?? cachedView ?? null;
   const loading = !sessionReady || viewLoading || quotaLoading;
+
+  const isRequester =
+    currentPractitioner.sessionIdentityReady &&
+    view?.requested_by === currentPractitioner.practitionerId;
+
+  const generationMeta = view?.generation ?? {
+    generation_in_progress: false,
+    first_draft_complete: Boolean(view?.draft),
+  };
+  const firstDraftComplete = generationMeta.first_draft_complete;
+  const generationInProgress = generationMeta.generation_in_progress;
+  const showAiStrip = !firstDraftComplete && generationFailure !== "daily";
+
+  const applyGenerateResult = useCallback(
+    (result: Awaited<ReturnType<typeof requestsClient.generateRequest>>) => {
+      if (result.outcome === "complete" || result.outcome === "in_progress") {
+        if (result.view) {
+          setViewOverride(result.view);
+        }
+        setGenerationFailure(null);
+        return;
+      }
+      if (result.outcome === "text_failed") {
+        setGenerationFailure("text");
+        return;
+      }
+      if (result.outcome === "images_failed") {
+        setGenerationFailure("images");
+        if (result.view) {
+          setViewOverride(result.view);
+        }
+        return;
+      }
+      if (result.outcome === "daily_limit") {
+        setGenerationFailure("daily");
+        if (result.view) {
+          setViewOverride(result.view);
+        }
+      }
+    },
+    [],
+  );
+
+  const runGenerate = useCallback(async () => {
+    const result = await requestsClient.generateRequest(requestId);
+    applyGenerateResult(result);
+    void refreshView({ force: true });
+  }, [applyGenerateResult, requestId, requestsClient, refreshView]);
+
+  useEffect(() => {
+    setViewOverride(null);
+    setGenerationFailure(null);
+    generateStarted.current = false;
+  }, [cachedView, requestId]);
+
+  useEffect(() => {
+    if (!view || !isRequester || firstDraftComplete || generateStarted.current) {
+      return;
+    }
+    generateStarted.current = true;
+    void runGenerate();
+  }, [view, isRequester, firstDraftComplete, runGenerate]);
+
+  useEffect(() => {
+    if (!view || firstDraftComplete) {
+      return;
+    }
+    if (!generationInProgress && !isRequester && !view.draft) {
+      const timer = window.setInterval(() => {
+        void refreshView({ force: true });
+      }, 2000);
+      return () => {
+        window.clearInterval(timer);
+      };
+    }
+    if (generationInProgress || (!firstDraftComplete && view.draft)) {
+      const timer = window.setInterval(() => {
+        void refreshView({ force: true });
+      }, 2000);
+      return () => {
+        window.clearInterval(timer);
+      };
+    }
+    return undefined;
+  }, [view, firstDraftComplete, generationInProgress, isRequester, refreshView]);
 
   const patchField = async (patch: DraftFieldPatch) => {
     const updated = await requestsClient.updateDraft(requestId, patch);
@@ -132,9 +225,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const approve = async () => {
     await requestsClient.approveRequest(requestId);
-    const own =
-      currentPractitioner.sessionIdentityReady &&
-      view?.requested_by === currentPractitioner.practitionerId;
+    const own = isRequester;
     showToast({
       message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
     });
@@ -188,23 +279,49 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     sessionIdentityReady: currentPractitioner.sessionIdentityReady,
   });
   const title = draft?.title ?? view.requested_name;
+  const showElsewhere =
+    generationInProgress && (!isRequester || generationFailure === null);
+  const detailsGenerating = !draft;
+  const imagesGenerating = Boolean(draft) && !firstDraftComplete;
+  const canEdit = firstDraftComplete;
+  const toolbarEnabled = firstDraftComplete && !regenBusy;
 
   return (
     <section className="ex-page" aria-labelledby="ex-review-heading">
       <Link to={fillPhysioAppRoutePattern("requests")} className="ex-back-link">
         {REVIEW_BACK}
       </Link>
-      <div className="ex-review-banner">
-        <p>
-          <span className="ex-review-banner-strong">{DRAFT_NOT_APPROVED}</span>
-          {by.length > 0 ? (
-            <>
-              {" "}
-              {REQUESTED_BY} {by}.
-            </>
+      {showAiStrip ? (
+        <div
+          className="ex-review-ai-strip"
+          role="status"
+          aria-live="polite"
+          data-testid="ex-review-ai-strip"
+        >
+          <p className="ex-review-ai-strip-title">
+            <span className="ex-review-ai-strip-strong">{AI_DRAFTING}</span>{" "}
+            {USUALLY_READY}
+          </p>
+          {showElsewhere ? (
+            <p className="ex-review-ai-strip-sub">
+              {DRAFT_GENERATION_STARTED_ELSEWHERE}
+            </p>
           ) : null}
-        </p>
-      </div>
+          <div className="ex-review-ai-strip-bar" aria-hidden />
+        </div>
+      ) : (
+        <div className="ex-review-banner">
+          <p>
+            <span className="ex-review-banner-strong">{DRAFT_NOT_APPROVED}</span>
+            {by.length > 0 ? (
+              <>
+                {" "}
+                {REQUESTED_BY} {by}.
+              </>
+            ) : null}
+          </p>
+        </div>
+      )}
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
@@ -212,7 +329,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         <button
           type="button"
           className="ex-primary-btn"
-          disabled={!draft || regenBusy}
+          disabled={!toolbarEnabled}
           onClick={() => {
             void approve();
           }}
@@ -222,7 +339,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         <button
           type="button"
           className="ex-secondary-btn"
-          disabled={!draft || regenBusy || quota?.limitReached}
+          disabled={!toolbarEnabled || quota?.limitReached}
           onClick={() => {
             setRegenMode("general");
             setRegenOpen(true);
@@ -232,72 +349,135 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         </button>
         <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
       </div>
-      {quota?.limitReached ? (
-        <p className="ex-regen-limit" role="status">
-          {DAILY_LIMIT_REACHED}
+      {generationFailure === "daily" ? (
+        <p className="ex-regen-limit" role="alert">
+          <span className="ex-review-banner-strong">{DAILY_LIMIT_REACHED}</span>{" "}
+          {DRAFT_AI_LIMIT_TRY_TOMORROW}
         </p>
       ) : null}
-      {!draft ? (
-        <p className="ex-requests-wait">{GENERATING}</p>
+      {generationFailure === "text" ? (
+        <TextGenerationFailure
+          message={DRAFT_AI_TEXT_FAILURE}
+          actionLabel={DRAFT_REGENERATE_TEXT}
+          onRetry={() => {
+            generateStarted.current = false;
+            void runGenerate();
+          }}
+        />
       ) : (
         <div className="ex-review-grid">
           <div className="ex-review-media">
             <h2 className="ex-section-title">{IMAGES}</h2>
-            <div className="ex-review-stills">
-              <LibraryDetailExerciseStill label={START_POSITION} />
+            {generationFailure === "images" ? (
+              <p className="ex-regen-limit" role="alert">
+                {DRAFT_AI_IMAGE_FAILURE}
+              </p>
+            ) : null}
+            {imagesGenerating || !draft ? (
+              <p className="ex-requests-wait" role="status">
+                {GENERATING}
+              </p>
+            ) : (
+              <>
+                <div className="ex-review-stills">
+                  <DraftReviewExerciseStill label={START_POSITION} />
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className="ex-link-btn ex-review-redo"
+                      onClick={() => {
+                        setRegenMode("start");
+                        setRegenOpen(true);
+                      }}
+                      disabled={quota?.limitReached}
+                    >
+                      {REGENERATE_START_IMAGE}
+                    </button>
+                  ) : null}
+                  <DraftReviewExerciseStill label={END_POSITION} />
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className="ex-link-btn ex-review-redo"
+                      onClick={() => {
+                        setRegenMode("end");
+                        setRegenOpen(true);
+                      }}
+                      disabled={quota?.limitReached}
+                    >
+                      {REGENERATE_END_IMAGE}
+                    </button>
+                  ) : null}
+                </div>
+                <p className="ex-review-swipe-hint">{SWIPE_END}</p>
+                <DraftReviewExerciseVideo alt={title} />
+              </>
+            )}
+            {generationFailure === "images" ? (
               <button
                 type="button"
-                className="ex-link-btn ex-review-redo"
+                className="ex-secondary-btn"
                 onClick={() => {
-                  setRegenMode("start");
-                  setRegenOpen(true);
+                  setGenerationFailure(null);
+                  generateStarted.current = false;
+                  void runGenerate();
                 }}
-                disabled={quota?.limitReached}
               >
-                {REGENERATE_START_IMAGE}
+                {AUTO_SAVE_TRY_AGAIN}
               </button>
-              <LibraryDetailExerciseStill label={END_POSITION} />
-              <button
-                type="button"
-                className="ex-link-btn ex-review-redo"
-                onClick={() => {
-                  setRegenMode("end");
-                  setRegenOpen(true);
-                }}
-                disabled={quota?.limitReached}
-              >
-                {REGENERATE_END_IMAGE}
-              </button>
-            </div>
-            <p className="ex-review-swipe-hint">{SWIPE_END}</p>
-            <DraftReviewExerciseVideo alt={title} />
-            <p className="ex-review-video-label">{AI_VIDEO_LOOP}</p>
+            ) : null}
           </div>
           <div className="ex-review-fields">
             <div className="ex-review-fields-head">
               <h2 className="ex-section-title">{EXERCISE_DETAILS}</h2>
-              <span className="ex-muted">{EDIT_ALL}</span>
             </div>
-            <h3 className="ex-review-section">{BASICS}</h3>
-            <DraftTextField
-              label={TITLE_FIELD}
-              value={draft.title}
-              onSave={(value) => patchField({ title: value })}
-            />
-            <DraftTextField
-              label={DESCRIPTION_FIELD}
-              value={draft.description}
-              multiline
-              onSave={(value) => patchField({ description: value })}
-            />
-            <h3 className="ex-review-section">{STARTING_POSITION}</h3>
-            <DraftTextField
-              label={STARTING_POSITION}
-              value={draft.starting_position}
-              multiline
-              onSave={(value) => patchField({ starting_position: value })}
-            />
-            <p className="ex-review-footnote">{APPROVE_FOOTNOTE_SHARED}</p>
+            {detailsGenerating ? (
+              <p className="ex-requests-wait" role="status">
+                {GENERATING}
+              </p>
+            ) : draft ? (
+              <>
+                <h3 className="ex-review-section">{BASICS}</h3>
+                {canEdit ? (
+                  <>
+                    <DraftTextField
+                      label={TITLE_FIELD}
+                      value={draft.title}
+                      onSave={(value) => patchField({ title: value })}
+                    />
+                    <DraftTextField
+                      label={DESCRIPTION_FIELD}
+                      value={draft.description}
+                      multiline
+                      onSave={(value) => patchField({ description: value })}
+                    />
+                    <h3 className="ex-review-section">{STARTING_POSITION}</h3>
+                    <DraftTextField
+                      label={STARTING_POSITION}
+                      value={draft.starting_position}
+                      multiline
+                      onSave={(value) => patchField({ starting_position: value })}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <p className="ex-draft-readonly">
+                      <span className="ex-request-field-label">{TITLE_FIELD}</span>
+                      {draft.title}
+                    </p>
+                    <p className="ex-draft-readonly">
+                      <span className="ex-request-field-label">
+                        {DESCRIPTION_FIELD}
+                      </span>
+                      {draft.description}
+                    </p>
+                    <h3 className="ex-review-section">{STARTING_POSITION}</h3>
+                    <p className="ex-draft-readonly">{draft.starting_position}</p>
+                  </>
+                )}
+                <p className="ex-review-footnote">{APPROVE_FOOTNOTE_SHARED}</p>
+              </>
+            ) : null}
           </div>
         </div>
       )}
@@ -318,5 +498,24 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         busy={regenBusy}
       />
     </section>
+  );
+}
+
+function TextGenerationFailure({
+  message,
+  actionLabel,
+  onRetry,
+}: {
+  message: string;
+  actionLabel: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div role="alert" className="ex-review-text-failure">
+      <p>{message}</p>
+      <button type="button" className="ex-secondary-btn" onClick={onRetry}>
+        {actionLabel}
+      </button>
+    </div>
   );
 }

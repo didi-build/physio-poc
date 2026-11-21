@@ -124,14 +124,19 @@ export class ExerciseMediaService {
     practitionerId: string;
     exerciseVersionId: string;
     regenerationNote?: string | null;
+    /** First draft orchestration sets false so the initial stills skip the 5-a-day counter. */
+    countTowardDailyQuota?: boolean;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
-    const quota = await this.getRegenerationQuota(input.practitionerId);
-    if (quota.limitReached) {
-      throw new ExerciseMediaServiceError(
-        "Daily media regeneration limit reached",
-        "daily_limit_reached",
-      );
+    const countTowardDailyQuota = input.countTowardDailyQuota !== false;
+    if (countTowardDailyQuota) {
+      const quota = await this.getRegenerationQuota(input.practitionerId);
+      if (quota.limitReached) {
+        throw new ExerciseMediaServiceError(
+          "Daily media regeneration limit reached",
+          "daily_limit_reached",
+        );
+      }
     }
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
@@ -176,16 +181,18 @@ export class ExerciseMediaService {
             end: generated.end,
             updateVersion: true,
           });
-    const nowIso = this.clock().toISOString();
-    await this.regenerations.insert({
-      id: this.createId(),
-      practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: "both",
-      hadNote: regenerationNote !== null,
-      createdAt: nowIso,
-    });
+    if (countTowardDailyQuota) {
+      const nowIso = this.clock().toISOString();
+      await this.regenerations.insert({
+        id: this.createId(),
+        practitionerId: input.practitionerId,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        scope: "both",
+        hadNote: regenerationNote !== null,
+        createdAt: nowIso,
+      });
+    }
     return media;
   }
 

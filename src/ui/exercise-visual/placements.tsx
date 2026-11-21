@@ -33,6 +33,18 @@ export function LibraryDetailExerciseStill({
   );
 }
 
+/** Draft review: still placeholder without an on-screen AI image tag (DIDI-1210). */
+export function DraftReviewExerciseStill({
+  label,
+  className = "",
+}: LibraryDetailExerciseStillProps) {
+  return (
+    <div className={`ex-media-placeholder ${className}`}>
+      <span className="ex-media-placeholder-label">{label}</span>
+    </div>
+  );
+}
+
 function resolveVisualSources(sources: Partial<ExerciseVisualSources>) {
   const defaults = exerciseVisualPlaceholders(sources.alt);
   return {

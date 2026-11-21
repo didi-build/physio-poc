@@ -24,3 +24,7 @@ export function exerciseRequestDraftPath(requestId: string): string {
 export function exerciseRequestApprovePath(requestId: string): string {
   return `${exerciseRequestPath(requestId)}/approve`;
 }
+
+export function exerciseRequestGeneratePath(requestId: string): string {
+  return `${exerciseRequestPath(requestId)}/generate`;
+}

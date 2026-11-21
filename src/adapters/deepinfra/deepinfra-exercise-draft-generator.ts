@@ -146,15 +146,6 @@ async function buildPersistBatchStatements(input: {
       exerciseId,
       versionId,
       statements: [
-        deps.requests.buildInsertBatchStatement({
-          id: genIn.requestId,
-          requestedName: genIn.requestedName,
-          note: genIn.exerciseNote,
-          requestedBy: genIn.requestedBy,
-          status: "open",
-          createdAt: genIn.now,
-          updatedAt: genIn.now,
-        }),
         deps.exercises.buildInsertBatchStatement({
           id: exerciseId,
           category,
@@ -210,6 +201,10 @@ export function createDeepInfraExerciseDraftGenerator(
   });
 
   return async (input, deps) => {
+    const requestRow = await deps.requests.findById(input.requestId);
+    if (!requestRow) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
     const completionRequest: DeepInfraChatCompletionRequest = {
       model: modelId,
       messages: [

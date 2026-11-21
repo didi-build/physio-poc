@@ -1058,6 +1058,60 @@
   font-size: 0.875rem;
 }
 
+.ex-review-ai-strip {
+  margin-top: 0.5rem;
+  border: 1px solid #99f6e4;
+  border-radius: 1rem;
+  background: #f0fdfa;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.ex-review-ai-strip-strong {
+  font-weight: 600;
+}
+
+.ex-review-ai-strip-title {
+  margin: 0;
+}
+
+.ex-review-ai-strip-sub {
+  margin: 0.35rem 0 0;
+  color: var(--shell-slate-600);
+}
+
+.ex-review-ai-strip-bar {
+  margin-top: 0.5rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5eead4 0%, #14b8a6 50%, #5eead4 100%);
+  background-size: 200% 100%;
+  animation: ex-review-ai-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes ex-review-ai-indeterminate {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.ex-review-text-failure {
+  margin-top: 1rem;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  background: #fef2f2;
+  padding: 0.75rem 1rem;
+}
+
+.ex-draft-readonly {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
 .ex-review-banner-strong {
   font-weight: 600;
 }

@@ -2,6 +2,7 @@ import {
   EXERCISE_REQUESTS_API_BASE,
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
+  exerciseRequestGeneratePath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -14,6 +15,7 @@ import type {
   ExerciseRequestDraftView,
   InProgressRequestsResult,
   SimilarExercisesResult,
+  GenerateExerciseRequestDraftResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
 } from "../../services/exercise-requests/types.js";
@@ -120,6 +122,48 @@ export class ExerciseRequestsClient {
         body: JSON.stringify(patch),
       }),
     ).then((response) => readJson<ExerciseRequestDraftView>(response));
+  }
+
+  generateRequest(requestId: string): Promise<GenerateExerciseRequestDraftResult> {
+    const url = exerciseRequestGeneratePath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({}),
+      }),
+    ).then(async (response) => {
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as GenerateExerciseRequestDraftResult;
+      if (!response.ok && response.status !== 202) {
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "text_failed"
+        ) {
+          return payload;
+        }
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "images_failed"
+        ) {
+          return payload;
+        }
+        if (
+          response.status === 429 &&
+          (payload as { outcome?: string }).outcome === "daily_limit"
+        ) {
+          return payload;
+        }
+        const message =
+          typeof (payload as { message?: string }).message === "string"
+            ? (payload as { message?: string }).message
+            : `Request failed (${response.status})`;
+        throw new Error(message);
+      }
+      return payload;
+    });
   }
 
   approveRequest(requestId: string): Promise<ApproveExerciseRequestResult> {

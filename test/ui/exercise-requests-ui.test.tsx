@@ -31,7 +31,6 @@ import {
 import {
   APPROVE,
   CONFLICT_HEADING,
-  DAILY_LIMIT_REACHED,
   MERGE_MY_CHANGES,
   REGENERATE,
   REQUESTED_BY,
@@ -90,11 +89,20 @@ function renderApp(
     ...stubLibraryClient(),
     ...exerciseLibrary,
   } as ExerciseLibraryClient;
+  const requestsClient = {
+    generateRequest: vi.fn().mockResolvedValue({
+      outcome: "complete",
+      view: {
+        generation: { generation_in_progress: false, first_draft_complete: true },
+      },
+    }),
+    ...requests,
+  } as ExerciseRequestsClient;
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         exerciseLibraryClient={library}
-        exerciseRequestsClient={requests as ExerciseRequestsClient}
+        exerciseRequestsClient={requestsClient}
         exerciseMediaClient={media as ExerciseMediaClient}
         programsClient={stubProgramsClient()}
         practitionerSessionClient={practitionerSessionClient}
@@ -296,6 +304,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -382,6 +391,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -421,7 +431,7 @@ describe("exercise requests UI", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
+      expect(screen.getByText("0 of 5 left today")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: REGENERATE })).toBeDisabled();
   });
@@ -598,6 +608,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
