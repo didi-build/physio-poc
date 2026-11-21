@@ -148,7 +148,10 @@ export type ProgramShareLinkPanelProps = {
   onDownloadPdf: () => void;
   onCloseLink: () => void;
   onCloseSheet: () => void;
-  onExpiryChange: (next: ShareLinkExpiresIn, nextCustom: string) => void;
+  onExpiryChange: (
+    next: ShareLinkExpiresIn,
+    nextCustom: string,
+  ) => void | Promise<void>;
   onCreateLink: () => void;
   surface: "aside" | "sheet";
 };
@@ -232,12 +235,11 @@ export function ProgramShareLinkPanel({
               customDate={customDate}
               defaultChoice={SHARE_LINK_EXPIRES_IN.one_year}
               onChange={(next) => {
-                void onExpiryChange(next, customDate).catch(() => {});
+                void Promise.resolve(onExpiryChange(next, customDate)).catch(() => {});
               }}
               onCustomDateChange={(nextCustom) => {
-                void onExpiryChange(
-                  SHARE_LINK_EXPIRES_IN.custom_date,
-                  nextCustom,
+                void Promise.resolve(
+                  onExpiryChange(SHARE_LINK_EXPIRES_IN.custom_date, nextCustom),
                 ).catch(() => {});
               }}
             />
@@ -264,9 +266,9 @@ export function ProgramShareLinkPanel({
                   type="button"
                   className="pg-btn pg-btn--secondary"
                   onClick={() => {
-                    void onExpiryChange(SHARE_LINK_EXPIRES_IN.never, "").catch(
-                      () => {},
-                    );
+                    void Promise.resolve(
+                      onExpiryChange(SHARE_LINK_EXPIRES_IN.never, ""),
+                    ).catch(() => {});
                   }}
                 >
                   {SHARE_SET_TO_NEVER}
