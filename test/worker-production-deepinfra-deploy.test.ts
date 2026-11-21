@@ -75,12 +75,8 @@ describe("PHYSIO_DEEPINFRA_API_KEY production deploy wiring (DIDI-1212)", () => 
     const steps = deployJob.steps;
     const putStep = steps.find((step) => step.name === PUT_STEP_NAME);
     expect(putStep?.env?.[DEEPINFRA_SECRET_NAME]).toBe(GATED_DEPLOY_PUT_SECRET_REF);
-    const stepsWithDeepInfraEnv = new Set([
-      PUT_STEP_NAME,
-      "Validate production auth secrets",
-    ]);
     for (const step of steps) {
-      if (step.name && stepsWithDeepInfraEnv.has(step.name)) {
+      if (step.name === PUT_STEP_NAME) {
         continue;
       }
       expect(step.env?.[DEEPINFRA_SECRET_NAME]).toBeUndefined();

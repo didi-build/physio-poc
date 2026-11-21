@@ -520,6 +520,7 @@ describe("DeepInfra exercise draft generator", () => {
         expect((err as Error).cause).toBeUndefined();
         return true;
       });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }
@@ -555,6 +556,7 @@ describe("DeepInfra exercise draft generator", () => {
         expect((err as Error).cause).toBeUndefined();
         return true;
       });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }

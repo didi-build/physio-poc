@@ -33,7 +33,6 @@ jobs:
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           PHYSIO_ALLOWED_GOOGLE_EMAILS: ${{ secrets.PHYSIO_ALLOWED_GOOGLE_EMAILS }}
-          PHYSIO_DEEPINFRA_API_KEY: ${{ secrets.PHYSIO_DEEPINFRA_API_KEY }}
         run: |
           set -euo pipefail
           node scripts/assert-production-deploy-secrets.mjs
@@ -41,9 +40,6 @@ jobs:
           echo "::add-mask::${GOOGLE_CLIENT_SECRET}"
           echo "::add-mask::${BETTER_AUTH_SECRET}"
           echo "::add-mask::${PHYSIO_ALLOWED_GOOGLE_EMAILS}"
-          if [ -n "${PHYSIO_DEEPINFRA_API_KEY:-}" ]; then
-            echo "::add-mask::${PHYSIO_DEEPINFRA_API_KEY}"
-          fi
       - name: Prepare Wrangler config (production D1 ID)
         env:
           PHYSIO_D1_DATABASE_ID: ${{ secrets.PHYSIO_D1_DATABASE_ID }}
