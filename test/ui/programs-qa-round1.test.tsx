@@ -13,6 +13,7 @@ import {
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import { failedRemoveItem } from "../../src/ui/copy/shared-load-states.js";
 import {
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVING,
@@ -690,6 +691,7 @@ describe("Programs builder save UX (QA round 1)", () => {
         screen.getByTestId("programs-delete-program-error-slot"),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText(failedRemoveItem("program"))).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
   });

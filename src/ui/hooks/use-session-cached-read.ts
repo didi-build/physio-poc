@@ -46,6 +46,7 @@ export function useSessionCachedRead<T>(
   const [failureKind, setFailureKind] = useState<LoadFailureKind>(null);
   const requestIdRef = useRef(0);
   const activeLeaseRef = useRef<SessionReadCacheConsumerLease | null>(null);
+  const lastFetchErrorRef = useRef<unknown>(null);
 
   const releaseActiveLease = useCallback(() => {
     const lease = activeLeaseRef.current;
@@ -121,7 +122,14 @@ export function useSessionCachedRead<T>(
         try {
           const result = await cache.fetch(
             cacheKey!,
-            (signal) => fetcherRef.current(signal),
+            async (signal) => {
+              try {
+                return await fetcherRef.current(signal);
+              } catch (error) {
+                lastFetchErrorRef.current = error;
+                throw error;
+              }
+            },
             {
               force: force && supersededRetries === 0,
               registerConsumer: (lease: SessionReadCacheConsumerLease) => {
@@ -159,7 +167,9 @@ export function useSessionCachedRead<T>(
             setData(null);
           }
           setLoadFailed(true);
-          setFailureKind("error");
+          setFailureKind(
+            isLoadNotFoundError(lastFetchErrorRef.current) ? "not_found" : "error",
+          );
           setLoading(false);
           return;
         } finally {
@@ -186,7 +196,9 @@ export function useSessionCachedRead<T>(
         setFailureKind(null);
       } else {
         setLoadFailed(true);
-        setFailureKind("error");
+        setFailureKind(
+          isLoadNotFoundError(lastFetchErrorRef.current) ? "not_found" : "error",
+        );
       }
       setLoading(false);
     },
