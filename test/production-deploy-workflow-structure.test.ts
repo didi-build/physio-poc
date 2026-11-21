@@ -23,7 +23,6 @@ const TICKET_WORKER_AUTH_SECRET_NAMES = [
   "GOOGLE_CLIENT_SECRET",
   "BETTER_AUTH_SECRET",
   "PHYSIO_ALLOWED_GOOGLE_EMAILS",
-  "PHYSIO_DEEPINFRA_API_KEY",
 ] as const;
 
 const VALIDATE_STEP = "Validate production auth secrets";
