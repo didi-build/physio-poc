@@ -317,6 +317,7 @@ process.stdin.on("end", () => {
       GOOGLE_CLIENT_SECRET: "fixture\\secret",
       BETTER_AUTH_SECRET: "fixture-$(ignored)-`ticks`-32-chars-min",
       PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
+      PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-api-key",
       PHYSIO_WRANGLER_JS_PATH: stubWrangler,
       PHYSIO_STUB_RECORD_ARGS: recordArgs,
       PHYSIO_STUB_RECORD_STDIN: recordStdin,

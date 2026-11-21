@@ -73,7 +73,7 @@ function pageHtml({ fixOpen }) {
     <div><h1>Build program</h1><span class="code">Code PRG-7K3Q</span></div>
     <label for="pn">Program name</label>
     <input id="pn" value="Knee rehab, week 1" readonly />
-    ${!fixOpen ? `<div class="banner"><div><div class="banner-title">1 exercise didn't link</div></div><button type="button" class="show-me">Show me</button></div>` : ""}
+    <div class="banner"><div><div class="banner-title">1 exercise didn't link</div></div><button type="button" class="show-me">Show me</button></div>
     <div class="section-h"><h2>Exercises</h2><span class="count">3 total</span></div>
     <div class="rows">
       <article class="row" style="border-left-color:#a78bfa">

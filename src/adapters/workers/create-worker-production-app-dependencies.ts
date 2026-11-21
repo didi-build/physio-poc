@@ -16,6 +16,7 @@ import { resolveWorkerPhysioServerConfig } from "./resolve-worker-config.js";
 import { workerCimdMetadataFetch } from "./worker-cimd-metadata-fetch.js";
 import type { WorkerEnv } from "./create-app-dependencies.js";
 import { createWorkerAssetsUiStaticPort } from "./worker-assets-ui-static-port.js";
+import { resolveExerciseDraftGenerator } from "../deepinfra/resolve-exercise-draft-generator.js";
 import { handleExerciseMediaRequest } from "../../http/routes/exercise-media.js";
 import { createWorkerImageGenerationPort } from "./create-worker-image-generation-port.js";
 
@@ -47,6 +48,7 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     mcpBearerAuth: createMcpBearerAuthHandler(authBundle, config, sql),
     guardedAppWithoutSession: "redirect",
     uiStatic,
+    exerciseDraftGenerator: resolveExerciseDraftGenerator(env),
     extraRouteHandlers: [handleExerciseMediaRequest],
     exerciseMediaImages: createWorkerImageGenerationPort(env),
   };
