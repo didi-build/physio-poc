@@ -152,6 +152,39 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     expect(first.auth).toBe(second.auth);
   });
 
+  it("rebuilds production deps when PHYSIO_DEEPINFRA_API_KEY presence changes", async () => {
+    resetWorkerProductionAuthCacheForTests();
+    const { d1, storage } = await openWorkerAuthTestDatabase();
+    await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+    const baseEnv = buildWorkerProductionAuthEnv({ PHYSIO_DB: d1 });
+    const withoutKey = await createWorkerAppDependencies(baseEnv);
+    const withKey = await createWorkerAppDependencies({
+      ...baseEnv,
+      PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-present-key",
+    });
+    expect(withKey.exerciseDraftGenerator).not.toBe(withoutKey.exerciseDraftGenerator);
+    storage.close();
+  });
+
+  it("rebuilds production deps when PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL changes", async () => {
+    resetWorkerProductionAuthCacheForTests();
+    const { d1, storage } = await openWorkerAuthTestDatabase();
+    await seedPractitioner(storage, undefined, FAKE_GOOGLE_ALLOWED_EMAIL);
+    const baseEnv = buildWorkerProductionAuthEnv({
+      PHYSIO_DB: d1,
+      PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-present-key",
+    });
+    const defaultModel = await createWorkerAppDependencies(baseEnv);
+    const overrideModel = await createWorkerAppDependencies({
+      ...baseEnv,
+      PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL: "custom/pinned-model",
+    });
+    expect(overrideModel.exerciseDraftGenerator).not.toBe(
+      defaultModel.exerciseDraftGenerator,
+    );
+    storage.close();
+  });
+
   it("rebuilds production deps when the auth env cache key changes", async () => {
     resetWorkerProductionAuthCacheForTests();
     const { d1, storage } = await openWorkerAuthTestDatabase();

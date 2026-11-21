@@ -79,7 +79,6 @@ function workerProductionEnvCacheKey(env: WorkerEnv): string {
     env.GOOGLE_CLIENT_ID ?? "",
     env.GOOGLE_CLIENT_SECRET ?? "",
     env.PHYSIO_ALLOWED_GOOGLE_EMAILS ?? "",
-    env.PHYSIO_DEEPINFRA_API_KEY ?? "",
     env.PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL ?? "",
     workerPhysioDbCacheToken(env.PHYSIO_DB),
     env.PHYSIO_DEEPINFRA_API_KEY?.trim() ? "deepinfra-key-present" : "",

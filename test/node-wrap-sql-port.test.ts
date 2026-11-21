@@ -42,6 +42,26 @@ function readNodeAdapterSource(): string {
 }
 
 describe("Node dev entry migrations (DIDI-1267)", () => {
+  it("createNodeAppDependencies applies migration 0012 suggested body regions", async () => {
+    const deps = await createNodeAppDependencies({
+      AUTH_BASE_URL: "https://auth.example",
+      PHYSIO_ALLOWED_GOOGLE_EMAILS: "dev@example.com",
+      PHYSIO_USE_FAKE_GOOGLE_PROVIDER: "true",
+      BETTER_AUTH_SECRET: PHYSIO_TEST_BETTER_AUTH_SECRET,
+    });
+    const applied = await deps.sql.all<{ id: string }>(
+      "SELECT id FROM schema_migrations WHERE id = ?",
+      ["0012_exercise_suggested_body_regions"],
+    );
+    expect(applied).toHaveLength(1);
+    const columns = await deps.sql.all<{ name: string }>(
+      "PRAGMA table_info(exercise_suggested_body_regions)",
+    );
+    const names = columns.map((column) => column.name);
+    expect(names).toContain("exercise_id");
+    expect(names).toContain("label");
+  });
+
   it("createNodeAppDependencies applies migration 0011 pending media columns", async () => {
     const deps = await createNodeAppDependencies({
       AUTH_BASE_URL: "https://auth.example",

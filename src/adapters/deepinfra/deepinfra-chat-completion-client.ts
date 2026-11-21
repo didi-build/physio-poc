@@ -47,11 +47,7 @@ export async function readHttpResponseTextWithByteCap(
 
   const body = response.body;
   if (!body) {
-    const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > maxBytes) {
-      throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_too_large");
-    }
-    return new TextDecoder().decode(buffer);
+    return "";
   }
 
   const reader = body.getReader();
