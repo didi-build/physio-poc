@@ -25,7 +25,12 @@ afterEach(() => {
   cleanup();
 });
 
-function mismatchRow(id: string, position: number, title: string): ProgramBuilderRow {
+function mismatchRow(
+  id: string,
+  position: number,
+  title: string,
+  prescriptionType: ProgramBuilderRow["prescription_type"] = "stretching",
+): ProgramBuilderRow {
   return {
     id,
     position,
@@ -34,7 +39,7 @@ function mismatchRow(id: string, position: number, title: string): ProgramBuilde
     exercise_version_id: null,
     exercise_request_id: `req-${id}`,
     pinned_version_number: null,
-    prescription_type: "stretching",
+    prescription_type: prescriptionType,
     params: { hold_s: 30, sets: 3, days_per_week: 3 },
     params_source: null,
     resolved_params: { hold_s: 30, sets: 3, days_per_week: 3 },
@@ -61,7 +66,7 @@ describe("DIDI-1106 type-mismatch UI", () => {
   });
 
   it("renders type_mismatch row copy, Fix expansion, and linked row without placeholder_state", async () => {
-    const row = mismatchRow("row-1", 0, "Bridge marching");
+    const row = mismatchRow("row-1", 0, "Bridge marching", "isometric");
     const onToggleFix = vi.fn();
     const onLink = vi.fn();
     const { rerender } = render(
@@ -93,7 +98,7 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(
       within(article).getByText(TYPE_MISMATCH_DIDNT_LINK_BADGE),
     ).toBeInTheDocument();
-    expect(within(article).getByText("Row type: Stretching")).toBeInTheDocument();
+    expect(within(article).getByText("Row type: Isometric")).toBeInTheDocument();
     expect(
       within(article).getByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
     ).toBeInTheDocument();

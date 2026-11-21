@@ -222,7 +222,9 @@ describe("ProgramsClient (unit)", () => {
       "2026-10-24T12:00:00.000Z",
     );
     const [url, init] = fetchFn.mock.calls[0]!;
-    expect(url).toBe(programRowLinkTypeMismatchPath("prog-1", "row-mm"));
+    expect(url).toBe(
+      "/api/me/programs/prog-1/rows/row-mm/link-type-mismatch",
+    );
     assertJsonWrite(init as RequestInit, "POST", {
       prescription_type: "concentric",
       draft_updated_at: "2026-10-24T12:00:00.000Z",
@@ -243,7 +245,9 @@ describe("ProgramsClient (unit)", () => {
       "2026-10-24T12:01:00.000Z",
     );
     const [url, init] = fetchFn.mock.calls[0]!;
-    expect(url).toBe(programRowUndoTypeMismatchLinkPath("prog-1", "row-mm"));
+    expect(url).toBe(
+      "/api/me/programs/prog-1/rows/row-mm/undo-type-mismatch-link",
+    );
     assertJsonWrite(init as RequestInit, "POST", {
       draft_updated_at: "2026-10-24T12:01:00.000Z",
     });
