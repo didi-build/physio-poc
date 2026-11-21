@@ -14,7 +14,7 @@ Ready-made programs ("cookie cutter programs") for common conditions, in a commu
 | -- | -- | -- |
 | Conditions on a routine | Optional; one; fixed catalog | Required at publish; many; practitioners add (J update 1) |
 | Condition filter | Hidden when catalog empty; fixed sample list | Shown when any condition exists; live catalog |
-| Search placeholder | **Try: knee, low back, bridge** when conditions empty; **Try: arthritis, knee, low back** when sample list shown | When catalog non-empty: **Try: sciatica, knee, low back** (Designer pick DIDI-594 `a887af34` Q19). **My routines:** unchanged **Search my routines** |
+| Search placeholder | **Try: knee, low back, bridge** when conditions empty; **Try: arthritis, knee, low back** when sample list shown | When catalog non-empty: **Try: sciatica, knee, low back** (**Designer pick** DIDI-594 `a887af34` Q19; placeholder text is a **Designer elaboration** on [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `b5ce6ede`, not lock wording). **My routines:** unchanged **Search my routines** |
 | Body region on cards and routine page | Routine's own `body_region` field | Union of exercise body regions; no chip when none (J update 2) |
 | Body region filter | Routine's region | Matches via exercises in the routine (J update 1) |
 | Card condition line | One condition name | Up to two condition chips, then **+{n}** for overflow (`6d77e60d`) |
@@ -358,12 +358,11 @@ Every user-facing string in the parts of the approved source that render this fe
 - Open it to see what changed and update in one tap.
 - Search routines
 - Search my routines
-- Try: sciatica, knee, low back
-- Search my routines
+- Try: sciatica, knee, low back (Designer elaboration of Q19 on DIDI-1216 `b5ce6ede`; not lock text)
 - Clear
-- Condition
-- Sample list
-- Sample conditions for this concept. The real fixed list is still to come.
+- Condition (was: singular draft form label in v12; superseded by **Conditions** in [routine-conditions/spec.md](../routine-conditions/spec.md))
+- Sample list (was: filter sublabel when v12 showed placeholder conditions; removed in condition-first)
+- Sample conditions for this concept. The real fixed list is still to come. (was: shown under sample condition filter in v12; removed in condition-first)
 - Body region
 - Sort
 - Reset

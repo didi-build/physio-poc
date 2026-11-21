@@ -55,12 +55,18 @@ Project `471087931147292672`. Mobile first (390 px column). Desktop: same field 
 | -- | -- |
 | Q16 | Selected condition chips keep visible **Clear**; accessible name **Clear {condition}** (W7; same pattern as body region picker **Clear {region}**, per [DIDI-1254](https://linear.app/didi-build/issue/DIDI-1254) CTO comment `34ddfb6e` and lock `32f06097`) |
 | Q17 | **Rename** and **Delete** use confirm only; no Undo after confirm |
-| Q18 (**Designer pick** under `a887af34`, Nov 21, 2026) | Renaming to a name that already exists is **blocked**, not merged. Inline error **A condition with this name already exists.**; **Save** stays disabled until the name is unique |
+| Q18 | Renaming to a name that already exists is **blocked**, not merged |
 | Q19 | Library search hints mention conditions (see [routines spec](../routines/spec.md) search is/was) |
-| Q20 (**Designer pick** under `a887af34`, Nov 21, 2026) | After rename or delete succeeds: no toast; the list updates in place |
-| Q21 (**Designer pick** under `a887af34`, Nov 21, 2026) | Rename sheet primary reuses **Save** (`src/ui/copy/exercise-requests.ts` `SAVE`) |
 
-True product decisions (recipients, counts, who sees what, data behaviour) stay escalated to Diadem. Open items below are marked **Open: needs Diadem**; the spec does not pick them.
+**Designer picks** recorded on [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) comment `b5ce6ede` (under Diadem's `a887af34` standing rule; not Diadem's words):
+
+| Pick | String or behaviour |
+| -- | -- |
+| Q18 elaboration | Inline C19 **A condition with this name already exists.**; **Save** stays disabled until the name is unique |
+| Q20 | No toast after rename or delete; catalog and chips update in place |
+| Q21 | Rename sheet primary reuses **Save** (`src/ui/copy/exercise-requests.ts` `SAVE`) |
+
+True product decisions (recipients, counts, who sees what, data behaviour) stay escalated to Diadem. The spec does not pick them; open items are listed under **Open: product / data behaviour** below.
 
 ## Pattern reuse (body region picker)
 
@@ -110,8 +116,8 @@ From MagicPath revision `474549354716364800` and region-picker tokens.
 | Sheet title | **Rename condition** (C14) |
 | Field label | **Condition name** (C15) |
 | Helper | **The new name shows on every routine that uses it, for every practitioner.** (C16) |
-| Primary | **Save** (`SAVE`, **Designer pick** `a887af34` Q21). Saves on confirm; no Undo (`a887af34` Q17) |
-| Blocked duplicate name | Inline under the field: **A condition with this name already exists.** (**Designer pick** `a887af34` Q18). **Save** disabled until unique |
+| Primary | **Save** (`SAVE`, **Designer pick** [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `b5ce6ede` Q21). Saves on confirm; no Undo (`a887af34` Q17) |
+| Blocked duplicate name | Inline under the field: C19 (**Designer pick** `b5ce6ede` Q18 elaboration). **Save** disabled until unique |
 
 ## Delete flow
 
@@ -121,7 +127,7 @@ From MagicPath revision `474549354716364800` and region-picker tokens.
 | Title | **Delete {name}?** (C17) |
 | Body | **{n} routines use it. It comes off all of them, for every practitioner.** (C10) |
 | Destructive confirm | **Delete condition** (C11) |
-| After confirm | Condition removed globally; no Undo (`a887af34` Q17). No success toast; catalog and chips update in place (**Designer pick** `a887af34` Q20) |
+| After confirm | Condition removed globally; no Undo (`a887af34` Q17). No success toast; catalog and chips update in place (**Designer pick** `b5ce6ede` Q20) |
 
 **Out of scope (DIDI-1262):** deleting a condition that is a routine's **only** condition. Do not spec that outcome here.
 
@@ -195,10 +201,10 @@ Same as [body-region-picker/spec.md](../body-region-picker/spec.md) Keyboard and
 | C16 | The new name shows on every routine that uses it, for every practitioner. | Rename helper | Visible |
 | C17 | Delete {name}? | Delete sheet title | `{name}` condition display name |
 | C18 | More for {name} | Overflow control | Accessible name only |
-| C19 | A condition with this name already exists. | Rename blocked duplicate | Visible inline; `aria-describedby` on **Condition name** field (**Designer pick** `a887af34` Q18) |
+| C19 | A condition with this name already exists. | Rename blocked duplicate | Visible inline; `aria-describedby` on **Condition name** field (**Designer pick** DIDI-1216 `b5ce6ede`, Q18 elaboration) |
 | W7 | Clear {condition} | Chip remove | Visible **Clear** (`CLEAR`); `aria-label` only (**Designer pick** `a887af34` Q16; pattern [DIDI-1254](https://linear.app/didi-build/issue/DIDI-1254) `34ddfb6e`) |
 | (reuse) | Clear | Chip remove visible | `src/ui/copy/exercise-library.ts` `CLEAR` |
-| (reuse) | Save | Rename sheet primary | `src/ui/copy/exercise-requests.ts` `SAVE` (**Designer pick** `a887af34` Q21) |
+| (reuse) | Save | Rename sheet primary | `src/ui/copy/exercise-requests.ts` `SAVE` (**Designer pick** DIDI-1216 `b5ce6ede` Q21) |
 | (reuse) | New | Add row / user-new chip | `TAG_NEW` |
 | (reuse) | Before you publish | Validation summary title | `BEFORE_YOU_PUBLISH` |
 | (reuse) | Your draft is still saved. | Validation footer | routines copy inventory |
@@ -207,21 +213,13 @@ Same as [body-region-picker/spec.md](../body-region-picker/spec.md) Keyboard and
 
 Diadem's reply to items 4 to 15, verbatim: **approve** (strings exactly as listed in lock).
 
-### Designer picks (`a887af34`, Nov 21, 2026; not Diadem's words)
-
-| Pick | String or behaviour |
-| -- | -- |
-| Q18 | **A condition with this name already exists.** |
-| Q20 | No toast after rename or delete; list updates in place |
-| Q21 | Rename primary **Save** |
-
 ### Open: product / data behaviour (escalate; do not implement from this spec)
 
 | Topic | Why open |
 | -- | -- |
-| Deleting a routine's only condition | [DIDI-1262](https://linear.app/didi-build/issue/DIDI-1262); out of scope here |
-| Normalised duplicate handling on **create** vs **rename** | J update 2 (`28eea987`) mentions merge on create; Q18 covers rename only |
-| Exact routine count source and stale counts in delete copy (`{n}` in C10) | Who sees what / counts |
+| Deleting a routine's only condition | **Open: needs Diadem.** [DIDI-1262](https://linear.app/didi-build/issue/DIDI-1262); out of scope here |
+| Normalised duplicate handling on **create** vs **rename** | **Open: needs Diadem.** J update 2 (`28eea987`) mentions merge on create; `a887af34` Q18 covers rename only |
+| Exact routine count source and stale counts in delete copy (`{n}` in C10) | **Open: needs Diadem.** Who sees what / counts |
 
 ## Is/was (this feature)
 
@@ -243,13 +241,14 @@ Diadem's reply to items 4 to 15, verbatim: **approve** (strings exactly as liste
 3. Option A inline field (`03489a7e`).
 4. Global visibility and practitioner add with no review (J update 2).
 5. Rename/delete: confirm only, no Undo (`a887af34` Q17).
-6. Rename collision: block with C19 (`a887af34` Q18).
+6. Rename collision: block, not merged (`a887af34` Q18); C19 and disabled **Save** (`b5ce6ede`).
 7. W7 chip remove: visible **Clear**, **Clear {condition}** (`a887af34` Q16; pattern DIDI-1254 `34ddfb6e`).
-8. Rename primary **Save** (`a887af34` Q21).
-9. After rename/delete: no toast (`a887af34` Q20).
+8. Rename primary **Save** (DIDI-1216 `b5ce6ede` Q21).
+9. After rename/delete: no toast (DIDI-1216 `b5ce6ede` Q20).
 10. Only condition delete blocking for sole condition stays on DIDI-1262.
 
 ## Changes
 
-- **Nov 21, 2026**: DIDI-1216 follow-up. Designer picks Q18 to Q21 (`a887af34`); C19; DIDI-1254 `34ddfb6e` for W7; mockups 06 to 08 from CfBoard captures.
+- **Nov 21, 2026**: DIDI-1216 QA. Citation split: `a887af34` Q16 to Q19 vs elaborations on `b5ce6ede` (C19, Q20, Q21).
+- **Nov 21, 2026**: DIDI-1216 follow-up. Designer picks; DIDI-1254 `34ddfb6e` for W7; mockups 06 to 08 from CfBoard captures.
 - **Nov 21, 2026**: DIDI-1216. Option A spec, approved strings (`6d77e60d`), Designer picks (`a887af34`), mockups 01 to 05 from MagicPath `474549354716364800`. Blocks DIDI-1219; unblocks DIDI-1226 path with DIDI-1219. https://linear.app/didi-build/issue/DIDI-1216
