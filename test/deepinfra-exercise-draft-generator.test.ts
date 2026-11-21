@@ -615,19 +615,28 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      const inflight = service.submitRequest({
+      const created = await service.submitRequest({
         practitionerId: practitioner,
         requestedName: "Timeout",
         formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+      const inflight = service.generateRequest({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        mediaService: testExerciseMediaService(storage),
       });
       inflight.catch(() => {});
       await vi.advanceTimersByTimeAsync(25);
       await vi.advanceTimersByTimeAsync(25);
       expect(abortSignal?.aborted).toBe(true);
-      await expect(inflight).rejects.toSatisfy((err: unknown) => {
-        expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
-        expect((err as Error).cause).toBeUndefined();
-        return true;
+      const generated = await inflight;
+      expect(generated).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_timeout",
       });
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
@@ -662,22 +671,26 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expectGenerateRejects(
-        service,
-        storage,
-        {
-          practitionerId: practitioner,
-          requestedName: "Timeout generate",
-          formOpenedAt: FORM_OPENED,
-        },
-        (result) => {
-          expect(result).toMatchObject({
-            outcome: "text_failed",
-            error: "deepinfra_exercise_draft_timeout",
-          });
-          return true;
-        },
-      );
+      const created = await service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Timeout generate",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+      const inflight = service.generateRequest({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        mediaService: testExerciseMediaService(storage),
+      });
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(await inflight).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_timeout",
+      });
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
