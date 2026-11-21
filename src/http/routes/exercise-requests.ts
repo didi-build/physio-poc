@@ -8,6 +8,9 @@ import {
   exerciseRequestsInProgressPath,
   EXERCISE_REQUESTS_API_BASE,
 } from "../../exercise-requests-api-paths.js";
+import { ExerciseMediaService } from "../../services/exercise-media/index.js";
+import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
+import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
 import {
   ExerciseRequestsService,
   ExerciseRequestsServiceError,
@@ -57,12 +60,14 @@ function errorResponse(error: unknown): Response {
             error.code === "draft_not_ready" ||
             error.code === "merge_target_not_ready"
           ? 404
-          : error.code === "approve_failed" ||
-              error.code === "alias_conflict" ||
-              error.code === "request_already_approved" ||
-              error.code === "submit_failed"
-            ? 409
-            : 400;
+          : error.code === "generation_not_requester"
+            ? 403
+            : error.code === "approve_failed" ||
+                error.code === "alias_conflict" ||
+                error.code === "request_already_approved" ||
+                error.code === "submit_failed"
+              ? 409
+              : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },
@@ -243,6 +248,88 @@ export async function handleExerciseRequestsHttpRequest(
         requestId,
         patch: body as DraftFieldPatch,
       });
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const regenTextMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/regenerate-text$`,
+  ).exec(path);
+  if (regenTextMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(regenTextMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    try {
+      const result = await service(deps).regenerateDraftText({
+        practitionerId,
+        requestId,
+        note:
+          typeof body.note === "string" || body.note === null
+            ? (body.note as string | null)
+            : undefined,
+      });
+      if (result.outcome === "complete") {
+        return Response.json(result, { headers: JSON_HEADERS });
+      }
+      if (result.outcome === "in_progress") {
+        return Response.json(result, { status: 202, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "text_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const generateMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/generate$`,
+  ).exec(path);
+  if (generateMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(generateMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    const mediaService = new ExerciseMediaService(
+      deps.sql,
+      deps.exerciseMediaImages ?? new FakeImageGeneration(),
+      new PrefixMediaStorage(deps.objects),
+    );
+    try {
+      const result = await service(deps).generateRequest({
+        practitionerId,
+        requestId,
+        mediaService,
+      });
+      if (result.outcome === "complete") {
+        return Response.json(result, { headers: JSON_HEADERS });
+      }
+      if (result.outcome === "in_progress") {
+        return Response.json(result, { status: 202, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "text_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "images_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "daily_limit") {
+        return Response.json(result, { status: 429, headers: JSON_HEADERS });
+      }
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);

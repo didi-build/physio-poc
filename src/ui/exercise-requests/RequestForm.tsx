@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type RefObject } from "react";
 import {
   CONCEPT_DEMO_PREFIX,
   CONCEPT_DEMO_TEXT,
@@ -13,6 +13,8 @@ import {
 } from "../copy/exercise-library.js";
 import { AI_DRAFTING, VIEW_REQUEST } from "../copy/exercise-requests.js";
 
+export const REQUEST_NOTE_PATIENT_ERROR_ID = "ex-req-note-patient-error";
+
 export type RequestFormProps = {
   exerciseName: string;
   onExerciseNameChange: (value: string) => void;
@@ -26,6 +28,8 @@ export type RequestFormProps = {
   showConceptDemo?: boolean;
   conceptDemoChecked?: boolean;
   onConceptDemoChange?: (checked: boolean) => void;
+  notePatientDetailError?: string | null;
+  noteInputRef?: RefObject<HTMLInputElement | null>;
 };
 
 export function RequestForm({
@@ -41,6 +45,8 @@ export function RequestForm({
   showConceptDemo = false,
   conceptDemoChecked = false,
   onConceptDemoChange,
+  notePatientDetailError = null,
+  noteInputRef,
 }: RequestFormProps) {
   const headingId = useId();
   const exerciseInputId = useId();
@@ -100,14 +106,28 @@ export function RequestForm({
           </label>
           <input
             id="ex-req-note"
+            ref={noteInputRef}
             className="ex-input"
             placeholder={NOTE_PLACEHOLDER}
             value={note}
+            aria-invalid={notePatientDetailError ? true : undefined}
+            aria-describedby={
+              notePatientDetailError ? REQUEST_NOTE_PATIENT_ERROR_ID : undefined
+            }
             onChange={(event) => {
               onNoteChange(event.target.value);
             }}
             disabled={submitting}
           />
+          {notePatientDetailError ? (
+            <p
+              id={REQUEST_NOTE_PATIENT_ERROR_ID}
+              className="ex-regen-limit"
+              role="alert"
+            >
+              {notePatientDetailError}
+            </p>
+          ) : null}
           <button
             type="submit"
             className="ex-primary-btn ex-request-submit"

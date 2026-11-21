@@ -22,6 +22,9 @@ export type ExerciseDraftGeneratorInput = {
   regenerationNote?: string | null;
   requestedBy: string;
   now: string;
+  /** When set, replace draft text on this version instead of creating a new exercise. */
+  existingExerciseId?: string;
+  existingVersionId?: string;
 };
 
 export type ExerciseDraftGeneratorDeps = {

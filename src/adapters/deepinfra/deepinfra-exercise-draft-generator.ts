@@ -146,15 +146,6 @@ async function buildPersistBatchStatements(input: {
       exerciseId,
       versionId,
       statements: [
-        deps.requests.buildInsertBatchStatement({
-          id: genIn.requestId,
-          requestedName: genIn.requestedName,
-          note: genIn.exerciseNote,
-          requestedBy: genIn.requestedBy,
-          status: "open",
-          createdAt: genIn.now,
-          updatedAt: genIn.now,
-        }),
         deps.exercises.buildInsertBatchStatement({
           id: exerciseId,
           category,
@@ -210,6 +201,72 @@ export function createDeepInfraExerciseDraftGenerator(
   });
 
   return async (input, deps) => {
+    const requestRow = await deps.requests.findById(input.requestId);
+    if (!requestRow) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
+    if (input.existingExerciseId && input.existingVersionId) {
+      const completionRequest: DeepInfraChatCompletionRequest = {
+        model: modelId,
+        messages: [
+          { role: "system", content: EXERCISE_DRAFT_SYSTEM_PROMPT },
+          { role: "user", content: buildUserPrompt(input) },
+        ],
+        response_format: openAiJsonSchemaResponseFormat(),
+      };
+      let lastFailure: DeepInfraExerciseDraftError | null = null;
+      for (let attempt = 0; attempt < MAX_AI_ATTEMPTS; attempt += 1) {
+        try {
+          const completion = await client.complete(completionRequest);
+          let parsedJson: unknown;
+          try {
+            parsedJson = JSON.parse(completion.contentJson);
+          } catch {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          const validated = parseAndValidateExerciseDraftAiPayload(parsedJson);
+          if (!validated || !cueShapeValid(validated)) {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          await deps.versions.updateDraftFields(input.existingVersionId, {
+            title: validated.title,
+            description: draftDescription(validated),
+            equipment: validated.equipment,
+            startingPosition: validated.starting_position,
+            steps: validated.steps,
+            commonMistakes: validated.common_mistakes,
+            regressions: validated.regressions,
+            progressions: validated.progressions,
+            precautions: validated.precautions,
+            cueStretching: validated.cue_stretching,
+            cueIsometric: validated.cue_isometric,
+            cueConcentric: validated.cue_concentric,
+            cueEccentric: validated.cue_eccentric,
+          });
+          return {
+            exerciseId: input.existingExerciseId,
+            versionId: input.existingVersionId,
+          };
+        } catch (error) {
+          if (error instanceof FreeTextValidationError) {
+            throw deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+          }
+          throw error;
+        }
+      }
+      throw (
+        lastFailure ??
+        deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid")
+      );
+    }
     const completionRequest: DeepInfraChatCompletionRequest = {
       model: modelId,
       messages: [

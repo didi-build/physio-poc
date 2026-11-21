@@ -1,12 +1,17 @@
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
+  DRAFT_REGEN_SCOPE_ALL_LABEL,
+  DRAFT_REGEN_SCOPE_IMAGES_HINT,
+  DRAFT_REGEN_TEXT_ONLY_HINT,
+  DRAFT_REGEN_TEXT_ONLY_LABEL,
+  DRAFT_REGENERATE_TEXT,
+} from "../copy/draft-review-ai-states.js";
+import {
   DAILY_LIMIT_REACHED,
   REGEN_DAILY_CAP,
   REGEN_NOTE_LABEL,
   REGEN_NOTE_OPTIONAL,
   REGEN_NOTE_PLACEHOLDER,
-  REGEN_SCOPE_ALL_LABEL,
-  REGEN_SCOPE_IMAGES_HINT,
   REGEN_SCOPE_IMAGES_LABEL,
   REGEN_UNDO_HINT,
   REGENERATE_CHOOSE_HINT,
@@ -17,14 +22,15 @@ import {
   REGENERATE_START_IMAGE,
   REGENERATE_SHEET_TITLE,
   REGENERATE_THIS_IMAGE,
-  REGENERATE_VIDEO,
   WHAT_TO_REGENERATE,
   regenLeftText,
 } from "../copy/exercise-requests.js";
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
-import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
+import type { RefObject } from "react";
 
-export type RegeneratePick = "all" | "images" | "video";
+export type RegeneratePick = "all" | "images" | "text";
+
+export const REGEN_NOTE_PATIENT_ERROR_ID = "ex-regen-note-patient-error";
 
 export type RegenerateMediaSheetProps = {
   open: boolean;
@@ -37,6 +43,8 @@ export type RegenerateMediaSheetProps = {
   onPickChange: (pick: RegeneratePick) => void;
   onConfirm: () => void;
   busy?: boolean;
+  notePatientDetailError?: string | null;
+  noteInputRef?: RefObject<HTMLTextAreaElement | null>;
 };
 
 export function RegenerateMediaSheet({
@@ -50,9 +58,12 @@ export function RegenerateMediaSheet({
   onPickChange,
   onConfirm,
   busy = false,
+  notePatientDetailError = null,
+  noteInputRef,
 }: RegenerateMediaSheetProps) {
   const remaining = quota?.remaining ?? REGEN_DAILY_CAP;
   const limitReached = quota?.limitReached ?? false;
+  const confirmBlockedByQuota = limitReached && (mode !== "general" || pick !== "text");
   const subtitleParts = [
     mode === "start" || mode === "end"
       ? REGENERATE_ONE_IMAGE_HINT
@@ -67,7 +78,7 @@ export function RegenerateMediaSheet({
         ? REGENERATE_EVERYTHING
         : pick === "images"
           ? REGENERATE_IMAGES
-          : REGENERATE_VIDEO;
+          : DRAFT_REGENERATE_TEXT;
 
   return (
     <ConfirmSheet
@@ -86,7 +97,7 @@ export function RegenerateMediaSheet({
         <button
           type="button"
           className="ex-primary-btn ex-regen-confirm"
-          disabled={limitReached || busy}
+          disabled={confirmBlockedByQuota || busy}
           onClick={onConfirm}
         >
           {confirmLabel}
@@ -103,8 +114,9 @@ export function RegenerateMediaSheet({
           <legend className="sr-only">{WHAT_TO_REGENERATE}</legend>
           {(
             [
-              ["all", REGEN_SCOPE_ALL_LABEL, ""],
-              ["images", REGEN_SCOPE_IMAGES_LABEL, REGEN_SCOPE_IMAGES_HINT],
+              ["all", DRAFT_REGEN_SCOPE_ALL_LABEL, ""],
+              ["images", REGEN_SCOPE_IMAGES_LABEL, DRAFT_REGEN_SCOPE_IMAGES_HINT],
+              ["text", DRAFT_REGEN_TEXT_ONLY_LABEL, DRAFT_REGEN_TEXT_ONLY_HINT],
             ] as const
           ).map(([id, label, hint]) => (
             <label key={id} className="ex-regen-scope-option">
@@ -129,23 +141,25 @@ export function RegenerateMediaSheet({
       </label>
       <textarea
         id="ex-regen-note"
+        ref={noteInputRef}
         className="ex-textarea"
         rows={2}
         placeholder={REGEN_NOTE_PLACEHOLDER}
         value={note}
+        aria-invalid={notePatientDetailError ? true : undefined}
+        aria-describedby={
+          notePatientDetailError ? REGEN_NOTE_PATIENT_ERROR_ID : undefined
+        }
         onChange={(event) => {
           onNoteChange(event.target.value);
         }}
       />
+      {notePatientDetailError ? (
+        <p id={REGEN_NOTE_PATIENT_ERROR_ID} className="ex-regen-limit" role="alert">
+          {notePatientDetailError}
+        </p>
+      ) : null}
       <p className="ex-regen-footnote">{REGEN_UNDO_HINT}</p>
     </ConfirmSheet>
   );
-}
-
-/** Maps general-sheet picks to API scopes (start/end/both). Video-only regen is not wired yet. */
-export function scopeForPick(pick: RegeneratePick): MediaRegenerationScope {
-  if (pick === "video") {
-    throw new Error("Video-only regeneration is not available yet");
-  }
-  return "both";
 }

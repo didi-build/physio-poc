@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,8 +31,8 @@ import {
 import {
   APPROVE,
   CONFLICT_HEADING,
-  DAILY_LIMIT_REACHED,
   MERGE_MY_CHANGES,
+  DAILY_LIMIT_REACHED,
   REGENERATE,
   REQUESTED_BY,
   REQUESTS_HEADING,
@@ -90,11 +90,20 @@ function renderApp(
     ...stubLibraryClient(),
     ...exerciseLibrary,
   } as ExerciseLibraryClient;
+  const requestsClient = {
+    generateRequest: vi.fn().mockResolvedValue({
+      outcome: "complete",
+      view: {
+        generation: { generation_in_progress: false, first_draft_complete: true },
+      },
+    }),
+    ...requests,
+  } as ExerciseRequestsClient;
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <PhysioApp
         exerciseLibraryClient={library}
-        exerciseRequestsClient={requests as ExerciseRequestsClient}
+        exerciseRequestsClient={requestsClient}
         exerciseMediaClient={media as ExerciseMediaClient}
         programsClient={stubProgramsClient()}
         practitionerSessionClient={practitionerSessionClient}
@@ -230,6 +239,7 @@ describe("exercise requests UI", () => {
       },
       {
         getRegenerationQuota: vi.fn(),
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
       },
     );
 
@@ -296,6 +306,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -340,6 +351,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,
@@ -382,6 +394,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: "kojo@example.com",
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -411,6 +424,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 5,
@@ -421,9 +435,12 @@ describe("exercise requests UI", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
+      expect(screen.getByText("0 of 5 left today")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: REGENERATE })).toBeDisabled();
+    expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
   });
 
   it("lists in-progress requests", async () => {
@@ -598,6 +615,7 @@ describe("exercise requests UI", () => {
       requested_by: FAKE_UI_PRACTITIONER_ID,
       requested_by_email: `${OWN_REQUEST_EMAIL_LOCAL}@example.com`,
       exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
       draft: {
         exercise_version_id: "ver-1",
         version_number: 1,
@@ -627,6 +645,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,

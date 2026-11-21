@@ -2,6 +2,8 @@ import {
   EXERCISE_REQUESTS_API_BASE,
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
+  exerciseRequestGeneratePath,
+  exerciseRequestRegenerateTextPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -14,6 +16,8 @@ import type {
   ExerciseRequestDraftView,
   InProgressRequestsResult,
   SimilarExercisesResult,
+  GenerateExerciseRequestDraftResult,
+  RegenerateDraftTextResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
 } from "../../services/exercise-requests/types.js";
@@ -29,10 +33,32 @@ export type ExerciseRequestsClientOptions = {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+export type ExerciseRequestsClientError = {
+  status: number;
+  error?: string;
+  message?: string;
+};
+
+export class ExerciseRequestsRequestError extends Error {
+  constructor(
+    message: string,
+    readonly detail: ExerciseRequestsClientError,
+  ) {
+    super(message);
+    this.name = "ExerciseRequestsRequestError";
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message ?? `Request failed (${response.status})`);
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    throw new ExerciseRequestsRequestError(
+      body.message ?? `Request failed (${response.status})`,
+      { status: response.status, error: body.error, message: body.message },
+    );
   }
   return (await response.json()) as T;
 }
@@ -120,6 +146,91 @@ export class ExerciseRequestsClient {
         body: JSON.stringify(patch),
       }),
     ).then((response) => readJson<ExerciseRequestDraftView>(response));
+  }
+
+  generateRequest(requestId: string): Promise<GenerateExerciseRequestDraftResult> {
+    const url = exerciseRequestGeneratePath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({}),
+      }),
+    ).then(async (response) => {
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as GenerateExerciseRequestDraftResult;
+      if (!response.ok) {
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "text_failed"
+        ) {
+          return payload;
+        }
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "images_failed"
+        ) {
+          return payload;
+        }
+        if (
+          response.status === 429 &&
+          (payload as { outcome?: string }).outcome === "daily_limit"
+        ) {
+          return payload;
+        }
+        const payloadMessage = (payload as { message?: string }).message;
+        const message =
+          typeof payloadMessage === "string"
+            ? payloadMessage
+            : `Request failed (${response.status})`;
+        throw new ExerciseRequestsRequestError(message, {
+          status: response.status,
+          error: (payload as { error?: string }).error,
+          message: payloadMessage,
+        });
+      }
+      return payload;
+    });
+  }
+
+  regenerateDraftText(
+    requestId: string,
+    note?: string | null,
+  ): Promise<RegenerateDraftTextResult> {
+    const url = exerciseRequestRegenerateTextPath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ note: note ?? null }),
+      }),
+    ).then(async (response) => {
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as RegenerateDraftTextResult;
+      if (!response.ok) {
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "text_failed"
+        ) {
+          return payload;
+        }
+        const payloadMessage = (payload as { message?: string }).message;
+        const message =
+          typeof payloadMessage === "string"
+            ? payloadMessage
+            : `Request failed (${response.status})`;
+        throw new ExerciseRequestsRequestError(message, {
+          status: response.status,
+          error: (payload as { error?: string }).error,
+          message: payloadMessage,
+        });
+      }
+      return payload;
+    });
   }
 
   approveRequest(requestId: string): Promise<ApproveExerciseRequestResult> {

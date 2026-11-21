@@ -8,6 +8,7 @@ import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-g
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
+import { FailingPutMediaStorage } from "./helpers/failing-put-media-storage.js";
 import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
@@ -477,6 +478,39 @@ describe("ExerciseMediaService (integration)", () => {
         }),
       ).rejects.toMatchObject({ code: "invalid_input" });
       expect(generateStartImage).not.toHaveBeenCalled();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not record a regeneration quota row when draft media save fails", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const objects = new InMemoryObjectStorage();
+      const failingMedia = new FailingPutMediaStorage(objects);
+      const service = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        failingMedia,
+      );
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+        countTowardDailyQuota: false,
+      });
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+        }),
+      ).rejects.toThrow("simulated R2 save failure");
+      const count = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+        [practitionerId],
+      );
+      expect(count?.c).toBe(0);
     } finally {
       storage.close();
     }

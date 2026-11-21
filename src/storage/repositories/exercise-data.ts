@@ -689,12 +689,51 @@ export class ExerciseRequestsRepository {
     exercise_id: string | null;
     created_at: string;
     updated_at: string;
+    draft_generation_locked_at: string | null;
   } | null> {
     const id = validateOpaqueEntityId(requestId, "Exercise request id");
     return this.sql.first(
-      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at,
+              draft_generation_locked_at
        FROM exercise_requests WHERE id = ? LIMIT 1`,
       [id],
+    );
+  }
+
+  async getDraftGenerationLockedAt(requestId: string): Promise<string | null> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const row = await this.sql.first<{ draft_generation_locked_at: string | null }>(
+      `SELECT draft_generation_locked_at FROM exercise_requests WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return row?.draft_generation_locked_at ?? null;
+  }
+
+  async tryAcquireDraftGenerationLock(input: {
+    requestId: string;
+    lockedAt: string;
+    staleBefore: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?
+       WHERE id = ?
+         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at < ?)`,
+      [input.lockedAt, requestId, input.staleBefore],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async releaseDraftGenerationLock(
+    requestId: string,
+    holderLockedAt: string,
+  ): Promise<void> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    await this.sql.run(
+      `UPDATE exercise_requests SET draft_generation_locked_at = NULL
+       WHERE id = ? AND draft_generation_locked_at = ?`,
+      [id, holderLockedAt],
     );
   }
 
