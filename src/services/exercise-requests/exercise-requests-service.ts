@@ -1,6 +1,7 @@
 import { categoryToLabel } from "../../domain/exercise-category-labels.js";
 import {
   FreeTextValidationError,
+  validateMediaRegenerationNote,
   validateRequestNote,
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
@@ -39,9 +40,10 @@ import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import {
-  DRAFT_GENERATION_LOCK_STALE_MS,
   generateExerciseRequestDraft,
+  isLockFresh,
 } from "./exercise-request-draft-generation.js";
+import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
 import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
@@ -49,6 +51,7 @@ import type {
   DraftFieldPatch,
   ExerciseRequestDraftView,
   GenerateExerciseRequestDraftResult,
+  RegenerateDraftTextResult,
   InProgressRequestsResult,
   SimilarExercisesResult,
   SubmitExerciseRequestResult,
@@ -385,7 +388,7 @@ export class ExerciseRequestsService {
     practitionerId: string;
     requestId: string;
     note?: string | null;
-  }): Promise<ExerciseRequestDraftView> {
+  }): Promise<RegenerateDraftTextResult> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
     const row = await this.requests.findById(requestId);
@@ -402,33 +405,60 @@ export class ExerciseRequestsService {
     if (!draft) {
       throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
     }
-    const now = this.now();
+    let regenerationNote: string | null;
     try {
-      await this.draftGenerator(
-        {
-          sql: this.sql,
-          requestId,
-          requestedName: row.requested_name,
-          exerciseNote: row.note,
-          regenerationNote: input.note ?? null,
-          requestedBy: row.requested_by,
-          now,
-          existingExerciseId: row.exercise_id,
-          existingVersionId: draft.id,
-        },
-        {
-          exercises: this.exercises,
-          versions: this.versions,
-          requests: this.requests,
-        },
-      );
-    } catch (error) {
-      if (error instanceof DeepInfraExerciseDraftError) {
-        throw error;
-      }
-      throw error;
+      regenerationNote = validateMediaRegenerationNote(input.note);
+    } catch (err) {
+      mapFreeTextError(err);
     }
-    return this.buildDraftView(requestId, { forRequesterId: input.practitionerId });
+    const now = this.now();
+    const locked = await underDraftGenerationLock({
+      requestId,
+      now,
+      requests: this.requests,
+      loadView: () => this.buildDraftView(requestId),
+      run: async () => {
+        try {
+          await this.draftGenerator(
+            {
+              sql: this.sql,
+              requestId,
+              requestedName: row.requested_name,
+              exerciseNote: row.note,
+              regenerationNote,
+              requestedBy: row.requested_by,
+              now,
+              existingExerciseId: row.exercise_id!,
+              existingVersionId: draft.id,
+            },
+            {
+              exercises: this.exercises,
+              versions: this.versions,
+              requests: this.requests,
+            },
+          );
+        } catch (error) {
+          if (error instanceof DeepInfraExerciseDraftError) {
+            return {
+              outcome: "text_failed" as const,
+              error: error.code,
+              view: null,
+            };
+          }
+          throw error;
+        }
+        const view = await this.buildDraftView(requestId);
+        return { outcome: "complete" as const, view };
+      },
+    });
+    if (locked.kind === "in_progress") {
+      return {
+        outcome: "in_progress",
+        view: locked.view,
+        started_elsewhere: locked.started_elsewhere,
+      };
+    }
+    return locked.result;
   }
 
   async generateRequest(input: {
@@ -443,10 +473,7 @@ export class ExerciseRequestsService {
       practitionerId: input.practitionerId,
       requestId,
       mediaService: input.mediaService,
-      loadView: (id) =>
-        this.buildDraftView(parseOpaqueId(id, "request_id"), {
-          forRequesterId: input.practitionerId,
-        }),
+      loadView: (id) => this.buildDraftView(parseOpaqueId(id, "request_id")),
       deps: {
         sql: this.sql,
         draftGenerator: this.draftGenerator,
@@ -459,10 +486,7 @@ export class ExerciseRequestsService {
     });
   }
 
-  private async buildDraftView(
-    requestId: string,
-    options?: { forRequesterId?: string },
-  ): Promise<ExerciseRequestDraftView> {
+  private async buildDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
     const row = await this.requestsRead.findInProgressRequestById(requestId);
     if (!row) {
       throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
@@ -470,12 +494,10 @@ export class ExerciseRequestsService {
 
     const lockRow = await this.requests.findById(requestId);
     const nowIso = this.now();
-    const generationInProgress =
-      lockRow?.draft_generation_locked_at !== null &&
-      lockRow?.draft_generation_locked_at !== undefined &&
-      Date.parse(nowIso) - Date.parse(lockRow.draft_generation_locked_at) >= 0 &&
-      Date.parse(nowIso) - Date.parse(lockRow.draft_generation_locked_at) <
-        DRAFT_GENERATION_LOCK_STALE_MS;
+    const generationInProgress = isLockFresh(
+      lockRow?.draft_generation_locked_at ?? null,
+      nowIso,
+    );
 
     let draft: ExerciseRequestDraftView["draft"] = null;
     let firstDraftComplete = false;
@@ -508,8 +530,6 @@ export class ExerciseRequestsService {
           mediaRow.media_set_id.length > 0;
       }
     }
-
-    void options;
 
     return {
       request_id: row.id,

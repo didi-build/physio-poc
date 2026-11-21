@@ -16,6 +16,7 @@ import { ExerciseVersionMediaRepository } from "../../storage/repositories/exerc
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { ImageGenerationError } from "../../storage/ports/image-generation.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
+import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 
 /** Locks older than this may be taken over by a new generate call. */
 export const DRAFT_GENERATION_LOCK_STALE_MS = 15 * 60 * 1000;
@@ -30,7 +31,7 @@ type GenerateDraftDeps = {
   versionMedia: ExerciseVersionMediaRepository;
 };
 
-function isLockFresh(lockedAt: string | null, nowIso: string): boolean {
+export function isLockFresh(lockedAt: string | null, nowIso: string): boolean {
   if (!lockedAt) {
     return false;
   }
@@ -66,97 +67,92 @@ export async function generateExerciseRequestDraft(input: {
   }
 
   const now = input.deps.now();
-  const lockedAt = await input.deps.requests.getDraftGenerationLockedAt(requestId);
-  if (isLockFresh(lockedAt, now)) {
-    const view = await input.loadView(requestId);
-    return { outcome: "in_progress", view, started_elsewhere: false };
-  }
-
-  const acquired = await input.deps.requests.tryAcquireDraftGenerationLock({
+  const locked = await underDraftGenerationLock({
     requestId,
-    lockedAt: now,
-    staleBefore: new Date(
-      Date.parse(now) - DRAFT_GENERATION_LOCK_STALE_MS,
-    ).toISOString(),
-  });
-  if (!acquired) {
-    const view = await input.loadView(requestId);
-    return { outcome: "in_progress", view, started_elsewhere: true };
-  }
+    now,
+    requests: input.deps.requests,
+    loadView: () => input.loadView(requestId),
+    run: async () => {
+      let exerciseId = row.exercise_id;
+      let versionId: string | null = null;
 
-  try {
-    let exerciseId = row.exercise_id;
-    let versionId: string | null = null;
-
-    if (!exerciseId) {
-      try {
-        const generated = await input.deps.draftGenerator(
-          {
-            sql: input.deps.sql,
-            requestId,
-            requestedName: row.requested_name,
-            exerciseNote: row.note,
-            requestedBy: row.requested_by,
-            now,
-          },
-          {
-            exercises: input.deps.exercises,
-            versions: input.deps.versions,
-            requests: input.deps.requests,
-          },
-        );
-        exerciseId = generated.exerciseId;
-        versionId = generated.versionId;
-      } catch (error) {
-        if (error instanceof DeepInfraExerciseDraftError) {
-          return { outcome: "text_failed", error: error.code, view: null };
-        }
-        if (error instanceof ExerciseRequestsServiceError) {
+      if (!exerciseId) {
+        try {
+          const generated = await input.deps.draftGenerator(
+            {
+              sql: input.deps.sql,
+              requestId,
+              requestedName: row.requested_name,
+              exerciseNote: row.note,
+              requestedBy: row.requested_by,
+              now,
+            },
+            {
+              exercises: input.deps.exercises,
+              versions: input.deps.versions,
+              requests: input.deps.requests,
+            },
+          );
+          exerciseId = generated.exerciseId;
+          versionId = generated.versionId;
+        } catch (error) {
+          if (error instanceof DeepInfraExerciseDraftError) {
+            return {
+              outcome: "text_failed" as const,
+              error: error.code,
+              view: null,
+            };
+          }
           throw error;
         }
-        throw error;
+      } else {
+        const draft = await input.deps.versions.findDraftForExercise(exerciseId);
+        versionId = draft?.id ?? null;
       }
-    } else {
-      const draft = await input.deps.versions.findDraftForExercise(exerciseId);
-      versionId = draft?.id ?? null;
-    }
 
-    if (!exerciseId || !versionId) {
-      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
-    }
+      if (!exerciseId || !versionId) {
+        throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+      }
 
-    const mediaReady = await hasDraftMedia(input.deps.versionMedia, versionId);
-    if (!mediaReady) {
-      try {
-        await input.mediaService.generateInitialMediaForVersion({
-          practitionerId: input.practitionerId,
-          exerciseVersionId: versionId,
-          countTowardDailyQuota: false,
-        });
-      } catch (error) {
-        if (error instanceof ExerciseMediaServiceError) {
-          if (error.code === "daily_limit_reached") {
+      const mediaReady = await hasDraftMedia(input.deps.versionMedia, versionId);
+      if (!mediaReady) {
+        try {
+          await input.mediaService.generateInitialMediaForVersion({
+            practitionerId: input.practitionerId,
+            exerciseVersionId: versionId,
+            countTowardDailyQuota: false,
+          });
+        } catch (error) {
+          if (error instanceof ExerciseMediaServiceError) {
+            if (error.code === "daily_limit_reached") {
+              const view = await input.loadView(requestId);
+              return { outcome: "daily_limit" as const, view };
+            }
+            if (error.code === "exercise_media_already_generated") {
+              // Idempotent: another call finished images.
+            } else {
+              const view = await input.loadView(requestId);
+              return { outcome: "images_failed" as const, view };
+            }
+          } else if (error instanceof ImageGenerationError) {
             const view = await input.loadView(requestId);
-            return { outcome: "daily_limit", view };
-          }
-          if (error.code === "exercise_media_already_generated") {
-            // Idempotent: another call finished images.
+            return { outcome: "images_failed" as const, view };
           } else {
-            const view = await input.loadView(requestId);
-            return { outcome: "images_failed", view };
+            throw error;
           }
-        } else if (error instanceof ImageGenerationError) {
-          const view = await input.loadView(requestId);
-          return { outcome: "images_failed", view };
-        } else {
-          throw error;
         }
       }
-    }
 
-    const view = await input.loadView(requestId);
-    return { outcome: "complete", view };
-  } finally {
-    await input.deps.requests.releaseDraftGenerationLock(requestId);
+      const view = await input.loadView(requestId);
+      return { outcome: "complete" as const, view };
+    },
+  });
+  if (locked.kind === "in_progress") {
+    return {
+      outcome: "in_progress",
+      view: locked.view,
+      started_elsewhere: locked.started_elsewhere,
+    };
   }
+  return locked.result;
 }

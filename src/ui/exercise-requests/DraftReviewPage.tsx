@@ -94,6 +94,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenBusy, setRegenBusy] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
   const [textRegenBusy, setTextRegenBusy] = useState(false);
+  const [generationStartedElsewhere, setGenerationStartedElsewhere] = useState(false);
   const [startStillUrl, setStartStillUrl] = useState<string | null>(null);
   const [endStillUrl, setEndStillUrl] = useState<string | null>(null);
   const generateStarted = useRef(false);
@@ -157,6 +158,9 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           setViewOverride(result.view);
         }
         setGenerationFailure(null);
+        setGenerationStartedElsewhere(
+          result.outcome === "in_progress" ? Boolean(result.started_elsewhere) : false,
+        );
         return;
       }
       if (result.outcome === "text_failed") {
@@ -181,17 +185,24 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   );
 
   const runGenerate = useCallback(async () => {
-    const result = await requestsClient.generateRequest(requestId);
-    applyGenerateResult(result);
-    void refreshView({ force: true });
+    try {
+      const result = await requestsClient.generateRequest(requestId);
+      applyGenerateResult(result);
+      if (result.view) {
+        void refreshView({ force: true });
+      }
+    } catch {
+      setGenerationFailure("text");
+    }
   }, [applyGenerateResult, requestId, requestsClient, refreshView]);
 
   useEffect(() => {
     setViewOverride(null);
     setGenerationFailure(null);
     setRegenError(null);
+    setGenerationStartedElsewhere(false);
     generateStarted.current = false;
-  }, [cachedView, requestId]);
+  }, [requestId]);
 
   useEffect(() => {
     const versionId = view?.draft?.exercise_version_id;
@@ -252,7 +263,10 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         window.clearInterval(timer);
       };
     }
-    if (generationInProgress || (!firstDraftComplete && view.draft)) {
+    if (
+      (isRequester && generationInProgress) ||
+      (!firstDraftComplete && view.draft && generationFailure === null)
+    ) {
       const timer = window.setInterval(() => {
         void refreshView({ force: true });
       }, 2000);
@@ -261,7 +275,14 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       };
     }
     return undefined;
-  }, [view, firstDraftComplete, generationInProgress, isRequester, refreshView]);
+  }, [
+    view,
+    firstDraftComplete,
+    generationInProgress,
+    generationFailure,
+    isRequester,
+    refreshView,
+  ]);
 
   const patchField = async (patch: DraftFieldPatch) => {
     const updated = await requestsClient.updateDraft(requestId, patch);
@@ -296,17 +317,29 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setRegenBusy(true);
     setRegenError(null);
     try {
-      if (regenMode === "general" && regenPick === "text") {
+      if (regenMode === "general" && (regenPick === "text" || regenPick === "all")) {
         setTextRegenBusy(true);
         const result = await requestsClient.regenerateDraftText(
           requestId,
           regenNote.trim() || null,
         );
-        setViewOverride(result.view);
+        if (result.outcome === "text_failed") {
+          setRegenError(DRAFT_AI_TEXT_FAILURE);
+          return;
+        }
+        if (result.outcome === "in_progress") {
+          setRegenError(DRAFT_GENERATION_STARTED_ELSEWHERE);
+          return;
+        }
+        if (result.view) {
+          setViewOverride(result.view);
+        }
         await refreshView({ force: true });
-        setRegenOpen(false);
-        setRegenNote("");
-        return;
+        if (regenPick === "text") {
+          setRegenOpen(false);
+          setRegenNote("");
+          return;
+        }
       }
       const scope =
         regenMode === "start"
@@ -365,9 +398,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   });
   const title = draft?.title ?? view.requested_name;
   const showElsewhere =
-    generationInProgress && (!isRequester || generationFailure === null);
+    generationStartedElsewhere ||
+    (!isRequester && generationInProgress && generationFailure === null);
   const detailsGenerating = !draft;
-  const imagesGenerating = Boolean(draft) && !firstDraftComplete;
+  const imagesGenerating =
+    Boolean(draft) && !firstDraftComplete && generationFailure !== "images";
   const canEdit = firstDraftComplete;
   const toolbarEnabled = firstDraftComplete && !regenBusy;
 
@@ -424,7 +459,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         <button
           type="button"
           className="ex-secondary-btn"
-          disabled={!toolbarEnabled || quota?.limitReached}
+          disabled={!toolbarEnabled}
           onClick={() => {
             setRegenMode("general");
             setRegenOpen(true);

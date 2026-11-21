@@ -1,9 +1,6 @@
 import { ExerciseMotion } from "../components/ExerciseMotion.js";
 import { MEDIA_AI_IMAGE_TAG, MEDIA_AI_VIDEO_TAG } from "../copy/exercise-media.js";
-import {
-  exerciseMotionDraftReviewVideoLoopCaption,
-  exerciseMotionLibraryVideoLoopCaption,
-} from "../exercise-motion/timing.js";
+import { exerciseMotionLibraryVideoLoopCaption } from "../exercise-motion/timing.js";
 import {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
@@ -114,9 +111,6 @@ export function DraftReviewExerciseVideo({
         alt={alt}
         className={className}
       />
-      <figcaption className="exercise-motion-video-caption">
-        {exerciseMotionDraftReviewVideoLoopCaption()}
-      </figcaption>
     </figure>
   );
 }

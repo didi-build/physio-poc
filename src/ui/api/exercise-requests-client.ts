@@ -17,6 +17,7 @@ import type {
   InProgressRequestsResult,
   SimilarExercisesResult,
   GenerateExerciseRequestDraftResult,
+  RegenerateDraftTextResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
 } from "../../services/exercise-requests/types.js";
@@ -170,7 +171,7 @@ export class ExerciseRequestsClient {
   regenerateDraftText(
     requestId: string,
     note?: string | null,
-  ): Promise<{ view: ExerciseRequestDraftView }> {
+  ): Promise<RegenerateDraftTextResult> {
     const url = exerciseRequestRegenerateTextPath(requestId);
     return this.fetchFn(
       url,
@@ -179,7 +180,25 @@ export class ExerciseRequestsClient {
         headers: JSON_HEADERS,
         body: JSON.stringify({ note: note ?? null }),
       }),
-    ).then((response) => readJson<{ view: ExerciseRequestDraftView }>(response));
+    ).then(async (response) => {
+      const payload = (await response
+        .json()
+        .catch(() => ({}))) as RegenerateDraftTextResult;
+      if (!response.ok && response.status !== 202) {
+        if (
+          response.status === 502 &&
+          (payload as { outcome?: string }).outcome === "text_failed"
+        ) {
+          return payload;
+        }
+        const message =
+          typeof (payload as { message?: string }).message === "string"
+            ? (payload as { message?: string }).message
+            : `Request failed (${response.status})`;
+        throw new Error(message);
+      }
+      return payload;
+    });
   }
 
   approveRequest(requestId: string): Promise<ApproveExerciseRequestResult> {

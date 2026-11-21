@@ -268,7 +268,7 @@ export async function handleExerciseRequestsHttpRequest(
       return bodyRejected;
     }
     try {
-      const view = await service(deps).regenerateDraftText({
+      const result = await service(deps).regenerateDraftText({
         practitionerId,
         requestId,
         note:
@@ -276,7 +276,16 @@ export async function handleExerciseRequestsHttpRequest(
             ? (body.note as string | null)
             : undefined,
       });
-      return Response.json({ view }, { headers: JSON_HEADERS });
+      if (result.outcome === "complete") {
+        return Response.json(result, { headers: JSON_HEADERS });
+      }
+      if (result.outcome === "in_progress") {
+        return Response.json(result, { status: 202, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "text_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);
     }

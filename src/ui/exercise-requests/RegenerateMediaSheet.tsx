@@ -57,6 +57,7 @@ export function RegenerateMediaSheet({
 }: RegenerateMediaSheetProps) {
   const remaining = quota?.remaining ?? REGEN_DAILY_CAP;
   const limitReached = quota?.limitReached ?? false;
+  const confirmBlockedByQuota = limitReached && (mode !== "general" || pick !== "text");
   const subtitleParts = [
     mode === "start" || mode === "end"
       ? REGENERATE_ONE_IMAGE_HINT
@@ -90,7 +91,7 @@ export function RegenerateMediaSheet({
         <button
           type="button"
           className="ex-primary-btn ex-regen-confirm"
-          disabled={limitReached || busy}
+          disabled={confirmBlockedByQuota || busy}
           onClick={onConfirm}
         >
           {confirmLabel}

@@ -23,6 +23,8 @@ import {
   DRAFT_NOT_APPROVED,
   GENERATING,
   REGENERATE,
+  REGENERATE_EVERYTHING,
+  REGEN_SCOPE_IMAGES_LABEL,
   REGENERATE_SHEET_TITLE,
 } from "../../src/ui/copy/exercise-requests.js";
 import {
@@ -453,6 +455,51 @@ describe.each([390, 1280])("Draft review AI states at %i px (DIDI-1210)", (width
   });
 });
 
+describe("Draft review generate orchestration (DIDI-1215)", () => {
+  it("calls generate once after text failure when cached reads refresh", async () => {
+    const generatingView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: false, first_draft_complete: false },
+      draft: null,
+    };
+    const getRequest = vi.fn().mockImplementation(async () => ({
+      ...generatingView,
+      generation: { ...generatingView.generation },
+    }));
+    const generateRequest = vi.fn().mockResolvedValue({
+      outcome: "text_failed",
+      error: "deepinfra_exercise_draft_request_failed",
+      view: null,
+    });
+    const requestsClient = {
+      getRequest,
+      generateRequest,
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(generatingView, { requestsClient });
+    await waitFor(() => {
+      expect(generateRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(getRequest).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(generateRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("Regenerate sheet copy (DIDI-1210)", () => {
   it("shows reworded scope labels without video options", async () => {
     renderReview({
@@ -485,8 +532,12 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
   });
 
   it("runs text regenerate with a note and shows the busy string (G7)", async () => {
-    let resolveText: (value: { view: ExerciseRequestDraftView }) => void = () => {};
-    const textPromise = new Promise<{ view: ExerciseRequestDraftView }>((resolve) => {
+    let resolveText: (
+      value: import("../../src/services/exercise-requests/types.js").RegenerateDraftTextResult,
+    ) => void = () => {};
+    const textPromise = new Promise<
+      import("../../src/services/exercise-requests/types.js").RegenerateDraftTextResult
+    >((resolve) => {
       resolveText = resolve;
     });
     const completedView: ExerciseRequestDraftView = {
@@ -529,12 +580,139 @@ describe("Regenerate sheet copy (DIDI-1210)", () => {
     );
     expect(await screen.findByText(DRAFT_REGENERATING_TEXT)).toBeTruthy();
     expect(screen.getByText(PIN_G7)).toBeTruthy();
-    resolveText({ view: completedView });
+    resolveText({ outcome: "complete", view: completedView });
     await waitFor(() => {
       expect(requestsClient.regenerateDraftText).toHaveBeenCalledWith(
         "req-1",
         "forearm support",
       );
     });
+  });
+
+  it("regenerates images only when Images only is selected", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Regenerate images" }),
+    );
+    await waitFor(() => {
+      expect(mediaClient.regenerateDraftMedia).toHaveBeenCalledTimes(1);
+      expect(requestsClient.regenerateDraftText).not.toHaveBeenCalled();
+    });
+  });
+
+  it("regenerates text and images for Text and images (CTO a37d0222)", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockResolvedValue({
+        outcome: "complete",
+        view: completedView,
+      }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const allLabel = within(dialog)
+      .getByText(PIN_G9)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(allLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: REGENERATE_EVERYTHING }),
+    );
+    await waitFor(() => {
+      expect(requestsClient.regenerateDraftText).toHaveBeenCalledTimes(1);
+      expect(mediaClient.regenerateDraftMedia).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("keeps Text only confirm enabled when the daily media cap is reached", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient({
+      getRegenerationQuota: vi.fn().mockResolvedValue({
+        limit: 5,
+        used: 5,
+        remaining: 0,
+        limitReached: true,
+      }),
+    });
+    renderReview(completedView, { mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    expect(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    ).not.toBeDisabled();
+    const imagesScope = within(dialog)
+      .getByText(REGEN_SCOPE_IMAGES_LABEL)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(imagesScope);
+    expect(
+      within(dialog).getByRole("button", { name: "Regenerate images" }),
+    ).toBeDisabled();
   });
 });

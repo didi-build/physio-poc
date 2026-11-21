@@ -725,11 +725,15 @@ export class ExerciseRequestsRepository {
     return result.rowsAffected > 0;
   }
 
-  async releaseDraftGenerationLock(requestId: string): Promise<void> {
+  async releaseDraftGenerationLock(
+    requestId: string,
+    holderLockedAt: string,
+  ): Promise<void> {
     const id = validateOpaqueEntityId(requestId, "Exercise request id");
     await this.sql.run(
-      `UPDATE exercise_requests SET draft_generation_locked_at = NULL WHERE id = ?`,
-      [id],
+      `UPDATE exercise_requests SET draft_generation_locked_at = NULL
+       WHERE id = ? AND draft_generation_locked_at = ?`,
+      [id, holderLockedAt],
     );
   }
 

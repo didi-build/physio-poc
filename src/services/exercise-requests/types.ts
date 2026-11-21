@@ -91,6 +91,15 @@ export type GenerateExerciseRequestDraftResult =
   | { outcome: "images_failed"; view: ExerciseRequestDraftView }
   | { outcome: "daily_limit"; view: ExerciseRequestDraftView };
 
+export type RegenerateDraftTextResult =
+  | { outcome: "complete"; view: ExerciseRequestDraftView }
+  | {
+      outcome: "in_progress";
+      view: ExerciseRequestDraftView;
+      started_elsewhere: boolean;
+    }
+  | { outcome: "text_failed"; error: string; view: ExerciseRequestDraftView | null };
+
 export type ExerciseRequestDraftView = {
   request_id: string;
   requested_name: string;

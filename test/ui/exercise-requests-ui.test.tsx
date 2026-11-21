@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,7 @@ import {
   APPROVE,
   CONFLICT_HEADING,
   MERGE_MY_CHANGES,
+  DAILY_LIMIT_REACHED,
   REGENERATE,
   REQUESTED_BY,
   REQUESTS_HEADING,
@@ -436,7 +437,10 @@ describe("exercise requests UI", () => {
     await waitFor(() => {
       expect(screen.getByText("0 of 5 left today")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: REGENERATE })).toBeDisabled();
+    expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(DAILY_LIMIT_REACHED)).toBeInTheDocument();
   });
 
   it("lists in-progress requests", async () => {

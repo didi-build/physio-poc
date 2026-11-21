@@ -6,8 +6,10 @@ import { exerciseMediaDraftStillPath } from "../src/exercise-media-api-paths.js"
 import {
   exerciseRequestGeneratePath,
   exerciseRequestPath,
+  exerciseRequestRegenerateTextPath,
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import {
   createFakeExerciseDraftGenerator,
   fakeExerciseDraftGenerator,
@@ -414,6 +416,112 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         error: "version_not_found",
         message: "Exercise version not found",
       });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("releases draft generation lock only when the holder token matches", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requests = new ExerciseRequestsRepository(storage);
+      const requestId = id("req-lock-holder");
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-lock"),
+        "lock@example.com",
+      );
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Lock holder",
+      });
+      const heldAt = "2026-11-21T12:00:00.000Z";
+      const newerAt = "2026-11-21T12:05:00.000Z";
+      await requests.tryAcquireDraftGenerationLock({
+        requestId,
+        lockedAt: heldAt,
+        staleBefore: "2026-11-21T11:00:00.000Z",
+      });
+      await requests.releaseDraftGenerationLock(requestId, "2026-11-21T11:00:00.000Z");
+      expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(heldAt);
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [newerAt, requestId],
+      );
+      await requests.releaseDraftGenerationLock(requestId, heldAt);
+      expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(newerAt);
+      await requests.releaseDraftGenerationLock(requestId, newerAt);
+      expect(await requests.getDraftGenerationLockedAt(requestId)).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects regenerate-text notes with patient details before the generator runs", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen-note"),
+        "regen@example.com",
+      );
+      let generatorCalls = 0;
+      const trackingGenerator = async (
+        ...args: Parameters<typeof fakeExerciseDraftGenerator>
+      ) => {
+        generatorCalls += 1;
+        return fakeExerciseDraftGenerator(...args);
+      };
+      const { cookie, bundle, requestId } = await submitAndGenerate(
+        storage,
+        practitioner,
+        "regen@example.com",
+        trackingGenerator,
+      );
+      generatorCalls = 0;
+      const bad = await handleRequest(
+        authedJsonRequest(exerciseRequestRegenerateTextPath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({ note: "patient: jane.doe@example.com" }),
+        }),
+        bundle,
+      );
+      expect(bad.status).toBe(400);
+      expect(generatorCalls).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns in_progress for concurrent regenerate-text while generate lock is held", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen-conc"),
+        "regen-conc@example.com",
+      );
+      const { cookie, bundle, requestId } = await submitAndGenerate(
+        storage,
+        practitioner,
+        "regen-conc@example.com",
+      );
+      const now = new Date().toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [now, requestId],
+      );
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestRegenerateTextPath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({ note: "emphasize control" }),
+        }),
+        bundle,
+      );
+      expect(response.status).toBe(202);
+      const payload = (await response.json()) as { outcome: string };
+      expect(payload.outcome).toBe("in_progress");
     } finally {
       storage.close();
     }
