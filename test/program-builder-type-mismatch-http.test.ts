@@ -56,7 +56,6 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
       const ownerA = await seedPractitioner(storage, id("ph-a-tm"), "a-tm@example.com");
       const ownerB = await seedPractitioner(storage, id("ph-b-tm"), "b-tm@example.com");
       await seedApprovedExerciseVersion(storage, ownerA);
-      await seedApprovedExerciseVersion(storage, ownerB);
       await storage.run(
         `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
         [ownerA, TS, FIXTURE_VERSION_ID],
@@ -145,6 +144,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
       await service.addPlaceholderRow(owner, programId, {
         rowId,
         exerciseRequestId: reqId,
+        prescriptionType: "stretching",
       });
       await storage.run(
         `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
