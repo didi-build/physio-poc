@@ -264,7 +264,7 @@ export function PublishSheet({
             ) : (
               <SharedFailedSaveAlert
                 message={publishError}
-                onTryAgain={() => {}}
+                onTryAgain={() => runPublish()}
                 testId="program-publish-failed-save-alert"
               />
             )
