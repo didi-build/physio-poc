@@ -19,7 +19,6 @@ import { useToast } from "../components/Toast.js";
 import {
   allExercisesIntro,
   BROWSE_ALL,
-  BACK_LIBRARY,
   IN_LIBRARY,
   LIB_HEADING,
   LIB_MY_DESCRIPTION,
@@ -54,8 +53,15 @@ import { TOAST_UNDO } from "../copy/nav.js";
 import { ExerciseListCard, type ExerciseCardModel } from "./ExerciseListCard.js";
 import {
   ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
+  ExerciseLibraryListLoadBanner,
 } from "./ExerciseLibraryStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { FiltersSortPanel, LibrarySearchBar } from "./FiltersSortPanel.js";
 import {
   DEFAULT_FILTERS,
@@ -162,6 +168,7 @@ export function ExerciseLibraryPage({
     (searchParams.get("q") ?? "").trim(),
   );
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [submitRequestFailed, setSubmitRequestFailed] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
   const location = useLocation();
@@ -364,10 +371,13 @@ export function ExerciseLibraryPage({
         return;
       }
       if (result.outcome === "created") {
+        setSubmitRequestFailed(false);
         setSubmittedRequestName(requestedName);
         onRequestsChanged?.();
         void refreshInProgressCount();
       }
+    } catch {
+      setSubmitRequestFailed(true);
     } finally {
       setSubmittingRequest(false);
     }
@@ -376,7 +386,11 @@ export function ExerciseLibraryPage({
   const hasSimilar = allExercises.length > 0 || similarDrafts.length > 0;
   const showLeadInCard = showNoExactMatch && !hasSimilar;
 
-  const showListContent = !loading && !loadFailed;
+  const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showListContent =
+    !loading && hasCachedContent && (!loadFailed || refreshLoadFailed);
   const showRequestCard =
     showListContent &&
     tab === "all" &&
@@ -384,11 +398,6 @@ export function ExerciseLibraryPage({
 
   return (
     <section className="ex-page ex-library-page" aria-labelledby="ex-lib-heading">
-      {loadFailed ? (
-        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
-          {BACK_LIBRARY}
-        </Link>
-      ) : null}
       <h1 id="ex-lib-heading" className="ex-page-title">
         {LIB_HEADING}
       </h1>
@@ -434,14 +443,21 @@ export function ExerciseLibraryPage({
       </div>
       <FiltersSortPanel filters={filters} onChange={setFilters} />
 
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
+      <ExerciseLibraryListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={() => reload()}
+      />
 
       <div
         className="ex-library-main"
         data-testid="exercise-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loading && !initialListLoadFailed ? <ExerciseLibraryBusyState /> : null}
+        {initialListLoadFailed ? (
+          <SharedListSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
+        ) : null}
 
         {showListContent && tab === "mine" ? (
           myListState === "nothing_in_my_exercises_matches" && mySearchQuery ? (
@@ -649,21 +665,32 @@ export function ExerciseLibraryPage({
                   }}
                 />
               ) : (
-                <RequestForm
-                  exerciseName={reqExerciseName}
-                  onExerciseNameChange={setReqExerciseName}
-                  showNoneHeading={hasSimilar}
-                  leadHeading={
-                    showLeadInCard ? noExactMatchHeading(trimmedQuery) : undefined
-                  }
-                  leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
-                  note={reqNote}
-                  onNoteChange={setReqNote}
-                  onSubmit={() => {
-                    void submitRequest();
-                  }}
-                  submitting={submittingRequest}
-                />
+                <>
+                  {submitRequestFailed ? (
+                    <SharedFailedSaveAlert
+                      message={didi1273FailedSaveMessage("request_submit")}
+                      onTryAgain={() => {
+                        void submitRequest();
+                      }}
+                      testId="request-submit-failed-save-alert"
+                    />
+                  ) : null}
+                  <RequestForm
+                    exerciseName={reqExerciseName}
+                    onExerciseNameChange={setReqExerciseName}
+                    showNoneHeading={hasSimilar}
+                    leadHeading={
+                      showLeadInCard ? noExactMatchHeading(trimmedQuery) : undefined
+                    }
+                    leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
+                    note={reqNote}
+                    onNoteChange={setReqNote}
+                    onSubmit={() => {
+                      void submitRequest();
+                    }}
+                    submitting={submittingRequest}
+                  />
+                </>
               )
             ) : null}
           </>

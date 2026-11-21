@@ -7,6 +7,7 @@ import {
   exerciseRequestsInProgressCountPath,
   exerciseRequestsInProgressPath,
 } from "../../exercise-requests-api-paths.js";
+import { HttpResponseError } from "./http-response-error.js";
 import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import type {
   ApproveExerciseRequestResult,
@@ -31,8 +32,14 @@ const JSON_HEADERS = { "content-type": "application/json" };
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string };
-    throw new Error(body.message ?? `Request failed (${response.status})`);
+    const body = (await response.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+    };
+    throw new HttpResponseError(body.message ?? `Request failed (${response.status})`, {
+      code: body.error,
+      status: response.status,
+    });
   }
   return (await response.json()) as T;
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   DAILY_LIMIT_REACHED,
@@ -37,6 +38,7 @@ export type RegenerateMediaSheetProps = {
   onPickChange: (pick: RegeneratePick) => void;
   onConfirm: () => void;
   busy?: boolean;
+  failedSaveAlert?: ReactNode;
 };
 
 export function RegenerateMediaSheet({
@@ -50,6 +52,7 @@ export function RegenerateMediaSheet({
   onPickChange,
   onConfirm,
   busy = false,
+  failedSaveAlert = null,
 }: RegenerateMediaSheetProps) {
   const remaining = quota?.remaining ?? REGEN_DAILY_CAP;
   const limitReached = quota?.limitReached ?? false;
@@ -93,6 +96,7 @@ export function RegenerateMediaSheet({
         </button>
       }
     >
+      {failedSaveAlert}
       {limitReached ? (
         <p className="ex-regen-limit" role="status">
           {DAILY_LIMIT_REACHED}

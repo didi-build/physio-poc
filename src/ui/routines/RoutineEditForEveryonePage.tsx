@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
@@ -30,9 +30,14 @@ import {
   versionLiveLine,
 } from "../copy/routines.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { RoutineAuthoringExerciseList } from "./RoutineAuthoringExerciseList.js";
 
 function rowsEqual(a: RoutineExerciseRow[], b: RoutineExerciseRow[]): boolean {
@@ -49,6 +54,7 @@ export function RoutineEditForEveryonePage() {
   const [rows, setRows] = useState<RoutineExerciseRow[]>([]);
   const baselineRef = useRef<{ name: string; rows: RoutineExerciseRow[] } | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
 
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
@@ -59,8 +65,10 @@ export function RoutineEditForEveryonePage() {
 
   const {
     data: details,
-    loading,
+    loading: cacheLoading,
     loadFailed,
+    failureKind,
+    refresh,
   } = useSessionCachedRead<
     RoutineDetailsPublished & {
       condition_options: { condition_id: string; label: string }[];
@@ -99,34 +107,71 @@ export function RoutineEditForEveryonePage() {
     return name.trim() !== baseline.name.trim() || !rowsEqual(rows, baseline.rows);
   }, [name, rows]);
 
-  const sessionState = usePractitionerSession();
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showEditor =
+    !loading &&
+    !showNotFound &&
+    (!loadFailed || refreshLoadFailed) &&
+    details !== null &&
+    !details.is_draft;
 
-  if (loadFailed || sessionState.status === "error") {
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
+
+  if (!showEditor) {
+    const pageTitle =
+      details && !details.is_draft ? details.community.name : BACK_ROUTINES;
     return (
-      <section className="ex-page rt-edit-everyone">
-        <ExerciseLibraryDetailErrorSlot />
+      <section
+        className="ex-page rt-edit-everyone"
+        aria-busy={loading ? true : undefined}
+      >
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routines")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 className="ex-page-title">{pageTitle}</h1>
+            ) : null}
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={loadFailed && failureKind === "error"}
+              hasContent={hasCachedContent}
+              onTryAgain={reload}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
 
-  if (loading || !details || details.is_draft) {
-    return (
-      <section className="ex-page rt-edit-everyone" aria-busy>
-        <ExerciseLibraryBusyState />
-      </section>
-    );
-  }
-
-  const liveVersion = details.community.version_number;
-  const bodyRegionId = details.body_region_id;
-  const conditionId = details.condition_id;
+  const liveVersion = details!.community.version_number;
+  const bodyRegionId = details!.body_region_id;
+  const conditionId = details!.condition_id;
 
   const onSave = () => {
     if (!dirty) {
-      return;
+      return Promise.resolve();
     }
     setSaveBusy(true);
-    void client
+    return client
       .saveRoutineCommunityVersion(routineId, {
         expected_published_version: liveVersion,
         name: name.trim(),
@@ -134,13 +179,17 @@ export function RoutineEditForEveryonePage() {
         rows,
         body_region_id: bodyRegionId,
         condition_id: conditionId,
-        who_its_for: details.who_its_for,
+        who_its_for: details!.who_its_for,
       })
       .then((result) => {
+        setSaveFailed(false);
         showToast({ message: toastSavedCommunityVersion(result.version_number) });
         navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }), {
           replace: true,
         });
+      })
+      .catch(() => {
+        setSaveFailed(true);
       })
       .finally(() => {
         setSaveBusy(false);
@@ -175,6 +224,14 @@ export function RoutineEditForEveryonePage() {
       <p className="rt-edit-everyone-programs-note">
         {EDIT_FOR_EVERYONE_PROGRAMS_NOTE}
       </p>
+
+      {saveFailed ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage({ kind: "save_or_edit", item: "routine" })}
+          onTryAgain={onSave}
+          testId="routine-edit-everyone-save-error-slot"
+        />
+      ) : null}
 
       <label className="ex-field">
         <span className="ex-field-label">{ROUTINE_NAME_LABEL}</span>

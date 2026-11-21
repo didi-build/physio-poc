@@ -557,7 +557,9 @@ describe("Routines library UI (DIDI-1022)", () => {
     await user.click(screen.getByRole("button", { name: useVersionN(3) }));
     await waitFor(() => {
       expect(
-        document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+        document.querySelector(
+          '[data-testid="routine-adopt-version-failed-save-alert"]',
+        ),
       ).toBeInTheDocument();
     });
     expect(screen.queryByText(toastAdoptedVersion(3))).not.toBeInTheDocument();
@@ -565,7 +567,9 @@ describe("Routines library UI (DIDI-1022)", () => {
     await waitFor(() => expect(adoptCommunityVersion).toHaveBeenCalledTimes(2));
     await waitFor(() => {
       expect(
-        document.querySelector('[data-testid="routine-detail-mutation-error-slot"]'),
+        document.querySelector(
+          '[data-testid="routine-adopt-version-failed-save-alert"]',
+        ),
       ).toBeInTheDocument();
     });
   });

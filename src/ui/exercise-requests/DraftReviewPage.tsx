@@ -5,6 +5,7 @@ import type {
   DraftFieldPatch,
   ExerciseRequestDraftView,
 } from "../../services/exercise-requests/types.js";
+import { HttpResponseError } from "../api/http-response-error.js";
 import { useExerciseMediaApi } from "../api/exercise-media-context.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
 import {
@@ -57,6 +58,17 @@ import {
   scopeForPick,
 } from "./RegenerateMediaSheet.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import {
+  ExerciseRequestItemBusyState,
+  ExerciseRequestItemLoadBanner,
+} from "./ExerciseRequestsStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 
 export type DraftReviewPageProps = {
   onRequestsChanged?: () => void;
@@ -79,6 +91,16 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const [failedSave, setFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void | Promise<void>;
+    testId: string;
+  } | null>(null);
+  const [regenFailedSave, setRegenFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void | Promise<void>;
+    testId: string;
+  } | null>(null);
 
   const detailCacheKey = useMemo(
     () =>
@@ -98,6 +120,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const {
     data: cachedView,
     loading: viewLoading,
+    loadFailed: viewLoadFailed,
+    failureKind: viewFailureKind,
     refresh: refreshView,
   } = useSessionCachedRead<ExerciseRequestDraftView>({
     cacheKey: detailCacheKey,
@@ -105,11 +129,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     fetcher: (signal) => requestsClient.getRequest(requestId, { signal }),
   });
 
-  const {
-    data: quota,
-    loading: quotaLoading,
-    refresh: refreshQuota,
-  } = useSessionCachedRead<
+  const { data: quota, refresh: refreshQuota } = useSessionCachedRead<
     Awaited<ReturnType<typeof mediaClient.getRegenerationQuota>>
   >({
     cacheKey: quotaCacheKey,
@@ -122,24 +142,51 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [cachedView, requestId]);
 
   const view = viewOverride ?? cachedView ?? null;
-  const loading = !sessionReady || viewLoading || quotaLoading;
+  const hasCachedView = cachedView !== null;
+  const pageLoading = !sessionReady || (viewLoading && !viewLoadFailed);
+  const showNotFound =
+    !pageLoading && viewLoadFailed && viewFailureKind === "not_found";
+  const refreshViewFailed = sharedRefreshFailed(hasCachedView, viewLoadFailed);
+  const showReviewContent =
+    !pageLoading &&
+    !showNotFound &&
+    view !== null &&
+    (!viewLoadFailed || refreshViewFailed);
 
   const patchField = async (patch: DraftFieldPatch) => {
-    const updated = await requestsClient.updateDraft(requestId, patch);
-    setViewOverride(updated);
-    void refreshView({ force: true });
+    setFailedSave(null);
+    try {
+      const updated = await requestsClient.updateDraft(requestId, patch);
+      setViewOverride(updated);
+      void refreshView({ force: true });
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_draft_edits"),
+        onTryAgain: () => patchField(patch),
+        testId: "request-draft-edits-failed-save-alert",
+      });
+    }
   };
 
   const approve = async () => {
-    await requestsClient.approveRequest(requestId);
-    const own =
-      currentPractitioner.sessionIdentityReady &&
-      view?.requested_by === currentPractitioner.practitionerId;
-    showToast({
-      message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
-    });
-    onRequestsChanged?.();
-    navigate(fillPhysioAppRoutePattern("requests"));
+    setFailedSave(null);
+    try {
+      await requestsClient.approveRequest(requestId);
+      const own =
+        currentPractitioner.sessionIdentityReady &&
+        view?.requested_by === currentPractitioner.practitionerId;
+      showToast({
+        message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
+      });
+      onRequestsChanged?.();
+      navigate(fillPhysioAppRoutePattern("requests"));
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_approve"),
+        onTryAgain: () => approve(),
+        testId: "request-approve-failed-save-alert",
+      });
+    }
   };
 
   const runRegenerate = async () => {
@@ -147,6 +194,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       return;
     }
     setRegenBusy(true);
+    setRegenFailedSave(null);
     try {
       const scope =
         regenMode === "start"
@@ -162,19 +210,56 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       await refreshQuota({ force: true });
       setRegenOpen(false);
       setRegenNote("");
+    } catch (error) {
+      const dailyLimit =
+        error instanceof HttpResponseError && error.code === "daily_limit_reached";
+      if (dailyLimit) {
+        await refreshQuota({ force: true });
+        return;
+      }
+      setRegenFailedSave({
+        message: didi1273FailedSaveMessage("exercise_regenerate_media"),
+        onTryAgain: () => runRegenerate(),
+        testId: "request-regenerate-media-failed-save-alert",
+      });
     } finally {
       setRegenBusy(false);
     }
   };
 
-  if (loading || !view) {
+  if (!showReviewContent) {
     return (
-      <section className="ex-page" aria-busy={true}>
-        <div
-          className="ex-busy-skeleton"
-          data-testid="exercise-library-busy-skeleton"
-          aria-hidden
+      <section
+        className="ex-page"
+        aria-busy={pageLoading ? true : undefined}
+        aria-labelledby={showNotFound ? undefined : "ex-review-heading"}
+      >
+        <SharedItemBackLink
+          surface="requests"
+          href={fillPhysioAppRoutePattern("requests")}
         />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="draft"
+            surface="requests"
+            backHref={fillPhysioAppRoutePattern("requests")}
+            testId="exercise-request-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !pageLoading && view !== null ? (
+              <h1 id="ex-review-heading" className="ex-page-title">
+                {view.draft?.title ?? view.requested_name}
+              </h1>
+            ) : null}
+            {pageLoading ? <ExerciseRequestItemBusyState /> : null}
+            <ExerciseRequestItemLoadBanner
+              loadFailed={viewLoadFailed && viewFailureKind === "error"}
+              hasContent={hasCachedView}
+              onTryAgain={() => refreshView({ force: true })}
+            />
+          </>
+        )}
       </section>
     );
   }
@@ -208,6 +293,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={failedSave.message}
+          onTryAgain={failedSave.onTryAgain}
+          testId={failedSave.testId}
+        />
+      ) : null}
       <div className="ex-review-toolbar">
         <button
           type="button"
@@ -305,6 +397,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         open={regenOpen}
         onClose={() => {
           setRegenOpen(false);
+          setRegenFailedSave(null);
         }}
         mode={regenMode}
         quota={quota}
@@ -316,6 +409,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           void runRegenerate();
         }}
         busy={regenBusy}
+        failedSaveAlert={
+          regenFailedSave ? (
+            <SharedFailedSaveAlert
+              message={regenFailedSave.message}
+              onTryAgain={regenFailedSave.onTryAgain}
+              testId={regenFailedSave.testId}
+            />
+          ) : null
+        }
       />
     </section>
   );

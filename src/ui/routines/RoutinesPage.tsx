@@ -38,10 +38,12 @@ import {
   flaggedBanner,
   toastSavedToMy,
 } from "../copy/routines.js";
+import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import { RoutinesListBusyState, RoutinesListLoadBanner } from "./RoutinesStates.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+} from "../shared-load-states/SharedLoadStates.js";
 import { RoutineListCard } from "./RoutineListCard.js";
 import {
   DEFAULT_ROUTINE_FILTERS,
@@ -140,9 +142,7 @@ export function RoutinesPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const reload = useCallback(() => {
-    void refresh({ force: true });
-  }, [refresh]);
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
 
   const community = snapshot?.tab === "all" ? snapshot.community : [];
   const communityTotal = snapshot?.tab === "all" ? snapshot.communityTotal : 0;
@@ -179,7 +179,12 @@ export function RoutinesPage() {
   const listEmpty =
     !loading && !loadFailed && (tab === "all" ? community.length === 0 : myCount === 0);
 
-  const showListContent = !loading && !loadFailed;
+  const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
+  const showListContent =
+    !loading &&
+    hasCachedContent &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
 
   const onSaveCommunity = (routineId: string, name: string) => {
     void client.saveToMyRoutines(routineId).then(({ undo }) => {
@@ -270,7 +275,11 @@ export function RoutinesPage() {
         conditionOptions={conditionOptions}
       />
 
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
+      <RoutinesListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={reload}
+      />
 
       <div
         id="routines-tabpanel"
@@ -280,7 +289,10 @@ export function RoutinesPage() {
         data-testid="routines-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading ? <ExerciseLibraryBusyState /> : null}
+        {loading && !initialListLoadFailed ? <RoutinesListBusyState /> : null}
+        {initialListLoadFailed ? (
+          <SharedListSkeletonPlaceholders testId="routines-list-busy-skeleton" />
+        ) : null}
 
         {listEmpty ? (
           <div className="pg-empty" data-testid="routines-empty">

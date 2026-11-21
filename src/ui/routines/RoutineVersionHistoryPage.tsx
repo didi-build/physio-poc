@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { RoutineVersionHistoryItem } from "../../services/routines/types.js";
@@ -19,9 +19,14 @@ import {
   toastVersionRestored,
 } from "../copy/routines.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { RoutineRestoreConfirmSheet } from "./RoutineRestoreConfirmSheet.js";
 
 export function RoutineVersionHistoryPage() {
@@ -32,9 +37,16 @@ export function RoutineVersionHistoryPage() {
     null,
   );
   const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreFailed, setRestoreFailed] = useState(false);
   const sessionReady = usePractitionerSession().status === "ready";
 
-  const { data, loading, loadFailed, refresh } = useSessionCachedRead({
+  const {
+    data,
+    loading: cacheLoading,
+    loadFailed,
+    failureKind,
+    refresh,
+  } = useSessionCachedRead({
     cacheKey: routineId.length > 0 && sessionReady ? `rt-versions:${routineId}` : null,
     enabled: routineId.length > 0 && sessionReady,
     fetcher: (signal) => client.getRoutineVersionHistory(routineId, { signal }),
@@ -45,6 +57,7 @@ export function RoutineVersionHistoryPage() {
       return;
     }
     setRestoreBusy(true);
+    setRestoreFailed(false);
     const fromVersion = restoreTarget.version_number;
     void client
       .restoreRoutineVersion(routineId, fromVersion)
@@ -58,23 +71,53 @@ export function RoutineVersionHistoryPage() {
         });
         void refresh({ force: true });
       })
+      .catch(() => {
+        setRestoreFailed(true);
+      })
       .finally(() => {
         setRestoreBusy(false);
       });
   };
 
-  if (loadFailed) {
-    return (
-      <section className="ex-page rt-versions">
-        <ExerciseLibraryDetailErrorSlot />
-      </section>
-    );
-  }
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = data !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && data !== null;
 
-  if (loading || !data) {
+  const reload = useCallback(() => refresh({ force: true }), [refresh]);
+
+  if (!showContent) {
     return (
-      <section className="ex-page rt-versions" aria-busy>
-        <ExerciseLibraryBusyState />
+      <section className="ex-page rt-versions" aria-busy={loading ? true : undefined}>
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routineDetail", { routineId })}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={loadFailed && failureKind === "error"}
+              hasContent={hasCachedContent}
+              onTryAgain={reload}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
@@ -90,6 +133,13 @@ export function RoutineVersionHistoryPage() {
       <h1 id="rt-versions-title" className="ex-page-title">
         {VERSION_HISTORY}
       </h1>
+      {restoreFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("routine_restore_version")}
+          onTryAgain={onRestore}
+          testId="routine-restore-version-failed-save-alert"
+        />
+      ) : null}
 
       <ul className="rt-version-list">
         {data.versions.map((version) => (

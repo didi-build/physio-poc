@@ -44,13 +44,12 @@ import {
   toastPublishedVersion1,
 } from "../copy/routines.js";
 import { AddExerciseSheet } from "../programs/AddExerciseSheet.js";
-import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+import { SharedItemBackLink } from "../shared-load-states/SharedLoadStates.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { useProgramAutoSave } from "../programs/use-program-auto-save.js";
 import { RoutineAuthoringExerciseList } from "./RoutineAuthoringExerciseList.js";
 import { RoutineAutoSaveStatus } from "./RoutineAutoSaveStatus.js";
+import { routineDraftAutosaveFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
 import { RoutinePublishValidationPanel } from "./RoutinePublishValidationPanel.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
@@ -139,8 +138,9 @@ export function RoutineDraftEditorPage({
 
   const {
     data: details,
-    loading,
+    loading: cacheLoading,
     loadFailed,
+    refresh,
   } = useSessionCachedRead<DraftEditorSnapshot | null>({
     cacheKey,
     enabled: !isNewDraft && effectiveRoutineId.length > 0 && sessionReady,
@@ -562,15 +562,48 @@ export function RoutineDraftEditorPage({
     draftDetails?.condition_label ??
     null;
 
+  const loading = !sessionReady || cacheLoading;
+  const retryDraftLoad = () => {
+    setNewDraftBootstrapFailed(false);
+    if (!isNewDraft && effectiveRoutineId.length > 0) {
+      void refresh({ force: true });
+      return;
+    }
+    if (isNewDraft && sessionReady) {
+      void client
+        .listMyRoutines()
+        .then((list) => {
+          setNewDraftBootstrap({
+            conditions_available: list.conditions_available,
+            condition_options: list.condition_options,
+          });
+        })
+        .catch(() => {
+          setNewDraftBootstrapFailed(true);
+        });
+    }
+  };
+
   if (
     sessionState.status === "error" ||
     loadFailed ||
     newDraftBootstrapFailed ||
     (isNewDraft && newDraftBootstrap && bodyRegionOptions.length === 0)
   ) {
+    const showItemLoadError =
+      sessionState.status === "error" || loadFailed || newDraftBootstrapFailed;
     return (
       <section className="ex-page rt-authoring">
-        <ExerciseLibraryDetailErrorSlot />
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routines")}
+        />
+        <RoutinesItemLoadBanner
+          loadFailed={showItemLoadError}
+          hasContent={details !== null}
+          onTryAgain={retryDraftLoad}
+          testId="exercise-library-detail-error-slot"
+        />
       </section>
     );
   }
@@ -585,7 +618,7 @@ export function RoutineDraftEditorPage({
   if (awaitingExistingDraft || awaitingNewDraft) {
     return (
       <section className="ex-page rt-authoring" aria-busy>
-        <ExerciseLibraryBusyState />
+        <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
       </section>
     );
   }
@@ -627,7 +660,12 @@ export function RoutineDraftEditorPage({
         </h1>
         <span className="rt-tag rt-tag--draft">{TAG_DRAFT}</span>
       </div>
-      <RoutineAutoSaveStatus state={autoSave.state} />
+      <RoutineAutoSaveStatus
+        state={autoSave.state}
+        failureAlertShown={autoSave.failureAlertShown}
+        failureMessage={routineDraftAutosaveFailedSaveMessage()}
+        onTryAgain={autoSave.tryAgain}
+      />
 
       {validationIssues ? (
         <RoutinePublishValidationPanel issues={validationIssues} />
@@ -749,6 +787,7 @@ export function RoutineDraftEditorPage({
           type="button"
           className="ex-primary-btn"
           data-testid="rt-draft-publish"
+          disabled={autoSave.state === "failed"}
           onClick={tryPublish}
         >
           {PUBLISH}

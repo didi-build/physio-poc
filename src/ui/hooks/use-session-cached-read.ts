@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isLoadNotFoundError } from "../shared-load-states/classify-load-error.js";
 import type {
   SessionReadCacheConsumerLease,
   SessionReadCacheKey,
@@ -14,10 +15,13 @@ export type UseSessionCachedReadOptions<T> = {
   retainOnError?: boolean;
 };
 
+export type LoadFailureKind = "not_found" | "error" | null;
+
 export type UseSessionCachedReadResult<T> = {
   data: T | null;
   loading: boolean;
   loadFailed: boolean;
+  failureKind: LoadFailureKind;
   refresh: (options?: { force?: boolean }) => Promise<void>;
 };
 
@@ -39,8 +43,10 @@ export function useSessionCachedRead<T>(
   const [data, setData] = useState<T | null>(initialHit);
   const [loading, setLoading] = useState(enabled && initialHit === null);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [failureKind, setFailureKind] = useState<LoadFailureKind>(null);
   const requestIdRef = useRef(0);
   const activeLeaseRef = useRef<SessionReadCacheConsumerLease | null>(null);
+  const lastFetchErrorRef = useRef<unknown>(null);
 
   const releaseActiveLease = useCallback(() => {
     const lease = activeLeaseRef.current;
@@ -69,6 +75,7 @@ export function useSessionCachedRead<T>(
         if (!cacheKey) {
           setLoading(true);
           setLoadFailed(false);
+          setFailureKind(null);
           try {
             const next = await fetcherRef.current(new AbortController().signal);
             if (isDisposed()) {
@@ -76,7 +83,8 @@ export function useSessionCachedRead<T>(
             }
             setData(next);
             setLoadFailed(false);
-          } catch {
+            setFailureKind(null);
+          } catch (error) {
             if (isDisposed()) {
               return;
             }
@@ -84,6 +92,7 @@ export function useSessionCachedRead<T>(
               setData(null);
             }
             setLoadFailed(true);
+            setFailureKind(isLoadNotFoundError(error) ? "not_found" : "error");
           } finally {
             if (!isDisposed()) {
               setLoading(false);
@@ -98,7 +107,10 @@ export function useSessionCachedRead<T>(
         if (!cached) {
           setLoading(true);
         }
-        setLoadFailed(false);
+        if (cached) {
+          setLoadFailed(false);
+          setFailureKind(null);
+        }
       }
 
       let supersededRetries = 0;
@@ -112,7 +124,14 @@ export function useSessionCachedRead<T>(
         try {
           const result = await cache.fetch(
             cacheKey!,
-            (signal) => fetcherRef.current(signal),
+            async (signal) => {
+              try {
+                return await fetcherRef.current(signal);
+              } catch (error) {
+                lastFetchErrorRef.current = error;
+                throw error;
+              }
+            },
             {
               force: force && supersededRetries === 0,
               registerConsumer: (lease: SessionReadCacheConsumerLease) => {
@@ -127,6 +146,8 @@ export function useSessionCachedRead<T>(
           if (result.status === "ok") {
             setData(result.data);
             setLoadFailed(false);
+            setFailureKind(null);
+            lastFetchErrorRef.current = null;
             setLoading(false);
             return;
           }
@@ -139,6 +160,7 @@ export function useSessionCachedRead<T>(
             if (retryHit) {
               setData(retryHit.data);
               setLoadFailed(false);
+              setFailureKind(null);
               setLoading(false);
               return;
             }
@@ -148,6 +170,9 @@ export function useSessionCachedRead<T>(
             setData(null);
           }
           setLoadFailed(true);
+          setFailureKind(
+            isLoadNotFoundError(lastFetchErrorRef.current) ? "not_found" : "error",
+          );
           setLoading(false);
           return;
         } finally {
@@ -171,8 +196,12 @@ export function useSessionCachedRead<T>(
       if (finalHit) {
         setData(finalHit.data);
         setLoadFailed(false);
+        setFailureKind(null);
       } else {
         setLoadFailed(true);
+        setFailureKind(
+          isLoadNotFoundError(lastFetchErrorRef.current) ? "not_found" : "error",
+        );
       }
       setLoading(false);
     },
@@ -208,6 +237,7 @@ export function useSessionCachedRead<T>(
         setData(cached.data);
         setLoading(false);
         setLoadFailed(false);
+        setFailureKind(null);
       } else {
         setLoading(true);
       }
@@ -218,6 +248,7 @@ export function useSessionCachedRead<T>(
       setData(cached.data);
       setLoading(false);
       setLoadFailed(false);
+      setFailureKind(null);
       return;
     }
     setData(null);
@@ -231,5 +262,5 @@ export function useSessionCachedRead<T>(
     };
   }, [releaseActiveLease]);
 
-  return { data, loading, loadFailed, refresh };
+  return { data, loading, loadFailed, failureKind, refresh };
 }

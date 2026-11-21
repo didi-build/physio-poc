@@ -33,6 +33,13 @@ import {
 import { ProgramListCard } from "./ProgramListCard.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
+import {
+  SharedFailedSaveAlert,
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
 
 type ProgramsListSnapshot = {
@@ -56,6 +63,7 @@ export function ProgramsListPage() {
   const { showToast } = useToast();
   const [newSheetOpen, setNewSheetOpen] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [restoreFailedId, setRestoreFailedId] = useState<string | null>(null);
 
   const query = searchParams.get("q") ?? "";
   const trimmedQuery = query.trim();
@@ -118,10 +126,10 @@ export function ProgramsListPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const load = useCallback(() => {
-    void refresh({ force: true });
-  }, [refresh]);
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
+  const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const items = snapshot?.items ?? [];
   const totalCount = snapshot?.totalCount ?? 0;
   const matchedCode = snapshot?.matchedCode ?? null;
@@ -141,10 +149,12 @@ export function ProgramsListPage() {
     [items.length, totalCount, trimmedQuery.length, originFilter],
   );
 
-  const showEmpty =
-    !loading && !loadFailed && totalCount === 0 && trimmedQuery.length === 0;
-  const showNoMatch =
-    !loading && !loadFailed && trimmedQuery.length > 0 && items.length === 0;
+  const showListContent =
+    !loading &&
+    hasCachedContent &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
+  const showEmpty = showListContent && totalCount === 0 && trimmedQuery.length === 0;
+  const showNoMatch = showListContent && trimmedQuery.length > 0 && items.length === 0;
 
   const openNewSheet = () => {
     setNewSheetOpen(true);
@@ -169,14 +179,15 @@ export function ProgramsListPage() {
 
   const onRestore = (item: ProgramListItem) => {
     setRestoringId(item.program_id);
-    void client
+    setRestoreFailedId(null);
+    return client
       .restoreProgram(item.program_id)
       .then((result) => {
         showToast({ message: restoredProgramToast(result.program.name) });
-        load();
+        return load();
       })
       .catch(() => {
-        /* leave list unchanged */
+        setRestoreFailedId(item.program_id);
       })
       .finally(() => {
         setRestoringId(null);
@@ -238,8 +249,15 @@ export function ProgramsListPage() {
         ) : null}
       </div>
 
-      {loading ? <ProgramsListBusyState /> : null}
-      {loadFailed ? <ProgramsListErrorSlot /> : null}
+      {loading && !initialListLoadFailed ? <ProgramsListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="programs-list-busy-skeleton" />
+      ) : null}
+      <ProgramsListErrorSlot
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={load}
+      />
 
       {showEmpty ? (
         <div className="pg-empty" data-testid="programs-empty">
@@ -272,7 +290,7 @@ export function ProgramsListPage() {
         </div>
       ) : null}
 
-      {!loading && !loadFailed && items.length > 0 ? (
+      {showListContent && items.length > 0 ? (
         <ul className="pg-card-list">
           {items.map((item) => (
             <li key={item.program_id}>
@@ -287,6 +305,21 @@ export function ProgramsListPage() {
           {RECENTLY_DELETED}
         </h2>
         <p className="pg-deleted-intro">{RECENTLY_DELETED_INTRO}</p>
+        {restoreFailedId ? (
+          <SharedFailedSaveAlert
+            message={didi1273FailedSaveMessage("program_restore")}
+            onTryAgain={() => {
+              const item = deletedItems.find(
+                (row) => row.program_id === restoreFailedId,
+              );
+              if (!item) {
+                return Promise.resolve();
+              }
+              return onRestore(item);
+            }}
+            testId="program-restore-failed-save-alert"
+          />
+        ) : null}
         {deletedItems.length === 0 ? (
           <p className="pg-deleted-empty">{RECENTLY_DELETED_EMPTY}</p>
         ) : (

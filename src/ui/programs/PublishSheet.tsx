@@ -4,9 +4,9 @@ import type { ProgramShareConnectorView } from "../../services/programs/program-
 import { SHARE_LINK_EXPIRES_IN } from "../../mcp-connector/share-link-expiry.js";
 import type { ShareLinkExpiresIn } from "../../mcp-connector/share-link-expiry.js";
 import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../../copy/programs-share.js";
+import { PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE } from "../../storage/repositories/programs.js";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import { ProgramsApiError, type ProgramsClient } from "../api/programs-client.js";
-import { publishApiUserMessage } from "./publish-api-user-message.js";
 import { UNTITLED_PROGRAM } from "../copy/programs.js";
 import { ProgramLinkExpiryField } from "./ProgramLinkExpiryField.js";
 import { PublishPlaceholderNotice } from "./PublishPlaceholderNotice.js";
@@ -18,6 +18,9 @@ import {
   isSameLinkPublish,
   savedCustomExpiryIsStale,
 } from "./share-link-ui.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { publishApiUserMessage } from "./publish-api-user-message.js";
 import {
   EXPIRY_APPLIES_NEW_LINK,
   EXPIRY_APPLIES_RIGHT_AWAY,
@@ -220,10 +223,10 @@ export function PublishSheet({
           return;
         }
         const message = publishApiUserMessage(error);
-        if (message) {
-          setPublishError(message);
-        }
+        setPublishError(message ?? didi1273FailedSaveMessage("program_publish"));
+        return;
       }
+      setPublishError(didi1273FailedSaveMessage("program_publish"));
     } finally {
       setPublishBusy(false);
     }
@@ -236,6 +239,11 @@ export function PublishSheet({
   const publishDescribedBy =
     publishDescribedByIds.length > 0 ? publishDescribedByIds.join(" ") : undefined;
 
+  const publishErrorIsValidationOnly =
+    publishError !== null &&
+    (publishError === PROGRAM_PUBLISH_NAME_REQUIRED ||
+      publishError === PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE);
+
   return (
     <ConfirmSheet
       open={open}
@@ -245,9 +253,21 @@ export function PublishSheet({
       footer={
         <div className="pg-publish-sheet-footer">
           {publishError ? (
-            <p className="pg-publish-error" role="alert">
-              {publishError}
-            </p>
+            publishErrorIsValidationOnly ? (
+              <p
+                className="pg-publish-validation-alert"
+                role="alert"
+                data-testid="program-publish-validation-alert"
+              >
+                {publishError}
+              </p>
+            ) : (
+              <SharedFailedSaveAlert
+                message={publishError}
+                onTryAgain={() => runPublish()}
+                testId="program-publish-failed-save-alert"
+              />
+            )
           ) : null}
           <button type="button" className="pg-btn pg-btn--secondary" onClick={onNotYet}>
             {PUBLISH_NOT_YET}

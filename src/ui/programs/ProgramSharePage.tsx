@@ -46,6 +46,8 @@ import {
 } from "./share-link-ui.js";
 import { ProgramsApiError } from "../api/programs-client.js";
 import { publishApiUserMessage } from "./publish-api-user-message.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 
 function extractTokenFromShareUrl(shareLink: string): string | null {
   try {
@@ -73,6 +75,7 @@ export function ProgramSharePage() {
   const [customDate, setCustomDate] = useState("");
   const [closeOpen, setCloseOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [expirySaveFailed, setExpirySaveFailed] = useState(false);
 
   const load = useCallback(async () => {
     const program = await client.getProgramByCode(programCode);
@@ -130,6 +133,7 @@ export function ProgramSharePage() {
       setShareView(result);
       setExpiry(next);
       setCustomDate(nextCustom);
+      setExpirySaveFailed(false);
       if (next === SHARE_LINK_EXPIRES_IN.never) {
         showToast({ message: LINK_SET_NEVER_TOAST });
       } else if (result.expires_at) {
@@ -139,13 +143,8 @@ export function ProgramSharePage() {
           ),
         });
       }
-    } catch (error) {
-      if (error instanceof ProgramsApiError) {
-        const message = publishApiUserMessage(error);
-        if (message) {
-          showToast({ message });
-        }
-      }
+    } catch {
+      setExpirySaveFailed(true);
     }
   };
 
@@ -203,7 +202,16 @@ export function ProgramSharePage() {
   if (loadFailed || !shareView) {
     return (
       <section className="pg-share">
-        <ProgramsBuilderErrorSlot />
+        <ProgramsBuilderErrorSlot
+          loadFailed={loadFailed}
+          hasContent={shareView !== null}
+          onTryAgain={() =>
+            load().then(
+              () => setLoadFailed(false),
+              () => setLoadFailed(true),
+            )
+          }
+        />
       </section>
     );
   }
@@ -242,6 +250,15 @@ export function ProgramSharePage() {
       <h1 id="pg-share-title" className="pg-share-title">
         {SHARE_PROGRAM_TITLE}
       </h1>
+      {expirySaveFailed ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("program_link_expiry")}
+          onTryAgain={() => {
+            void onExpiryChange(expiry, customDate);
+          }}
+          testId="program-link-expiry-failed-save-alert"
+        />
+      ) : null}
 
       <div className="pg-share-layout">
         <div className="pg-share-main-column">
