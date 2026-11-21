@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type {
@@ -98,6 +105,9 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [startStillUrl, setStartStillUrl] = useState<string | null>(null);
   const [endStillUrl, setEndStillUrl] = useState<string | null>(null);
   const generateStarted = useRef(false);
+  const [ownGenerateInFlight, setOwnGenerateInFlight] = useState(false);
+  const textFailureRetryRef = useRef<HTMLButtonElement>(null);
+  const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
 
   const detailCacheKey = useMemo(
     () =>
@@ -185,6 +195,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   );
 
   const runGenerate = useCallback(async () => {
+    setOwnGenerateInFlight(true);
     try {
       const result = await requestsClient.generateRequest(requestId);
       applyGenerateResult(result);
@@ -193,6 +204,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       }
     } catch {
       setGenerationFailure("text");
+    } finally {
+      setOwnGenerateInFlight(false);
     }
   }, [applyGenerateResult, requestId, requestsClient, refreshView]);
 
@@ -203,6 +216,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setGenerationStartedElsewhere(false);
     generateStarted.current = false;
   }, [requestId]);
+
+  useEffect(() => {
+    if (generationFailure === "text") {
+      textFailureRetryRef.current?.focus();
+    }
+    if (generationFailure === "images") {
+      imageFailureRetryRef.current?.focus();
+    }
+  }, [generationFailure]);
 
   useEffect(() => {
     const versionId = view?.draft?.exercise_version_id;
@@ -264,7 +286,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       };
     }
     if (
-      (isRequester && generationInProgress) ||
+      (isRequester && (generationInProgress || ownGenerateInFlight)) ||
       (!firstDraftComplete && view.draft && generationFailure === null)
     ) {
       const timer = window.setInterval(() => {
@@ -281,6 +303,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     generationInProgress,
     generationFailure,
     isRequester,
+    ownGenerateInFlight,
     refreshView,
   ]);
 
@@ -303,6 +326,9 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const mapRegenMediaError = (error: ExerciseMediaRequestError): string => {
     if (error.detail.status === 429 || error.detail.error === "daily_limit_reached") {
       return `${DAILY_LIMIT_REACHED} ${DRAFT_AI_LIMIT_TRY_TOMORROW}`;
+    }
+    if (error.detail.status === 400 || error.detail.error === "invalid_input") {
+      return DRAFT_AI_TEXT_FAILURE;
     }
     return DRAFT_AI_IMAGE_FAILURE;
   };
@@ -346,7 +372,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           ? ("start" as const)
           : regenMode === "end"
             ? ("end" as const)
-            : scopeForPick(regenPick);
+            : scopeForPick("images");
       await mediaClient.regenerateDraftMedia({
         exerciseVersionId: view.draft.exercise_version_id,
         scope,
@@ -365,10 +391,12 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     } catch (error) {
       if (error instanceof ExerciseMediaRequestError) {
         setRegenError(mapRegenMediaError(error));
-      } else if (error instanceof Error) {
-        setRegenError(error.message);
       } else {
-        setRegenError(DRAFT_AI_IMAGE_FAILURE);
+        setRegenError(
+          regenMode === "general" && regenPick === "text"
+            ? DRAFT_AI_TEXT_FAILURE
+            : DRAFT_AI_IMAGE_FAILURE,
+        );
       }
     } finally {
       setTextRegenBusy(false);
@@ -490,9 +518,10 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           message={DRAFT_AI_TEXT_FAILURE}
           actionLabel={DRAFT_REGENERATE_TEXT}
           onRetry={() => {
-            generateStarted.current = false;
+            generateStarted.current = true;
             void runGenerate();
           }}
+          retryRef={textFailureRetryRef}
         />
       ) : (
         <div className="ex-review-grid">
@@ -559,9 +588,10 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
               <button
                 type="button"
                 className="ex-secondary-btn"
+                ref={imageFailureRetryRef}
                 onClick={() => {
                   setGenerationFailure(null);
-                  generateStarted.current = false;
+                  generateStarted.current = true;
                   void runGenerate();
                 }}
               >
@@ -647,15 +677,22 @@ function TextGenerationFailure({
   message,
   actionLabel,
   onRetry,
+  retryRef,
 }: {
   message: string;
   actionLabel: string;
   onRetry: () => void;
+  retryRef?: RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <div role="alert" className="ex-review-text-failure">
       <p>{message}</p>
-      <button type="button" className="ex-secondary-btn" onClick={onRetry}>
+      <button
+        type="button"
+        className="ex-secondary-btn"
+        ref={retryRef}
+        onClick={onRetry}
+      >
         {actionLabel}
       </button>
     </div>

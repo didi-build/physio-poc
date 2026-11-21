@@ -44,6 +44,25 @@ export function createFakeExerciseDraftGenerator(
   };
 }
 
+export type DelayedFakeExerciseDraftGeneratorOptions =
+  FakeExerciseDraftGeneratorOptions & {
+    delayMs?: number;
+  };
+
+/** Wraps the fake generator with an awaitable delay for concurrent generate tests. */
+export function createDelayedFakeExerciseDraftGenerator(
+  options: DelayedFakeExerciseDraftGeneratorOptions = {},
+): ExerciseDraftGenerator {
+  const inner = createFakeExerciseDraftGenerator(options);
+  const delayMs = options.delayMs ?? 200;
+  return async (input, deps) => {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, delayMs);
+    });
+    return inner(input, deps);
+  };
+}
+
 /** Test and local stub: creates a stretch draft with the requested title. */
 const FAKE_DRAFT_REGEN_SENTINEL = "Regenerated draft text";
 

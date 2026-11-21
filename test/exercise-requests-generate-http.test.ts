@@ -251,12 +251,10 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         deps(storage, other, "other@example.com").deps,
       );
       expect(response.status).toBe(403);
-      const body = (await response.json()) as { error?: string };
-      expect(body.error).toBe("generation_not_requester");
-      expect(body).toMatchObject({ error: "generation_not_requester" });
-      expect(String((body as { error?: string }).error)).toBe(
-        "generation_not_requester",
-      );
+      await expect(response.json()).resolves.toEqual({
+        error: "generation_not_requester",
+        message: "Only the requester can run draft generation",
+      });
     } finally {
       storage.close();
     }

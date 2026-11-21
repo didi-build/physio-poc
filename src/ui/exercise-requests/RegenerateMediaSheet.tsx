@@ -148,10 +148,10 @@ export function RegenerateMediaSheet({
   );
 }
 
-/** Maps general-sheet picks to API scopes (start/end/both). Video-only regen is not wired yet. */
-export function scopeForPick(pick: RegeneratePick): MediaRegenerationScope {
-  if (pick === "text") {
-    throw new Error("Text-only regeneration is not wired on this endpoint yet");
-  }
+/** Maps general-sheet image picks to media API scopes (start/end/both). Text uses regenerate-text. */
+export function scopeForPick(
+  pick: Exclude<RegeneratePick, "text" | "all">,
+): MediaRegenerationScope {
+  void pick;
   return "both";
 }

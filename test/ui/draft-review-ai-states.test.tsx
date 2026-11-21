@@ -456,6 +456,101 @@ describe.each([390, 1280])("Draft review AI states at %i px (DIDI-1210)", (width
 });
 
 describe("Draft review generate orchestration (DIDI-1215)", () => {
+  it.each([
+    ["text_failed", { outcome: "text_failed", error: "x", view: null }],
+    [
+      "images_failed",
+      {
+        outcome: "images_failed",
+        view: {
+          request_id: "req-1",
+          requested_name: "Heel slide",
+          exercise_note: null,
+          status: "drafting" as const,
+          requested_by: FAKE_UI_PRACTITIONER_ID,
+          requested_by_email: "k@example.com",
+          exercise_id: "ex-1",
+          generation: { generation_in_progress: false, first_draft_complete: false },
+          draft: draftBody(),
+        },
+      },
+    ],
+    [
+      "daily_limit",
+      {
+        outcome: "daily_limit",
+        view: {
+          request_id: "req-1",
+          requested_name: "Heel slide",
+          exercise_note: null,
+          status: "drafting" as const,
+          requested_by: FAKE_UI_PRACTITIONER_ID,
+          requested_by_email: "k@example.com",
+          exercise_id: null,
+          generation: { generation_in_progress: false, first_draft_complete: false },
+          draft: null,
+        },
+      },
+    ],
+    [
+      "in_progress",
+      {
+        outcome: "in_progress",
+        view: {
+          request_id: "req-1",
+          requested_name: "Heel slide",
+          exercise_note: null,
+          status: "drafting" as const,
+          requested_by: FAKE_UI_PRACTITIONER_ID,
+          requested_by_email: "k@example.com",
+          exercise_id: null,
+          generation: { generation_in_progress: true, first_draft_complete: false },
+          draft: null,
+        },
+        started_elsewhere: false,
+      },
+    ],
+  ] as const)(
+    "calls generate once on page open when result is %s (fresh getRequest objects)",
+    async (_label, generateResult) => {
+      const generatingView: ExerciseRequestDraftView = {
+        request_id: "req-1",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: null,
+        generation: { generation_in_progress: false, first_draft_complete: false },
+        draft: null,
+      };
+      const getRequest = vi.fn().mockImplementation(async () => ({
+        ...generatingView,
+        generation: { ...generatingView.generation },
+      }));
+      const generateRequest = vi.fn().mockResolvedValue(generateResult);
+      const requestsClient = {
+        getRequest,
+        generateRequest,
+        regenerateDraftText: vi.fn(),
+        updateDraft: vi.fn(),
+        approveRequest: vi.fn(),
+        getInProgressCount: vi.fn(),
+        listInProgress: vi.fn(),
+        listSimilar: vi.fn(),
+        submitRequest: vi.fn(),
+      } as unknown as ExerciseRequestsClient;
+      renderReview(generatingView, { requestsClient, generateResult });
+      await waitFor(() => {
+        expect(generateRequest).toHaveBeenCalledTimes(1);
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      expect(generateRequest).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("calls generate once after text failure when cached reads refresh", async () => {
     const generatingView: ExerciseRequestDraftView = {
       request_id: "req-1",
