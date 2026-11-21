@@ -35,6 +35,8 @@ import { NewProgramSheet } from "./NewProgramSheet.js";
 import { ProgramOriginFilterPills } from "./ProgramOriginFilterPills.js";
 import {
   SharedFailedSaveAlert,
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
 import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
@@ -129,6 +131,7 @@ export function ProgramsListPage() {
   }, [refresh]);
 
   const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const items = snapshot?.items ?? [];
   const totalCount = snapshot?.totalCount ?? 0;
   const matchedCode = snapshot?.matchedCode ?? null;
@@ -248,7 +251,10 @@ export function ProgramsListPage() {
         ) : null}
       </div>
 
-      {loading || (loadFailed && !hasCachedContent) ? <ProgramsListBusyState /> : null}
+      {loading && !initialListLoadFailed ? <ProgramsListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="programs-list-busy-skeleton" />
+      ) : null}
       <ProgramsListErrorSlot
         loadFailed={loadFailed}
         hasContent={hasCachedContent}

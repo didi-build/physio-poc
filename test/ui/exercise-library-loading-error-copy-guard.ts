@@ -70,7 +70,6 @@ export const LOADING_ERROR_REGION_ALLOWLIST: readonly string[] = [
   `${loadingListVisible(EXERCISES_LIST)}${loadingListStatus(EXERCISES_LIST)}`,
   loadingItemStatus(EXERCISE_ITEM),
   listLoadErrorRegionText(),
-  `${loadingListVisible(EXERCISES_LIST)}${loadingListStatus(EXERCISES_LIST)}${listLoadErrorRegionText()}`,
   itemLoadErrorRegionText(),
 ];
 

@@ -14,6 +14,14 @@ import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useDebouncedValue } from "../hooks/use-debounced-value.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import {
+  ExerciseLibraryBusyState,
+  ExerciseLibraryListLoadBanner,
+} from "../exercise-library/ExerciseLibraryStates.js";
+import {
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
   ADD_EXERCISE,
   ADD_EXERCISE_SHEET_INTRO,
   ALL_EXERCISES,
@@ -80,14 +88,24 @@ export function AddExerciseSheet({
     [open, sessionEpoch, sessionReady, tab, trimmedQuery],
   );
 
-  const { data: myListResult, loading: myLoading } = useSessionCachedRead({
+  const {
+    data: myListResult,
+    loading: myLoading,
+    loadFailed: myLoadFailed,
+    refresh: refreshMyList,
+  } = useSessionCachedRead({
     cacheKey: myListKey,
     enabled: open && sessionReady,
     fetcher: (signal) =>
       library.listMyExercises({ q: trimmedQuery || undefined }, { signal }),
   });
 
-  const { data: approvedResult, loading: approvedLoading } = useSessionCachedRead({
+  const {
+    data: approvedResult,
+    loading: approvedLoading,
+    loadFailed: approvedLoadFailed,
+    refresh: refreshApprovedSearch,
+  } = useSessionCachedRead({
     cacheKey: approvedSearchKey,
     enabled: open && sessionReady && tab === "all",
     fetcher: (signal) =>
@@ -99,9 +117,20 @@ export function AddExerciseSheet({
       ? flattenMy(myListResult.sections)
       : ([] as MyExerciseListItem[]);
   const approved: ApprovedExerciseSummary[] = approvedResult?.exercises ?? [];
-  const loading = tab === "mine" ? myLoading : approvedLoading;
-
   const myFiltered = myItems;
+  const loading = tab === "mine" ? myLoading : approvedLoading;
+  const loadFailed = tab === "mine" ? myLoadFailed : approvedLoadFailed;
+  const hasListContent = tab === "mine" ? myFiltered.length > 0 : approved.length > 0;
+  const showExerciseList = !loading && (!loadFailed || hasListContent);
+  const initialListLoadFailed = sharedInitialLoadFailed(hasListContent, loadFailed);
+  const reloadList = () => {
+    if (tab === "mine") {
+      void refreshMyList({ force: true });
+      return;
+    }
+    void refreshApprovedSearch({ force: true });
+  };
+
   const showMyEmpty =
     tab === "mine" && !loading && myFiltered.length === 0 && query.trim();
 
@@ -154,8 +183,16 @@ export function AddExerciseSheet({
           }}
         />
       </label>
-      {loading ? <p className="pg-add-exercise-loading" aria-busy /> : null}
-      {tab === "mine" ? (
+      <ExerciseLibraryListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasListContent}
+        onTryAgain={reloadList}
+      />
+      {loading && !initialListLoadFailed ? <ExerciseLibraryBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
+      ) : null}
+      {showExerciseList && tab === "mine" ? (
         <ul className="pg-add-exercise-list">
           {myFiltered.map((item) => (
             <li key={item.exercise_id}>
@@ -171,7 +208,7 @@ export function AddExerciseSheet({
             </li>
           ))}
         </ul>
-      ) : (
+      ) : showExerciseList ? (
         <>
           <p className="pg-add-exercise-section">{FROM_FULL_LIBRARY}</p>
           <ul className="pg-add-exercise-list">
@@ -193,8 +230,8 @@ export function AddExerciseSheet({
             <p className="pg-add-exercise-empty">{NO_APPROVED_MATCH}</p>
           ) : null}
         </>
-      )}
-      {showMyEmpty ? (
+      ) : null}
+      {showExerciseList && showMyEmpty ? (
         <p className="pg-add-exercise-empty">{NOTHING_IN_MY_MATCHES}</p>
       ) : null}
     </ConfirmSheet>

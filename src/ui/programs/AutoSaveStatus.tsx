@@ -1,9 +1,11 @@
 import {
+  AUTO_SAVE_FAILURE_HELPER,
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
+  AUTO_SAVE_TRY_AGAIN,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
 } from "../copy/programs.js";
-import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
 import type { AutoSaveUiState } from "./use-program-auto-save.js";
 
 export type AutoSaveStatusProps = {
@@ -38,12 +40,23 @@ export function AutoSaveStatus({
       aria-live="polite"
     >
       <p className="pg-autosave-status">{statusText}</p>
-      {state === "failed" && failureAlertShown && showFailureAlert ? (
-        <SharedFailedSaveAlert
-          message={failureMessage}
-          onTryAgain={onTryAgain}
-          testId="programs-autosave-failed-save-alert"
-        />
+      {state === "failed" ? (
+        <>
+          <p className="pg-autosave-helper">{AUTO_SAVE_FAILURE_HELPER}</p>
+          {failureAlertShown && showFailureAlert ? (
+            <p className="pg-autosave-alert" role="alert">
+              {failureMessage}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="pg-btn pg-btn--secondary"
+            aria-label={AUTO_SAVE_TRY_AGAIN_ARIA}
+            onClick={onTryAgain}
+          >
+            {AUTO_SAVE_TRY_AGAIN}
+          </button>
+        </>
       ) : null}
     </div>
   );

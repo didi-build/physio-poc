@@ -67,10 +67,7 @@ import {
   SharedNotFoundState,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
-import {
-  didi1273FailedSaveMessage,
-  mappedFailedSaveMessage,
-} from "../shared-load-states/failed-save.js";
+import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { myCopyStatusLine } from "./my-copy-status.js";
 import { parseSteps } from "./library-filters.js";
 
@@ -88,7 +85,6 @@ export function ExerciseDetailsPage() {
   const { showToast } = useToast();
   const [removeFailed, setRemoveFailed] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
-  const [restoreVersionFailed, setRestoreVersionFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const cacheKey =
@@ -194,21 +190,6 @@ export function ExerciseDetailsPage() {
       });
   };
 
-  const onRestoreVersion = () => {
-    if (details.version_number <= 1) {
-      return;
-    }
-    setRestoreVersionFailed(false);
-    void client
-      .restoreExerciseVersion(exerciseId, details.version_number - 1)
-      .then(() => {
-        load();
-      })
-      .catch(() => {
-        setRestoreVersionFailed(true);
-      });
-  };
-
   const onRemove = () => {
     setRemoveFailed(false);
     void client
@@ -236,13 +217,6 @@ export function ExerciseDetailsPage() {
       <h1 id="ex-detail-heading" className="ex-page-title">
         {title}
       </h1>
-      {restoreVersionFailed ? (
-        <SharedFailedSaveAlert
-          message={didi1273FailedSaveMessage("exercise_restore_version")}
-          onTryAgain={onRestoreVersion}
-          testId="exercise-restore-version-failed-save-alert"
-        />
-      ) : null}
       {saveFailed ? (
         <SharedFailedSaveAlert
           message={mappedFailedSaveMessage({
@@ -272,13 +246,7 @@ export function ExerciseDetailsPage() {
           <button type="button" className="ex-primary-btn" disabled>
             {EDIT_FOR_EVERYONE}
           </button>
-          <button
-            type="button"
-            className="ex-secondary-btn"
-            disabled={details.version_number <= 1}
-            onClick={onRestoreVersion}
-            data-testid="exercise-restore-version"
-          >
+          <button type="button" className="ex-secondary-btn" disabled>
             {HISTORY} ({details.version_number})
           </button>
         </div>

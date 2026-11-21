@@ -1,5 +1,10 @@
 import { DRAFT_SAVED_UNTIL_PUBLISH, DRAFT_SAVING } from "../copy/routines.js";
-import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import {
+  AUTO_SAVE_FAILURE_HELPER,
+  AUTO_SAVE_NOT_SAVED,
+  AUTO_SAVE_TRY_AGAIN,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
+} from "../copy/programs.js";
 import type { AutoSaveUiState } from "../programs/use-program-auto-save.js";
 
 export type RoutineAutoSaveStatusProps = {
@@ -19,7 +24,7 @@ export function RoutineAutoSaveStatus({
     state === "saving" || state === "idle"
       ? DRAFT_SAVING
       : state === "failed"
-        ? DRAFT_SAVING
+        ? AUTO_SAVE_NOT_SAVED
         : DRAFT_SAVED_UNTIL_PUBLISH;
 
   return (
@@ -27,12 +32,27 @@ export function RoutineAutoSaveStatus({
       <p className="rt-autosave-status" aria-live="polite">
         {text}
       </p>
-      {state === "failed" && failureAlertShown ? (
-        <SharedFailedSaveAlert
-          message={failureMessage}
-          onTryAgain={onTryAgain}
-          testId="routines-draft-autosave-failed-save-alert"
-        />
+      {state === "failed" ? (
+        <>
+          <p className="rt-autosave-helper">{AUTO_SAVE_FAILURE_HELPER}</p>
+          {failureAlertShown ? (
+            <p
+              className="rt-autosave-alert"
+              role="alert"
+              data-testid="routines-draft-autosave-failed-save-alert"
+            >
+              {failureMessage}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="ex-secondary-btn"
+            aria-label={AUTO_SAVE_TRY_AGAIN_ARIA}
+            onClick={onTryAgain}
+          >
+            {AUTO_SAVE_TRY_AGAIN}
+          </button>
+        </>
       ) : null}
     </div>
   );

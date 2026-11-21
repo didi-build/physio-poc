@@ -19,6 +19,7 @@ import {
 } from "./share-link-ui.js";
 import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
 import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
+import { publishApiUserMessage } from "./publish-api-user-message.js";
 import {
   EXPIRY_APPLIES_NEW_LINK,
   EXPIRY_APPLIES_RIGHT_AWAY,
@@ -220,8 +221,11 @@ export function PublishSheet({
           setMissingImagesFocusHeading(true);
           return;
         }
-        setPublishError(didi1273FailedSaveMessage("program_publish"));
+        const message = publishApiUserMessage(error);
+        setPublishError(message ?? didi1273FailedSaveMessage("program_publish"));
+        return;
       }
+      setPublishError(didi1273FailedSaveMessage("program_publish"));
     } finally {
       setPublishBusy(false);
     }

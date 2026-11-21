@@ -32,6 +32,8 @@ import { ExerciseTypeDefaultCard } from "./ExerciseTypeDefaultCard.js";
 import { TypeDefaultsFootnote } from "./TypeDefaultsFootnote.js";
 import {
   SharedFailedSaveAlert,
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
 import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
@@ -98,6 +100,7 @@ export function MyDefaultsPage() {
     void client
       .updateShareLinkExpiry(expiresIn)
       .then((shareLinkExpiry) => {
+        setShareExpiryFailed(false);
         setPageOverride((current) =>
           current || cachedPage
             ? { ...(current ?? cachedPage)!, share_link_expiry: shareLinkExpiry }
@@ -121,6 +124,7 @@ export function MyDefaultsPage() {
   };
 
   const hasCachedContent = cachedPage !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const showContent =
     !loading &&
     page !== null &&
@@ -172,7 +176,10 @@ export function MyDefaultsPage() {
       ) : null}
       <p className="ex-page-intro md-page-intro">{MY_DEFAULTS_INTRO}</p>
 
-      {loading || (loadFailed && !hasCachedContent) ? <MyDefaultsBusyState /> : null}
+      {loading && !initialListLoadFailed ? <MyDefaultsBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="my-defaults-busy-skeleton" />
+      ) : null}
       <MyDefaultsErrorSlot
         loadFailed={loadFailed}
         hasContent={hasCachedContent}

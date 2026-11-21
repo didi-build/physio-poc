@@ -12,7 +12,14 @@ import {
   NEW_PROGRAM_ROUTINE_PICKER_BODY,
   NEW_PROGRAM_ROUTINE_PICKER_TITLE,
 } from "../copy/programs.js";
-import { ProgramsListBusyState, ProgramsListErrorSlot } from "./ProgramsStates.js";
+import {
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  RoutinesListBusyState,
+  RoutinesListLoadBanner,
+} from "../routines/RoutinesStates.js";
 
 export type PickRoutineForProgramSheetProps = {
   open: boolean;
@@ -148,6 +155,8 @@ export function PickRoutineForProgramSheet({
       });
   }, [client, open, preselectedRoutineId, loadAttempt]);
 
+  const hasCachedRoutines = routines.length > 0;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedRoutines, loadFailed);
   const selected = routines.find((item) => item.routine_id === selectedId) ?? null;
   const createBlocked = deepLinkBlocksCreate(
     selectedId,
@@ -182,17 +191,18 @@ export function PickRoutineForProgramSheet({
         </div>
       }
     >
-      {loading || (loadFailed && routines.length === 0) ? (
-        <ProgramsListBusyState />
+      {loading && !initialListLoadFailed ? <RoutinesListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="routines-list-busy-skeleton" />
       ) : null}
-      <ProgramsListErrorSlot
+      <RoutinesListLoadBanner
         loadFailed={loadFailed}
-        hasContent={routines.length > 0}
+        hasContent={hasCachedRoutines}
         onTryAgain={() => {
           setLoadAttempt((value) => value + 1);
         }}
       />
-      {!loading && (!loadFailed || routines.length > 0) ? (
+      {!loading && (!loadFailed || hasCachedRoutines) ? (
         <ul className="pg-routine-pick-list" aria-busy={busy ? true : undefined}>
           {routines.map((routine) => (
             <li key={routine.routine_id}>

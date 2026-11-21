@@ -107,8 +107,10 @@ export function useSessionCachedRead<T>(
         if (!cached) {
           setLoading(true);
         }
-        setLoadFailed(false);
-        setFailureKind(null);
+        if (cached) {
+          setLoadFailed(false);
+          setFailureKind(null);
+        }
       }
 
       let supersededRetries = 0;
@@ -145,6 +147,7 @@ export function useSessionCachedRead<T>(
             setData(result.data);
             setLoadFailed(false);
             setFailureKind(null);
+            lastFetchErrorRef.current = null;
             setLoading(false);
             return;
           }

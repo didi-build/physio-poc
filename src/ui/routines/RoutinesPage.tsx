@@ -40,6 +40,10 @@ import {
 } from "../copy/routines.js";
 import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
 import { RoutinesListBusyState, RoutinesListLoadBanner } from "./RoutinesStates.js";
+import {
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+} from "../shared-load-states/SharedLoadStates.js";
 import { RoutineListCard } from "./RoutineListCard.js";
 import {
   DEFAULT_ROUTINE_FILTERS,
@@ -178,6 +182,7 @@ export function RoutinesPage() {
     !loading && !loadFailed && (tab === "all" ? community.length === 0 : myCount === 0);
 
   const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const showListContent =
     !loading &&
     hasCachedContent &&
@@ -286,8 +291,9 @@ export function RoutinesPage() {
         data-testid="routines-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading || (loadFailed && !hasCachedContent) ? (
-          <RoutinesListBusyState />
+        {loading && !initialListLoadFailed ? <RoutinesListBusyState /> : null}
+        {initialListLoadFailed ? (
+          <SharedListSkeletonPlaceholders testId="routines-list-busy-skeleton" />
         ) : null}
 
         {listEmpty ? (

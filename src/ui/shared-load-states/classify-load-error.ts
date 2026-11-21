@@ -11,12 +11,11 @@ export function isLoadNotFoundError(error: unknown): boolean {
   if (code.endsWith("_not_found") || code === "not_found") {
     return true;
   }
-  const message =
-    error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("not_found") ||
-    normalized.includes("not found") ||
-    /\b404\b/.test(normalized)
-  );
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    if (message.endsWith("_not_found") || message === "not_found") {
+      return true;
+    }
+  }
+  return false;
 }

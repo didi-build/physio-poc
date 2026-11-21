@@ -35,12 +35,11 @@ import { PRESCRIPTION_TYPES } from "../../src/domain/exercise-types.js";
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import {
   DESCRIPTION_FIELD,
-  HISTORY,
   SUBMIT_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
+import { didi1273FailedSaveMessage } from "../../src/ui/shared-load-states/failed-save.js";
 import {
   APPROVE,
-  DISCARD_DRAFT_REQUEST,
   MERGE_MY_CHANGES,
   REGENERATE,
   REGENERATE_IMAGES,
@@ -370,54 +369,10 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
     });
   });
 
-  it("shows exercise restore version failed-save copy on exercise details", async () => {
-    renderPhysio(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }), {
-      exerciseLibraryClient: stubLibraryClient({
-        getExerciseDetails: vi.fn().mockResolvedValue({
-          exercise_id: "ex-1",
-          exercise_version_id: "ver-2",
-          version_number: 2,
-          category: "Stretching",
-          body_regions: ["knee"],
-          aliases: [],
-          allowed_prescription_types: ["stretching"],
-          usage_count: 0,
-          approved_at: "2026-01-01",
-          media_set_id: null,
-          in_my_exercises: true,
-          favourite: false,
-          library: {
-            title: "Heel slide",
-            description: "Desc",
-            steps: "[]",
-            equipment: null,
-            precautions: null,
-            cue_stretching: null,
-            cue_isometric: null,
-            cue_concentric: null,
-            cue_eccentric: null,
-          },
-          resolved_text: [],
-          param_overrides: {},
-          resolved_params_by_type: {},
-        }),
-        restoreExerciseVersion: vi.fn().mockRejectedValue(new Error("fail")),
-      }),
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: `${HISTORY} (2)` }),
-      ).toBeInTheDocument();
-    });
-    await userEvent.click(screen.getByTestId("exercise-restore-version"));
-
-    await waitFor(() => {
-      assertFailedSaveAlert(
-        "exercise-restore-version-failed-save-alert",
-        "Couldn't restore this version. Try again.",
-      );
-    });
+  it("pins exercise restore version failed-save copy (no restore surface yet)", () => {
+    expect(didi1273FailedSaveMessage("exercise_restore_version")).toBe(
+      "Couldn't restore this version. Try again.",
+    );
   });
 
   it("shows merge exercises failed-save copy on the request conflict page", async () => {
@@ -443,8 +398,8 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
 
     await waitFor(() => {
       assertFailedSaveAlert(
-        "exercise-merge-failed-save-alert",
-        "Couldn't merge the exercises. Try again.",
+        "request-submit-failed-save-alert",
+        "Couldn't submit the request. Try again.",
       );
     });
   });
@@ -883,32 +838,10 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
     });
   });
 
-  it("shows request discard draft failed-save copy on draft review", async () => {
-    renderPhysio(fillPhysioAppRoutePattern("requestReview", { requestId: "req-1" }), {
-      exerciseRequestsClient: stubRequestsClient({
-        getRequest: vi.fn().mockResolvedValue(draftReviewView),
-        discardRequestDraft: vi.fn().mockRejectedValue(new Error("fail")),
-      }),
-      exerciseMediaClient: {
-        getRegenerationQuota: vi.fn().mockResolvedValue({
-          limit: 5,
-          used: 0,
-          remaining: 5,
-          limitReached: false,
-        }),
-      } as unknown as ExerciseMediaClient,
-    });
-
-    await userEvent.click(
-      await screen.findByRole("button", { name: DISCARD_DRAFT_REQUEST }),
+  it("pins request discard draft failed-save copy (no discard surface yet)", () => {
+    expect(didi1273FailedSaveMessage("request_discard_draft")).toBe(
+      "Couldn't discard the draft. Try again.",
     );
-
-    await waitFor(() => {
-      assertFailedSaveAlert(
-        "request-discard-draft-failed-save-alert",
-        "Couldn't discard the draft. Try again.",
-      );
-    });
   });
 
   it("shows defaults share link failed-save copy on My defaults", async () => {

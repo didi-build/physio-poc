@@ -86,21 +86,11 @@ export function RequestConflictPage() {
         navigate(fillPhysioAppRoutePattern("requests"));
       }
     } catch {
-      const message =
-        resolution === "merge"
-          ? didi1273FailedSaveMessage("exercise_merge")
-          : resolution === "submit_anyway"
-            ? didi1273FailedSaveMessage("request_submit")
-            : didi1273FailedSaveMessage("request_submit");
+      const message = didi1273FailedSaveMessage("request_submit");
       setFailedSave({
         message,
-        onTryAgain: () => {
-          void resolve(resolution);
-        },
-        testId:
-          resolution === "merge"
-            ? "exercise-merge-failed-save-alert"
-            : "request-submit-failed-save-alert",
+        onTryAgain: () => resolve(resolution),
+        testId: "request-submit-failed-save-alert",
       });
     }
   };

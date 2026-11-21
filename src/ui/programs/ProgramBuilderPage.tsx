@@ -57,7 +57,12 @@ import { DeleteProgramSheetBody } from "./DeleteProgramSheetBody.js";
 import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
-import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
 import {
   mappedFailedSaveMessage,
   programAutosaveFailedSaveMessage,
@@ -92,7 +97,6 @@ export function ProgramBuilderPage({
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
   const programRef = useRef(program);
   programRef.current = program;
-  const [loadFailed, setLoadFailed] = useState(false);
   const [deleteProgramFailed, setDeleteProgramFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
@@ -200,8 +204,9 @@ export function ProgramBuilderPage({
 
   const {
     data: cachedProgram,
-    loading,
+    loading: builderCacheLoading,
     loadFailed: builderLoadFailed,
+    failureKind: builderFailureKind,
     refresh: refreshBuilder,
   } = useSessionCachedRead<ProgramBuilderView>({
     cacheKey: builderCacheKey,
@@ -215,17 +220,10 @@ export function ProgramBuilderPage({
       setRedirectToList(true);
       return;
     }
-    if (builderLoadFailed) {
-      setRedirectToList(true);
-      setProgram(null);
-      setLoadFailed(true);
-      return;
-    }
     if (!cachedProgram) {
       return;
     }
     setRedirectToList(false);
-    setLoadFailed(false);
     setProgram(cachedProgram);
     setNameDraft(cachedProgram.name ?? "");
     setNoteDrafts(noteDraftsFromProgram(cachedProgram));
@@ -545,42 +543,51 @@ export function ProgramBuilderPage({
       });
   };
 
+  const hasCachedBuilder = cachedProgram !== null;
+  const builderLoading = !sessionReady || (builderCacheLoading && !builderLoadFailed);
+  const showBuilderNotFound =
+    !builderLoading && builderLoadFailed && builderFailureKind === "not_found";
+  const builderRefreshFailed = sharedRefreshFailed(hasCachedBuilder, builderLoadFailed);
   const builderView = program ?? cachedProgram ?? null;
-  const showBuilderLoading = loading && builderView === null;
+  const showBuilderContent =
+    !builderLoading &&
+    !showBuilderNotFound &&
+    builderView !== null &&
+    (!builderLoadFailed || builderRefreshFailed);
 
   if (redirectToList) {
     return <Navigate to={fillPhysioAppRoutePattern("programs")} replace />;
   }
 
-  if (showBuilderLoading) {
+  if (!showBuilderContent) {
     return (
-      <section className="pg-builder" aria-busy>
-        <ProgramsBuilderBusyState />
-      </section>
-    );
-  }
-
-  if (!builderView && !loadFailed) {
-    return null;
-  }
-
-  if (loadFailed || !builderView) {
-    const hasCachedBuilder = cachedProgram !== null;
-    return (
-      <section className="pg-builder">
-        <ProgramsBuilderErrorSlot
-          loadFailed={builderLoadFailed || loadFailed}
-          hasContent={hasCachedBuilder}
-          onTryAgain={() => {
-            setLoadFailed(false);
-            void refreshBuilder({ force: true });
-          }}
+      <section className="pg-builder" aria-busy={builderLoading ? true : undefined}>
+        <SharedItemBackLink
+          surface="programs"
+          href={fillPhysioAppRoutePattern("programs")}
         />
+        {showBuilderNotFound ? (
+          <SharedNotFoundState
+            item="program"
+            surface="programs"
+            backHref={fillPhysioAppRoutePattern("programs")}
+            testId="programs-builder-error-slot"
+          />
+        ) : (
+          <>
+            {builderLoading ? <ProgramsBuilderBusyState /> : null}
+            <ProgramsBuilderErrorSlot
+              loadFailed={builderLoadFailed && builderFailureKind === "error"}
+              hasContent={hasCachedBuilder}
+              onTryAgain={() => refreshBuilder({ force: true })}
+            />
+          </>
+        )}
       </section>
     );
   }
 
-  const displayProgram = program ?? builderView;
+  const displayProgram = program ?? builderView!;
 
   const rowActionsDisabled = rowMutationBusy;
   const publishStatusLine = formatAutoSaveStatus(
@@ -1087,7 +1094,6 @@ export function ProgramBuilderPage({
           </>
         }
       >
-        <DeleteProgramSheetBody program={displayProgram} />
         {deleteProgramFailed ? (
           <SharedFailedSaveAlert
             message={mappedFailedSaveMessage({
@@ -1098,6 +1104,7 @@ export function ProgramBuilderPage({
             testId="programs-delete-program-error-slot"
           />
         ) : null}
+        <DeleteProgramSheetBody program={displayProgram} />
       </ConfirmSheet>
 
       <PublishSheet

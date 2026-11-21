@@ -140,20 +140,6 @@ export class ExerciseLibraryClient {
     }).then((response) => readJson<{ undo: ExerciseMutationUndo }>(response));
   }
 
-  restoreExerciseVersion(
-    exerciseId: string,
-    restoreFromVersionNumber: number,
-  ): Promise<{ version_number: number }> {
-    return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "restore_version",
-        restore_from_version_number: restoreFromVersionNumber,
-      }),
-    }).then((response) => readJson<{ version_number: number }>(response));
-  }
-
   applyUndo(exerciseId: string, undo: ExerciseMutationUndo): Promise<{ ok: true }> {
     return this.fetchFn(exerciseLibraryMyExerciseItemPath(exerciseId), {
       method: "POST",

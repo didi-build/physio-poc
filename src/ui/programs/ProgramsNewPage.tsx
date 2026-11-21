@@ -9,7 +9,8 @@ import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { NewProgramSheet } from "./NewProgramSheet.js";
 import { PickRoutineForProgramSheet } from "./PickRoutineForProgramSheet.js";
-import { ProgramsListErrorSlot } from "./ProgramsStates.js";
+import { SharedFailedSaveAlert } from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { createProgramFromRoutineWithDetails } from "./program-from-routine.js";
 import { programCreatedFromRoutineToast } from "../copy/programs.js";
 import { useToast } from "../components/Toast.js";
@@ -35,7 +36,9 @@ export function ProgramsNewPage() {
   const [pickerOpen, setPickerOpen] = useState(
     () => Boolean(initialFromRoutine) || openRoutinePickerOnMount,
   );
-  const [createFailed, setCreateFailed] = useState(false);
+  const [createFailedSave, setCreateFailedSave] = useState<{
+    onTryAgain: () => void;
+  } | null>(null);
   const [routineBusy, setRoutineBusy] = useState(false);
 
   const close = () => {
@@ -60,8 +63,11 @@ export function ProgramsNewPage() {
     routineId: string,
     options?: { openPublishSheet?: boolean },
   ) => {
-    setCreateFailed(false);
+    setCreateFailedSave(null);
     setRoutineBusy(true);
+    const retry = () => {
+      createFromPickedRoutine(routineId, options);
+    };
     void createProgramFromRoutineWithDetails(client, routinesClient, routineId)
       .then((result) => {
         const routineName = result.program.routine_origin?.routine_name;
@@ -73,7 +79,7 @@ export function ProgramsNewPage() {
         goToBuilder(result.program.code, options?.openPublishSheet ?? false);
       })
       .catch(() => {
-        setCreateFailed(true);
+        setCreateFailedSave({ onTryAgain: retry });
       })
       .finally(() => {
         setRoutineBusy(false);
@@ -104,7 +110,11 @@ export function ProgramsNewPage() {
       .catch(() => {
         if (!cancelled) {
           setDeepLinkRead("failed");
-          setCreateFailed(true);
+          setCreateFailedSave({
+            onTryAgain: () => {
+              createFromPickedRoutine(initialFromRoutine);
+            },
+          });
         }
       });
     return () => {
@@ -114,13 +124,11 @@ export function ProgramsNewPage() {
 
   return (
     <section className="pg-page ex-page">
-      {createFailed ? (
-        <ProgramsListErrorSlot
-          loadFailed
-          hasContent={false}
-          onTryAgain={() => {
-            setCreateFailed(false);
-          }}
+      {createFailedSave ? (
+        <SharedFailedSaveAlert
+          message={didi1273FailedSaveMessage("program_builder_autosave")}
+          onTryAgain={createFailedSave.onTryAgain}
+          testId="program-create-failed-save-alert"
         />
       ) : null}
       <NewProgramSheet
@@ -130,21 +138,24 @@ export function ProgramsNewPage() {
           setPickerOpen(true);
         }}
         onFromScratch={() => {
-          setCreateFailed(false);
-          const programId = crypto.randomUUID();
-          void client
-            .createProgram({ program_id: programId })
-            .then((result) => {
-              navigate(
-                fillPhysioAppRoutePattern("programBuilder", {
-                  programCode: result.program.code,
-                }),
-                { replace: true },
-              );
-            })
-            .catch(() => {
-              setCreateFailed(true);
-            });
+          const run = () => {
+            setCreateFailedSave(null);
+            const programId = crypto.randomUUID();
+            void client
+              .createProgram({ program_id: programId })
+              .then((result) => {
+                navigate(
+                  fillPhysioAppRoutePattern("programBuilder", {
+                    programCode: result.program.code,
+                  }),
+                  { replace: true },
+                );
+              })
+              .catch(() => {
+                setCreateFailedSave({ onTryAgain: run });
+              });
+          };
+          run();
         }}
       />
       <PickRoutineForProgramSheet

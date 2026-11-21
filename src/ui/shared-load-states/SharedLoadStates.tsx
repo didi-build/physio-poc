@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   LIST_LOAD_ERROR_SECONDARY,
@@ -28,8 +28,14 @@ type TryAgainProps = {
   className?: string;
 };
 
-function TryAgainButton({ onTryAgain, disabled, className }: TryAgainProps) {
+function TryAgainButton({
+  onTryAgain,
+  disabled,
+  className,
+  ariaLabel,
+}: TryAgainProps & { ariaLabel?: string }) {
   const [retrying, setRetrying] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const busy = disabled || retrying;
 
   const onClick = useCallback(() => {
@@ -37,25 +43,21 @@ function TryAgainButton({ onTryAgain, disabled, className }: TryAgainProps) {
       return;
     }
     setRetrying(true);
-    try {
-      const result = onTryAgain();
-      if (result instanceof Promise) {
-        void result.finally(() => {
-          setRetrying(false);
-        });
-      } else {
+    void Promise.resolve(onTryAgain())
+      .catch(() => {})
+      .finally(() => {
         setRetrying(false);
-      }
-    } catch {
-      setRetrying(false);
-    }
+        buttonRef.current?.focus();
+      });
   }, [busy, onTryAgain]);
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       className={className ?? "sls-try-again"}
       disabled={busy}
+      aria-label={ariaLabel}
       onClick={onClick}
     >
       {busy ? TRYING_AGAIN : TRY_AGAIN}
@@ -113,7 +115,6 @@ export function SharedListLoadingState({
       <p className="sls-loading-visible" role="status">
         {loadingListVisible(list)}
       </p>
-      <span className="sr-only">{loadingListStatus(list)}</span>
       <ul className="sls-skeleton-list" aria-hidden="true">
         {Array.from({ length: 4 }, (_, index) => (
           <li key={index} className="sls-skeleton-row">
@@ -129,6 +130,26 @@ export function SharedListLoadingState({
   );
 }
 
+export function SharedListSkeletonPlaceholders({
+  testId = "shared-load-list-skeleton",
+}: {
+  testId?: string;
+}) {
+  return (
+    <ul className="sls-skeleton-list" aria-hidden="true" data-testid={testId}>
+      {Array.from({ length: 4 }, (_, index) => (
+        <li key={index} className="sls-skeleton-row">
+          <div className="sls-skeleton-thumb" />
+          <div className="sls-skeleton-lines">
+            <div className="sls-skeleton-line sls-skeleton-line--title" />
+            <div className="sls-skeleton-line" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function SharedItemLoadingState({
   surface,
   testId = "shared-load-item-loading",
@@ -140,16 +161,15 @@ export function SharedItemLoadingState({
     surface as "exercises" | "routines" | "programs" | "requests",
   );
   return (
-    <div className="sls-item-loading" data-testid={testId} aria-hidden="true">
+    <div className="sls-item-loading" data-testid={testId}>
       <p className="sr-only" role="status">
         {loadingItemStatus(item)}
       </p>
-      <p className="ex-busy-skeleton ex-busy-skeleton--title" aria-hidden="true" />
-      <p className="ex-busy-skeleton ex-busy-skeleton--line" aria-hidden="true" />
-      <p
-        className="ex-busy-skeleton ex-busy-skeleton--line ex-busy-skeleton--short"
-        aria-hidden="true"
-      />
+      <div aria-hidden="true">
+        <p className="ex-busy-skeleton ex-busy-skeleton--title" />
+        <p className="ex-busy-skeleton ex-busy-skeleton--line" />
+        <p className="ex-busy-skeleton ex-busy-skeleton--line ex-busy-skeleton--short" />
+      </div>
     </div>
   );
 }

@@ -40,7 +40,9 @@ import {
 } from "../../src/ui/copy/shared-load-states.js";
 import { mappedFailedSaveMessage } from "../../src/ui/shared-load-states/failed-save.js";
 import {
+  SharedItemLoadingState,
   SharedListLoadErrorBanner,
+  SharedListLoadingState,
   SharedRefreshFailureBanner,
   sharedInitialLoadFailed,
   sharedRefreshFailed,
@@ -68,9 +70,19 @@ function stubRequestsClient() {
 }
 
 describe("DIDI-1082 shared load states copy (pinned literals)", () => {
-  it("pins list loading visible and screen reader status for exercises", () => {
+  it("pins list loading visible and screen reader status for all list surfaces", () => {
     expect(loadingListVisible("exercises")).toBe("Loading exercises...");
     expect(loadingListStatus("exercises")).toBe("Loading exercises");
+    expect(loadingListVisible(listTokenForSurface("routines"))).toBe(
+      "Loading routines...",
+    );
+    expect(loadingListStatus(listTokenForSurface("programs"))).toBe("Loading programs");
+    expect(loadingListStatus(listTokenForSurface("requests"))).toBe(
+      "Loading requests and drafts",
+    );
+    expect(loadingListStatus(listTokenForSurface("defaults"))).toBe(
+      "Loading your defaults",
+    );
   });
 
   it("pins item loading screen reader status", () => {
@@ -274,5 +286,75 @@ describe("DIDI-1082 shared load states behaviour", () => {
   it("uses DIDI-1273 program builder autosave copy when autosave fails (DIDI-1273)", () => {
     expect(failedSaveItem("program")).toBe("Couldn't save the program. Try again.");
     expect(AUTO_SAVE_NOT_SAVED).toBe("Not saved");
+  });
+
+  it("exposes item loading status to screen readers while skeleton stays aria-hidden", () => {
+    render(<SharedItemLoadingState surface="exercises" testId="item-loading" />);
+    const root = screen.getByTestId("item-loading");
+    expect(within(root).getByRole("status")).toHaveTextContent(
+      loadingItemStatus("exercise"),
+    );
+    expect(root.querySelector('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it("shows Trying again while an async list retry is in flight", async () => {
+    let resolve!: () => void;
+    const onTryAgain = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolve = res;
+        }),
+    );
+    render(
+      <SharedListLoadErrorBanner
+        surface="exercises"
+        onTryAgain={onTryAgain}
+        testId="retry-banner"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    resolve();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
+    });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: TRY_AGAIN }),
+    );
+  });
+
+  it("uses role alert on load error banners", () => {
+    render(<SharedListLoadingState surface="routines" testId="list-loading" />);
+    render(
+      <SharedListLoadErrorBanner
+        surface="defaults"
+        onTryAgain={() => {}}
+        testId="defaults-banner"
+      />,
+    );
+    expect(screen.getByTestId("defaults-banner")).toHaveAttribute("role", "alert");
+  });
+
+  it("hides list loading visible text when initial list load fails", async () => {
+    const listMyExercises = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
+        <PhysioApp
+          exerciseLibraryClient={mockClient({
+            listMyExercises,
+            searchApproved: vi.fn(),
+          })}
+          exerciseRequestsClient={stubRequestsClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(listLoadErrorPrimary(listTokenForSurface("exercises"))),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(loadingListVisible(listTokenForSurface("exercises"))),
+    ).not.toBeInTheDocument();
   });
 });

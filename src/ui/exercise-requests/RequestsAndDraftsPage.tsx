@@ -9,7 +9,11 @@ import { useCurrentPractitionerIdentity } from "../api/practitioner-session-cont
 import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
-import { sharedRefreshFailed } from "../shared-load-states/SharedLoadStates.js";
+import {
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
 import {
   ExerciseRequestsListBusyState,
   ExerciseRequestsListLoadBanner,
@@ -84,6 +88,7 @@ export function RequestsAndDraftsPage() {
   const loading = cacheLoading;
   const requests = listData?.requests ?? [];
   const hasCachedContent = listData !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const showListContent =
     !loading &&
     hasCachedContent &&
@@ -115,8 +120,9 @@ export function RequestsAndDraftsPage() {
         }}
       />
 
-      {loading || (loadFailed && !hasCachedContent) ? (
-        <ExerciseRequestsListBusyState />
+      {loading && !initialListLoadFailed ? <ExerciseRequestsListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="exercise-requests-busy-skeleton" />
       ) : null}
 
       {showListContent && requests.length === 0 ? (

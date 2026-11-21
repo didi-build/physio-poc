@@ -57,6 +57,8 @@ import {
 } from "./ExerciseLibraryStates.js";
 import {
   SharedFailedSaveAlert,
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
   sharedRefreshFailed,
 } from "../shared-load-states/SharedLoadStates.js";
 import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
@@ -385,6 +387,7 @@ export function ExerciseLibraryPage({
   const showLeadInCard = showNoExactMatch && !hasSimilar;
 
   const hasCachedContent = snapshot !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
   const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
   const showListContent =
     !loading && hasCachedContent && (!loadFailed || refreshLoadFailed);
@@ -443,9 +446,7 @@ export function ExerciseLibraryPage({
       <ExerciseLibraryListLoadBanner
         loadFailed={loadFailed}
         hasContent={hasCachedContent}
-        onTryAgain={() => {
-          void reload();
-        }}
+        onTryAgain={() => reload()}
       />
 
       <div
@@ -453,8 +454,9 @@ export function ExerciseLibraryPage({
         data-testid="exercise-library-main"
         aria-busy={loading ? true : undefined}
       >
-        {loading || (loadFailed && !hasCachedContent) ? (
-          <ExerciseLibraryBusyState />
+        {loading && !initialListLoadFailed ? <ExerciseLibraryBusyState /> : null}
+        {initialListLoadFailed ? (
+          <SharedListSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
         ) : null}
 
         {showListContent && tab === "mine" ? (
