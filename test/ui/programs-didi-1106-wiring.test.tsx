@@ -241,12 +241,17 @@ describe("DIDI-1106 programs wiring", () => {
     await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
     expect(
       within(article).queryByRole("button", {
+        name: "Link Bridge marching as Concentric",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(article).queryByRole("button", {
         name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
       }),
     ).toBeInTheDocument();
     await userEvent.click(
       within(article).getByRole("button", {
-        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+        name: "Link Bridge marching as Concentric",
       }),
     );
     await waitFor(() => {
@@ -257,6 +262,9 @@ describe("DIDI-1106 programs wiring", () => {
         "2026-10-24T12:00:00.000Z",
       );
     });
+    expect(
+      screen.queryByText("Linked Bridge marching as Concentric."),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(
         typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
@@ -370,17 +378,25 @@ describe("DIDI-1106 programs wiring", () => {
     await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
     expect(
       within(article).queryByRole("button", {
+        name: "Link Bridge marching as Concentric",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(article).queryByRole("button", {
         name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
       }),
     ).toBeInTheDocument();
     await userEvent.click(
       within(article).getByRole("button", {
-        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+        name: "Link Bridge marching as Concentric",
       }),
     );
     await waitFor(() => {
       expect(linkTypeMismatchPlaceholder).toHaveBeenCalled();
     });
+    expect(
+      screen.queryByText("Linked Bridge marching as Concentric."),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(
         typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
@@ -391,6 +407,9 @@ describe("DIDI-1106 programs wiring", () => {
     await waitFor(() => {
       expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledTimes(1);
     });
+    expect(screen.queryByRole("alert")).toHaveTextContent(
+      "Couldn't undo the link. Try again.",
+    );
     expect(screen.queryByRole("alert")).toHaveTextContent(
       TYPE_MISMATCH_UNDO_LINK_FAILURE,
     );

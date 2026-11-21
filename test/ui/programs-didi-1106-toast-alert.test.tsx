@@ -33,8 +33,12 @@ describe("DIDI-1106 failed undo toast accessibility", () => {
       </ToastProvider>,
     );
     expect(screen.queryByRole("alert")).toHaveTextContent(
+      "Couldn't undo the link. Try again.",
+    );
+    expect(screen.queryByRole("alert")).toHaveTextContent(
       TYPE_MISMATCH_UNDO_LINK_FAILURE,
     );
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
   });
 });
