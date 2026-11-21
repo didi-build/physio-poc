@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BetterAuthPort } from "../src/adapters/node/better-auth-port.js";
 import { FailClosedAuthPort } from "../src/auth/fail-closed-auth-port.js";
@@ -150,6 +152,19 @@ describe("Worker entry production auth (DIDI-1153)", () => {
     const first = await createWorkerAppDependencies(env);
     const second = await createWorkerAppDependencies(env);
     expect(first.auth).toBe(second.auth);
+  });
+
+  it("avoids raw PHYSIO_DEEPINFRA_API_KEY material in the production deps cache key (DIDI-1271)", () => {
+    const source = readFileSync(
+      join(import.meta.dirname, "../src/adapters/workers/create-app-dependencies.ts"),
+      "utf8",
+    );
+    const cacheFn = source.slice(
+      source.indexOf("function workerProductionEnvCacheKey"),
+      source.indexOf("let workerProductionMisconfigLogged"),
+    );
+    expect(cacheFn).not.toContain("PHYSIO_DEEPINFRA_API_KEY ??");
+    expect(cacheFn).toContain("deepinfra-key-present");
   });
 
   it("rebuilds production deps when PHYSIO_DEEPINFRA_API_KEY presence changes", async () => {

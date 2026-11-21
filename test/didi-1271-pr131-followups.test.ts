@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEEPINFRA_EXERCISE_DRAFT_RESPONSE_MAX_BYTES } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
-import { parseAndValidateExerciseDraftAiPayload } from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
+import {
+  EXERCISE_DRAFT_AI_JSON_SCHEMA,
+  parseAndValidateExerciseDraftAiPayload,
+} from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
 import {
   DeepInfraChatCompletionClient,
   readHttpResponseTextWithByteCap,
@@ -137,6 +140,13 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
   it("U08b: rejects body_regions schema items longer than 80 characters", () => {
     const overlong = { ...VALID_STRETCH_DRAFT, body_regions: ["x".repeat(81)] };
     expect(parseAndValidateExerciseDraftAiPayload(overlong)).toBeNull();
+  });
+
+  it("U08b: pins body_regions item maxLength at 80 in the provider JSON schema", () => {
+    const bodyRegions = EXERCISE_DRAFT_AI_JSON_SCHEMA.properties.body_regions as {
+      items: { maxLength: number };
+    };
+    expect(bodyRegions.items.maxLength).toBe(80);
   });
 
   it("T02: aborts the upstream request when the timeout elapses (fake timers)", async () => {
