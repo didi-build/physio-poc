@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
+import {
+  ProgramBuilderService,
+  ProgramBuilderServiceError,
+} from "../src/services/programs/program-builder-service.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { ProgramRowsRepository } from "../src/storage/repositories/programs.js";
 import {
@@ -11,6 +14,27 @@ import {
   TS,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { id } from "./helpers/opaque-test-ids.js";
+
+const PROGRAM_NOT_FOUND_ERROR = "program_not_found";
+const PROGRAM_NOT_FOUND_MESSAGE = "Program not found";
+const EXERCISE_REQUEST_NOT_FOUND_ERROR = "exercise_request_not_found";
+const EXERCISE_REQUEST_NOT_FOUND_MESSAGE = "Exercise request not found";
+
+function expectServiceProgramNotFound(err: unknown): void {
+  const error = err as ProgramBuilderServiceError;
+  expect(error.code).toBe("program_not_found");
+  expect(error.message).toBe("Program not found");
+  expect(error.code).toBe(PROGRAM_NOT_FOUND_ERROR);
+  expect(error.message).toBe(PROGRAM_NOT_FOUND_MESSAGE);
+}
+
+function expectServiceExerciseRequestNotFound(err: unknown): void {
+  const error = err as ProgramBuilderServiceError;
+  expect(error.code).toBe("exercise_request_not_found");
+  expect(error.message).toBe("Exercise request not found");
+  expect(error.code).toBe(EXERCISE_REQUEST_NOT_FOUND_ERROR);
+  expect(error.message).toBe(EXERCISE_REQUEST_NOT_FOUND_MESSAGE);
+}
 
 describe("type-mismatch ownership guards (DIDI-1106)", () => {
   it("linkTypeMismatchPlaceholderRow rejects another practitioner's exercise request and leaves the row", async () => {
@@ -59,18 +83,18 @@ describe("type-mismatch ownership guards (DIDI-1106)", () => {
       const view = await service.getProgram(ownerA, programId);
       const rowsRepo = new ProgramRowsRepository(storage);
       const before = await rowsRepo.findById(rowId);
-      await expect(
-        service.linkTypeMismatchPlaceholderRow(
+      try {
+        await service.linkTypeMismatchPlaceholderRow(
           ownerA,
           programId,
           rowId,
           "stretching",
           view.draft_updated_at,
-        ),
-      ).rejects.toMatchObject({
-        code: "exercise_request_not_found",
-        message: "Exercise request not found",
-      });
+        );
+        expect.unreachable("link should refuse foreign exercise request");
+      } catch (err) {
+        expectServiceExerciseRequestNotFound(err);
+      }
       const after = await rowsRepo.findById(rowId);
       expect(after).toEqual(before);
     } finally {
@@ -129,14 +153,17 @@ describe("type-mismatch ownership guards (DIDI-1106)", () => {
       );
       const rowsRepo = new ProgramRowsRepository(storage);
       const before = await rowsRepo.findById(rowId);
-      await expect(
-        service.undoTypeMismatchPlaceholderLink(
+      try {
+        await service.undoTypeMismatchPlaceholderLink(
           ownerB,
           programId,
           rowId,
           linked.program.draft_updated_at,
-        ),
-      ).rejects.toMatchObject({ code: "program_not_found" });
+        );
+        expect.unreachable("undo should refuse foreign program");
+      } catch (err) {
+        expectServiceProgramNotFound(err);
+      }
       const after = await rowsRepo.findById(rowId);
       expect(after).toEqual(before);
     } finally {

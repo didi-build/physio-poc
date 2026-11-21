@@ -27,15 +27,39 @@ import {
 
 const BASE = "https://physio.test.example";
 
+const PROGRAM_NOT_FOUND_ERROR = "program_not_found";
+const PROGRAM_NOT_FOUND_MESSAGE = "Program not found";
 const PROGRAM_NOT_FOUND_BODY = {
-  error: "program_not_found",
-  message: "Program not found",
+  error: PROGRAM_NOT_FOUND_ERROR,
+  message: PROGRAM_NOT_FOUND_MESSAGE,
 } as const;
 
+const EXERCISE_REQUEST_NOT_FOUND_ERROR = "exercise_request_not_found";
+const EXERCISE_REQUEST_NOT_FOUND_MESSAGE = "Exercise request not found";
 const EXERCISE_REQUEST_NOT_FOUND_BODY = {
-  error: "exercise_request_not_found",
-  message: "Exercise request not found",
+  error: EXERCISE_REQUEST_NOT_FOUND_ERROR,
+  message: EXERCISE_REQUEST_NOT_FOUND_MESSAGE,
 } as const;
+
+async function expectHttpProgramNotFound(response: Response): Promise<void> {
+  expect(response.status).toBe(404);
+  const body = (await response.json()) as { error: string; message: string };
+  expect(body.error).toBe("program_not_found");
+  expect(body.message).toBe("Program not found");
+  expect(body.error).toBe(PROGRAM_NOT_FOUND_ERROR);
+  expect(body.message).toBe(PROGRAM_NOT_FOUND_MESSAGE);
+  expect(body).toEqual(PROGRAM_NOT_FOUND_BODY);
+}
+
+async function expectHttpExerciseRequestNotFound(response: Response): Promise<void> {
+  expect(response.status).toBe(404);
+  const body = (await response.json()) as { error: string; message: string };
+  expect(body.error).toBe("exercise_request_not_found");
+  expect(body.message).toBe("Exercise request not found");
+  expect(body.error).toBe(EXERCISE_REQUEST_NOT_FOUND_ERROR);
+  expect(body.message).toBe(EXERCISE_REQUEST_NOT_FOUND_MESSAGE);
+  expect(body).toEqual(EXERCISE_REQUEST_NOT_FOUND_BODY);
+}
 
 function apiDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
@@ -386,8 +410,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         ),
         deps,
       );
-      expect(linkResponse.status).toBe(404);
-      await expect(linkResponse.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+      await expectHttpProgramNotFound(linkResponse);
 
       const undoUrl = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
       const undoResponse = await handleRequest(
@@ -403,8 +426,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         ),
         deps,
       );
-      expect(undoResponse.status).toBe(404);
-      await expect(undoResponse.json()).resolves.toEqual(PROGRAM_NOT_FOUND_BODY);
+      await expectHttpProgramNotFound(undoResponse);
       const rowAfter = await rowsRepo.findById(rowId);
       expect(rowAfter).toEqual(rowBefore);
     } finally {
@@ -474,8 +496,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         ),
         deps,
       );
-      expect(response.status).toBe(404);
-      await expect(response.json()).resolves.toEqual(EXERCISE_REQUEST_NOT_FOUND_BODY);
+      await expectHttpExerciseRequestNotFound(response);
       const after = await rowsRepo.findById(rowForeign);
       expect(after).toEqual(before);
     } finally {
