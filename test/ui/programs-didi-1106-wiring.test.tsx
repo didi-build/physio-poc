@@ -257,14 +257,12 @@ describe("DIDI-1106 programs wiring", () => {
         "2026-10-24T12:00:00.000Z",
       );
     });
-    await waitFor(() => {
-      expect(
-        screen.queryByText(
-          typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
-        ),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
-    });
+    expect(
+      screen.queryByText(
+        typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: TOAST_UNDO })).toBeInTheDocument();
     const undoButton = screen.getByRole("button", { name: TOAST_UNDO });
     await userEvent.click(undoButton);
     await waitFor(() => {
@@ -381,19 +379,21 @@ describe("DIDI-1106 programs wiring", () => {
       }),
     );
     await waitFor(() => {
-      expect(
-        screen.queryByText(
-          typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
-        ),
-      ).toBeInTheDocument();
+      expect(linkTypeMismatchPlaceholder).toHaveBeenCalled();
     });
+    expect(
+      screen.queryByText(
+        typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: TOAST_UNDO }));
     await waitFor(() => {
-      expect(screen.queryByRole("alert")).toHaveTextContent(
-        TYPE_MISMATCH_UNDO_LINK_FAILURE,
-      );
+      expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledTimes(1);
     });
+    expect(screen.queryByRole("alert")).toHaveTextContent(
+      TYPE_MISMATCH_UNDO_LINK_FAILURE,
+    );
     expect(
       screen.queryByText(
         typeMismatchLinkedToast("Bridge marching", TYPE_LABELS.concentric),
@@ -411,12 +411,8 @@ describe("DIDI-1106 programs wiring", () => {
     await waitFor(() => {
       expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledTimes(2);
     });
-    await waitFor(() => {
-      expect(screen.queryByRole("alert")).toBeNull();
-    });
-    await waitFor(() => {
-      expect(screen.queryByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).toBeInTheDocument();
-    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(TYPE_MISMATCH_DIDNT_LINK_BADGE)).toBeInTheDocument();
     const restoredArticle = screen.getByRole("article", { name: /Bridge marching/i });
     expect(restoredArticle).toBeInTheDocument();
     await userEvent.click(within(restoredArticle).getByRole("button", { name: "Fix" }));
