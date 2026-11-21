@@ -27,11 +27,31 @@ import {
 } from "../../src/ui/api/routines-client.js";
 import {
   ADD_TO_MY,
-  REMOVE_FROM_MY,
+  KEEP_MINE as EXERCISE_KEEP_MINE,
+  REMOVE,
+  REMOVE_FROM_MY as REMOVE_FROM_MY_EXERCISES,
   SUBMIT_REQUEST,
+  USE_LIBRARY_VERSION,
 } from "../../src/ui/copy/exercise-library.js";
+import {
+  CREATE_PROGRAM_FROM_ROUTINE_ACTION,
+  NEW_PROGRAM_FROM_ROUTINE,
+  NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+  NEW_PROGRAM_SHEET_TITLE,
+} from "../../src/ui/copy/programs.js";
 import { TRY_AGAIN, TRYING_AGAIN } from "../../src/ui/copy/shared-load-states.js";
-import { SAVE_MY_COPY, useVersionN } from "../../src/ui/copy/routines.js";
+import {
+  KEEP_MINE,
+  PUBLISH_NOW,
+  REMOVE_FROM_MY,
+  SAVE_MY_COPY,
+  SAVE_TO_MY_ROUTINES,
+  useVersionN,
+} from "../../src/ui/copy/routines.js";
+import type {
+  RoutineDetailsDraft,
+  RoutineExerciseRow,
+} from "../../src/services/routines/types.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
 import { setExerciseMediaClientForTests } from "../../src/ui/api/exercise-media-client.js";
@@ -131,6 +151,118 @@ const myCopyExerciseView = {
   ...exerciseDetailView,
   in_my_exercises: true,
 };
+
+const myCopyWithLibraryConflict = {
+  ...myCopyExerciseView,
+  library: {
+    ...exerciseDetailView.library,
+    title: "Heel slide",
+  },
+  resolved_text: [
+    { key: "title", resolved: "Heel slide", library_value: "Heel slide" },
+    { key: "description", resolved: "Desc", library_value: "Desc" },
+    {
+      key: "cue_eccentric",
+      resolved: "Mine",
+      library_value: "Library",
+      library_updated: true,
+    },
+  ],
+};
+
+const draftRow: RoutineExerciseRow = {
+  position: 0,
+  exercise_id: "ex-1",
+  exercise_version_id: "ver-1",
+  exercise_name: "Heel slide",
+  prescription_type: "stretching",
+  params: { hold_s: 30 },
+  lacks_start_or_end_image: false,
+};
+
+function routineDraftDetails(): RoutineDetailsDraft {
+  return {
+    routine_id: "routine-draft-1",
+    body_region_id: "br-knee",
+    body_region_label: "Knee",
+    condition_id: null,
+    condition_label: null,
+    who_its_for: null,
+    sent_program_count: 0,
+    sent_program_codes: [],
+    conditions_available: false,
+    is_draft: true,
+    draft: {
+      routine_version_id: "rv-1",
+      name: "Knee draft",
+      draft_updated_at: "2026-01-01T00:00:00.000Z",
+      rows: [draftRow],
+    },
+    community: null,
+    my_copy: null,
+    personal_changes: null,
+    community_change_list: null,
+  };
+}
+
+function publishedRoutineWithoutCopy() {
+  return {
+    routine_id: "r1",
+    body_region_id: "br-knee",
+    body_region_label: "Knee",
+    condition_id: null,
+    condition_label: null,
+    who_its_for: null,
+    sent_program_count: 0,
+    sent_program_codes: [],
+    conditions_available: false,
+    personal_changes: null,
+    community_change_list: null,
+    is_draft: false,
+    draft: null,
+    community: {
+      routine_version_id: "rv1",
+      version_number: 1,
+      name: "Knee starter",
+      updated_at: "2026-10-25T12:00:00.000Z",
+      created_by: "dev",
+      usage_count: 0,
+      rows: [],
+    },
+    my_copy: null,
+  };
+}
+
+function publishedRoutineWithCopy(community_updated = false) {
+  return {
+    ...publishedRoutineWithoutCopy(),
+    community: {
+      ...publishedRoutineWithoutCopy().community,
+      version_number: 3,
+      routine_version_id: "rv3",
+    },
+    my_copy: {
+      practitioner_routine_id: "pr-1",
+      source_version_number: 1,
+      edited: false,
+      community_updated,
+      rows: [],
+    },
+    community_change_list: community_updated
+      ? {
+          baseline_available: true,
+          entries: [{ version_number: 2, change_summary: "Adjusted dose" }],
+        }
+      : null,
+    personal_changes: community_updated
+      ? {
+          baseline_available: true,
+          change_count: 0,
+          your_change_positions: [],
+        }
+      : null,
+  };
+}
 
 function builderProgram(): ProgramBuilderView {
   return {
@@ -506,8 +638,8 @@ describe("CTO item 1 retry behaviour", () => {
       }),
     });
 
-    await screen.findByRole("button", { name: REMOVE_FROM_MY });
-    await userEvent.click(screen.getByRole("button", { name: REMOVE_FROM_MY }));
+    await screen.findByRole("button", { name: REMOVE_FROM_MY_EXERCISES });
+    await userEvent.click(screen.getByRole("button", { name: REMOVE_FROM_MY_EXERCISES }));
     await waitFor(() => {
       expect(
         screen.getByTestId("exercise-mycopy-failed-save-alert"),
@@ -551,5 +683,378 @@ describe("CTO item 1 retry behaviour", () => {
       rejectHang(new Error("fail again"));
     });
     expect(submitRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps RoutineDetails save failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const saveToMyRoutines = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("routineDetail", { routineId: "r1" }), {
+      routinesClient: {
+        getRoutineDetails: vi.fn().mockResolvedValue(publishedRoutineWithoutCopy()),
+        saveToMyRoutines,
+      } as unknown as RoutinesClient,
+    });
+
+    await screen.findByRole("button", { name: SAVE_TO_MY_ROUTINES });
+    await userEvent.click(screen.getByRole("button", { name: SAVE_TO_MY_ROUTINES }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routine-detail-mutation-error-slot"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("routine-detail-mutation-error-slot");
+    await expectRefocusOnFailedSaveAlert("routine-detail-mutation-error-slot", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(saveToMyRoutines).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps RoutineDetails remove failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const removeFromMyRoutines = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("routineDetail", { routineId: "r1" }), {
+      routinesClient: {
+        getRoutineDetails: vi.fn().mockResolvedValue(publishedRoutineWithCopy(false)),
+        removeFromMyRoutines,
+      } as unknown as RoutinesClient,
+    });
+
+    await screen.findByRole("button", { name: REMOVE_FROM_MY });
+    await userEvent.click(screen.getByRole("button", { name: REMOVE_FROM_MY }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routine-detail-mutation-error-slot"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("routine-detail-mutation-error-slot");
+    await expectRefocusOnFailedSaveAlert("routine-detail-mutation-error-slot", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(removeFromMyRoutines).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps RoutineDetails keep-mine failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const keepMyCopyVersion = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("routineDetail", { routineId: "r1" }), {
+      routinesClient: {
+        getRoutineDetails: vi.fn().mockResolvedValue(publishedRoutineWithCopy(true)),
+        keepMyCopyVersion,
+      } as unknown as RoutinesClient,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("routine-update-banner")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: KEEP_MINE }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routine-detail-mutation-error-slot"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("routine-detail-mutation-error-slot");
+    await expectRefocusOnFailedSaveAlert("routine-detail-mutation-error-slot", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(keepMyCopyVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps RoutineDetails discard draft failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const discardRoutineDraft = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("routineDetail", { routineId: "routine-draft-1" }),
+      {
+        routinesClient: {
+          getRoutineDetails: vi.fn().mockResolvedValue(routineDraftDetails()),
+          discardRoutineDraft,
+        } as unknown as RoutinesClient,
+      },
+    );
+
+    await userEvent.click(await screen.findByTestId("rt-discard-draft"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routine-draft-discard-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("routine-draft-discard-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert(
+      "routine-draft-discard-failed-save-alert",
+      () => {
+        rejectHang(new Error("fail again"));
+      },
+    );
+    expect(discardRoutineDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps RoutineDetails publish draft failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const publishRoutineDraft = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(
+      fillPhysioAppRoutePattern("routineDetail", { routineId: "routine-draft-1" }),
+      {
+        routinesClient: {
+          getRoutineDetails: vi.fn().mockResolvedValue(routineDraftDetails()),
+          publishRoutineDraft,
+          autosaveRoutineDraft: vi.fn().mockResolvedValue({ ok: true }),
+        } as unknown as RoutinesClient,
+      },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rt-draft-detail-publish")).toBeEnabled();
+    });
+    await userEvent.click(screen.getByTestId("rt-draft-detail-publish"));
+    await userEvent.click(screen.getByRole("button", { name: PUBLISH_NOW }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("routine-draft-publish-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("routine-draft-publish-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert(
+      "routine-draft-publish-failed-save-alert",
+      () => {
+        rejectHang(new Error("fail again"));
+      },
+    );
+    expect(publishRoutineDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps exercise detail remove failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1b)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const removeFromMyExercises = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }), {
+      exerciseLibraryClient: stubLibraryClient({
+        getExerciseDetails: vi.fn().mockResolvedValue({
+          ...exerciseDetailView,
+          in_my_exercises: true,
+          param_overrides: {},
+          resolved_params_by_type: {},
+        }),
+        removeFromMyExercises,
+      }),
+    });
+
+    await screen.findByRole("button", { name: REMOVE });
+    await userEvent.click(screen.getByRole("button", { name: REMOVE }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-detail-remove-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("exercise-detail-remove-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert(
+      "exercise-detail-remove-failed-save-alert",
+      () => {
+        rejectHang(new Error("fail again"));
+      },
+    );
+    expect(removeFromMyExercises).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps exercise MyCopyEditor use-library-version failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1e)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const updateMyCopy = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }), {
+      exerciseLibraryClient: stubLibraryClient({
+        getExerciseDetails: vi.fn().mockResolvedValue(myCopyWithLibraryConflict),
+        updateMyCopy,
+        removeFromMyExercises: vi.fn(),
+      }),
+    });
+
+    await screen.findByRole("button", { name: USE_LIBRARY_VERSION });
+    await userEvent.click(screen.getByRole("button", { name: USE_LIBRARY_VERSION }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-mycopy-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("exercise-mycopy-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert("exercise-mycopy-failed-save-alert", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(updateMyCopy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps exercise MyCopyEditor keep-mine failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1f)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const updateMyCopy = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+
+    renderPhysio(fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-1" }), {
+      exerciseLibraryClient: stubLibraryClient({
+        getExerciseDetails: vi.fn().mockResolvedValue(myCopyWithLibraryConflict),
+        updateMyCopy,
+        removeFromMyExercises: vi.fn(),
+      }),
+    });
+
+    await screen.findByRole("button", { name: EXERCISE_KEEP_MINE });
+    await userEvent.click(screen.getByRole("button", { name: EXERCISE_KEEP_MINE }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-mycopy-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("exercise-mycopy-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert("exercise-mycopy-failed-save-alert", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(updateMyCopy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps program create-from-routine failed-save alert mounted with Trying again during retry and refocuses alert on failure (CTO item 1 / R1i)", async () => {
+    let rejectHang!: (error: Error) => void;
+    const routineId = "r-pick-1";
+    const createProgramFromRoutine = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+    const published = publishedRoutineWithoutCopy();
+    published.routine_id = routineId;
+
+    renderPhysio("/programs/new", {
+      programsClient: {
+        createProgramFromRoutine,
+        listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+        listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+      } as unknown as ProgramsClient,
+      routinesClient: {
+        searchCommunity: vi.fn().mockResolvedValue({
+          routines: [
+            {
+              routine_id: routineId,
+              routine_version_id: "rv1",
+              name: "Knee starter",
+              version_number: 1,
+              body_region_label: "Knee",
+              condition_label: null,
+              exercise_count: 0,
+              usage_count: 0,
+              added_by_you: false,
+              in_my_routines: false,
+            },
+          ],
+          next_cursor: null,
+          search_link: null,
+          total_count: 1,
+          conditions_available: false,
+          condition_options: [],
+        }),
+        listMyRoutines: vi.fn().mockResolvedValue({
+          drafts: [],
+          saved: [],
+          flagged_count: 0,
+          conditions_available: false,
+          condition_options: [],
+        }),
+        getRoutineDetails: vi.fn().mockResolvedValue(published),
+      } as unknown as RoutinesClient,
+    });
+
+    const chooser = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    await userEvent.click(
+      within(chooser).getByRole("button", {
+        name: new RegExp(NEW_PROGRAM_FROM_ROUTINE),
+      }),
+    );
+    const picker = await screen.findByRole("dialog", {
+      name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+    });
+    await waitFor(() => {
+      expect(within(picker).getByText("Knee starter")).toBeInTheDocument();
+    });
+    await userEvent.click(within(picker).getByText("Knee starter"));
+    await userEvent.click(
+      within(picker).getByRole("button", { name: CREATE_PROGRAM_FROM_ROUTINE_ACTION }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    await expectTryingAgainWhileAlertMounted("program-create-failed-save-alert");
+    await expectRefocusOnFailedSaveAlert("program-create-failed-save-alert", () => {
+      rejectHang(new Error("fail again"));
+    });
+    expect(createProgramFromRoutine).toHaveBeenCalledTimes(2);
   });
 });

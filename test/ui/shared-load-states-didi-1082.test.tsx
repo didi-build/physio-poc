@@ -59,6 +59,11 @@ import {
   editYourTypeDefaultLabel,
 } from "../../src/ui/copy/my-defaults.js";
 import { PUBLISH_NOW, PUBLISH_SHEET_TITLE } from "../../src/ui/copy/program-publish.js";
+import {
+  NEW_PROGRAM_FROM_ROUTINE,
+  NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+  NEW_PROGRAM_SHEET_TITLE,
+} from "../../src/ui/copy/programs.js";
 import { PublishSheet } from "../../src/ui/programs/PublishSheet.js";
 import { AddExerciseSheet } from "../../src/ui/programs/AddExerciseSheet.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
@@ -290,6 +295,32 @@ describe("DIDI-1082 shared load states behaviour", () => {
       "aria-hidden",
       "true",
     );
+  });
+
+  it("B2c: programs list initial load failure keeps busy skeleton placeholders aria-hidden", async () => {
+    const listPrograms = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <MemoryRouter initialEntries={["/programs"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryListClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={
+            {
+              listPrograms,
+              listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+            } as unknown as ProgramsClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("programs-list-busy-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(listPrograms).toHaveBeenCalledTimes(1);
   });
 
   it("renders refresh banner without inventing a secondary line", () => {
@@ -835,6 +866,51 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(slot).toHaveTextContent(notFoundTitle("program"));
   });
 
+  it("B10e: program builder item load error Try again calls refresh twice with Trying again while pending", async () => {
+    let rejectHang!: (error: Error) => void;
+    const getProgramByCode = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<ProgramBuilderView>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("programBuilder", { programCode: "PRG-TEST" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryListClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={
+            {
+              getProgramByCode,
+            } as unknown as ProgramsClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    const slot = await screen.findByTestId("programs-builder-error-slot");
+    await waitFor(() => {
+      expect(within(slot).getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+    });
+    await userEvent.click(within(slot).getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    expect(screen.getByTestId("programs-builder-error-slot")).toBeInTheDocument();
+    rejectHang(new Error("fail again"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
+    });
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: TRY_AGAIN }),
+    );
+    expect(getProgramByCode).toHaveBeenCalledTimes(2);
+  });
+
   it("shows not-found card when ExerciseLibraryClient details fetch returns 404 JSON", async () => {
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const path =
@@ -1110,6 +1186,69 @@ describe("DIDI-1082 shared load states behaviour", () => {
       });
     },
   );
+
+  it("B1pk: PickRoutineForProgramSheet list load retry shows Trying again", async () => {
+    let rejectHang!: (error: Error) => void;
+    const searchCommunity = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
+    const listMyRoutines = vi.fn().mockResolvedValue({
+      drafts: [],
+      saved: [],
+      flagged_count: 0,
+      conditions_available: false,
+      condition_options: [],
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/new"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryListClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={
+            {
+              listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+              listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+            } as unknown as ProgramsClient
+          }
+          routinesClient={
+            {
+              searchCommunity,
+              listMyRoutines,
+            } as unknown as RoutinesClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    const chooser = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    await userEvent.click(
+      within(chooser).getByRole("button", {
+        name: new RegExp(NEW_PROGRAM_FROM_ROUTINE),
+      }),
+    );
+    const picker = await screen.findByRole("dialog", {
+      name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
+    });
+    await waitFor(() => {
+      expect(within(picker).getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+    });
+    await userEvent.click(within(picker).getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    expect(
+      screen.queryByText(loadingListVisible(listTokenForSurface("routines"))),
+    ).not.toBeInTheDocument();
+    rejectHang(new Error("network"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
+    });
+    expect(searchCommunity).toHaveBeenCalledTimes(2);
+    expect(listMyRoutines).toHaveBeenCalledTimes(2);
+  });
 
   it("B1: AddExerciseSheet list Try again shows Trying again without loading visible text", async () => {
     let resolveHang!: (value: unknown) => void;
