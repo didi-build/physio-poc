@@ -12,6 +12,7 @@ import {
   MIGRATION_0006_ID,
   MIGRATION_0007_ID,
   MIGRATION_0011_ID,
+  MIGRATION_0012_ID,
 } from "../../storage/migrations/apply.js";
 import {
   handleFakeGoogleRequest,
@@ -25,6 +26,7 @@ import { createDistUiStaticPort } from "./dist-ui-static-port.js";
 import { resolveNodePhysioServerConfig } from "./resolve-node-config.js";
 import { createPhysioMcpHttpHandler } from "../workers/mcp/handle-mcp-http-request.js";
 import type { WorkerEnv } from "../workers/create-app-dependencies.js";
+import { resolveExerciseDraftGenerator } from "../deepinfra/resolve-exercise-draft-generator.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 const MIGRATION_0001_SQL = readFileSync(
@@ -55,6 +57,10 @@ const MIGRATION_0011_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0011_exercise_version_pending_media.sql"),
   "utf8",
 );
+const MIGRATION_0012_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0012_exercise_suggested_body_regions.sql"),
+  "utf8",
+);
 
 const defaultCimdMetadataFetch: ClientMetadataResourceFetch = async () =>
   new Response(null, { status: 404 });
@@ -65,6 +71,8 @@ export type NodeEnvInput = WorkerEnv & {
   GOOGLE_CLIENT_SECRET?: string;
   PHYSIO_ALLOWED_GOOGLE_EMAILS?: string;
   PHYSIO_USE_FAKE_GOOGLE_PROVIDER?: string;
+  PHYSIO_DEEPINFRA_API_KEY?: string;
+  PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL?: string;
   AUTH_BASE_URL?: string;
   NODE_ENV?: string;
 };
@@ -93,6 +101,7 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0006_ID, MIGRATION_0006_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   await applyMigration(storage, MIGRATION_0011_ID, MIGRATION_0011_SQL);
+  await applyMigration(storage, MIGRATION_0012_ID, MIGRATION_0012_SQL);
   const sqlPort = wrapSqlPort(storage);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
     cimdMetadataFetch,
@@ -114,5 +123,6 @@ export async function createNodeAppDependencies(
       ? isFakeGoogleOAuthPath
       : undefined,
     guardedAppWithoutSession: "redirect",
+    exerciseDraftGenerator: resolveExerciseDraftGenerator(env),
   };
 }

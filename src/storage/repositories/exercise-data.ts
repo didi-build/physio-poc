@@ -16,6 +16,8 @@ import {
   validateExerciseTitle,
   validateRequestNote,
   validateRequestedExerciseName,
+  normalizeConditionLabelKey,
+  validateSuggestedBodyRegionLabel,
 } from "../../domain/exercise-free-text.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
 import {
@@ -485,6 +487,92 @@ export class ExerciseVersionsRepository {
     );
   }
 
+  buildInsertAiDraftBatchStatement(input: {
+    id: string;
+    exerciseId: string;
+    title: string;
+    description: string;
+    equipment: string;
+    startingPosition: string;
+    steps: string;
+    commonMistakes: string;
+    regressions: string;
+    progressions: string;
+    precautions: string;
+    cueStretching: string | null;
+    cueIsometric: string | null;
+    cueConcentric: string | null;
+    cueEccentric: string | null;
+    createdAt: string;
+  }): SqlBatchStatement {
+    const id = validateOpaqueEntityId(input.id, "Exercise version id");
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const title = validateExerciseTitle(input.title);
+    const description = validateExerciseTemplateText(input.description, "Description");
+    const equipment = validateExerciseTemplateText(input.equipment, "Equipment");
+    const startingPosition = validateExerciseTemplateText(
+      input.startingPosition,
+      "Starting position",
+    );
+    const steps = validateExerciseTemplateText(input.steps, "Steps");
+    const commonMistakes = validateExerciseTemplateText(
+      input.commonMistakes,
+      "Common mistakes",
+    );
+    const regressions = validateExerciseTemplateText(input.regressions, "Regressions");
+    const progressions = validateExerciseTemplateText(
+      input.progressions,
+      "Progressions",
+    );
+    const precautions = validateExerciseTemplateText(input.precautions, "Precautions");
+    const cueStretching =
+      input.cueStretching === null || input.cueStretching === undefined
+        ? null
+        : validateExerciseCue(input.cueStretching, "cue_stretching");
+    const cueIsometric =
+      input.cueIsometric === null || input.cueIsometric === undefined
+        ? null
+        : validateExerciseCue(input.cueIsometric, "cue_isometric");
+    const cueConcentric =
+      input.cueConcentric === null || input.cueConcentric === undefined
+        ? null
+        : validateExerciseCue(input.cueConcentric, "cue_concentric");
+    const cueEccentric =
+      input.cueEccentric === null || input.cueEccentric === undefined
+        ? null
+        : validateExerciseCue(input.cueEccentric, "cue_eccentric");
+
+    return {
+      sql: `INSERT INTO exercise_versions (
+        id, exercise_id, version_number, status, approved_by, approved_at,
+        title, description, equipment, starting_position, steps,
+        common_mistakes, regressions, progressions, precautions,
+        cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+        media_set_id, change_summary, created_at
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+      /* didi-1008: AI full-draft insert — status must remain 'draft' (not minimal-draft path) */
+      bindings: [
+        id,
+        exerciseId,
+        title,
+        description,
+        equipment,
+        startingPosition,
+        steps,
+        commonMistakes,
+        regressions,
+        progressions,
+        precautions,
+        cueStretching,
+        cueIsometric,
+        cueConcentric,
+        cueEccentric,
+        input.createdAt,
+      ],
+      minRowsAffected: 1,
+    };
+  }
+
   buildInsertMinimalDraftBatchStatement(input: {
     id: string;
     exerciseId: string;
@@ -552,8 +640,33 @@ export class ExerciseAliasesRepository {
   }
 }
 
+export class ExerciseSuggestedBodyRegionsRepository {
+  buildInsertSuggestionBatchStatement(
+    exerciseId: string,
+    label: string,
+  ): SqlBatchStatement {
+    const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");
+    const validated = validateSuggestedBodyRegionLabel(label);
+    const stored = normalizeConditionLabelKey(validated);
+    return {
+      sql: "INSERT INTO exercise_suggested_body_regions (exercise_id, label) VALUES (?, ?)",
+      bindings: [opaqueExerciseId, stored],
+      minRowsAffected: 1,
+    };
+  }
+}
+
 export class ExerciseBodyRegionsRepository {
   constructor(private readonly sql: SqlStoragePort) {}
+
+  buildLinkBatchStatement(exerciseId: string, bodyRegionId: string): SqlBatchStatement {
+    const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");
+    return {
+      sql: "INSERT INTO exercise_body_regions (exercise_id, body_region_id) VALUES (?, ?)",
+      bindings: [opaqueExerciseId, bodyRegionId],
+      minRowsAffected: 1,
+    };
+  }
 
   async link(exerciseId: string, bodyRegionId: string): Promise<void> {
     const opaqueExerciseId = validateOpaqueEntityId(exerciseId, "Exercise id");

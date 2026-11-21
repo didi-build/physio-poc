@@ -38,6 +38,7 @@ const FIXTURE_SECRET_VALUES = {
   GOOGLE_CLIENT_SECRET: "fixture-google-client-secret",
   BETTER_AUTH_SECRET: "fixture-better-auth-secret-at-least-32-chars",
   PHYSIO_ALLOWED_GOOGLE_EMAILS: "kojo.allowed@example.com",
+  PHYSIO_DEEPINFRA_API_KEY: "fixture-deepinfra-api-key",
 };
 
 const FIXTURE_BETTER_AUTH_SECRET_31_CHARS = "fixture-better-auth-secret-31ch";

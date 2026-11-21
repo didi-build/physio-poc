@@ -8,17 +8,19 @@ Each call runs the migration SQL inside a single SQLite transaction (`BEGIN` / `
 
 Numbered files under `migrations/` (Node test runner and D1 via wrangler when wired):
 
-| Id   | File                                | Scope                                                                                               |
-| ---- | ----------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 0001 | `0001_exercise_data_model.sql`      | Exercise library tables                                                                             |
-| 0002 | `0002_program_data_model.sql`       | Programs and share links                                                                            |
-| 0003 | `0003_exercise_media.sql`           | Exercise media sets and regeneration audit                                                          |
-| 0004 | `0004_better_auth.sql`              | Better Auth tables; `user.practitionerId` references `practitioners.id` (DIDI-1001 session binding) |
-| 0005 | `0005_routine_data_model.sql`       | Routines data model (DIDI-1017)                                                                     |
-| 0006 | `0006_mcp_oauth.sql`                | Better Auth MCP OAuth provider tables and Physio consent audit tables (DIDI-1043)                   |
-| 0007 | `0007_sql_batch_min_rows_guard.sql` | Internal empty guard table for SqlStoragePort batch minRowsAffected (DIDI-1101)                     |
-| 0008 | `0008_routine_draft_discards.sql`   | Ephemeral discard tombstones for undo_draft_discard (DIDI-1204)                                     |
-| 0009 | `0009_routine_conditions.sql`       | Routine–condition join, condition dedupe columns, backfill (DIDI-1217)                              |
+| Id   | File                                       | Scope                                                                                               |
+| ---- | ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| 0001 | `0001_exercise_data_model.sql`             | Exercise library tables                                                                             |
+| 0002 | `0002_program_data_model.sql`              | Programs and share links                                                                            |
+| 0003 | `0003_exercise_media.sql`                  | Exercise media sets and regeneration audit                                                          |
+| 0004 | `0004_better_auth.sql`                     | Better Auth tables; `user.practitionerId` references `practitioners.id` (DIDI-1001 session binding) |
+| 0005 | `0005_routine_data_model.sql`              | Routines data model (DIDI-1017)                                                                     |
+| 0006 | `0006_mcp_oauth.sql`                       | Better Auth MCP OAuth provider tables and Physio consent audit tables (DIDI-1043)                   |
+| 0007 | `0007_sql_batch_min_rows_guard.sql`        | Internal empty guard table for SqlStoragePort batch minRowsAffected (DIDI-1101)                     |
+| 0008 | `0008_routine_draft_discards.sql`          | Ephemeral discard tombstones for undo_draft_discard (DIDI-1204)                                     |
+| 0009 | `0009_routine_conditions.sql`              | Routine–condition join, condition dedupe columns, backfill (DIDI-1217)                              |
+| 0011 | `0011_exercise_version_pending_media.sql`  | Pending exercise media on draft versions (DIDI-136)                                                 |
+| 0012 | `0012_exercise_suggested_body_regions.sql` | Draft suggested body region labels for AI drafts (DIDI-1008; promote on save: DIDI-1254)            |
 
 ## schema_migrations on D1
 

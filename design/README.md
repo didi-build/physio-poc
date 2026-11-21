@@ -19,6 +19,7 @@ Approved design for the Physio POC web app and AI assistant connector. Diadem ap
 | Exercise requests (similar check, request form, conflicts, drafts and review) | [app/exercise-requests](app/exercise-requests/spec.md) | 18 | https://linear.app/didi-build/issue/DIDI-810 |
 | Draft review AI generation states (variant B: generating, failure, limit, Regenerate text) | [app/draft-review-ai-states](app/draft-review-ai-states/spec.md) | 2 | https://linear.app/didi-build/issue/DIDI-1210 |
 | Routines (community and My routines, update flag, drafts, publish, versions, remove) | [app/routines](app/routines/spec.md) | 46 | https://linear.app/didi-build/issue/DIDI-853 |
+| Routine conditions (New routine multi-select, rename/delete, derived body region) | [app/routine-conditions](app/routine-conditions/spec.md) | 20 | https://linear.app/didi-build/issue/DIDI-1219 · [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) |
 | Similar routine warning (New routine, variant B inline card) | [app/similar-routine-warning](app/similar-routine-warning/spec.md) | 12 | https://linear.app/didi-build/issue/DIDI-1226 |
 | Programs (list and search, builder, codes and names, publish sheet, share link, link page, delete and restore) | [app/programs](app/programs/spec.md) | 67 | https://linear.app/didi-build/issue/DIDI-810 |
 | Program builder type-mismatch placeholder row (variant B banner, Didn't link row, Fix, Programs flag) | [app/program-type-mismatch](app/program-type-mismatch/spec.md) | 3 | https://linear.app/didi-build/issue/DIDI-1105 |

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
-import type { ExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
+import type { ExerciseDraftGenerator } from "../src/services/exercise-requests/exercise-draft-generator-types.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import {
   openMigratedDatabase,

@@ -25,5 +25,6 @@
   "vars": {
     "WEB_APP_BASE_URL": "https://physio-poc.diademshoukralla.workers.dev",
     "PHYSIO_USE_FAKE_GOOGLE_PROVIDER": "false",
+    "PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
   },
 }

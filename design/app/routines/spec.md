@@ -6,7 +6,20 @@ Area: app · Feature: routines
 
 Ready-made programs ("cookie cutter programs") for common conditions, in a community library that works like the exercise library, plus each practitioner's own saved copies in My routines. A practitioner can use a routine directly for a patient (a separate program copy with its own name and code), create a program from a routine and tweak it, or still build a program from scratch.
 
-**Matches Product direction: yes.** Checked against the live DIDI-594 description and its locked Product direction comments (read Oct 25, 2026, after the 7:22 PM ET approval).
+**Matches Product direction: yes.** Checked against the live DIDI-594 description and its locked Product direction comments (read Oct 25, 2026, after the 7:22 PM ET approval), plus J and J update 1 (`41b3b0d0`), J update 2 (`28eea987`), and [routine-conditions/spec.md](../routine-conditions/spec.md) (DIDI-1216).
+
+**Condition-first is/was (library and routine page; authoring detail in [routine-conditions](../routine-conditions/spec.md)):**
+
+| Topic | Was (v12) | Is (DIDI-1216) |
+| -- | -- | -- |
+| Conditions on a routine | Optional; one; fixed catalog | Required at publish; many; practitioners add (J update 1) |
+| Condition filter | Hidden when catalog empty; fixed sample list | Shown when any condition exists; live catalog |
+| Search placeholder | **Try: knee, low back, bridge** when conditions empty; **Try: arthritis, knee, low back** when sample list shown | **Try: sciatica, knee, low back** on **All routines** when the catalog has any condition, and the same placeholder when the catalog is empty ([DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `d0366ea0`, under `a887af34` Q19). **My routines:** unchanged **Search my routines** |
+| Body region on cards and routine page | Routine's own `body_region` field | Union of exercise body regions; no chip when none (J update 2) |
+| Body region filter | Routine's region | Matches via exercises in the routine (J update 1) |
+| Card condition line | One condition name | Up to two condition chips, then **+{n}** for overflow (`6d77e60d`) |
+| New routine / edit draft | Single-select condition pills; body region picker | See [routine-conditions](../routine-conditions/spec.md) |
+| Publish validation | Name and exercise | Adds **Add at least one condition** (`6d77e60d`) |
 
 ## Design source (approved Oct 25, 2026, 7:22 PM ET)
 
@@ -21,18 +34,18 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 | State | What it shows |
 | -- | -- |
-| All routines | Community routines (published only). Card: 4 exercise thumbnails, name, condition (only when the condition list has values) and body region, "N exercises · Version N", "Used N times", "Added by you", save button (bookmark, or check when saved) |
+| All routines | Community routines (published only). Card: 4 exercise thumbnails, name, condition chips (when present; up to two plus **+{n}**), body region chips from exercises (when present), "N exercises · Version N", "Used N times", "Added by you", save button (bookmark, or check when saved) |
 | My routines | Drafts first under "Drafts, only you can see them", then saved routines. Card shows "Your copy, vN", "Edited", "Used {date}" or "Saved {date}", and an amber "Community updated to vN" flag when the community version is newer. An amber banner counts flagged routines |
-| Search | Its own search bar ("Try: knee, low back, bridge"; with conditions: "Try: arthritis, knee, low back"; My routines: "Search my routines"). Searches name, body region, exercise names, and condition when the list has values |
-| Filters & sort | Collapsible. Condition (only when the fixed list has values; marked "Sample list" in the concept), Body region, Sort (Most used, Newest, A to Z), Reset, Done |
-| Conditions empty | No condition filter, no condition on cards, the routine page or the edit form. Routines list and search normally |
-| Routine page | Badges (condition when present, body region, "In My routines", "Community updated"), "Community routine · Version N · Updated {date} by ... · Used N times", who it's for, exercises with type chip and doses, "You sent this routine N times" with codes and "See them in Programs". Actions: Use for a patient (primary), Create program from routine, Save to My routines or Edit my copy, Edit for everyone, Version history, Remove from My routines |
+| Search | Its own search bar. **All routines:** **Try: sciatica, knee, low back** ([DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `d0366ea0`), including when the catalog is empty. My routines: **Search my routines**. Searches name, body region, exercise names, and condition names |
+| Filters & sort | Collapsible. Condition (when the catalog has values), Body region (via exercises), Sort (Most used, Newest, A to Z), Reset, Done |
+| Conditions empty | No condition filter on library; practitioners can still add conditions on New routine (see [routine-conditions](../routine-conditions/spec.md)). Cards omit condition chips until some exist |
+| Routine page | Badges (condition chips when present, body region from exercises when present, "In My routines", "Community updated"), "Community routine · Version N · Updated {date} by ... · Used N times", who it's for, exercises with type chip and doses, "You sent this routine N times" with codes and "See them in Programs". Actions: Use for a patient (primary), Create program from routine, Save to My routines or Edit my copy, Edit for everyone, Version history, Remove from My routines |
 | My copy vs community | When saved: segmented "My copy, vN" / "Community, vN". Your own edits are marked "Your change" against the version you saved. Use for a patient and Create program use the one picked |
 | Update flag | Saved copy stays frozen. Banner "Community updated to version N on {date}. Your copy stays on version M until you choose." with "What changed since your version", "Use version N" (primary) and "Keep mine". If you edited your copy: "Updating replaces your own change with version N. You can undo right after." |
 | Adopted / kept | Toast "Your copy is now version N" (Undo); or "Kept your copy on version M. You can still update it from this page." (Undo), and "Update my copy to version N" stays in the actions |
 | Remove | "Remove from My routines", toast "Removed {name} from My routines" with Undo. No community-wide delete |
-| New routine (draft) | "New routine" with a "Draft" badge, saves automatically ("Saving…" then "Draft saved. Only you can see it until you publish."). Fields: Routine name, Condition (only with a list), Body region, "Who it's for (optional)", Exercises (add from the library, type, doses, reorder, remove). Buttons "Done for now" (or "Cancel" while untouched) and "Publish". When similar routines match, an inline warning card appears above those buttons; see [similar-routine-warning/spec.md](../similar-routine-warning/spec.md) (variant B) |
-| Publish validation | "Before you publish": "Add a routine name", "Add at least one exercise"; "Your draft is still saved." |
+| New routine (draft) | "New routine" with a "Draft" badge, saves automatically ("Saving…" then "Draft saved. Only you can see it until you publish."). Fields: **Conditions** first (multi-select; [routine-conditions/spec.md](../routine-conditions/spec.md)), Routine name, "Who it's for (optional)", **Body region** (read-only, from exercises), Exercises (add from the library, type, doses, reorder, remove). Buttons "Done for now" (or "Cancel" while untouched) and "Publish". When similar routines match, an inline warning card appears above those buttons; see [similar-routine-warning/spec.md](../similar-routine-warning/spec.md) (variant B) |
+| Publish validation | "Before you publish": "Add at least one condition", "Add a routine name", "Add at least one exercise"; "Your draft is still saved." Inline under **Conditions** when missing: "Add a condition to publish." |
 | Draft routine page | "Draft, only you can see it", "Saved automatically today. Not published yet.", Edit draft, Publish, Discard draft (Undo) |
 | Publish this routine? | Sheet with the routine card and "What happens": goes live as version 1, anyone can use, improve and restore, no review step. Publish now / Not yet ("Kept as a draft. Only you can see it.") |
 | Missing images block publish | If any exercise in the routine lacks its start or end image, "Publish this routine?" matches the program missing-images sheet (DIDI-594 G update 6, Diadem, Nov 11, 2026, 7:13 PM EST: "Match the program sheet, with 'routine' wording"): heading "Remove exercises without images to publish"; body "{n} exercises are missing their start or end image. Remove them from this routine, then publish." or "One exercise is missing its start or end image. Remove it from this routine, then publish."; list with "Remove {ex.name}"; cleared line "No exercises without images left. You can publish."; removal read-out "Removed {name} from this routine." Publish now disabled until cleared. Server-enforced (DIDI-1193). See programs spec "Publish blocked by missing images (DIDI-1192)" |
@@ -47,7 +60,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 - Tabs "My routines" / "All routines". My routines description: "Routines you saved or started. A saved routine stays as it was when you saved it. When the community version changes, it is flagged so you can update."
 - All routines description: "{N} ready-made programs for common conditions, shared by every practitioner. Anyone can add or improve one, and every change is kept in version history."
 - Flag banner: "1 saved routine has a newer community version. Open it to see what changed and update in one tap."
-- Sample conditions note: "Sample conditions for this concept. The real fixed list is still to come."
+- ~~Sample conditions note: "Sample conditions for this concept. The real fixed list is still to come."~~ (**Superseded** by DIDI-1216 practitioner-added conditions.)
 - Routine page note: "Using a routine for a patient makes a separate program with its own name and code. Later edits to this routine never change programs already sent."
 - Publish sheet points: "It goes live as version 1 in All routines, for every practitioner." "Anyone can use it, improve it and restore older versions. Every change is kept in version history." "There is no review step. Routines reuse approved exercises, so nothing new needs checking."
 - Toasts: "Saved {name} to My routines" (Undo), "Published. Version 1 of {name} is live for every practitioner.", "Saved as version {v} for everyone. Programs already sent did not change.", "Saved to your copy. Only you see it. The community routine did not change.", "Discarded the draft {name}" (Undo).
@@ -63,7 +76,7 @@ The full verbatim copy is in the inventory at the end.
 5. Routine actions mirror exercises: Remove from My routines (Undo) and Restore an older version. No community-wide delete.
 6. Using a routine for a patient makes a separate program copy with a practitioner-picked program name and a unique code; later routine edits never change it, and there is no push from a routine to existing copies.
 7. "Use for a patient" lands on the existing "Publish to the live link?" sheet with the routine name prefilled; a program name is required to publish; Not yet keeps the program as a draft.
-8. Conditions are a fixed list we set up for v1, contents to come from Kojo, possibly empty at launch. Empty list: the condition filter and field are hidden; the five current values are sample data only.
+8. Conditions: practitioners add to the shared catalog (J update 1 and 2). Launch may start with zero seeded conditions; the filter stays hidden until at least one condition exists. Rename and delete are global actions on the condition (see [routine-conditions](../routine-conditions/spec.md)).
 9. The connector searches routines and creates programs from them; it can't create or edit routines.
 10. No global search; Routines has its own search bar.
 
@@ -71,7 +84,7 @@ The full verbatim copy is in the inventory at the end.
 
 Approved with v12 (Diadem, Oct 25, 2026, 7:22 PM ET, "v12 is approved", including these design details):
 
-1. The concept opens with the **empty** condition list, since v1 may start with zero conditions. The filled state is labelled "Sample list".
+1. ~~The concept opens with the **empty** condition list, since v1 may start with zero conditions. The filled state is labelled "Sample list".~~ (**Superseded:** v1 may start with zero seeded conditions; practitioners add via [routine-conditions](../routine-conditions/spec.md).)
 2. "Use version N" replaces the whole saved copy, including the practitioner's own edits (warned in the banner, Undo in the toast). Exercises do this per field; a routine is one list, so it is one action.
 3. "Edit for everyone" has no draft step: it saves straight to a new version, like exercise Edit for everyone. Only brand-new routines are drafts.
 4. A draft routine can't be used for a patient until it is published. A draft can be discarded (with Undo). A new routine left untouched is dropped on Cancel.
@@ -81,7 +94,7 @@ Approved with v12 (Diadem, Oct 25, 2026, 7:22 PM ET, "v12 is approved", includin
 
 ## Mockups
 
-Changed in v12 (the approved v12 previews): 02, 04, 04b, 07 to 17, 20 to 22. Unchanged since v11 (rendered from the approved revision): 01, 03, 05, 06, 18, 19. "Use for a patient" and the program-side states are in the programs spec.
+Changed in v12 (the approved v12 previews): 02, 04, 04b, 07 to 17, 20 to 22. Unchanged since v11 (rendered from the approved revision): 01, 03, 05, 06, 18, 19. "Use for a patient" and the program-side states are in the programs spec. Mockup **04b** (Sample list) is **superseded** by DIDI-1216; PNGs kept for v12 history only.
 
 | State | Phone (390 px) | Desktop (1280 px) |
 | -- | -- | -- |
@@ -345,12 +358,11 @@ Every user-facing string in the parts of the approved source that render this fe
 - Open it to see what changed and update in one tap.
 - Search routines
 - Search my routines
-- Try: arthritis, knee, low back
-- Try: knee, low back, bridge
+- Try: sciatica, knee, low back (Designer elaboration of Q19 on DIDI-1216 `b5ce6ede`; not lock text)
 - Clear
-- Condition
-- Sample list
-- Sample conditions for this concept. The real fixed list is still to come.
+- Condition (was: singular draft form label in v12; superseded by **Conditions** in [routine-conditions/spec.md](../routine-conditions/spec.md))
+- Sample list (was: filter sublabel when v12 showed placeholder conditions; removed in condition-first)
+- Sample conditions for this concept. The real fixed list is still to come. (was: shown under sample condition filter in v12; removed in condition-first)
 - Body region
 - Sort
 - Reset
@@ -478,6 +490,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1216 condition-first library and publish validation is/was; search hint `d0366ea0`; card **+{n}**; body region from exercises; Sample list wording superseded. Authoring: [routine-conditions/spec.md](../routine-conditions/spec.md). https://linear.app/didi-build/issue/DIDI-1216
 - **Nov 19, 2026**: DIDI-1224. Similar routine warning on New routine (variant B inline card); linked spec and mockups. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 11, 2026**: DIDI-1192. Diadem (7:13 PM EST, CTO chat), DIDI-594 G update 6: "Match the program sheet, with 'routine' wording". "Publish this routine?" uses routine body and removal read-out strings approved Nov 11, 2026. https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 - **Nov 10, 2026**: DIDI-1192. "Publish this routine?" blocks publish while any exercise lacks its start or end image; Remove is the only action (CTO rulings, DIDI-1193; copy approved by Diadem Nov 9, 2026, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192
