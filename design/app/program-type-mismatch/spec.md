@@ -48,6 +48,15 @@ Recorded under the standing rule above. Not Diadem's verbatim words.
 | Reverse mismatch reason (**T16**) | **Approved as stretching. Change the type to link it.** Mirrors approved **T3** |
 | Type choice accessible name | Link {exercise} as {type} |
 | **Show me** accessible name | Show me exercises that didn't link |
+
+### Designer picks (DIDI-1105 comment `a3f73814`)
+
+Recorded under the standing rule above. Not Diadem's verbatim words. No behaviour change: publish stays blocked while any placeholder or didn't-link row remains (DIDI-1186).
+
+| Topic | Designer pick (`a3f73814`) |
+| -- | -- |
+| Publish notice body, mixed list | Keep the approved DIDI-1186 notice body, then add second sentence **T18** |
+| Publish notice body, every row `type_mismatch` | Body is **T19** only (no approved draft-approval sentence) |
 | Publish sheet **Fix** accessible name | Fix for {name} (visible label **Fix**, **T4**) |
 
 ## API signal (DIDI-1106, not designed here)
@@ -90,6 +99,7 @@ Linked rows omit the field. Until this spec merged, `request_closed` had no UI (
 | `request_closed` | **Out of scope / unapproved UI.** Per DIDI-1106 comment `56b379c5`, render like `awaiting_approval` until a future spec covers it. No copy or layout for `request_closed` in this PR. |
 | No patient information | Same as programs spec. No patient names in banner, row, toast, or flag. |
 | Publish sheet **Fix** | For `type_mismatch` rows only (**Designer pick**, `b650a678`). Same slot and styling as **Review draft** on `awaiting_approval` rows. Closes the publish sheet and navigates to the builder with that row scrolled into view and **Fix** expanded. Remove unchanged. |
+| Publish notice body | See [programs/spec.md](../programs/spec.md#publish-blocked-by-placeholders-didi-1186). **Awaiting only:** approved Nov 8 body unchanged. **Mixed** (`awaiting_approval` and `type_mismatch`): approved body plus **T18** (**Designer pick**, `a3f73814`). **Every row `type_mismatch`:** **T19** only (**Designer pick**, `a3f73814`). |
 
 ### Example (documented in mockups)
 
@@ -137,6 +147,8 @@ Derived from revision `466879152478384129` (`SkippedRowCore.tsx`, `PhysioShell.t
 | T15 | {n} exercises didn't link | Programs list card flag (more than one) | 12:57 AM EST (`c8a1509f`) |
 | T16 | Approved as stretching. Change the type to link it. | Reason line (stretching approved, strengthening row). **Designer pick** (`b650a678`) | Nov 21, 2026 |
 | T17 | Fix | Publish sheet link action for `type_mismatch` rows (reuses builder **T4**). **Designer pick** (`b650a678`) | Nov 21, 2026 |
+| T18 | Fix or remove the exercises that didn't link. | Second sentence on publish notice body when the list is mixed | **Designer pick** (`a3f73814`) |
+| T19 | Fix or remove the exercises that didn't link, then publish. | Publish notice body when every placeholder row is `type_mismatch` | **Designer pick** (`a3f73814`) |
 
 Type names **Isometric**, **Concentric**, **Eccentric**, **Stretching** reuse existing copy (`TYPE_LABELS` / programs builder).
 
@@ -166,14 +178,14 @@ Reason lines: use **T3** when the approved exercise category is strengthening an
 | -- | -- |
 | `request_closed` row UI | Render like `awaiting_approval` per DIDI-1106 comment `56b379c5` until a separate design spec covers it. |
 
-### Accessible names (**Designer pick**, `b650a678`)
+### Accessible names
 
-| Control | Accessible name |
-| -- | -- |
-| Type choice (builder Fix panel) | Link {exercise} as {type} |
-| **Show me** (banner) | Show me exercises that didn't link |
-| **Fix** (publish sheet row) | Fix for {name} |
-| Programs list flag | Same as visible flag text (**T14** / **T15**) |
+| Control | Accessible name | Record |
+| -- | -- | -- |
+| Type choice (builder Fix panel) | Link {exercise} as {type} | **Designer pick** (`b650a678`) |
+| **Show me** (banner) | Show me exercises that didn't link | **Designer pick** (`b650a678`) |
+| **Fix** (publish sheet row) | Fix for {name} | **Designer pick** (`a3f73814`) |
+| Programs list flag | Same as visible flag text (**T14** / **T15**) | Locks **T14** / **T15** |
 
 ## Product direction alignment
 
@@ -205,6 +217,7 @@ Reason lines: use **T3** when the approved exercise category is strengthening an
 | -- | -- | -- |
 | Skipped row after approval | Looked like **Pending review** ("Placeholder. It links to the real exercise once you approve the draft.") even when the draft was already approved (baseline exploration) | `type_mismatch` rows show **Didn't link**, row type, reason (**T3** or **T16**), and **Fix** |
 | Publish sheet placeholder list | Every placeholder showed **Pending review** and **Review draft** (DIDI-1186) | `type_mismatch` rows show **Didn't link**, publish-sheet **Fix**, and **Remove** (**Designer pick**, `b650a678`) |
+| Publish notice body with didn't-link rows | Draft-approval body only (awkward for didn't-link rows until follow-up) | Mixed: approved body plus **T18**; all `type_mismatch`: **T19** (**Designer pick**, `a3f73814`) |
 | Practitioner feedback | None | Variant **B** banner plus compact row |
 | Banner body | Exploration proposed a second line about the patient seeing a placeholder | **Removed** in lock `7e4a9711`. Heading only (**T5** / **T6**) plus **Show me** |
 | Programs list | No flag for skipped link | Card flag reuses banner heading copy (**T14** / **T15**) |
@@ -220,7 +233,7 @@ Full-width phone captures (390 px). Desktop uses the same components in the prog
 | State | Phone (390 px) | Desktop (1280 px) | Notes |
 | -- | -- | -- | -- |
 | 01 builder banner plus compact row | [phone](mockups/01-builder-banner-phone.png) | (same layout; phone capture only) | Heading **T5** only plus **Show me**; no dropped banner body. Row **T1** to **T4**. Capture width 390 px. |
-| 02 fix expanded | [phone](mockups/02-builder-fix-expanded-phone.png) | [desktop](mockups/02-builder-fix-expanded-desktop.png) | **Fix** open; type choices **T8** to **T11** and **Pick another exercise**. Source layout: MagicPath revision `466879152478384129`. Re-capture with `mockups/capture-mockups.mjs` when the board changes. |
+| 02 fix expanded | [phone](mockups/02-builder-fix-expanded-phone.png) | [desktop](mockups/02-builder-fix-expanded-desktop.png) | **Fix** open with builder banner **T5** still visible; type choices **T8** to **T11** and **Pick another exercise**. Re-capture with `mockups/capture-mockups.mjs` when the board changes. |
 
 No gallery components in the Physio POC app ([DIDI-1105](https://linear.app/didi-build/issue/DIDI-1105) design-as-code exception).
 
@@ -235,7 +248,8 @@ No gallery components in the Physio POC app ([DIDI-1105](https://linear.app/didi
 7. Programs card flag reuses banner heading strings.
 8. Link toast with **Undo** restores skipped state.
 9. Publish sheet lists `type_mismatch` placeholders with **Didn't link**, publish-sheet **Fix**, and **Remove** (**Designer pick**, `b650a678`).
-10. Reverse mismatch reason **T16** and publish-sheet accessible names (**Designer pick**, `b650a678`).
+10. Reverse mismatch reason **T16** and builder or banner accessible names (**Designer pick**, `b650a678`).
+11. Publish notice body **T18** and **T19**; publish-sheet **Fix for {name}** (**Designer pick**, `a3f73814`).
 
 ## Build notes
 
@@ -247,6 +261,7 @@ No gallery components in the Physio POC app ([DIDI-1105](https://linear.app/didi
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1105 follow-up (`design/DIDI-1105-followup`). Publish notice **T18** and **T19**; **Fix for {name}** via `a3f73814`. Mockup 02 with banner visible. https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 PR #142 QA R1. Publish-sheet **Fix** (`b650a678`); **T16** and a11y picks cite `b650a678`; banner body drop cites `7e4a9711`; **T14** at 12:57 AM EST (`c8a1509f`); mockups 01 and 02 re-rendered at 390 px (and 02 at 1280 px). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 follow-up (PR #142). CTO locks `2bdbb75b`, `7e4a9711`, `c8a1509f` recorded. https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105. Diadem approved variant B, strings T1 to T15, Q22 dose preservation, Q23 Programs card flag, banner plural (12:57 AM EST). Spec, mockup reference, and product direction alignment. Unblocks [DIDI-1106](https://linear.app/didi-build/issue/DIDI-1106). https://linear.app/didi-build/issue/DIDI-1105
