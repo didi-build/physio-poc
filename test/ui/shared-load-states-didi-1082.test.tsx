@@ -19,8 +19,11 @@ import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
 } from "../../src/ui/api/exercise-library-client.js";
+import { HttpResponseError } from "../../src/ui/api/http-response-error.js";
+import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
   FAILED_KEEP_YOUR_VERSION,
+  FAILED_MERGE_EXERCISES,
   FAILED_SWITCH_TO_LIBRARY,
   LIST_LOAD_ERROR_SECONDARY,
   REFRESH_FAILURE_PRIMARY,
@@ -38,7 +41,10 @@ import {
   notFoundHelper,
   notFoundTitle,
 } from "../../src/ui/copy/shared-load-states.js";
-import { mappedFailedSaveMessage } from "../../src/ui/shared-load-states/failed-save.js";
+import {
+  didi1273FailedSaveMessage,
+  mappedFailedSaveMessage,
+} from "../../src/ui/shared-load-states/failed-save.js";
 import {
   SharedItemLoadingState,
   SharedListLoadErrorBanner,
@@ -111,6 +117,11 @@ describe("DIDI-1082 shared load states copy (pinned literals)", () => {
     expect(BACK_TO_EXERCISES).toBe("Back to exercises");
   });
 
+  it("pins FAILED_MERGE_EXERCISES literal", () => {
+    expect(FAILED_MERGE_EXERCISES).toBe("Couldn't merge the exercises. Try again.");
+    expect(didi1273FailedSaveMessage("exercise_merge")).toBe(FAILED_MERGE_EXERCISES);
+  });
+
   it("pins locked failed-save strings for all four action types", () => {
     expect(mappedFailedSaveMessage({ kind: "save_or_edit", item: "exercise" })).toBe(
       failedSaveItem("exercise"),
@@ -165,6 +176,30 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(isLoadNotFoundError({ code: "exercise_not_found" })).toBe(true);
     expect(isLoadNotFoundError(new Error("routine_not_found"))).toBe(true);
     expect(isLoadNotFoundError(new Error("network"))).toBe(false);
+    expect(
+      isLoadNotFoundError(
+        new HttpResponseError("Exercise not found", {
+          code: "exercise_not_found",
+          status: 404,
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("renders SharedListLoadingState with visible loading copy, sr-only status without ellipsis, and aria-hidden skeleton list", () => {
+    render(<SharedListLoadingState surface="programs" testId="programs-list-loading" />);
+    const root = screen.getByTestId("programs-list-loading");
+    expect(
+      within(root).getByText(loadingListVisible(listTokenForSurface("programs"))),
+    ).toBeInTheDocument();
+    const status = within(root).getByRole("status");
+    expect(status).toHaveClass("sr-only");
+    expect(status).toHaveTextContent(loadingListStatus(listTokenForSurface("programs")));
+    expect(status.textContent).not.toMatch(/\.\.\.$/);
+    expect(within(root).getByTestId("sls-skeleton-list")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("renders refresh banner without inventing a secondary line", () => {
@@ -232,6 +267,38 @@ describe("DIDI-1082 shared load states behaviour", () => {
     });
   });
 
+  it("shows not-found card when details load returns HttpResponseError exercise_not_found", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-missing" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({
+            getExerciseDetails: vi
+              .fn()
+              .mockRejectedValue(
+                new HttpResponseError("Exercise not found", {
+                  code: "exercise_not_found",
+                  status: 404,
+                }),
+              ),
+          })}
+          exerciseRequestsClient={stubRequestsClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(notFoundTitle("exercise"))).toBeInTheDocument();
+    });
+    expect(screen.getByText(notFoundHelper("exercise"))).toBeInTheDocument();
+    expect(
+      screen.queryByText(itemLoadErrorPrimary("exercise")),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
+  });
+
   it("shows not-found card when details load returns not_found", async () => {
     render(
       <MemoryRouter
@@ -294,7 +361,36 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(within(root).getByRole("status")).toHaveTextContent(
       loadingItemStatus("exercise"),
     );
-    expect(root.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(within(root).getByTestId("sls-item-skeleton-bars")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+  });
+
+  it("does not expose loading item status on exercise details when initial load failed", async () => {
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("exerciseDetail", { exerciseId: "ex-1" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseLibraryClient={mockClient({
+            getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
+          })}
+          exerciseRequestsClient={stubRequestsClient()}
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("exercise-library-detail-error-slot"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("status", { name: loadingItemStatus("exercise") }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(loadingItemStatus("exercise"))).not.toBeInTheDocument();
   });
 
   it("shows Trying again while an async list retry is in flight", async () => {
@@ -356,5 +452,58 @@ describe("DIDI-1082 shared load states behaviour", () => {
     expect(
       screen.queryByText(loadingListVisible(listTokenForSurface("exercises"))),
     ).not.toBeInTheDocument();
+  });
+
+  it("hides programs list loading visible text when initial list load fails", async () => {
+    const listPrograms = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <MemoryRouter initialEntries={["/programs"]}>
+        <PhysioApp
+          exerciseLibraryClient={mockClient({
+            listMyExercises: vi.fn(),
+            searchApproved: vi.fn(),
+          })}
+          exerciseRequestsClient={stubRequestsClient()}
+          programsClient={
+            {
+              listPrograms,
+              listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+            } as unknown as ProgramsClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(listLoadErrorPrimary(listTokenForSurface("programs"))),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(loadingListVisible(listTokenForSurface("programs"))),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Trying again on programs list banner while async retry is in flight", async () => {
+    let resolve!: () => void;
+    const onTryAgain = vi.fn(
+      () =>
+        new Promise<void>((res) => {
+          resolve = res;
+        }),
+    );
+    render(
+      <SharedListLoadErrorBanner
+        surface="programs"
+        onTryAgain={onTryAgain}
+        testId="programs-retry-banner"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    resolve();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
+    });
+    expect(onTryAgain).toHaveBeenCalledTimes(1);
   });
 });

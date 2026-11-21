@@ -23,7 +23,11 @@ import {
   MISSING_IMAGES_BLOCK_HEADING,
   PUBLISH,
   PUBLISH_NOW,
+  VALIDATION_ADD_EXERCISE,
+  VALIDATION_ADD_ROUTINE_NAME,
 } from "../../src/ui/copy/routines.js";
+import { TRY_AGAIN } from "../../src/ui/copy/shared-load-states.js";
+import { RoutinePublishValidationPanel } from "../../src/ui/routines/RoutinePublishValidationPanel.js";
 import type {
   RoutineDetailsDraft,
   RoutineExerciseRow,
@@ -114,6 +118,19 @@ function draftDetails(rows: RoutineExerciseRow[]): RoutineDetailsDraft {
     community_change_list: null,
   };
 }
+
+describe("Routine publish validation panel", () => {
+  it("shows a validation alert without Try again", () => {
+    render(
+      <RoutinePublishValidationPanel issues={["missing_name", "missing_exercise"]} />,
+    );
+    const panel = screen.getByTestId("rt-publish-validation");
+    expect(panel).toHaveAttribute("role", "alert");
+    expect(screen.getByText(VALIDATION_ADD_ROUTINE_NAME)).toBeInTheDocument();
+    expect(screen.getByText(VALIDATION_ADD_EXERCISE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: TRY_AGAIN })).not.toBeInTheDocument();
+  });
+});
 
 describe("Routine draft detail publish rejection DIDI-1193", () => {
   it("reloads rows after server missing_images_block_publish and focuses the heading", async () => {

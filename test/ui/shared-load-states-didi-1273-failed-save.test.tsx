@@ -50,7 +50,13 @@ import {
   TYPE_LABELS,
 } from "../../src/ui/copy/my-defaults.js";
 import { PUBLISH_NOW } from "../../src/ui/copy/program-publish.js";
-import { removeRowAriaLabel } from "../../src/ui/copy/programs.js";
+import {
+  AUTO_SAVE_FAILURE_HELPER,
+  AUTO_SAVE_NOT_SAVED,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
+  removeRowAriaLabel,
+} from "../../src/ui/copy/programs.js";
+import { FAILED_SAVE_DRAFT } from "../../src/ui/copy/shared-load-states.js";
 import {
   PUBLISH_NOW as ROUTINE_PUBLISH_NOW,
   RESTORE_THIS_VERSION,
@@ -444,9 +450,16 @@ describe("DIDI-1273 failed-save alerts (integration, jsdom)", () => {
     await waitFor(() => {
       assertFailedSaveAlert(
         "routines-draft-autosave-failed-save-alert",
-        "Couldn't save the draft. Try again.",
+        FAILED_SAVE_DRAFT,
       );
     });
+    expect(FAILED_SAVE_DRAFT).toBe("Couldn't save the draft. Try again.");
+    expect(screen.getByText(AUTO_SAVE_NOT_SAVED)).toBeInTheDocument();
+    expect(screen.getByText(AUTO_SAVE_FAILURE_HELPER)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("rt-draft-publish")).toBeDisabled();
   });
 
   it("shows routine publish failed-save copy on draft routine detail", async () => {

@@ -18,6 +18,7 @@ import {
   NEW_PROGRAM_ROUTINE_PICKER_TITLE,
   builderOriginBannerTitle,
 } from "../../src/ui/copy/programs.js";
+import { itemLoadErrorPrimary, TRY_AGAIN } from "../../src/ui/copy/shared-load-states.js";
 import { openMigratedDatabase } from "../helpers/exercise-sqlite-fixture.js";
 import {
   publishRoutine,
@@ -405,9 +406,9 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         close,
       } = await httpClients();
       try {
-        vi.spyOn(routinesClient, "getRoutineDetails").mockRejectedValue(
-          new Error("Routine not found"),
-        );
+        const getRoutineDetails = vi
+          .spyOn(routinesClient, "getRoutineDetails")
+          .mockRejectedValue(new Error("Routine not found"));
         const countBefore = await programCount(storage, practitionerA);
         render(deepLinkApp(routineId, programsClient, routinesClient));
         const dialog = await screen.findByRole("dialog", {
@@ -416,15 +417,25 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         await waitFor(() => {
           expect(within(dialog).getByText("Knee routine for UI")).toBeInTheDocument();
         });
+        const loadError = await screen.findByTestId(
+          "program-new-deep-link-routine-load-error",
+        );
         await waitFor(() => {
           expect(
-            screen.getByTestId("program-create-failed-save-alert"),
+            within(loadError).getByText(itemLoadErrorPrimary("routine")),
           ).toBeInTheDocument();
+          expect(
+            screen.queryByTestId("program-create-failed-save-alert"),
+          ).not.toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
             }),
           ).toBeDisabled();
+        });
+        await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+        await waitFor(() => {
+          expect(getRoutineDetails).toHaveBeenCalledTimes(2);
         });
         expect(createFromRoutineSpy).not.toHaveBeenCalled();
         expect(await programCount(storage, practitionerA)).toBe(countBefore);
@@ -544,10 +555,16 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         const dialog = await screen.findByRole("dialog", {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
+        const loadError = await screen.findByTestId(
+          "program-new-deep-link-routine-load-error",
+        );
         await waitFor(() => {
           expect(
-            screen.getByTestId("program-create-failed-save-alert"),
+            within(loadError).getByText(itemLoadErrorPrimary("routine")),
           ).toBeInTheDocument();
+          expect(
+            screen.queryByTestId("program-create-failed-save-alert"),
+          ).not.toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -589,10 +606,16 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         const dialog = await screen.findByRole("dialog", {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
+        const loadError = await screen.findByTestId(
+          "program-new-deep-link-routine-load-error",
+        );
         await waitFor(() => {
           expect(
-            screen.getByTestId("program-create-failed-save-alert"),
+            within(loadError).getByText(itemLoadErrorPrimary("routine")),
           ).toBeInTheDocument();
+          expect(
+            screen.queryByTestId("program-create-failed-save-alert"),
+          ).not.toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,
@@ -634,10 +657,16 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
         const dialog = await screen.findByRole("dialog", {
           name: NEW_PROGRAM_ROUTINE_PICKER_TITLE,
         });
+        const loadError = await screen.findByTestId(
+          "program-new-deep-link-routine-load-error",
+        );
         await waitFor(() => {
           expect(
-            screen.getByTestId("program-create-failed-save-alert"),
+            within(loadError).getByText(itemLoadErrorPrimary("routine")),
           ).toBeInTheDocument();
+          expect(
+            screen.queryByTestId("program-create-failed-save-alert"),
+          ).not.toBeInTheDocument();
           expect(
             within(dialog).getByRole("button", {
               name: CREATE_PROGRAM_FROM_ROUTINE_ACTION,

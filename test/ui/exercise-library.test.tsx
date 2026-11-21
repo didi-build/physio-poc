@@ -722,6 +722,10 @@ describe("Exercise library UI", () => {
     expect(
       screen.getByText(loadingListVisible(listTokenForSurface("exercises"))),
     ).toBeInTheDocument();
+    expect(screen.getByTestId("sls-skeleton-list")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
     for (const phrase of UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS) {
       expect(screen.queryByText(phrase)).not.toBeInTheDocument();
     }
@@ -750,7 +754,10 @@ describe("Exercise library UI", () => {
     const section = skeleton.closest("section");
     expect(section).toHaveAttribute("aria-busy", "true");
     expect(within(skeleton).getByRole("status")).toBeInTheDocument();
-    expect(skeleton.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(within(skeleton).getByTestId("sls-item-skeleton-bars")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("renders a visual-only busy state while My copy loads", async () => {
@@ -772,7 +779,10 @@ describe("Exercise library UI", () => {
     const section = skeleton.closest("section");
     expect(section).toHaveAttribute("aria-busy", "true");
     expect(within(skeleton).getByRole("status")).toBeInTheDocument();
-    expect(skeleton.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    expect(within(skeleton).getByTestId("sls-item-skeleton-bars")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
   });
 
   it("does not show My exercises empty state copy when load fails", async () => {

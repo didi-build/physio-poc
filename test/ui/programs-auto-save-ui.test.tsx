@@ -3,11 +3,15 @@
  */
 import "./setup.js";
 import { cleanup, render, screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AUTO_SAVE_FAILURE_HELPER,
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
+  AUTO_SAVE_TRY_AGAIN,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
   NOT_PUBLISHED_YET,
 } from "../../src/ui/copy/programs.js";
 import { AutoSaveStatus } from "../../src/ui/programs/AutoSaveStatus.js";
@@ -116,6 +120,28 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
       />,
     );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("pins AUTO_SAVE_FAILURE_HELPER and retries without a duplicate failed-save alert on the card", async () => {
+    expect(AUTO_SAVE_FAILURE_HELPER).toBe("Your latest changes aren't saved yet.");
+    const onTryAgain = vi.fn();
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={onTryAgain}
+      />,
+    );
+    expect(screen.getByText(AUTO_SAVE_FAILURE_HELPER)).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("programs-autosave-failed-save-alert"),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    );
+    expect(onTryAgain).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(AUTO_SAVE_TRY_AGAIN)).toBeInTheDocument();
   });
 
   it("shows exactly one failure alert on the phone status autosave block", () => {

@@ -13,10 +13,12 @@ import {
 } from "../../src/ui/api/exercise-library-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
+  AUTO_SAVE_TRY_AGAIN_ARIA,
   NEW_PROGRAM_FROM_ROUTINE,
   NEW_PROGRAM_FROM_SCRATCH,
   NEW_PROGRAM_SHEET_TITLE,
 } from "../../src/ui/copy/programs.js";
+import { failedSaveItem } from "../../src/ui/copy/shared-load-states.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 
 afterEach(() => {
@@ -137,7 +139,38 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(
       screen.getByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE }),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
+    const alert = screen.getByTestId("program-create-failed-save-alert");
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert).toHaveTextContent(failedSaveItem("program"));
+    expect(failedSaveItem("program")).toBe("Couldn't save the program. Try again.");
+  });
+
+  it("retries createProgram when Try again is pressed after create fails (C2b)", async () => {
+    const createProgram = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail again"));
+    render(
+      <MemoryRouter initialEntries={["/programs/new"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({ createProgram })}
+        />
+      </MemoryRouter>,
+    );
+    const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    await userEvent.click(scratchOptionButton(sheet));
+    await waitFor(() => {
+      expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
+    });
+    expect(createProgram).toHaveBeenCalledTimes(1);
+    await userEvent.click(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    );
+    await waitFor(() => {
+      expect(createProgram).toHaveBeenCalledTimes(2);
+    });
+    expect(scratchOptionButton(sheet)).toBeInTheDocument();
   });
 
   it("does not show the error slot when create succeeds (C3)", async () => {
