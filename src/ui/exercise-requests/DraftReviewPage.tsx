@@ -128,10 +128,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     fetcher: (signal) => requestsClient.getRequest(requestId, { signal }),
   });
 
-  const {
-    data: quota,
-    refresh: refreshQuota,
-  } = useSessionCachedRead<
+  const { data: quota, refresh: refreshQuota } = useSessionCachedRead<
     Awaited<ReturnType<typeof mediaClient.getRegenerationQuota>>
   >({
     cacheKey: quotaCacheKey,
