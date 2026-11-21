@@ -111,6 +111,73 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
       path: programRowUndoTypeMismatchLinkPath(programId, rowId),
     });
   });
+  it("rejects unexpected keys on link and undo bodies without touching rows", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-extra"),
+        "extra@example.com",
+      );
+      const programId = id("prog-extra");
+      const reqId = id("req-extra");
+      const rowId = id("row-extra");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const before = await rowsRepo.findById(rowId);
+      const { deps, cookie } = apiDeps(storage, owner);
+      const linkUrl = `${BASE}${programRowLinkTypeMismatchPath(programId, rowId)}`;
+      const linkResponse = await handleRequest(
+        new Request(
+          linkUrl,
+          mutatingAppApiRequestInit(linkUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              prescription_type: "stretching",
+              draft_updated_at: draftUpdatedAt,
+              forged: true,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(linkResponse.status).toBe(400);
+      await expect(linkResponse.json()).resolves.toMatchObject({
+        error: "invalid_input",
+      });
+      const undoUrl = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const undoResponse = await handleRequest(
+        new Request(
+          undoUrl,
+          mutatingAppApiRequestInit(undoUrl, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              draft_updated_at: draftUpdatedAt,
+              undo: { kind: "forged" },
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(undoResponse.status).toBe(400);
+      await expect(undoResponse.json()).resolves.toMatchObject({
+        error: "invalid_input",
+      });
+      const after = await rowsRepo.findById(rowId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("refuses undo forged body and leaves a linked row unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {
