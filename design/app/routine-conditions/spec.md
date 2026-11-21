@@ -24,9 +24,11 @@ Project `471087931147292672`. Mobile first (390 px column). Desktop: same field 
 
 ## Locked Product direction (verbatim)
 
-**DIDI-594**, Diadem, Nov 10, 2026, 8:30 PM EST (entry J, Designer chat relayed by CTO on `41b3b0d0`):
+**DIDI-594**, Diadem, Nov 10, 2026, 8:41 PM EST (entry J update 1, `41b3b0d0`, verbatim):
 
-> Every routine needs a condition; practitioners can have one routine serve multiple conditions; body parts come from exercises within the routine; practitioners can add conditions.
+> yes, we can have one routine that serves multiple conditions ie, sciatica, a weak core, lower back pain, etc. all can be treated with similar exercises
+
+> body parts come from the exercises within the routine
 
 **DIDI-594**, Diadem, Nov 10, 2026, 9:01 PM EST (J update 2, `28eea987`, verbatim answers on DIDI-1221):
 
@@ -47,7 +49,7 @@ Project `471087931147292672`. Mobile first (390 px column). Desktop: same field 
 
 ## Standing rule and Designer picks (not Diadem's words)
 
-**DIDI-594** comment `a887af34`, Diadem, Nov 21, 2026, 12:58 AM EST (Designer chat, relayed verbatim by CTO):
+**DIDI-594** comment `a887af34`, Diadem, Nov 21, 2026, 12:58 AM EST (CTO lock of Diadem's words, relayed by Designer):
 
 > going forward please pick something reasonable. only ask me if it's a true product decision that you are unsure about
 
@@ -56,7 +58,7 @@ Project `471087931147292672`. Mobile first (390 px column). Desktop: same field 
 | Q16 | Selected condition chips keep visible **Clear**; accessible name **Clear {condition}** (W7; same pattern as body region picker **Clear {region}**, per [DIDI-1254](https://linear.app/didi-build/issue/DIDI-1254) CTO comment `34ddfb6e` and lock `32f06097`) |
 | Q17 | **Rename** and **Delete** use confirm only; no Undo after confirm |
 | Q18 | Renaming to a name that already exists is **blocked**, not merged |
-| Q19 | Library search hints mention conditions (see [routines spec](../routines/spec.md) search is/was) |
+| Q19 | Library search hints mention conditions; placeholder **Try: sciatica, knee, low back** ([DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `d0366ea0`; see [routines spec](../routines/spec.md) search is/was) |
 
 **Designer picks** recorded on [DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) comment `b5ce6ede` (under Diadem's `a887af34` standing rule; not Diadem's words):
 
@@ -143,7 +145,7 @@ When publish is attempted without at least one condition:
 
 ## States (mockups)
 
-Phone 390 px (height varies by state; padded to 844 px in PNGs for 01 to 05). Desktop 1280 by 900 px. States 01 to 05 cropped from MagicPath board revision `474549354716364800`. States 06 to 08 captured from the same revision's `CfBoard` component (variant A) at 390 px and 1280 px; amber **new** markers in source are design-board only and are not in shipped UI.
+Phone 390 px (height varies by state; padded to 844 px in PNGs). Desktop 1280 by 900 px. Single-state frames from MagicPath revision `474549354716364800`, variant A `CfBoard` (Playwright `#root` capture). No board titles, next-state fragments, or amber **New** markers.
 
 | # | State | What it shows |
 | -- | -- | -- |
@@ -151,21 +153,25 @@ Phone 390 px (height varies by state; padded to 844 px in PNGs for 01 to 05). De
 | 02 | add row | Typeahead `piriformis`; **Add Piriformis** with **New** pill |
 | 03 | chips multi | Three selected chips; empty typeahead; helper C4; derived **Hip** and **Lower back** |
 | 04 | empty catalog | Focused typeahead; list message C5 |
-| 05 | publish validation | Red summary C6; inline C8; exercise bullet unchanged |
-| 06 | overflow menu | Routine page badge overflow open (**Rename**, **Delete**); same menu pattern on typeahead catalog rows |
-| 07 | rename sheet | **Rename condition**, **Condition name**, helper C16, primary **Save** |
-| 08 | delete confirm | C17, C10, C11 |
+| 05 | publish validation | **Before you publish** summary with C6; inline C8; existing name and exercise bullets |
+| 06 | name exists | Typeahead matches an existing condition; no **Add** row (pick the match) |
+| 07 | overflow menu | Routine page badge overflow open (**Rename**, **Delete**); same menu pattern on typeahead catalog rows |
+| 08 | rename sheet | **Rename condition**, **Condition name**, helper C16, primary **Save** |
+| 09 | rename blocked | C19 duplicate name error; **Save** disabled (**Designer pick** `b5ce6ede`) |
+| 10 | delete confirm | C17, C10, C11 |
 
 | State | Phone | Desktop |
 | -- | -- | -- |
 | 01 matches | [phone](mockups/01-matches-phone.png) | [desktop](mockups/01-matches-desktop.png) |
 | 02 add row | [phone](mockups/02-add-row-phone.png) | [desktop](mockups/02-add-row-desktop.png) |
 | 03 chips multi | [phone](mockups/03-chips-multi-phone.png) | [desktop](mockups/03-chips-multi-desktop.png) |
-| 04 empty | [phone](mockups/04-empty-phone.png) | [desktop](mockups/04-empty-desktop.png) |
-| 05 validation | [phone](mockups/05-validation-phone.png) | [desktop](mockups/05-validation-desktop.png) |
-| 06 overflow menu | [phone](mockups/06-overflow-menu-phone.png) | [desktop](mockups/06-overflow-menu-desktop.png) |
-| 07 rename | [phone](mockups/07-rename-phone.png) | [desktop](mockups/07-rename-desktop.png) |
-| 08 delete confirm | [phone](mockups/08-delete-confirm-phone.png) | [desktop](mockups/08-delete-confirm-desktop.png) |
+| 04 empty catalog | [phone](mockups/04-empty-phone.png) | [desktop](mockups/04-empty-desktop.png) |
+| 05 publish validation | [phone](mockups/05-validation-phone.png) | [desktop](mockups/05-validation-desktop.png) |
+| 06 name exists | [phone](mockups/06-name-exists-phone.png) | [desktop](mockups/06-name-exists-desktop.png) |
+| 07 overflow menu | [phone](mockups/07-overflow-menu-phone.png) | [desktop](mockups/07-overflow-menu-desktop.png) |
+| 08 rename sheet | [phone](mockups/08-rename-phone.png) | [desktop](mockups/08-rename-desktop.png) |
+| 09 rename blocked | [phone](mockups/09-rename-blocked-phone.png) | [desktop](mockups/09-rename-blocked-desktop.png) |
+| 10 delete confirm | [phone](mockups/10-delete-confirm-phone.png) | [desktop](mockups/10-delete-confirm-desktop.png) |
 
 ## Keyboard and accessibility
 
@@ -192,7 +198,7 @@ Same as [body-region-picker/spec.md](../body-region-picker/spec.md) Keyboard and
 | C7 | Comes from the exercises in this routine. | Body region helper | Visible; region chips `aria-readonly` |
 | C8 | Add a condition to publish. | Inline validation | Associated with **Conditions** via `aria-describedby` when shown |
 | C9 | +{n} | Card overflow count | Visible; `n` hidden condition count |
-| C10 | {n} routines use it. It comes off all of them, for every practitioner. | Delete confirm body | `{n}` routine count from server |
+| C10 | {n} routines use it. It comes off all of them, for every practitioner. | Delete confirm body | `{n}` count source **Open** ([DIDI-1272](https://linear.app/didi-build/issue/DIDI-1272)) |
 | C11 | Delete condition | Delete confirm primary | Destructive button |
 | C12 | Rename | Menu item | Visible |
 | C13 | Delete | Menu item | Visible |
@@ -205,6 +211,7 @@ Same as [body-region-picker/spec.md](../body-region-picker/spec.md) Keyboard and
 | W7 | Clear {condition} | Chip remove | Visible **Clear** (`CLEAR`); `aria-label` only (**Designer pick** `a887af34` Q16; pattern [DIDI-1254](https://linear.app/didi-build/issue/DIDI-1254) `34ddfb6e`) |
 | (reuse) | Clear | Chip remove visible | `src/ui/copy/exercise-library.ts` `CLEAR` |
 | (reuse) | Save | Rename sheet primary | `src/ui/copy/exercise-requests.ts` `SAVE` (**Designer pick** DIDI-1216 `b5ce6ede` Q21) |
+| (reuse) | Cancel | Rename and delete sheet secondary | Existing approved **Cancel** ([DIDI-1216](https://linear.app/didi-build/issue/DIDI-1216) `d0366ea0`) |
 | (reuse) | New | Add row / user-new chip | `TAG_NEW` |
 | (reuse) | Before you publish | Validation summary title | `BEFORE_YOU_PUBLISH` |
 | (reuse) | Your draft is still saved. | Validation footer | routines copy inventory |
@@ -217,9 +224,9 @@ Diadem's reply to items 4 to 15, verbatim: **approve** (strings exactly as liste
 
 | Topic | Why open |
 | -- | -- |
-| Deleting a routine's only condition | **Open: needs Diadem.** [DIDI-1262](https://linear.app/didi-build/issue/DIDI-1262); out of scope here |
-| Normalised duplicate handling on **create** vs **rename** | **Open: needs Diadem.** J update 2 (`28eea987`) mentions merge on create; `a887af34` Q18 covers rename only |
-| Exact routine count source and stale counts in delete copy (`{n}` in C10) | **Open: needs Diadem.** Who sees what / counts |
+| Deleting a routine's only condition | **Open:** [DIDI-1262](https://linear.app/didi-build/issue/DIDI-1262). Direction locked on [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) `0cc3e785` (flag; cancel or replace the condition). Strings and UI on DIDI-1262; out of scope here |
+| Normalised duplicate handling on **create** vs **rename** | **Open:** merged on create per [DIDI-1218](https://linear.app/didi-build/issue/DIDI-1218) and J update 2 (`28eea987`). Rename blocked, not merged (`a887af34` Q18) |
+| Delete confirm routine count (`{n}` in C10) | **Open:** [DIDI-1272](https://linear.app/didi-build/issue/DIDI-1272) (ready for maintainer). Do not invent |
 
 ## Is/was (this feature)
 
@@ -249,6 +256,7 @@ Diadem's reply to items 4 to 15, verbatim: **approve** (strings exactly as liste
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1216 QA R1 (physio-poc#145). Mockups 01 to 10 recaptured as single-state 390 and 1280 frames; open rows point at DIDI-1218, DIDI-1262, DIDI-1272; J update 1 verbatim; `d0366ea0` for **Cancel** reuse; `a887af34` relay wording.
 - **Nov 21, 2026**: DIDI-1216 QA. Citation split: `a887af34` Q16 to Q19 vs elaborations on `b5ce6ede` (C19, Q20, Q21).
 - **Nov 21, 2026**: DIDI-1216 follow-up. Designer picks; DIDI-1254 `34ddfb6e` for W7; mockups 06 to 08 from CfBoard captures.
 - **Nov 21, 2026**: DIDI-1216. Option A spec, approved strings (`6d77e60d`), Designer picks (`a887af34`), mockups 01 to 05 from MagicPath `474549354716364800`. Blocks DIDI-1219; unblocks DIDI-1226 path with DIDI-1219. https://linear.app/didi-build/issue/DIDI-1216

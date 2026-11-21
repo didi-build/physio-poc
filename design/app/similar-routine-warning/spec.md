@@ -289,6 +289,7 @@ The preview sheet title row above remains **Open: needs Diadem approval** (runti
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1216. Authoring chip remove: W7 **Clear {condition}** (`a887af34` Q16) supersedes exploration **Remove {condition}** (`f4682350`). https://linear.app/didi-build/issue/DIDI-1216
 - **Nov 19, 2026**: DIDI-1224 a11y follow-up. W9 to W11 (8:30 PM ET; `e880fcc5`), layout tokens aligned to revision `471088919975432193`, open a11y items closed. https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224 follow-up. QA nits: state 04 continue mockup, spec wording, layout class inventory, lock citations (`3fd723a4`, `03489a7e` on AI cap). https://linear.app/didi-build/issue/DIDI-1224
 - **Nov 19, 2026**: DIDI-1224. Diadem approved W8 `Conditions` at 4:27 PM ET (`3fd723a4`; replaces `CONDITION` on New routine form). https://linear.app/didi-build/issue/DIDI-1224
