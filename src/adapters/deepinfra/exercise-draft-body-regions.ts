@@ -29,9 +29,6 @@ export async function partitionExerciseDraftBodyRegions(
 
   for (const raw of rawNames) {
     const trimmed = raw.trim();
-    if (trimmed.length === 0) {
-      continue;
-    }
     const nameKey = normalizeConditionLabelKey(trimmed);
     const libraryMatch = byNormalizedLabel.get(nameKey);
     if (libraryMatch) {

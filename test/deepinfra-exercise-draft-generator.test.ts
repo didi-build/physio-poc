@@ -588,9 +588,12 @@ describe("DeepInfra exercise draft generator", () => {
   });
 
   it("maps timeout to typed failure without raw AbortError", async () => {
+    vi.useFakeTimers();
+    let abortSignal: AbortSignal | undefined;
     const fetchImpl = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
         new Promise((_resolve, reject) => {
+          abortSignal = init?.signal ?? undefined;
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted", "AbortError"));
           });
@@ -612,12 +615,59 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
+      const inflight = service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Timeout",
+        formOpenedAt: FORM_OPENED,
+      });
+      inflight.catch(() => {});
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(abortSignal?.aborted).toBe(true);
+      await expect(inflight).rejects.toSatisfy((err: unknown) => {
+        expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
+        expect((err as Error).cause).toBeUndefined();
+        return true;
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+      storage.close();
+    }
+  });
+
+  it("maps generate timeout to text_failed without raw AbortError", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+      timeoutMs: 25,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-timeout-generate"),
+        "tg@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
       await expectGenerateRejects(
         service,
         storage,
         {
           practitionerId: practitioner,
-          requestedName: "Timeout",
+          requestedName: "Timeout generate",
           formOpenedAt: FORM_OPENED,
         },
         (result) => {
@@ -630,6 +680,7 @@ describe("DeepInfra exercise draft generator", () => {
       );
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
+      vi.useRealTimers();
       storage.close();
     }
   });
