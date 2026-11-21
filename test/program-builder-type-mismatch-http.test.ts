@@ -41,6 +41,16 @@ const EXERCISE_REQUEST_NOT_FOUND_BODY = {
   message: EXERCISE_REQUEST_NOT_FOUND_MESSAGE,
 } as const;
 
+const INVALID_INPUT_BODY = {
+  error: "invalid_input",
+  message: "invalid_input",
+} as const;
+
+const STALE_WRITE_BODY = {
+  error: "stale_write",
+  message: "Stale write",
+} as const;
+
 async function expectHttpProgramNotFound(response: Response): Promise<void> {
   expect(response.status).toBe(404);
   const body = (await response.json()) as { error: string; message: string };
@@ -173,9 +183,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         deps,
       );
       expect(linkResponse.status).toBe(400);
-      await expect(linkResponse.json()).resolves.toMatchObject({
-        error: "invalid_input",
-      });
+      await expect(linkResponse.json()).resolves.toEqual(INVALID_INPUT_BODY);
       const undoUrl = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
       const undoResponse = await handleRequest(
         new Request(
@@ -192,9 +200,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         deps,
       );
       expect(undoResponse.status).toBe(400);
-      await expect(undoResponse.json()).resolves.toMatchObject({
-        error: "invalid_input",
-      });
+      await expect(undoResponse.json()).resolves.toEqual(INVALID_INPUT_BODY);
       const after = await rowsRepo.findById(rowId);
       expect(after).toEqual(before);
     } finally {
@@ -257,10 +263,60 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         deps,
       );
       expect(response.status).toBe(400);
-      const body = (await response.json()) as { error: string };
-      expect(body.error).toBe("invalid_input");
+      await expect(response.json()).resolves.toEqual(INVALID_INPUT_BODY);
       const rowsAfter = await new ProgramRowsRepository(storage).findById(rowId);
       expect(rowsAfter).toEqual(rowsBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("requires draft_updated_at on undo when the linked row would otherwise revert", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-undo-req"),
+        "undo-req@example.com",
+      );
+      const programId = id("prog-undo-req");
+      const reqId = id("req-undo-req");
+      const rowId = id("row-undo-req");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      const service = new ProgramBuilderService(storage);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "stretching",
+        draftUpdatedAt,
+      );
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowBefore = await rowsRepo.findById(rowId);
+      const { deps, cookie } = apiDeps(storage, owner);
+      const url = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(INVALID_INPUT_BODY);
+      const rowAfter = await rowsRepo.findById(rowId);
+      expect(rowAfter).toEqual(rowBefore);
+      void linked;
     } finally {
       storage.close();
     }
@@ -303,8 +359,7 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         deps,
       );
       expect(response.status).toBe(409);
-      const body = (await response.json()) as { error: string };
-      expect(body.error).toBe("stale_write");
+      await expect(response.json()).resolves.toEqual(STALE_WRITE_BODY);
       const rowAfter = await rowsRepo.findById(rowId);
       expect(rowAfter).toEqual(rowBefore);
       expect(draftUpdatedAt).not.toBe("1970-01-01T00:00:00.000Z");
@@ -358,11 +413,60 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
         deps,
       );
       expect(response.status).toBe(409);
-      const body = (await response.json()) as { error: string; message: string };
-      expect(body.error).toBe("stale_write");
+      await expect(response.json()).resolves.toEqual(STALE_WRITE_BODY);
       const rowAfter = await rowsRepo.findById(rowId);
       expect(rowAfter).toEqual(rowBefore);
       expect(linked.program.draft_updated_at).not.toBe("1970-01-01T00:00:00.000Z");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("links with the prescription_type from the request body", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(
+        storage,
+        id("ph-body-type"),
+        "body-type@example.com",
+      );
+      const programId = id("prog-body-type");
+      const reqId = id("req-body-type");
+      const rowId = id("row-body-type");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+        "stretching",
+      );
+      await storage.run(`UPDATE exercises SET category = ? WHERE id = ?`, [
+        "strengthening",
+        FIXTURE_EXERCISE_ID,
+      ]);
+      const { deps, cookie } = apiDeps(storage, owner);
+      const url = `${BASE}${programRowLinkTypeMismatchPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              prescription_type: "concentric",
+              draft_updated_at: draftUpdatedAt,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      const result = (await response.json()) as {
+        program: { rows: { id: string; prescription_type: string }[] };
+      };
+      const linkedRow = result.program.rows.find((entry) => entry.id === rowId);
+      expect(linkedRow?.prescription_type).toBe("concentric");
     } finally {
       storage.close();
     }

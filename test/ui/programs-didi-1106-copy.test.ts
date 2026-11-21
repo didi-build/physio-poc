@@ -14,6 +14,7 @@ import {
   TYPE_MISMATCH_SHOW_ME,
   TYPE_MISMATCH_UNDO,
   typeMismatchBannerMany,
+  typeMismatchCardFlag,
   typeMismatchCardFlagMany,
   typeMismatchLinkTypeAriaLabel,
   typeMismatchLinkedToast,
@@ -48,7 +49,10 @@ describe("DIDI-1106 program type-mismatch copy pins", () => {
     expect(TYPE_MISMATCH_UNDO).toBe("Undo");
     expect(TOAST_UNDO).toBe(TYPE_MISMATCH_UNDO);
     expect(TYPE_MISMATCH_CARD_FLAG_ONE).toBe("1 exercise didn't link");
+    expect(typeMismatchCardFlag(0)).toBeNull();
+    expect(typeMismatchCardFlag(1)).toBe(TYPE_MISMATCH_CARD_FLAG_ONE);
     expect(typeMismatchCardFlagMany(2)).toBe("2 exercises didn't link");
+    expect(typeMismatchCardFlag(2)).toBe(typeMismatchCardFlagMany(2));
     expect(typeMismatchShowMeAriaLabel()).toBe("Show me exercises that didn't link");
     expect(typeMismatchLinkTypeAriaLabel("Bridge marching", "Stretching")).toBe(
       "Link Bridge marching as Stretching",

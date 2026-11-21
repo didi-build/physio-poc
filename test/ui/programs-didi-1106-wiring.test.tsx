@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,8 +26,11 @@ import {
   TYPE_MISMATCH_HINT_ECCENTRIC,
   TYPE_MISMATCH_HINT_ISOMETRIC,
   TYPE_MISMATCH_SHOW_ME,
+  typeMismatchLinkTypeAriaLabel,
   typeMismatchShowMeAriaLabel,
 } from "../../src/ui/copy/program-type-mismatch.js";
+import { TOAST_UNDO } from "../../src/ui/copy/nav.js";
+import { TYPE_LABELS } from "../../src/ui/copy/my-defaults.js";
 
 afterEach(() => {
   cleanup();
@@ -138,5 +141,113 @@ describe("DIDI-1106 programs wiring", () => {
     ).toBeInTheDocument();
     expect(within(article).getByText(TYPE_MISMATCH_HINT_ECCENTRIC)).toBeInTheDocument();
     expect(screen.getByText(TYPE_MISMATCH_SHOW_ME)).toBeInTheDocument();
+  });
+
+  it("links type mismatch as concentric and passes concentric to the client on toast undo", async () => {
+    const row = mismatchRow();
+    const view: ProgramBuilderView = {
+      program_id: "prog-wire",
+      code: "PRG-WIRE",
+      name: null,
+      created_at: "2026-10-24T12:00:00.000Z",
+      draft_updated_at: "2026-10-24T12:00:00.000Z",
+      auto_save_status: { kind: "not_published_yet" },
+      draft_saved_at: "2026-10-24T12:00:00.000Z",
+      exercise_count: 1,
+      library_updates_to_review: 0,
+      type_mismatch_placeholder_count: 1,
+      rows: [row],
+      open_share_link: false,
+      share_link_status: "none",
+      last_sent_at: null,
+      deleted_at: null,
+      routine_origin: null,
+    };
+    const linkedView: ProgramBuilderView = {
+      ...view,
+      draft_updated_at: "2026-10-24T12:01:00.000Z",
+      rows: [
+        {
+          ...row,
+          kind: "exercise",
+          exercise_id: "ex-1",
+          exercise_version_id: "ver-1",
+          exercise_request_id: null,
+          placeholder_state: undefined,
+          prescription_type: "concentric",
+        },
+      ],
+    };
+    const linkTypeMismatchPlaceholder = vi.fn().mockResolvedValue({
+      program: linkedView,
+      undo: {
+        kind: "placeholder_type_mismatch_link",
+        row_id: row.id,
+        exercise_request_id: row.exercise_request_id,
+        prescription_type: row.prescription_type,
+        params: row.params,
+        note: null,
+        text_snapshot: row.text_snapshot,
+      },
+    });
+    const undoTypeMismatchPlaceholderLink = vi.fn().mockResolvedValue({
+      program: view,
+    });
+    render(
+      <MemoryRouter initialEntries={["/programs/PRG-WIRE"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          exerciseRequestsClient={stubRequestsClient()}
+          practitionerSessionClient={stubPractitionerSessionClient()}
+          programsClient={
+            {
+              listPrograms: vi
+                .fn()
+                .mockResolvedValue({ items: [], matched_code: null }),
+              listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+              createProgram: vi.fn(),
+              getProgram: vi.fn().mockResolvedValue(view),
+              getProgramByCode: vi.fn().mockResolvedValue(view),
+              updateProgramName: vi.fn(),
+              deleteProgram: vi.fn(),
+              restoreProgram: vi.fn(),
+              addExerciseRow: vi.fn(),
+              reorderRows: vi.fn(),
+              duplicateRow: vi.fn(),
+              deleteRow: vi.fn(),
+              updateRow: vi.fn(),
+              applyLibraryUpdate: vi.fn(),
+              keepLibraryUpdate: vi.fn(),
+              addPlaceholderRow: vi.fn(),
+              linkTypeMismatchPlaceholder,
+              undoTypeMismatchPlaceholderLink,
+            } as unknown as ProgramsClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    const article = await screen.findByRole("article", { name: /Bridge marching/i });
+    await userEvent.click(within(article).getByRole("button", { name: "Fix" }));
+    await userEvent.click(
+      within(article).getByRole("button", {
+        name: typeMismatchLinkTypeAriaLabel("Bridge marching", TYPE_LABELS.concentric),
+      }),
+    );
+    await waitFor(() => {
+      expect(linkTypeMismatchPlaceholder).toHaveBeenCalledWith(
+        "prog-wire",
+        "row-wire",
+        "concentric",
+        "2026-10-24T12:00:00.000Z",
+      );
+    });
+    await userEvent.click(await screen.findByRole("button", { name: TOAST_UNDO }));
+    await waitFor(() => {
+      expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledWith(
+        "prog-wire",
+        "row-wire",
+        "2026-10-24T12:01:00.000Z",
+      );
+    });
   });
 });

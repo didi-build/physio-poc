@@ -5,9 +5,11 @@ import {
   programPath,
   programRestorePath,
   programRowDuplicatePath,
+  programRowLinkTypeMismatchPath,
   programRowPath,
   programRowsPath,
   programRowsReorderPath,
+  programRowUndoTypeMismatchLinkPath,
   programsCollectionPath,
   programsDeletedListPath,
   programsFromRoutinePath,
@@ -203,6 +205,48 @@ describe("ProgramsClient (unit)", () => {
     const [url, init] = fetchFn.mock.calls[0]!;
     expect(url).toBe(programRowDuplicatePath("prog-1", "row-1"));
     assertJsonWrite(init as RequestInit, "POST", { new_row_id: "row-2" });
+  });
+
+  it("POST link-type-mismatch uses the row path and draft_updated_at body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {}, undo: null }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.linkTypeMismatchPlaceholder(
+      "prog-1",
+      "row-mm",
+      "concentric",
+      "2026-10-24T12:00:00.000Z",
+    );
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(programRowLinkTypeMismatchPath("prog-1", "row-mm"));
+    assertJsonWrite(init as RequestInit, "POST", {
+      prescription_type: "concentric",
+      draft_updated_at: "2026-10-24T12:00:00.000Z",
+    });
+  });
+
+  it("POST undo-type-mismatch-link requires draft_updated_at in the body", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ program: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const client = new ProgramsClient({ fetchFn });
+    await client.undoTypeMismatchPlaceholderLink(
+      "prog-1",
+      "row-mm",
+      "2026-10-24T12:01:00.000Z",
+    );
+    const [url, init] = fetchFn.mock.calls[0]!;
+    expect(url).toBe(programRowUndoTypeMismatchLinkPath("prog-1", "row-mm"));
+    assertJsonWrite(init as RequestInit, "POST", {
+      draft_updated_at: "2026-10-24T12:01:00.000Z",
+    });
   });
 
   it("DELETE row sends content-type and empty JSON body", async () => {

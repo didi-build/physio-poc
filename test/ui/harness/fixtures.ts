@@ -16,6 +16,10 @@ import {
   programsClientFor1025Harness,
   type Programs1025HarnessScenario,
 } from "./programs-didi-1025-fixtures.js";
+import {
+  PROGRAMS_1106_FIXTURE_ROUTES,
+  programsClientFor1106Harness,
+} from "./programs-didi-1106-fixtures.js";
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
@@ -166,6 +170,7 @@ export type HarnessFixtureId =
   | "programs-1014-builder-sticky"
   | "programs-1014-share-open"
   | "programs-1014-share-closed"
+  | "programs-1106-type-mismatch"
   | "programs-1025-builder-from-routine"
   | "programs-1025-publish-from-routine"
   | "programs-1025-list-filters"
@@ -769,6 +774,8 @@ export function harnessFixture(
         media,
         routines: baseRoutinesClient(),
       };
+    case "programs-1106-type-mismatch":
+      return programs1106HarnessFixture(id);
     case "programs-1014-publish-first":
     case "programs-1014-publish-name-required":
     case "programs-1014-publish-republish":
@@ -1082,6 +1089,23 @@ function programs1025HarnessFixture(
   };
 }
 
+function programs1106HarnessFixture(id: "programs-1106-type-mismatch"): HarnessFixture {
+  const route = PROGRAMS_1106_FIXTURE_ROUTES[id];
+  return {
+    initialEntries: [route.initialEntry],
+    library: baseLibraryClient(),
+    requests: {
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      listInProgress: async () => ({
+        requests: [],
+        in_progress_count: 0,
+      }),
+    } as unknown as ExerciseRequestsClient,
+    media: {} as ExerciseMediaClient,
+    routines: baseRoutinesClient(),
+  };
+}
+
 function programs1014HarnessFixture(
   id:
     | "programs-1014-publish-first"
@@ -1126,6 +1150,13 @@ export function programsClientForHarness(fixtureId?: HarnessFixtureId): Programs
         fixtureId as keyof typeof PROGRAMS_1014_FIXTURE_ROUTES
       ].scenario;
     return programsClientFor1014Harness(scenario);
+  }
+  if (fixtureId && fixtureId in PROGRAMS_1106_FIXTURE_ROUTES) {
+    const scenario =
+      PROGRAMS_1106_FIXTURE_ROUTES[
+        fixtureId as keyof typeof PROGRAMS_1106_FIXTURE_ROUTES
+      ].scenario;
+    return programsClientFor1106Harness(scenario);
   }
   if (fixtureId === "programs-no-match") {
     return {

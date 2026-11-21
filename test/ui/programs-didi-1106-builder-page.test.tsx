@@ -116,6 +116,31 @@ function builderView(rows: ProgramBuilderRow[]): ProgramBuilderView {
   };
 }
 
+function exerciseRowFromPick(
+  rowId: string,
+  position: number,
+  title: string,
+): ProgramBuilderRow {
+  return {
+    id: rowId,
+    position,
+    kind: "exercise",
+    exercise_id: "ex-heel",
+    exercise_version_id: "ver-heel",
+    exercise_request_id: null,
+    pinned_version_number: 1,
+    prescription_type: "concentric",
+    params: { reps: 12, sets: 3, days_per_week: 3 },
+    params_source: "global_defaults",
+    resolved_params: { reps: 12, sets: 3, days_per_week: 3 },
+    resolved_params_source: "global_defaults",
+    text_snapshot: { title },
+    note: null,
+    library_update: null,
+    exercise_version_choices: [],
+  };
+}
+
 function builderStubs(view: ProgramBuilderView): ProgramsClient {
   const deleteRow = vi.fn();
   return {
@@ -236,7 +261,13 @@ describe("DIDI-1106 builder page Fix deep links", () => {
     setExerciseLibraryClientForTests(libraryClientWithHeel());
     const row = mismatchRow("row-keep", "Mismatch stay", 0);
     const view = builderView([row]);
-    const stubs = builderStubs(view);
+    const addExerciseRow = vi.fn().mockImplementation(async () => ({
+      program: builderView([row, exerciseRowFromPick("row-picked", 1, "Heel raise")]),
+    }));
+    const stubs = {
+      ...builderStubs(view),
+      addExerciseRow,
+    } as unknown as ProgramsClient;
     renderPhysio("/programs/PRG-TEST", stubs);
     const article = await screen.findByRole("article", { name: /Mismatch stay/i });
     await userEvent.click(
@@ -252,10 +283,82 @@ describe("DIDI-1106 builder page Fix deep links", () => {
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: ADD_EXERCISE })).toBeNull();
     });
-    expect(screen.getByRole("article", { name: /Mismatch stay/i })).toBeInTheDocument();
+    const articleAgain = screen.getByRole("article", { name: /Mismatch stay/i });
+    expect(articleAgain).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: ADD_EXERCISE }));
     await screen.findByRole("heading", { name: ADD_EXERCISE });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => {
+      expect(addExerciseRow).toHaveBeenCalled();
+    });
     expect(stubs.deleteRow).not.toHaveBeenCalled();
-    expect(screen.getByRole("article", { name: /Mismatch stay/i })).toBeInTheDocument();
+    expect(articleAgain).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: /Heel raise/i })).toBeInTheDocument();
+  });
+
+  it("removes the mismatch row once when Pick another exercise then adding a replacement", async () => {
+    vi.stubGlobal("crypto", { randomUUID: () => "row-replace" });
+    setExerciseLibraryClientForTests(libraryClientWithHeel());
+    const row = mismatchRow("row-replace-mm", "Replace me", 0);
+    const anchor = exerciseRowFromPick("row-anchor", 1, "Quad set");
+    const view = builderView([row, anchor]);
+    const deleteRow = vi.fn().mockImplementation(async () => ({
+      program: builderView([
+        anchor,
+        exerciseRowFromPick("row-replace", 1, "Heel raise"),
+      ]),
+    }));
+    const addExerciseRow = vi.fn().mockImplementation(async () => ({
+      program: builderView([
+        row,
+        anchor,
+        exerciseRowFromPick("row-replace", 2, "Heel raise"),
+      ]),
+    }));
+    const reorderRows = vi.fn().mockImplementation(async (_id, ordered: string[]) => ({
+      program: builderView(
+        ordered.map((id, position) => {
+          if (id === "row-replace") {
+            return exerciseRowFromPick(id, position, "Heel raise");
+          }
+          if (id === "row-anchor") {
+            return { ...anchor, position };
+          }
+          return mismatchRow(id, "Replace me", position);
+        }),
+      ),
+    }));
+    const stubs = {
+      ...builderStubs(view),
+      deleteRow,
+      addExerciseRow,
+      reorderRows,
+    } as unknown as ProgramsClient;
+    renderPhysio("/programs/PRG-TEST", stubs);
+    const article = await screen.findByRole("article", { name: /Replace me/i });
+    await userEvent.click(
+      within(article).getByRole("button", { name: TYPE_MISMATCH_FIX }),
+    );
+    await userEvent.click(
+      within(article).getByRole("button", {
+        name: TYPE_MISMATCH_PICK_ANOTHER_EXERCISE,
+      }),
+    );
+    await screen.findByRole("heading", { name: ADD_EXERCISE });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Add Heel raise" }),
+    );
+    await waitFor(() => {
+      expect(deleteRow).toHaveBeenCalledTimes(1);
+      expect(deleteRow).toHaveBeenCalledWith("prog-1", "row-replace-mm");
+    });
+    await waitFor(() => {
+      expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-replace", "row-anchor"]);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("article", { name: /Replace me/i })).toBeNull();
+    });
   });
 });

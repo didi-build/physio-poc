@@ -162,7 +162,7 @@ export function programBuilderHttpJsonBody(
     return JSON.stringify({ prescription_type: "stretching" });
   }
   if (routeCase.path.endsWith("/undo-type-mismatch-link")) {
-    return JSON.stringify({});
+    return JSON.stringify({ draft_updated_at: "1970-01-01T00:00:00.000Z" });
   }
   return JSON.stringify({});
 }

@@ -97,8 +97,10 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(
       within(article).getByText(TYPE_MISMATCH_REASON_STRENGTHENING_APPROVED),
     ).toBeInTheDocument();
+    expect(article.querySelector(".pg-row-badge-icon")).not.toBeNull();
     const fix = within(article).getByRole("button", { name: TYPE_MISMATCH_FIX });
     expect(fix).toHaveAttribute("aria-expanded", "false");
+    expect(fix).toHaveAttribute("aria-controls", "pg-row-fix-panel-row-1");
     await userEvent.click(fix);
     expect(onToggleFix).toHaveBeenCalled();
 
@@ -128,12 +130,40 @@ describe("DIDI-1106 type-mismatch UI", () => {
       />,
     );
     expect(fix).toHaveAttribute("aria-expanded", "true");
+    const panel = document.getElementById("pg-row-fix-panel-row-1");
+    expect(panel).not.toHaveAttribute("hidden");
     await userEvent.click(
       within(article).getByRole("button", {
         name: "Link Bridge marching as Isometric",
       }),
     );
     expect(onLink).toHaveBeenCalledWith("isometric");
+    rerender(
+      <ProgramBuilderRowCard
+        row={row}
+        index={0}
+        total={1}
+        noteDraft=""
+        onMoveUp={() => {}}
+        onMoveDown={() => {}}
+        onDuplicate={() => {}}
+        onRemove={() => {}}
+        onNoteChange={() => {}}
+        onTypeChange={() => {}}
+        onSelectVersion={() => {}}
+        onDoseAdjustOpen={() => {}}
+        onDoseDraftChange={() => {}}
+        onDoseAdjustClose={() => {}}
+        onDoseDraftDiscard={() => {}}
+        onParamsReset={() => {}}
+        doseDraft={undefined}
+        doseEditorOpen={false}
+        fixPanelOpen={false}
+        onToggleFix={onToggleFix}
+        onLinkMismatchType={onLink}
+      />,
+    );
+    expect(document.getElementById("pg-row-fix-panel-row-1")).toHaveAttribute("hidden");
   });
 
   it("lists publish placeholders in builder order with Fix and Pending review rows", () => {
@@ -297,6 +327,29 @@ describe("DIDI-1106 type-mismatch UI", () => {
     expect(screen.getByRole("status")).toHaveClass("pg-type-mismatch-banner");
     window.innerWidth = originalWidth;
     window.dispatchEvent(new Event("resize"));
+  });
+
+  it("shows singular programs list card flag for one type-mismatch placeholder", () => {
+    const item: ProgramListItem = {
+      program_id: "p2",
+      code: "PRG-56",
+      name: "Program",
+      exercise_count: 1,
+      draft_updated_at: "2026-10-24T12:00:00.000Z",
+      auto_save_status: { kind: "not_published_yet" },
+      library_updates_to_review: 0,
+      type_mismatch_placeholder_count: 1,
+      share_link_status: "none",
+      last_sent_at: null,
+      deleted_at: null,
+      routine_origin: null,
+    };
+    render(
+      <MemoryRouter>
+        <ProgramListCard item={item} matchedCode={null} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("1 exercise didn't link")).toBeInTheDocument();
   });
 
   it("shows programs list card flag for type-mismatch count", () => {
