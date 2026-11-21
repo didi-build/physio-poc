@@ -120,55 +120,56 @@ Each line is one alert. **{item}** uses the noun only (exercise, routine, progra
 
 Last two lines use fixed wording (library exercise field conflict), not `{item}`.
 
-### Failed-save mapping by action type
+### Failed-save strings (Designer pick, DIDI-1273)
 
-Per DIDI-594 lock `fed76bfb` ("change the wording so it matching the error") and Designer response to QA R1 on [DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`, map the four locked strings (`7e4a9711`) only when the action truly matches. Map by **action type**; developer maps any new action by type once wording exists. No new strings in this spec.
+**Designer pick** ([DIDI-1273](https://linear.app/didi-build/issue/DIDI-1273) comment `abb34765`, corrected one-liners in comment `beb059a5` Nov 21, 2026, CTO ruling `0ca2d594` on DIDI-594): same **7e4a9711** failed-save alert as above: one semibold line ending **Try again.** (words in the sentence), plus a separate **Try again** button. No secondary **Check your connection, then try again.** on these alerts (that line is for list and item **load** banners only).
 
-| Action type | Alert string |
-| -- | -- |
-| Save or edit | Couldn't save the {item}. Try again. |
-| Delete or remove | Couldn't remove the {item}. Try again. |
-| Switch to the library version | Couldn't switch to the library version. Try again. |
-| Keep your own version | Couldn't keep your version. Try again. |
-
-#### Mapped actions (locked strings apply)
-
-| Screen | Action (from feature specs) | Action type | `{item}` when used |
-| -- | -- | -- | -- |
-| Exercise library | Save as version N+1 (Edit for everyone) | Save or edit | exercise |
-| Exercise library | Edit my copy save | Save or edit | exercise |
-| Exercise library | Remove from My exercises | Delete or remove | exercise |
-| Exercise library | Use library version (field conflict) | Switch to the library version | (fixed string) |
-| Exercise library | Keep mine (field conflict) | Keep your own version | (fixed string) |
-| Routines | Edit for everyone save | Save or edit | routine |
-| Routines | Edit my copy save | Save or edit | routine |
-| Routines | Remove from My routines | Delete or remove | routine |
-| Routines | Keep mine (decline community update) | Keep your own version | (fixed string) |
-| Programs | Delete program (confirm) | Delete or remove | program |
-
-#### Open: needs Diadem (no string in this spec)
-
-| Screen | Action | Why open |
+| Screen | Action | Alert |
 | -- | -- | -- |
-| Exercise library | Regenerate media (confirm) | Not a save; conflicts with DIDI-1210 image-failure copy |
-| Exercise library | Restore this version | Locked save string does not match restore |
-| Exercise library | Merge (confirm) | Locked save string does not match merge |
-| Routines | Draft autosave | Wording not approved for autosave failure |
-| Routines | Publish now (community publish) | Publish is not the same as save in copy |
-| Routines | Discard draft | Remove string does not match discard |
-| Routines | Use version N (adopt community on saved copy) | Not switch or save as locked |
-| Routines | Restore this version | Locked save string does not match restore |
-| Programs | Builder autosave | Wording not approved (programs spec still has its own save-failure block until wired) |
-| Programs | Publish / republish | Publish is not the same as save in copy |
-| Programs | Restore from Recently deleted | Locked save string does not match restore |
-| Programs | Remove exercise row from builder | Wording not approved |
-| Programs | Save per-program expiry (Publish or share sheet) | Wording not approved |
-| Requests and drafts | Submit request | Not approved |
-| Requests and drafts | Draft review edits | Not approved |
-| Requests and drafts | Approve | Approve is not save |
-| Requests and drafts | Discard or dismiss draft | Wording not approved |
-| My defaults | Save share-link default | Success copy is already **Saved your … default**; failure string not approved |
-| My defaults | Save exercise-type default row | Same as above |
+| Exercise library | Regenerate media (confirm) | Couldn't regenerate the images. Try again. |
+| Exercise library | Restore this version | Couldn't restore this version. Try again. |
+| Exercise library | Merge (confirm) | Couldn't merge the exercises. Try again. |
+| Routines | Draft autosave | Couldn't save the draft. Try again. |
+| Routines | Publish now (community publish) | Couldn't publish the routine. Try again. |
+| Routines | Discard draft | Couldn't discard the draft. Try again. |
+| Routines | Use version N (adopt community on saved copy) | Couldn't switch to this version. Try again. |
+| Routines | Restore this version | Couldn't restore this version. Try again. |
+| Programs | Builder autosave | Couldn't save the program. Try again. |
+| Programs | Publish or republish | Couldn't publish the program. Try again. |
+| Programs | Restore from Recently deleted | Couldn't restore the program. Try again. |
+| Programs | Remove exercise row from builder | Couldn't remove the exercise. Try again. |
+| Programs | Save per-program expiry (Publish or share sheet) | Couldn't save the link expiry. Try again. |
+| Requests and drafts | Submit request | Couldn't submit the request. Try again. |
+| Requests and drafts | Draft review edits | Couldn't save your edits. Try again. |
+| Requests and drafts | Approve | Couldn't approve the draft. Try again. |
+| Requests and drafts | Discard or dismiss draft | Couldn't discard the draft. Try again. |
+| My defaults | Save share-link default | Couldn't save your default. Try again. |
+| My defaults | Save exercise-type default row | Couldn't save your default. Try again. |
+
+**Couldn't regenerate the images. Try again.** covers only a failed regenerate **request**. It does not replace [DIDI-1210](https://linear.app/didi-build/issue/DIDI-1210) G2 (**The AI couldn't make the images. The text is kept.**) or the daily-limit copy on that flow.
+
+Success copy on My defaults remains **Saved your {t} default** (`design/app/settings-link-expiry/spec.md`).
+
+### Failed-save mapping
+
+Per DIDI-594 lock `fed76bfb` ("change the wording so it matching the error"), use lock `7e4a9711` only when the action truly matches. Use the **Failed-save strings (Designer pick, DIDI-1273)** table for every other listed action.
+
+#### Mapped actions (lock `7e4a9711` one-liner format)
+
+| Screen | Action (from feature specs) | Alert (lock `7e4a9711`) |
+| -- | -- | -- |
+| Exercise library | Save as version N+1 (Edit for everyone) | Couldn't save the exercise. Try again. |
+| Exercise library | Edit my copy save | Couldn't save the exercise. Try again. |
+| Exercise library | Remove from My exercises | Couldn't remove the exercise. Try again. |
+| Exercise library | Use library version (field conflict) | Couldn't switch to the library version. Try again. |
+| Exercise library | Keep mine (field conflict) | Couldn't keep your version. Try again. |
+| Routines | Edit for everyone save | Couldn't save the routine. Try again. |
+| Routines | Edit my copy save | Couldn't save the routine. Try again. |
+| Routines | Remove from My routines | Couldn't remove the routine. Try again. |
+| Routines | Keep mine (decline community update) | Couldn't keep your version. Try again. |
+| Programs | Delete program (confirm) | Couldn't remove the program. Try again. |
+
+All other actions in the feature specs use the matching row in **Failed-save strings (Designer pick, DIDI-1273)**.
 
 ## Layout and accessibility (option C)
 
@@ -192,7 +193,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Primary text | `text-sm font-semibold text-amber-900` |
 | **Try again** | Ghost-style control on the right; min height 44 px; teal text |
 
-**Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): The approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). MagicPath revision `466879036132560897` shows only the primary line in the banner; build and mockups 02 and 04 include both lines.
+**Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): On **list load error** and **item load error** banners only, the approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). **Refresh failure** uses only **Couldn't refresh. You're seeing what loaded earlier.** (no secondary line). Mockups 02 and 04 include both load-error lines; mockup 03 does not.
 
 ### Not found
 
@@ -208,7 +209,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Element | Treatment |
 | -- | -- |
 | Container | `role="alert"`; amber panel matching banner colours, compact padding |
-| Message | One semibold line (includes **Try again** as words) |
+| Message | One semibold line (includes **Try again.** as words), from the `7e4a9711` table or the DIDI-1273 table |
 | **Try again** button | Bordered secondary button, same retry behaviour as banners |
 
 **Designer pick** ([DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6`): Failed-save alert layout follows mockup `06-failed-save`; placement is directly under the screen or sheet title on whichever surface triggered the save.
@@ -251,10 +252,13 @@ Exercises screen is the canonical capture; the same patterns apply on the other 
 | Load and refresh errors | Blank or undefined error slots in app code | Option C amber banner; exact strings in this spec |
 | Retry | No spec (implicit gaps in feature specs) | Manual **Try again** only; **Trying again...** while in flight; focus kept on failure |
 | Not found vs load error | Not distinguished in shared spec | Not found has no **Try again**; type-specific helpers |
-| Failed save errors | No shared strings in design specs | Four locked alert strings; [DIDI-1094](https://linear.app/didi-build/issue/DIDI-1094) depends on them |
+| Failed save errors | No shared strings in design specs | Four `7e4a9711` one-liners plus 19 DIDI-1273 one-liners (`abb34765`, corrected `beb059a5`); [DIDI-1094](https://linear.app/didi-build/issue/DIDI-1094) depends on them |
 
 ## Changes
 
 - **Nov 21, 2026**: DIDI-1080. Option C approved; strings locked `fed76bfb` and `7e4a9711`; variant lock `2bdbb75b`. Blocks [DIDI-1082](https://linear.app/didi-build/issue/DIDI-1082) until merged. https://linear.app/didi-build/issue/DIDI-1080
-- **Nov 21, 2026**: Designer picks on DIDI-594 `a887af34`: refresh vs list load error rule, My defaults scope, failed-save action-type mapping and known-actions table (no new strings).
-- **Nov 21, 2026**: QA R1 fixes. Narrow failed-save mapping; Open rows for non-matching actions (`6e041ed6`). Recaptured mockups (390 / 1280, DIDI-1173 nav, banner secondary line, item loading). Cite `2bdbb75b` for refresh rule. https://github.com/didi-build/physio-poc/pull/144#pullrequestreview-6003519268
+- **Nov 21, 2026**: Designer picks recorded on [DIDI-1080](https://linear.app/didi-build/issue/DIDI-1080) comment `6e041ed6` (My defaults scope, banner layout, failed-save placement). Refresh vs list load rule is lock `2bdbb75b`, not a Designer pick.
+- **Nov 21, 2026**: QA R1 fixes. Narrow failed-save mapping; Open rows for non-matching actions (`6e041ed6`). Recaptured mockups (390 / 1280, DIDI-1173 nav, banner secondary line, item loading). https://github.com/didi-build/physio-poc/pull/144#pullrequestreview-6003519268
+- **Nov 21, 2026**: Follow-up after merge `2a2b3ca`. Failed-save strings for 19 actions ([DIDI-1273](https://linear.app/didi-build/issue/DIDI-1273) comment `abb34765`, CTO `0ca2d594`). Mockup R2: hide preview chrome, refresh banner single line. https://linear.app/didi-build/issue/DIDI-1080
+- **Nov 21, 2026**: [DIDI-1273](https://linear.app/didi-build/issue/DIDI-1273) comment `beb059a5`: failed-save Designer picks use **7e4a9711** one-line alerts only (no load-error secondary line). QA R1 on https://github.com/didi-build/physio-poc/pull/149
+
