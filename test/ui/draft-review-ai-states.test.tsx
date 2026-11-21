@@ -13,6 +13,7 @@ import {
   RouterProvider,
 } from "react-router-dom";
 import { DraftReviewPage } from "../../src/ui/exercise-requests/DraftReviewPage.js";
+import { showDraftGenerationElsewhere } from "../../src/ui/exercise-requests/draft-review-generation-visibility.js";
 import {
   ExerciseRequestsRequestError,
   setExerciseRequestsClientForTests,
@@ -1074,6 +1075,18 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
       expect(screen.getByText(DRAFT_GENERATION_STARTED_ELSEWHERE)).toBeTruthy();
       expect(screen.getByText(PIN_G8)).toBeTruthy();
     });
+  });
+
+  it("U17 hides G8 while requester own generate is in flight and started_elsewhere is set", () => {
+    expect(
+      showDraftGenerationElsewhere({
+        generationStartedElsewhere: true,
+        isRequester: true,
+        ownGenerateInFlight: true,
+        generationInProgress: true,
+        generationFailure: null,
+      }),
+    ).toBe(false);
   });
 
   it("U17 hides G8 during the requester's own generate call", async () => {

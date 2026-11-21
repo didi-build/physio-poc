@@ -25,6 +25,7 @@ import {
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
+import { showDraftGenerationElsewhere } from "./draft-review-generation-visibility.js";
 import {
   DESCRIPTION_FIELD,
   END_POSITION,
@@ -464,9 +465,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     sessionIdentityReady: currentPractitioner.sessionIdentityReady,
   });
   const title = draft?.title ?? view.requested_name;
-  const showElsewhere =
-    (generationStartedElsewhere && !(isRequester && ownGenerateInFlight)) ||
-    (!isRequester && generationInProgress && generationFailure === null);
+  const showElsewhere = showDraftGenerationElsewhere({
+    generationStartedElsewhere,
+    isRequester: Boolean(isRequester),
+    ownGenerateInFlight,
+    generationInProgress,
+    generationFailure,
+  });
   const detailsGenerating = !draft;
   const imagesGenerating =
     Boolean(draft) && !firstDraftComplete && generationFailure !== "images";
