@@ -591,6 +591,66 @@ describe("type-mismatch link and undo HTTP (DIDI-1106)", () => {
     }
   });
 
+  it("refuses undo on a linked row when the stored exercise request belongs to another practitioner", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(
+        storage,
+        id("ph-undo-req-own-a"),
+        "undo-own-a@example.com",
+      );
+      const ownerB = await seedPractitioner(
+        storage,
+        id("ph-undo-req-own-b"),
+        "undo-own-b@example.com",
+      );
+      const programId = id("prog-undo-req-own");
+      const reqId = id("req-undo-req-own");
+      const rowId = id("row-undo-req-own");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        ownerA,
+        programId,
+        rowId,
+        reqId,
+      );
+      const service = new ProgramBuilderService(storage);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        ownerA,
+        programId,
+        rowId,
+        "stretching",
+        draftUpdatedAt,
+      );
+      await storage.run(`UPDATE exercise_requests SET requested_by = ? WHERE id = ?`, [
+        ownerB,
+        reqId,
+      ]);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const rowBefore = await rowsRepo.findById(rowId);
+      const { deps, cookie } = apiDeps(storage, ownerA);
+      const url = `${BASE}${programRowUndoTypeMismatchLinkPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              draft_updated_at: linked.program.draft_updated_at,
+            }),
+          }),
+        ),
+        deps,
+      );
+      await expectHttpExerciseRequestNotFound(response);
+      const rowAfter = await rowsRepo.findById(rowId);
+      expect(rowAfter).toEqual(rowBefore);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("refuses link on a row tied to another practitioner's request with exercise_request_not_found unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {

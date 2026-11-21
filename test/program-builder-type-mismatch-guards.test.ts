@@ -102,7 +102,72 @@ describe("type-mismatch ownership guards (DIDI-1106)", () => {
     }
   });
 
-  it("undoTypeMismatchPlaceholderLink refuses another practitioner's program", async () => {
+  it("undoTypeMismatchPlaceholderLink refuses when the snapshot request belongs to another practitioner", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(storage, id("ph-u2-a"), "u2a@example.com");
+      const ownerB = await seedPractitioner(storage, id("ph-u2-b"), "u2b@example.com");
+      await seedApprovedExerciseVersion(storage, ownerA);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [ownerA, TS, FIXTURE_VERSION_ID],
+      );
+      const service = new ProgramBuilderService(storage);
+      const programId = id("prog-u2");
+      const reqId = id("req-u2");
+      const rowId = id("row-u2");
+      await service.createProgram(ownerA, { programId });
+      const requests = new ExerciseRequestsRepository(storage);
+      await requests.insert({
+        id: reqId,
+        requestedName: "Quad set",
+        requestedBy: ownerA,
+        status: "open",
+        createdAt: TS,
+        updatedAt: TS,
+      });
+      await service.addPlaceholderRow(ownerA, programId, {
+        rowId,
+        exerciseRequestId: reqId,
+        prescriptionType: "isometric",
+      });
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+        [FIXTURE_EXERCISE_ID, TS, reqId],
+      );
+      const view = await service.getProgram(ownerA, programId);
+      const linked = await service.linkTypeMismatchPlaceholderRow(
+        ownerA,
+        programId,
+        rowId,
+        "stretching",
+        view.draft_updated_at,
+      );
+      await storage.run(`UPDATE exercise_requests SET requested_by = ? WHERE id = ?`, [
+        ownerB,
+        reqId,
+      ]);
+      const rowsRepo = new ProgramRowsRepository(storage);
+      const before = await rowsRepo.findById(rowId);
+      try {
+        await service.undoTypeMismatchPlaceholderLink(
+          ownerA,
+          programId,
+          rowId,
+          linked.program.draft_updated_at,
+        );
+        expect.unreachable("undo should refuse foreign exercise request");
+      } catch (err) {
+        expectServiceExerciseRequestNotFound(err);
+      }
+      const after = await rowsRepo.findById(rowId);
+      expect(after).toEqual(before);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("undoTypeMismatchPlaceholderLink refuses another practitioner's program with the program_not_found message literal", async () => {
     const storage = await openMigratedDatabase();
     try {
       const ownerA = await seedPractitioner(

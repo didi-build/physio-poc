@@ -193,9 +193,13 @@ describe("DIDI-1106 programs wiring", () => {
         text_snapshot: row.text_snapshot,
       },
     });
-    const undoTypeMismatchPlaceholderLink = vi.fn().mockResolvedValue({
-      program: view,
-    });
+    let resolveUndo: (() => void) | undefined;
+    const undoTypeMismatchPlaceholderLink = vi.fn().mockImplementation(
+      () =>
+        new Promise<{ program: ProgramBuilderView }>((resolve) => {
+          resolveUndo = () => resolve({ program: view });
+        }),
+    );
     render(
       <MemoryRouter initialEntries={["/programs/PRG-WIRE"]}>
         <PhysioApp
@@ -210,7 +214,10 @@ describe("DIDI-1106 programs wiring", () => {
               listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
               createProgram: vi.fn(),
               getProgram: vi.fn().mockResolvedValue(view),
-              getProgramByCode: vi.fn().mockResolvedValue(view),
+              getProgramByCode: vi
+                .fn()
+                .mockResolvedValueOnce(view)
+                .mockResolvedValue(linkedView),
               updateProgramName: vi.fn(),
               deleteProgram: vi.fn(),
               restoreProgram: vi.fn(),
@@ -244,13 +251,22 @@ describe("DIDI-1106 programs wiring", () => {
         "2026-10-24T12:00:00.000Z",
       );
     });
-    await userEvent.click(await screen.findByRole("button", { name: TOAST_UNDO }));
+    const undoButton = await screen.findByRole("button", { name: TOAST_UNDO });
+    await userEvent.click(undoButton);
+    await waitFor(() => {
+      expect(undoButton).toHaveAttribute("aria-busy", "true");
+      expect(undoButton).toBeDisabled();
+    });
     await waitFor(() => {
       expect(undoTypeMismatchPlaceholderLink).toHaveBeenCalledWith(
         "prog-wire",
         "row-wire",
         "2026-10-24T12:01:00.000Z",
       );
+    });
+    resolveUndo?.();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: TOAST_UNDO })).toBeNull();
     });
   });
 
