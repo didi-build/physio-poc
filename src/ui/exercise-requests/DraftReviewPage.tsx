@@ -30,7 +30,9 @@ import {
   DRAFT_AI_TEXT_FAILURE,
   DRAFT_GENERATION_STARTED_ELSEWHERE,
   DRAFT_REGENERATE_TEXT,
+  DRAFT_REGENERATING_TEXT,
 } from "../copy/draft-review-ai-states.js";
+import { ExerciseMediaRequestError } from "../api/exercise-media-client.js";
 import {
   AI_DRAFTING,
   APPROVE,
@@ -90,6 +92,10 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+  const [textRegenBusy, setTextRegenBusy] = useState(false);
+  const [startStillUrl, setStartStillUrl] = useState<string | null>(null);
+  const [endStillUrl, setEndStillUrl] = useState<string | null>(null);
   const generateStarted = useRef(false);
 
   const detailCacheKey = useMemo(
@@ -183,8 +189,44 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   useEffect(() => {
     setViewOverride(null);
     setGenerationFailure(null);
+    setRegenError(null);
     generateStarted.current = false;
   }, [cachedView, requestId]);
+
+  useEffect(() => {
+    const versionId = view?.draft?.exercise_version_id;
+    if (
+      !firstDraftComplete ||
+      !versionId ||
+      typeof mediaClient.draftStillObjectUrl !== "function"
+    ) {
+      setStartStillUrl(null);
+      setEndStillUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const [start, end] = await Promise.all([
+        mediaClient.draftStillObjectUrl(versionId, "start"),
+        mediaClient.draftStillObjectUrl(versionId, "end"),
+      ]);
+      if (!cancelled) {
+        setStartStillUrl(start);
+        setEndStillUrl(end);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+      if (startStillUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(startStillUrl);
+      }
+      if (endStillUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(endStillUrl);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- revoke prior blob URLs on version change
+  }, [view?.draft?.exercise_version_id, firstDraftComplete, mediaClient]);
 
   useEffect(() => {
     if (!view || !isRequester || firstDraftComplete || generateStarted.current) {
@@ -233,12 +275,35 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     navigate(fillPhysioAppRoutePattern("requests"));
   };
 
+  const mapRegenMediaError = (error: ExerciseMediaRequestError): string => {
+    if (error.detail.status === 429 || error.detail.error === "daily_limit_reached") {
+      return `${DAILY_LIMIT_REACHED} ${DRAFT_AI_LIMIT_TRY_TOMORROW}`;
+    }
+    return DRAFT_AI_IMAGE_FAILURE;
+  };
+
   const runRegenerate = async () => {
-    if (!view?.draft?.exercise_version_id || quota?.limitReached) {
+    if (!view?.draft?.exercise_version_id) {
+      return;
+    }
+    if (regenMode !== "general" && regenPick !== "text" && quota?.limitReached) {
       return;
     }
     setRegenBusy(true);
+    setRegenError(null);
     try {
+      if (regenMode === "general" && regenPick === "text") {
+        setTextRegenBusy(true);
+        const result = await requestsClient.regenerateDraftText(
+          requestId,
+          regenNote.trim() || null,
+        );
+        setViewOverride(result.view);
+        await refreshView({ force: true });
+        setRegenOpen(false);
+        setRegenNote("");
+        return;
+      }
       const scope =
         regenMode === "start"
           ? ("start" as const)
@@ -253,7 +318,23 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       await refreshQuota({ force: true });
       setRegenOpen(false);
       setRegenNote("");
+      const versionId = view.draft.exercise_version_id;
+      const [start, end] = await Promise.all([
+        mediaClient.draftStillObjectUrl(versionId, "start"),
+        mediaClient.draftStillObjectUrl(versionId, "end"),
+      ]);
+      setStartStillUrl(start);
+      setEndStillUrl(end);
+    } catch (error) {
+      if (error instanceof ExerciseMediaRequestError) {
+        setRegenError(mapRegenMediaError(error));
+      } else if (error instanceof Error) {
+        setRegenError(error.message);
+      } else {
+        setRegenError(DRAFT_AI_IMAGE_FAILURE);
+      }
     } finally {
+      setTextRegenBusy(false);
       setRegenBusy(false);
     }
   };
@@ -349,6 +430,16 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         </button>
         <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
       </div>
+      {textRegenBusy ? (
+        <p className="ex-review-text-regen" role="status" aria-live="polite">
+          {DRAFT_REGENERATING_TEXT}
+        </p>
+      ) : null}
+      {regenError ? (
+        <p className="ex-regen-limit" role="alert">
+          {regenError}
+        </p>
+      ) : null}
       {generationFailure === "daily" ? (
         <p className="ex-regen-limit" role="alert">
           <span className="ex-review-banner-strong">{DAILY_LIMIT_REACHED}</span>{" "}
@@ -380,7 +471,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
             ) : (
               <>
                 <div className="ex-review-stills">
-                  <DraftReviewExerciseStill label={START_POSITION} />
+                  <DraftReviewExerciseStill
+                    label={START_POSITION}
+                    src={startStillUrl}
+                    alt={`${title}, start position`}
+                  />
                   {canEdit ? (
                     <button
                       type="button"
@@ -394,7 +489,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                       {REGENERATE_START_IMAGE}
                     </button>
                   ) : null}
-                  <DraftReviewExerciseStill label={END_POSITION} />
+                  <DraftReviewExerciseStill
+                    label={END_POSITION}
+                    src={endStillUrl}
+                    alt={`${title}, end position`}
+                  />
                   {canEdit ? (
                     <button
                       type="button"
@@ -410,7 +509,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                   ) : null}
                 </div>
                 <p className="ex-review-swipe-hint">{SWIPE_END}</p>
-                <DraftReviewExerciseVideo alt={title} />
+                <DraftReviewExerciseVideo
+                  alt={title}
+                  startSrc={startStillUrl ?? undefined}
+                  endSrc={endStillUrl ?? undefined}
+                />
               </>
             )}
             {generationFailure === "images" ? (

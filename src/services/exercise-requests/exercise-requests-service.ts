@@ -36,6 +36,7 @@ import {
   fakeExerciseDraftGenerator,
 } from "./fake-draft-generator.js";
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
+import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
@@ -378,6 +379,56 @@ export class ExerciseRequestsService {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
     return this.buildDraftView(requestId);
+  }
+
+  async regenerateDraftText(input: {
+    practitionerId: string;
+    requestId: string;
+    note?: string | null;
+  }): Promise<ExerciseRequestDraftView> {
+    await this.requirePractitioner(input.practitionerId);
+    const requestId = parseOpaqueId(input.requestId, "request_id");
+    const row = await this.requests.findById(requestId);
+    if (!row || row.status !== "drafting" || !row.exercise_id) {
+      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    }
+    if (row.requested_by !== input.practitionerId) {
+      throw new ExerciseRequestsServiceError(
+        "Only the requester can run draft generation",
+        "generation_not_requester",
+      );
+    }
+    const draft = await this.versions.findDraftForExercise(row.exercise_id);
+    if (!draft) {
+      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    }
+    const now = this.now();
+    try {
+      await this.draftGenerator(
+        {
+          sql: this.sql,
+          requestId,
+          requestedName: row.requested_name,
+          exerciseNote: row.note,
+          regenerationNote: input.note ?? null,
+          requestedBy: row.requested_by,
+          now,
+          existingExerciseId: row.exercise_id,
+          existingVersionId: draft.id,
+        },
+        {
+          exercises: this.exercises,
+          versions: this.versions,
+          requests: this.requests,
+        },
+      );
+    } catch (error) {
+      if (error instanceof DeepInfraExerciseDraftError) {
+        throw error;
+      }
+      throw error;
+    }
+    return this.buildDraftView(requestId, { forRequesterId: input.practitionerId });
   }
 
   async generateRequest(input: {

@@ -42,6 +42,7 @@ function stubMediaClient(): ExerciseMediaClient {
       limitReached: false,
     }),
     regenerateDraftMedia: vi.fn(),
+    draftStillObjectUrl: vi.fn().mockResolvedValue(null),
   } as unknown as ExerciseMediaClient;
 }
 
@@ -151,5 +152,38 @@ describe("Draft review AI states (DIDI-1210)", () => {
     );
     expect(await screen.findByText(DRAFT_AI_TEXT_FAILURE)).toBeTruthy();
     expect(screen.getByRole("button", { name: DRAFT_REGENERATE_TEXT })).toBeTruthy();
+  });
+
+  it("keeps Approve disabled until the first draft is complete", async () => {
+    renderReview({
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: {
+        exercise_version_id: "ver-1",
+        version_number: 1,
+        title: "Heel slide",
+        description: "",
+        equipment: "",
+        starting_position: "",
+        steps: "",
+        common_mistakes: "",
+        regressions: "",
+        progressions: "",
+        precautions: "",
+        cue_stretching: null,
+        cue_isometric: null,
+        cue_concentric: null,
+        cue_eccentric: null,
+      },
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    });
   });
 });

@@ -236,6 +236,7 @@ export function harnessFixture(
       limitReached: false,
     }),
     regenerateDraftMedia: async () => undefined,
+    draftStillObjectUrl: async () => null,
   } as unknown as ExerciseMediaClient;
 
   switch (id) {

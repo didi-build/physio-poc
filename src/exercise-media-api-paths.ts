@@ -10,6 +10,13 @@ export function exerciseMediaRegeneratePath(exerciseVersionId: string): string {
   return `/api/me/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media/regenerate`;
 }
 
+export function exerciseMediaDraftStillPath(
+  exerciseVersionId: string,
+  which: "start" | "end",
+): string {
+  return `/api/me/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media/${which}`;
+}
+
 /** Public or internal media serve metadata (not under /api/me). */
 export function exerciseMediaServePath(exerciseVersionId: string): string {
   return `/api/exercise-versions/${encodeURIComponent(exerciseVersionId)}/media`;

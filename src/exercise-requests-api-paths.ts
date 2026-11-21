@@ -28,3 +28,7 @@ export function exerciseRequestApprovePath(requestId: string): string {
 export function exerciseRequestGeneratePath(requestId: string): string {
   return `${exerciseRequestPath(requestId)}/generate`;
 }
+
+export function exerciseRequestRegenerateTextPath(requestId: string): string {
+  return `${exerciseRequestPath(requestId)}/regenerate-text`;
+}

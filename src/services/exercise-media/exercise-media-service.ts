@@ -309,16 +309,6 @@ export class ExerciseMediaService {
     }
 
     const nowIso = this.clock().toISOString();
-    await this.regenerations.insert({
-      id: this.createId(),
-      practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: input.scope,
-      hadNote: regenerationNote !== null,
-      createdAt: nowIso,
-    });
-    const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
 
     if (version.status === "draft") {
       const media = await this.persistMediaSet({
@@ -332,6 +322,16 @@ export class ExerciseMediaService {
         end: { bytes: endImage.body, contentType: endImage.contentType },
         updateVersion: true,
       });
+      await this.regenerations.insert({
+        id: this.createId(),
+        practitionerId: input.practitionerId,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        scope: input.scope,
+        hadNote: regenerationNote !== null,
+        createdAt: nowIso,
+      });
+      const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
       return { outcome: "draft_updated", media, quota: updatedQuota };
     }
 
@@ -345,8 +345,42 @@ export class ExerciseMediaService {
       },
       end: { bytes: endImage.body, contentType: endImage.contentType },
     });
+    await this.regenerations.insert({
+      id: this.createId(),
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: input.scope,
+      hadNote: regenerationNote !== null,
+      createdAt: nowIso,
+    });
+    const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
 
     return { outcome: "pending_draft_updated", media, quota: updatedQuota };
+  }
+
+  async getDraftStillImage(input: {
+    practitionerId: string;
+    exerciseVersionId: string;
+    which: "start" | "end";
+  }): Promise<{ body: Uint8Array; contentType: string } | null> {
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
+    if (!version.media_set_id) {
+      return null;
+    }
+    const row = await this.mediaSets.findById(version.media_set_id);
+    if (!row || row.visibility !== "draft") {
+      return null;
+    }
+    const key = input.which === "start" ? row.start_object_key : row.end_object_key;
+    const image = await this.media.getImage(key, "draft");
+    if (!image) {
+      return null;
+    }
+    return { body: image.body, contentType: image.contentType };
   }
 
   async promoteDraftMediaOnApproval(

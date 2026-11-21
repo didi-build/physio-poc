@@ -3,6 +3,7 @@ import {
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
   exerciseRequestGeneratePath,
+  exerciseRequestRegenerateTextPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -164,6 +165,21 @@ export class ExerciseRequestsClient {
       }
       return payload;
     });
+  }
+
+  regenerateDraftText(
+    requestId: string,
+    note?: string | null,
+  ): Promise<{ view: ExerciseRequestDraftView }> {
+    const url = exerciseRequestRegenerateTextPath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ note: note ?? null }),
+      }),
+    ).then((response) => readJson<{ view: ExerciseRequestDraftView }>(response));
   }
 
   approveRequest(requestId: string): Promise<ApproveExerciseRequestResult> {

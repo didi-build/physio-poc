@@ -45,10 +45,29 @@ export function createFakeExerciseDraftGenerator(
 }
 
 /** Test and local stub: creates a stretch draft with the requested title. */
+const FAKE_DRAFT_REGEN_SENTINEL = "Regenerated draft text";
+
 export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
   input,
   deps,
 ) => {
+  if (input.existingExerciseId && input.existingVersionId) {
+    const noteSuffix =
+      input.regenerationNote && input.regenerationNote.trim().length > 0
+        ? ` ${input.regenerationNote.trim()}`
+        : "";
+    await deps.versions.updateDraftFields(input.existingVersionId, {
+      description: `${FAKE_DRAFT_REGEN_SENTINEL}.${noteSuffix}`.trim(),
+      steps: "1. Perform the movement with control.",
+      equipment: "None",
+      startingPosition: "Start in a comfortable position.",
+    });
+    return {
+      exerciseId: input.existingExerciseId,
+      versionId: input.existingVersionId,
+    };
+  }
+
   const existing = await deps.requests.findById(input.requestId);
   if (!existing) {
     await input.sql.batch([

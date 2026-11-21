@@ -254,6 +254,34 @@ export async function handleExerciseRequestsHttpRequest(
     }
   }
 
+  const regenTextMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/regenerate-text$`,
+  ).exec(path);
+  if (regenTextMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(regenTextMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    try {
+      const view = await service(deps).regenerateDraftText({
+        practitionerId,
+        requestId,
+        note:
+          typeof body.note === "string" || body.note === null
+            ? (body.note as string | null)
+            : undefined,
+      });
+      return Response.json({ view }, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
   const generateMatch = new RegExp(
     `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/generate$`,
   ).exec(path);

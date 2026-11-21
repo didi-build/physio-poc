@@ -1153,6 +1153,13 @@
   }
 }
 
+.ex-review-still-img {
+  width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  object-fit: cover;
+}
+
 .ex-review-stills {
   display: grid;
   gap: 0.5rem;

@@ -205,6 +205,42 @@ export function createDeepInfraExerciseDraftGenerator(
     if (!requestRow) {
       throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
     }
+    if (input.existingExerciseId && input.existingVersionId) {
+      const completionRequest: DeepInfraChatCompletionRequest = {
+        model: modelId,
+        messages: [
+          { role: "system", content: EXERCISE_DRAFT_SYSTEM_PROMPT },
+          { role: "user", content: buildUserPrompt(input) },
+        ],
+        response_format: openAiJsonSchemaResponseFormat(),
+      };
+      const completion = await client.complete(completionRequest);
+      const validated = parseAndValidateExerciseDraftAiPayload(
+        JSON.parse(completion.contentJson) as unknown,
+      );
+      if (!validated || !cueShapeValid(validated)) {
+        throw deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid");
+      }
+      await deps.versions.updateDraftFields(input.existingVersionId, {
+        title: validated.title,
+        description: draftDescription(validated),
+        equipment: validated.equipment,
+        startingPosition: validated.starting_position,
+        steps: validated.steps,
+        commonMistakes: validated.common_mistakes,
+        regressions: validated.regressions,
+        progressions: validated.progressions,
+        precautions: validated.precautions,
+        cueStretching: validated.cue_stretching,
+        cueIsometric: validated.cue_isometric,
+        cueConcentric: validated.cue_concentric,
+        cueEccentric: validated.cue_eccentric,
+      });
+      return {
+        exerciseId: input.existingExerciseId,
+        versionId: input.existingVersionId,
+      };
+    }
     const completionRequest: DeepInfraChatCompletionRequest = {
       model: modelId,
       messages: [

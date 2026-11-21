@@ -245,6 +245,41 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         deps(storage, other, "other@example.com").deps,
       );
       expect(response.status).toBe(403);
+      const body = (await response.json()) as { error?: string };
+      expect(body.error).toBe("generation_not_requester");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("returns in_progress for a concurrent second generate while the lock is held", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-gen-conc"),
+        "conc@example.com",
+      );
+      const { bundle, cookie, requestId } = await submitAndGenerate(
+        storage,
+        practitioner,
+        "conc@example.com",
+      );
+      const now = new Date().toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [now, requestId],
+      );
+      const second = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        bundle,
+      );
+      expect(second.status).toBe(202);
+      const payload = (await second.json()) as { outcome: string };
+      expect(payload.outcome).toBe("in_progress");
     } finally {
       storage.close();
     }

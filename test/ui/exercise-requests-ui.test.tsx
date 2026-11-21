@@ -238,6 +238,7 @@ describe("exercise requests UI", () => {
       },
       {
         getRegenerationQuota: vi.fn(),
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
       },
     );
 
@@ -349,6 +350,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,
@@ -421,6 +423,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 5,
@@ -638,6 +641,7 @@ describe("exercise requests UI", () => {
           .mockResolvedValue({ requests: [], in_progress_count: 0 }),
       },
       {
+        draftStillObjectUrl: vi.fn().mockResolvedValue(null),
         getRegenerationQuota: vi.fn().mockResolvedValue({
           limit: 5,
           used: 0,

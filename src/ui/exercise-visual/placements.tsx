@@ -33,11 +33,27 @@ export function LibraryDetailExerciseStill({
   );
 }
 
-/** Draft review: still placeholder without an on-screen AI image tag (DIDI-1210). */
+export type DraftReviewExerciseStillProps = LibraryDetailExerciseStillProps & {
+  src?: string | null;
+  alt?: string;
+};
+
+/** Draft review: still without an on-screen AI image tag (DIDI-1210). */
 export function DraftReviewExerciseStill({
   label,
   className = "",
-}: LibraryDetailExerciseStillProps) {
+  src,
+  alt,
+}: DraftReviewExerciseStillProps) {
+  if (src) {
+    return (
+      <img
+        className={`ex-review-still-img ${className}`.trim()}
+        src={src}
+        alt={alt ?? label}
+      />
+    );
+  }
   return (
     <div className={`ex-media-placeholder ${className}`}>
       <span className="ex-media-placeholder-label">{label}</span>
