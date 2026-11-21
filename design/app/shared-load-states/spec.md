@@ -39,6 +39,8 @@ MagicPath project: DIDI-1080 Physio loading and load-error states (4668774287997
 | Failed save | Short inline **alert** (`role="alert"`) with the approved one-line message and a separate **Try again** button (same retry behaviour as banners). Not the list refresh banner. |
 | Copy | No patient information, status codes, or server error details in any string. |
 | Layout | Mobile first at 390 px; at 1280 px the state UI lives in the same centred column (max 768 px) as other app pages. |
+| Refresh vs list load error | **Designer pick** (DIDI-594 `a887af34`): One rule on every surface. If the screen already shows data, keep that data and show the refresh-failure banner. If nothing is on screen yet, show the initial list load error. Item surfaces use the same rule for their body (loaded item vs empty skeleton). |
+| My defaults | **Designer pick** (DIDI-594 `a887af34`): List states only: loading and list load error (plus refresh failure when settings were already visible). No not-found or item-load states; it is a single settings surface, not a library list with detail routes. |
 
 ### `{list}` and `{item}` tokens
 
@@ -48,7 +50,7 @@ MagicPath project: DIDI-1080 Physio loading and load-error states (4668774287997
 | Routines | routines | routine | Routines |
 | Programs | programs | program | Programs |
 | Requests and drafts | requests and drafts | draft | Requests and drafts |
-| My defaults | your defaults | (no item detail in v1) | My defaults |
+| My defaults | your defaults | (not used; no item routes) | My defaults |
 
 **Back to {list}** visible labels use the table (for example **Back to exercises**). Screen reader phrasing may use the same words.
 
@@ -118,6 +120,45 @@ Each line is one alert. **{item}** uses the noun only (exercise, routine, progra
 
 Last two lines use fixed wording (library exercise field conflict), not `{item}`.
 
+### Failed-save mapping by action type
+
+**Designer pick** (DIDI-594 `a887af34`): Map the alert string by **action type**, not by HTTP verb. Developer maps any new action by the same types. No new strings.
+
+| Action type | Alert string |
+| -- | -- |
+| Save or edit | Couldn't save the {item}. Try again. |
+| Delete or remove | Couldn't remove the {item}. Try again. |
+| Switch to the library version | Couldn't switch to the library version. Try again. |
+| Keep your own version | Couldn't keep your version. Try again. |
+
+#### Known actions (by screen)
+
+| Screen | Action (from feature specs) | Action type | `{item}` when used |
+| -- | -- | -- | -- |
+| Exercise library | Save as version N+1 (Edit for everyone) | Save or edit | exercise |
+| Exercise library | Edit my copy save | Save or edit | exercise |
+| Exercise library | Restore this version | Save or edit | exercise |
+| Exercise library | Merge (confirm) | Save or edit | exercise |
+| Exercise library | Regenerate media (confirm) | Save or edit | exercise |
+| Exercise library | Remove from My exercises | Delete or remove | exercise |
+| Exercise library | Use library version (field conflict) | Switch to the library version | (fixed string) |
+| Exercise library | Keep mine (field conflict) | Keep your own version | (fixed string) |
+| Routines | Draft autosave; Edit for everyone save; Edit my copy save; Restore this version | Save or edit | routine |
+| Routines | Publish now (community publish) | Save or edit | routine |
+| Routines | Remove from My routines | Delete or remove | routine |
+| Routines | Discard draft | Delete or remove | routine |
+| Routines | Use version N (adopt community on saved copy) | Save or edit | routine |
+| Routines | Keep mine (decline community update) | Keep your own version | (fixed string) |
+| Programs | Builder autosave; publish / republish save | Save or edit | program |
+| Programs | Restore from Recently deleted | Save or edit | program |
+| Programs | Delete program (confirm) | Delete or remove | program |
+| Programs | Remove exercise row from builder | Save or edit | program |
+| Requests and drafts | Submit request; draft review edits; Approve | Save or edit | draft |
+| Requests and drafts | Discard or dismiss draft (when implemented as delete) | Delete or remove | draft |
+| My defaults | Save share-link default | Save or edit | program |
+| My defaults | Save exercise-type default row | Save or edit | exercise |
+| Publish or share sheet | Save per-program expiry (programs spec) | Save or edit | program |
+
 ## Layout and accessibility (option C)
 
 From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
@@ -140,7 +181,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Primary text | `text-sm font-semibold text-amber-900` |
 | **Try again** | Ghost-style control on the right; min height 44 px; teal text |
 
-**Designer pick (DIDI-594 `a887af34`):** The approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). MagicPath revision `466879036132560897` shows only the primary line in the banner; build follows both approved strings using this two-line banner body.
+**Designer pick** (DIDI-594 `a887af34`): The approved secondary line **Check your connection, then try again.** appears as a second line in the banner body under the semibold primary line (`font-normal`, same amber-900). MagicPath revision `466879036132560897` shows only the primary line in the banner; build follows both approved strings using this two-line banner body.
 
 ### Not found
 
@@ -159,7 +200,7 @@ From revision `466879036132560897` (`LoadStatesCore.tsx`, variant `C`).
 | Message | One semibold line (includes **Try again** as words) |
 | **Try again** button | Bordered secondary button, same retry behaviour as banners |
 
-**Designer pick (DIDI-594 `a887af34`):** Failed-save alert layout follows mockup `06-failed-save`; placement is directly under the screen or sheet title on whichever surface triggered the save.
+**Designer pick** (DIDI-594 `a887af34`): Failed-save alert layout follows mockup `06-failed-save`; placement is directly under the screen or sheet title on whichever surface triggered the save.
 
 ## States (mockups)
 
@@ -199,14 +240,7 @@ Exercises screen is the canonical capture; the same patterns apply on the other 
 | Not found vs load error | Not distinguished in shared spec | Not found has no **Try again**; type-specific helpers |
 | Failed save errors | No shared strings in design specs | Four locked alert strings; [DIDI-1094](https://linear.app/didi-build/issue/DIDI-1094) depends on them |
 
-## Open (not picked; needs product input if blocking)
-
-Per DIDI-594 `a887af34`, **who sees what**, **recipients**, **counts**, and **data behaviour** are not decided here:
-
-- When the app shows **refresh failure** vs **initial list load error** (server and cache rules per surface).
-- Whether **My defaults** ever needs a **not found** or **item load error** state (MagicPath omits item states on that screen).
-- Mapping each failed-save string to the exact save action on each screen (save, remove, **Use library version**, **Keep mine**).
-
 ## Changes
 
 - **Nov 21, 2026**: DIDI-1080. Option C approved; strings locked `fed76bfb` and `7e4a9711`; variant lock `2bdbb75b`. Blocks [DIDI-1082](https://linear.app/didi-build/issue/DIDI-1082) until merged. https://linear.app/didi-build/issue/DIDI-1080
+- **Nov 21, 2026**: Designer picks on DIDI-594 `a887af34`: refresh vs list load error rule, My defaults scope, failed-save action-type mapping and known-actions table (no new strings).
