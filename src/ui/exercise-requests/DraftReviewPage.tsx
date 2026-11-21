@@ -303,11 +303,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         window.clearInterval(timer);
       };
     }
-    if (isRequester && ownGenerateInFlight) {
-      return undefined;
-    }
     if (
-      (isRequester && generationInProgress) ||
+      (isRequester && (generationInProgress || ownGenerateInFlight)) ||
       (!firstDraftComplete && view.draft && generationFailure === null)
     ) {
       const timer = window.setInterval(() => {

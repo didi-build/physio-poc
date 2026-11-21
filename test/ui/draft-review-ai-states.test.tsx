@@ -1222,7 +1222,7 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     });
   });
 
-  it("U21 does not poll getRequest during ownGenerateInFlight", async () => {
+  it("U21 fill-in-place polls getRequest during ownGenerateInFlight and shows text while images generate", async () => {
     let resolveGenerate: (
       value: Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>,
     ) => void = () => {};
@@ -1242,7 +1242,16 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
       generation: { generation_in_progress: true, first_draft_complete: false },
       draft: null,
     };
-    const getRequest = vi.fn().mockResolvedValue(generatingView);
+    const partialDraftView: ExerciseRequestDraftView = {
+      ...generatingView,
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: true, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const getRequest = vi
+      .fn()
+      .mockResolvedValueOnce(generatingView)
+      .mockResolvedValue(partialDraftView);
     const requestsClient = {
       getRequest,
       generateRequest: vi.fn().mockReturnValue(generatePromise),
@@ -1259,16 +1268,20 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
       expect(requestsClient.generateRequest).toHaveBeenCalledTimes(1);
     });
     const callsAfterOpen = getRequest.mock.calls.length;
-    await new Promise((resolve) => {
-      setTimeout(resolve, 2500);
+    await waitFor(
+      () => {
+        expect(getRequest.mock.calls.length).toBeGreaterThan(callsAfterOpen);
+      },
+      { timeout: 3500 },
+    );
+    await waitFor(() => {
+      expect(screen.getByText(draftBody().description)).toBeTruthy();
     });
-    expect(getRequest.mock.calls.length).toBe(callsAfterOpen);
     resolveGenerate({
       outcome: "complete",
       view: {
-        ...generatingView,
+        ...partialDraftView,
         generation: { generation_in_progress: false, first_draft_complete: true },
-        draft: draftBody(),
       },
     });
   });
@@ -1352,7 +1365,7 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     expect(alert.textContent).toBe(PIN_G1);
   });
 
-  it("U27 pins regenerate started_elsewhere copy literally", async () => {
+  it("U27 pins regen concurrent in_progress copy on regenError alert", async () => {
     const completedView: ExerciseRequestDraftView = {
       request_id: "req-1",
       requested_name: "Heel slide",
@@ -1369,7 +1382,6 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
       generateRequest: vi.fn(),
       regenerateDraftText: vi.fn().mockResolvedValue({
         outcome: "in_progress",
-        started_elsewhere: true,
         view: completedView,
       }),
       updateDraft: vi.fn(),
@@ -1392,9 +1404,11 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     await userEvent.click(
       within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
     );
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe(DRAFT_GENERATION_STARTED_ELSEWHERE);
-    expect(alert.textContent).toBe(PIN_G8);
+    const regenAlert = await screen.findByText(DRAFT_GENERATION_STARTED_ELSEWHERE);
+    expect(regenAlert).toHaveClass("ex-regen-limit");
+    expect(regenAlert).toHaveAttribute("role", "alert");
+    expect(regenAlert.textContent).toBe(PIN_G8);
+    expect(within(dialog).queryByRole("alert")).toBeNull();
   });
 
   it("Text and images text step failure shows G1 not G2", async () => {
@@ -1418,6 +1432,100 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
         error: "deepinfra_exercise_draft_request_failed",
         view: null,
       }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const allLabel = within(dialog)
+      .getByText(PIN_G9)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(allLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: REGENERATE_EVERYTHING }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(PIN_G1)).toBeTruthy();
+    });
+    expect(screen.queryByText(PIN_G2)).toBeNull();
+    expect(mediaClient.regenerateDraftMedia).not.toHaveBeenCalled();
+  });
+
+  it("Text and images network throw on text step shows G1 not G2", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockRejectedValue(new TypeError("fetch failed")),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(completedView, { requestsClient, mediaClient });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const allLabel = within(dialog)
+      .getByText(PIN_G9)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(allLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: REGENERATE_EVERYTHING }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(PIN_G1)).toBeTruthy();
+    });
+    expect(screen.queryByText(PIN_G2)).toBeNull();
+    expect(mediaClient.regenerateDraftMedia).not.toHaveBeenCalled();
+  });
+
+  it("Text and images request error throw on text step shows G1 not G2", async () => {
+    const completedView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: { generation_in_progress: false, first_draft_complete: true },
+      draft: draftBody(),
+    };
+    const mediaClient = stubMediaClient();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(completedView),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockRejectedValue(
+        new ExerciseRequestsRequestError("Upstream failed", {
+          status: 502,
+          error: "upstream",
+          message: "Upstream failed",
+        }),
+      ),
       updateDraft: vi.fn(),
       approveRequest: vi.fn(),
       getInProgressCount: vi.fn(),

@@ -27,10 +27,8 @@ describe("ExerciseRequestsClient draft generation outcomes (C1–C3)", () => {
         502,
       ),
     );
-    const result = await clientWith(fetchFn as unknown as FetchFn).generateRequest(
-      "req-1",
-    );
-    expect(result).toEqual({
+    const client = clientWith(fetchFn as unknown as FetchFn);
+    await expect(client.generateRequest("req-1")).resolves.toEqual({
       outcome: "text_failed",
       error: "deepinfra_exercise_draft_request_failed",
       view: null,
@@ -76,11 +74,8 @@ describe("ExerciseRequestsClient draft generation outcomes (C1–C3)", () => {
         502,
       ),
     );
-    const result = await clientWith(fetchFn as unknown as FetchFn).regenerateDraftText(
-      "req-1",
-      "note",
-    );
-    expect(result).toEqual({
+    const client = clientWith(fetchFn as unknown as FetchFn);
+    await expect(client.regenerateDraftText("req-1", "note")).resolves.toEqual({
       outcome: "text_failed",
       error: "deepinfra_exercise_draft_request_failed",
       view: null,

@@ -25,6 +25,7 @@ import {
 import { PhysioApp } from "../../src/ui/App.js";
 import {
   DESCRIPTION_FIELD,
+  NOTE_FOR_AI,
   SIMILAR_SECTION,
   SUBMIT_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
@@ -38,6 +39,8 @@ import {
   REQUESTS_HEADING,
   TOAST_APPROVE_OWN,
 } from "../../src/ui/copy/exercise-requests.js";
+import { DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS } from "../../src/ui/copy/draft-review-ai-states.js";
+import { ExerciseRequestsRequestError } from "../../src/ui/api/exercise-requests-client.js";
 import type { PractitionerSessionClient } from "../../src/ui/api/practitioner-session-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import {
@@ -114,6 +117,11 @@ function renderApp(
 
 const OWN_REQUEST_EMAIL_LOCAL = "xrequestedbylocalunique77";
 
+const PIN_G13 =
+  "Remove patient details from the note, like names or dates of birth, then try again.";
+const PIN_G1 =
+  "We couldn't write the exercise description after several tries. Try again or draft this manually.";
+
 function assertNoEmailLocalPartShown(emailLocal: string): void {
   const lower = emailLocal.toLowerCase();
   const capitalised =
@@ -124,6 +132,49 @@ function assertNoEmailLocalPartShown(emailLocal: string): void {
 }
 
 describe("exercise requests UI", () => {
+  it("G13: request form patient note shows inline alert, focus, aria, cleared on edit", async () => {
+    const submitRequest = vi.fn().mockRejectedValue(
+      new ExerciseRequestsRequestError("Remove patient details", {
+        status: 400,
+        error: "invalid_input",
+        message: "Remove patient details from note",
+      }),
+    );
+    const listSimilar = vi.fn().mockResolvedValue({
+      library_matches: [],
+      drafts_in_progress: [],
+    });
+    const getInProgressCount = vi.fn().mockResolvedValue({ in_progress_count: 0 });
+
+    renderApp(`${physioAppExerciseSearchPath("Heel slide")}`, {
+      submitRequest,
+      listSimilar,
+      getInProgressCount,
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: SUBMIT_REQUEST })).toBeEnabled();
+    });
+    const note = screen.getByLabelText(new RegExp(NOTE_FOR_AI, "i"));
+    await userEvent.type(note, "patient dob 1990");
+    await userEvent.click(screen.getByRole("button", { name: SUBMIT_REQUEST }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+    expect(alert.textContent).toBe(PIN_G13);
+    expect(note.getAttribute("aria-invalid")).toBe("true");
+    expect(note.getAttribute("aria-describedby")).toBe("ex-req-note-patient-error");
+    await waitFor(() => {
+      expect(document.activeElement).toBe(note);
+    });
+    expect(screen.queryByText(PIN_G1)).toBeNull();
+    await userEvent.clear(note);
+    await userEvent.type(note, "supine cues");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(note.getAttribute("aria-invalid")).toBeNull();
+  });
+
   it("submits a request from the search form", async () => {
     const submitRequest = vi.fn().mockResolvedValue({
       outcome: "created",
