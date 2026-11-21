@@ -166,7 +166,7 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 | Preview sheet | Sheet heading `h2` text is the matched routine's name. Revision `471088919975432193` also renders an `h2` with that name inside the preview body; build should show the name once (mockup 03). |
 | **Publish this routine?** sheet | Sheet heading `h2` is **Publish this routine?**; reused strings from `src/ui/copy/routines.ts`. |
 | Close control | `aria-label` **Close** (`ARIA_CLOSE_SCRIM`). |
-| Condition chip remove | `aria-label` **Remove {condition}** (W7). |
+| Condition chip remove | On the New routine form, follow [routine-conditions/spec.md](../routine-conditions/spec.md): visible **Clear**, `aria-label` **Clear {condition}** (W7, DIDI-594 `a887af34` Q16). The Nov 19 exploration string **Remove {condition}** (`f4682350`) is superseded for authoring chips. |
 | Match row **View** | Visible label W4 **View**. Accessible name W9 **View {routine}** (`{routine}` is that row's routine name). |
 | Shared exercise mark in preview | Overlap glyph `text-teal-700` with `aria-hidden` in revision source; screen reader text W10 **Also in your draft**. |
 | Re-check in progress | Polite status (`aria-live="polite"`) with W11 **Checking for similar routines** while the debounced re-check runs. |
@@ -214,7 +214,7 @@ From variant B source (`SrBoard.tsx` / `BLiveInlineCard.tsx`, revision `47108891
 | W4 | View | 2:14 PM |
 | W5 | Continue anyway | 2:14 PM |
 | W6 | {n} total | 2:43 PM (DIDI-594 comment `f4682350`) |
-| W7 | Remove {condition} | 2:43 PM (`f4682350`) |
+| W7 | Clear {condition} | Authoring chips: DIDI-594 `a887af34` Q16 (visible **Clear**). Exploration **Remove {condition}** (`f4682350`) superseded for the form; see [routine-conditions](../routine-conditions/spec.md). |
 | W8 | Conditions | 4:27 PM ET (DIDI-594 comment `3fd723a4`) |
 | W9 | View {routine} | 8:30 PM ET (DIDI-594 comment `e880fcc5`) |
 | W10 | Also in your draft | 8:30 PM ET (`e880fcc5`) |
