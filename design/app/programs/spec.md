@@ -20,7 +20,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 
 | State | What it shows |
 | -- | -- |
-| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "1 library update to review" for one or "{n} library updates to review" for more, as in mockups 01, 29 and 05). Recently deleted: "Restore a deleted program for 30 days. After that it's gone for good. Its old share link stays closed." When empty: "No deleted programs." |
+| Programs list | Heading "Programs", "New program", its own search ("Search by name or code"), filter pills All / From a routine / From scratch, count when the list is not empty (see list count copy below; no count when empty). Empty list: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Card: name, code chip, exercise count ("1 exercise · Sent {date}" or "{n} exercises · Sent {date}"; zero-exercise draft card "No exercises yet"), origin ("From routine {name}, v{N}, used as is" or ", then tweaked", or "Built from scratch"), link status, flags ("Not published yet", "Draft changes not published", "1 library update to review" for one or "{n} library updates to review" for more, as in mockups 01, 29 and 05; "1 exercise didn't link" for one type-mismatch placeholder or "{n} exercises didn't link" for more, as in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md)). Recently deleted: "Restore a deleted program for 30 days. After that it's gone for good. Its old share link stays closed." When empty: "No deleted programs." |
 | Persistent controls | Programs list: search ("Search by name or code") and origin filter pills (All / From a routine / From scratch) stay rendered in the same place during initial loading, with zero programs, with zero matches, and when populated. Empty-state content renders below those controls, never in their place, matching the Exercises page. Zero programs: heading "No programs yet", helper "Start one from a routine or from scratch. You can find it here later by name or code.", the same "New program" button (opens the start sheet). Zero matches: "No program matches ..." with "Clear search". The current query and filter selection is kept. No count when the list is empty (unchanged). |
 | Search | By name, code (with or without "PRG-") or routine name; the matching code is highlighted. No match: "No program matches ..." with "Clear search" |
 | New program | Sheet "New program": "From a routine" (pick a routine, then Create program from routine) or "From scratch" |
@@ -211,7 +211,8 @@ The existing "Publish to the live link?" sheet (WebAppClickableConcept.tsx :1381
 Notice contents, in order:
 1. Heading with the alert icon (I.alert): "Approve or remove placeholders to publish".
 2. Body: "{n} exercises are placeholders. Approve each draft or remove it from this program, then publish." For one: "One exercise is a placeholder. Approve each draft or remove it from this program, then publish."
-3. One list item per placeholder: exercise name, the existing "Pending review" badge, "Review draft" link button, Remove icon button.
+   **Open:** When the list mixes `awaiting_approval` and `type_mismatch` placeholders, this body may read awkwardly for didn't-link rows. Do not reword until Diadem approves; see [program-type-mismatch/spec.md](../program-type-mismatch/spec.md).
+3. One list item per placeholder, in **builder order**. Same row layout for every placeholder. Badge and link action depend on `placeholder_state` ([program-type-mismatch/spec.md](../program-type-mismatch/spec.md), **Designer pick** `b650a678` on DIDI-1105): **awaiting_approval** keeps **Pending review**, **Review draft**, and Remove; **type_mismatch** shows **Didn't link**, **Fix** (in the **Review draft** slot), and Remove. **Fix** closes the sheet and opens the builder with that row's **Fix** panel expanded.
 4. Republish only: "Not live yet. Your patient still sees the version published {pub.at}."
 
 When the last placeholder is removed or approved, the heading switches to the check icon (I.check, text-teal-700) and "No placeholders left. You can publish.", the body and list go away, and Publish now follows the other publish requirements.
@@ -226,9 +227,10 @@ Tokens are existing ones from design/reference/web-app/generated/WebAppClickable
 | Notice container | `mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900` (layout of the "Before you publish" box :1765, amber tones of Badge amber :133) | same | :1765, :133 |
 | Heading | `flex items-start gap-1.5 font-semibold`, icon `mt-0.5 h-4 w-4 shrink-0` | same | :1389 |
 | List | `mt-2 divide-y divide-amber-200`, rows `flex flex-wrap items-center gap-2 py-2`; on 390 the name wraps above the actions | single line per row | :133 tones |
-| Review draft | `linkBtn` (:65), min-h-11 touch target | same | :65 |
+| Review draft / Fix | `linkBtn` (:65), min-h-11 touch target. **Fix** uses the same slot for `type_mismatch` rows (**Designer pick**, `b650a678`) | same | :65 |
 | Remove | `iconBtn` (:64), 44 px target | same | :64, :1330 |
 | Pending review badge | `Badge tone="amber"` | same | :132-134, :1326 |
+| Didn't link badge | Same row badge placement as **Pending review**; approved text **Didn't link** (`program-type-mismatch` **T1**) | same | DIDI-1105 |
 | Republish line | `mt-2 text-xs text-amber-800` | same | :1334 |
 | Footer buttons | `flex-col-reverse`, `min-h-12` | `lg:flex-row lg:justify-end`, `lg:min-h-11` | :1382 |
 | Disabled Publish now | `primary` with `disabled:cursor-not-allowed disabled:opacity-50` | same | :59-60 |
@@ -239,9 +241,10 @@ Tokens are existing ones from design/reference/web-app/generated/WebAppClickable
 - **Publish now:** `disabled` while any placeholder remains (same as the name rule), plus `aria-describedby` pointing at the notice id, so the reason is read with the button. Once the list is empty, `aria-describedby` is removed and the button follows the other publish requirements (for example it stays disabled with the name help if the name is empty).
 - **Removal announcement:** a polite live region (`aria-live="polite"`, sr-only) inside the notice says "Removed {name} from this program." and, when the list becomes empty, also "No placeholders left. You can publish."
 - **Focus on open:** unchanged (sheet heading, existing Sheet behaviour).
-- **Focus after Remove:** moves to the next placeholder's "Review draft" (or the previous one if it was the last row). When the list empties, focus moves to the notice heading ("No placeholders left. You can publish.", `tabIndex={-1}`) so the practitioner hears the state, then continues to Publish now.
+- **Focus after Remove:** moves to the next placeholder's "Review draft" or "Fix" (or the previous one if it was the last row). When the list empties, focus moves to the notice heading ("No placeholders left. You can publish.", `tabIndex={-1}`) so the practitioner hears the state, then continues to Publish now.
 - **Focus after Review draft:** the draft opens for review. On return to the sheet, focus goes back to that row's "Review draft" if it is still a placeholder; if it was approved, focus follows the Remove rule above.
-- **Accessible names:** "Review draft for {name}"; Remove uses the existing "Remove {name}"; the notice is named by its heading "Approve or remove placeholders to publish" (or "No placeholders left. You can publish.").
+- **Focus after Fix** (`type_mismatch` only, **Designer pick**, `b650a678`): the sheet closes and focus moves to that row's **Fix** control in the builder with the inline panel open. Returning to the publish sheet later follows the existing sheet open focus rule.
+- **Accessible names:** "Review draft for {name}"; **Fix for {name}** on `type_mismatch` rows (**Designer pick**, `b650a678`); Remove uses the existing "Remove {name}"; the notice is named by its heading "Approve or remove placeholders to publish" (or "No placeholders left. You can publish.").
 - No automatic approval, omission or publication anywhere in this flow.
 
 ### Approved copy (Diadem, Nov 8, 2026, 1:56 PM ET)
@@ -251,14 +254,16 @@ Tokens are existing ones from design/reference/web-app/generated/WebAppClickable
 | Notice heading | Approve or remove placeholders to publish |
 | Notice body, {n} | {n} exercises are placeholders. Approve each draft or remove it from this program, then publish. |
 | Notice body, one | One exercise is a placeholder. Approve each draft or remove it from this program, then publish. |
-| Row action | Review draft |
+| Row action | Review draft (`awaiting_approval` only) |
 | Row action, accessible name | Review draft for {name} |
+| Row action (`type_mismatch`) | Fix (reuses builder **Fix**, [program-type-mismatch/spec.md](../program-type-mismatch/spec.md) **T4**). **Designer pick**, `b650a678` |
+| Row action, accessible name (`type_mismatch`) | Fix for {name}. **Designer pick**, `b650a678` |
 | After a removal (live region) | Removed {name} from this program. |
 | List empty | No placeholders left. You can publish. |
 
 Reused verbatim, unchanged: "Publish to the live link?", "Publish now", "Not yet", "Pending review", "Remove {name}", "Placeholder. It links to the real exercise once you approve the draft.", "Not live yet. Your patient still sees the version published {pub.at}.", "Kept as a draft. Find it in Programs by name or code {code}.".
 
-DIDI-1105 (type-mismatch messaging after approval) is separate and unchanged.
+Type-mismatch skipped rows after approval are specified in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md) (DIDI-1105, variant B).
 
 ## Link page exercise media (DIDI-1192)
 
@@ -1079,6 +1084,8 @@ Not printed (DIDI-1192, CTO, Nov 9, 2026): "This link works until {exp.date}." a
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1105 PR #142 QA R1. Publish notice: `type_mismatch` rows use **Didn't link**, **Fix**, and Remove in builder order (**Designer pick**, `b650a678`); notice body **Open** when mixed. https://linear.app/didi-build/issue/DIDI-1105
+- **Nov 21, 2026**: DIDI-1105 cross-reference. Programs list flags for type-mismatch placeholders ("1 exercise didn't link" / "{n} exercises didn't link") and builder behaviour live in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 10, 2026**: DIDI-1192. Diadem approved E7: "Yes, approve E7" (12:08 AM ET), and "Video", "Previous" and "Next" with the print detail (12:09 AM ET). The link page shows one carousel per exercise (the start to end loop, then Start, then End) with round dots, a play-triangle dot, a separate focus ring and subtle chevrons from 1024 px. On phone: title, carousel, dose, notes. From 1024 px: text left, carousel right, page 64rem (was 42rem). The dose is three lines with bold numbers, frequency last. Print and PDF: text, Start, End in three columns, "Images didn't load." across the image columns, no video, no controls, no expiry line. Missing start or end images block publish on the program and routine sheets, server-enforced, Remove only (CTO rulings, DIDI-1193; copy approved Nov 9, 11:31 AM ET). Supersedes variant D (Nov 9, 11:31 AM ET). https://linear.app/didi-build/issue/DIDI-1192, https://linear.app/didi-build/issue/DIDI-594
 
 - **Nov 8, 2026**: DIDI-1186. Diadem (1:45 PM ET, locked on DIDI-594): "Block publish until every placeholder is approved or removed." Variant D, "Go with D" (1:55 PM ET); copy, "Yes, approve all of D's wording" (1:56 PM ET). Locked by CTO, comment b196ba23. The Publish sheet lists placeholders with Review draft and Remove; Publish now stays disabled while any remain and still follows every other publish requirement; Review draft never approves; a blocked publish leaves the live snapshot and link unchanged. https://linear.app/didi-build/issue/DIDI-1186, https://linear.app/didi-build/issue/DIDI-594
