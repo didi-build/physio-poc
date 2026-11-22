@@ -87,11 +87,14 @@ async function readGridColumnCount(page: Page, selector: string) {
 async function readReviewToolbarQuotaLayout(page: Page) {
   return page.evaluate(() => {
     const toolbar = document.querySelector(".ex-review-toolbar") as HTMLElement | null;
+    if (!toolbar) {
+      return null;
+    }
     const quota = toolbar.querySelector(".ex-review-quota") as HTMLElement | null;
     const deleteWrap = toolbar.querySelector(
       ".ex-review-delete-wrap",
     ) as HTMLElement | null;
-    if (!toolbar || !quota || !deleteWrap) {
+    if (!quota || !deleteWrap) {
       return null;
     }
     const toolbarBox = toolbar.getBoundingClientRect();
