@@ -126,6 +126,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
   const requestsBackRef = useRef<HTMLAnchorElement>(null);
+  const detailTryAgainRef = useRef<HTMLButtonElement>(null);
+  const detailRetryFocusAfterRef = useRef(false);
   const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
   const [detailRetrying, setDetailRetrying] = useState(false);
 
@@ -186,6 +188,20 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const view = viewOverride ?? cachedView ?? null;
   const loading = !sessionReady || viewLoading || quotaLoading;
+
+  useEffect(() => {
+    if (
+      !detailRetrying &&
+      detailRetryFocusAfterRef.current &&
+      (viewLoadFailed || !view)
+    ) {
+      detailRetryFocusAfterRef.current = false;
+      detailTryAgainRef.current?.focus();
+    }
+    if (!detailRetrying && view && !viewLoadFailed) {
+      detailRetryFocusAfterRef.current = false;
+    }
+  }, [detailRetrying, view, viewLoadFailed]);
 
   const isRequester =
     currentPractitioner.sessionIdentityReady &&
@@ -493,7 +509,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     }
   };
 
-  if (loading && !viewLoadFailed) {
+  if (loading && !viewLoadFailed && !detailRetrying) {
     return (
       <section className="ex-page" aria-busy={true}>
         <div
@@ -541,11 +557,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           <p>{DRAFT_ITEM_LOAD_TITLE}</p>
           <p>{DRAFT_ITEM_LOAD_HINT}</p>
           <button
+            ref={detailTryAgainRef}
             type="button"
             className="ex-secondary-btn"
             disabled={detailRetrying}
             onClick={() => {
               setDetailRetrying(true);
+              detailRetryFocusAfterRef.current = true;
               void refreshView({ force: true }).finally(() => {
                 setDetailRetrying(false);
               });
@@ -623,7 +641,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
-      <div className="ex-review-toolbar">
+      <div
+        className={
+          !firstDraftComplete || generationInProgress
+            ? "ex-review-toolbar ex-review-toolbar--drafting"
+            : "ex-review-toolbar"
+        }
+      >
         <button
           type="button"
           className="ex-primary-btn"
@@ -645,20 +669,24 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         >
           {REGENERATE}
         </button>
-        <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
-        <DeleteDraftButton
-          requestId={requestId}
-          title={title}
-          generationInProgress={generationInProgress || ownGenerateInFlight}
-          onSuccess={() => {
-            showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
-            onRequestsChanged?.();
-            navigate(fillPhysioAppRoutePattern("requests"));
-          }}
-          onGenerationBlocked={() => {
-            void refreshView({ force: true });
-          }}
-        />
+        <div className="ex-review-toolbar-trailing">
+          <span className="ex-review-quota">
+            {regenLeftText(quota?.remaining ?? 0)}
+          </span>
+          <DeleteDraftButton
+            requestId={requestId}
+            title={title}
+            generationInProgress={generationInProgress || ownGenerateInFlight}
+            onSuccess={() => {
+              showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
+              onRequestsChanged?.();
+              navigate(fillPhysioAppRoutePattern("requests"));
+            }}
+            onGenerationBlocked={() => {
+              void refreshView({ force: true });
+            }}
+          />
+        </div>
       </div>
       {textRegenBusy ? (
         <p className="ex-review-text-regen" role="status" aria-live="polite">

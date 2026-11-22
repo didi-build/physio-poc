@@ -23,6 +23,21 @@ import {
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
+const draftReviewDraftingView = {
+  request_id: "req-layout-drafting",
+  requested_name: "Heel slide",
+  exercise_note: null,
+  status: "drafting" as const,
+  requested_by: DEV_PRACTITIONER_ID,
+  requested_by_email: "kojo@example.com",
+  exercise_id: null,
+  generation: {
+    generation_in_progress: true,
+    first_draft_complete: false,
+  },
+  draft: null,
+};
+
 const draftView = {
   request_id: "req-layout-1",
   requested_name: "Heel slide",
@@ -155,6 +170,7 @@ export type HarnessFixtureId =
   | "conflict"
   | "requests-list"
   | "draft-review"
+  | "draft-review-drafting"
   | "exercises-mine"
   | "routines-all"
   | "routines-all-populated"
@@ -330,6 +346,30 @@ export function harnessFixture(
         requests: {
           getInProgressCount,
           listInProgress,
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: baseRoutinesClient(),
+      };
+    case "draft-review-drafting":
+      return {
+        initialEntries: ["/requests/req-layout-drafting"],
+        library: baseLibraryClient(),
+        requests: {
+          getRequest: async () => draftReviewDraftingView,
+          generateRequest: async () => ({
+            outcome: "in_progress" as const,
+            view: draftReviewDraftingView,
+            started_elsewhere: false,
+          }),
+          updateDraft: async () => draftReviewDraftingView,
+          approveRequest: async () => {
+            throw new Error("not ready");
+          },
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
         } as unknown as ExerciseRequestsClient,
         media,
         routines: baseRoutinesClient(),

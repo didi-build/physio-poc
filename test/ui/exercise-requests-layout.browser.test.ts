@@ -87,8 +87,8 @@ async function readGridColumnCount(page: Page, selector: string) {
 async function readReviewToolbarQuotaLayout(page: Page) {
   return page.evaluate(() => {
     const toolbar = document.querySelector(".ex-review-toolbar") as HTMLElement | null;
-    const quota = document.querySelector(".ex-review-quota") as HTMLElement | null;
-    const deleteWrap = document.querySelector(
+    const quota = toolbar.querySelector(".ex-review-quota") as HTMLElement | null;
+    const deleteWrap = toolbar.querySelector(
       ".ex-review-delete-wrap",
     ) as HTMLElement | null;
     if (!toolbar || !quota || !deleteWrap) {
@@ -328,6 +328,65 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
           expect(
             Math.abs(layout!.deleteRight - layout!.toolbarRight),
           ).toBeLessThanOrEqual(4);
+        }
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
+
+  it.each([390, 1280])(
+    "places review quota and delete on the drafting toolbar at %i px (fails a3878ca delete placement)",
+    async (width) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await loadInterFontsInPage(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${baseUrl}/?fixture=draft-review-drafting`, {
+          waitUntil: "load",
+        });
+        await waitForScreen(page, ".ex-review-toolbar");
+        await waitForScreen(page, "[data-testid='ex-review-ai-strip']");
+        const quotaText = regenLeftText(5);
+        await waitForScreen(page, ".ex-review-quota");
+        await expect
+          .poll(async () => page.locator(".ex-review-quota").textContent())
+          .toBe(quotaText);
+
+        const layout = await readReviewToolbarQuotaLayout(page);
+        expect(layout).not.toBeNull();
+        const metrics = await page.evaluate(() => {
+          const toolbar = document.querySelector(".ex-review-toolbar");
+          const trailing = document.querySelector(".ex-review-toolbar-trailing");
+          const pageEl = document.querySelector(".ex-page");
+          return {
+            drafting: toolbar?.classList.contains("ex-review-toolbar--drafting"),
+            trailingDisplay: trailing ? getComputedStyle(trailing).display : null,
+            pageRight: pageEl?.getBoundingClientRect().right,
+          };
+        });
+
+        if (width < 1024) {
+          expect(
+            Math.abs(layout!.quotaRight - layout!.toolbarRight),
+          ).toBeLessThanOrEqual(2);
+          expect(layout!.deleteTop).toBeGreaterThanOrEqual(layout!.quotaBottom - 1);
+        } else {
+          expect(metrics.drafting).toBe(true);
+          expect(metrics.trailingDisplay).toBe("contents");
+          expect(
+            Math.abs(layout!.deleteRight - layout!.toolbarRight),
+            JSON.stringify({ layout, metrics }),
+          ).toBeLessThanOrEqual(4);
+          expect(layout!.deleteRight).toBeGreaterThan(1100);
+          expect(Math.abs(layout!.deleteLeft - layout!.quotaRight)).toBeLessThanOrEqual(
+            120,
+          );
+          expect(Math.abs(layout!.deleteTop - layout!.quotaTop)).toBeLessThanOrEqual(
+            16,
+          );
         }
       } finally {
         await browser.close();

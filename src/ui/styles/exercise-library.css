@@ -1131,8 +1131,13 @@
   color: var(--shell-slate-500);
 }
 
+.ex-review-toolbar-trailing {
+  display: contents;
+}
+
 .ex-review-delete-wrap {
   flex: 1 0 100%;
+  position: relative;
 }
 
 @media (min-width: 1024px) {
@@ -1142,6 +1147,38 @@
 
   .ex-review-delete-wrap {
     flex: 0 0 auto;
+  }
+
+  .ex-review-toolbar-trailing .ex-review-delete-wrap {
+    flex: 0 0 auto;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-toolbar-trailing {
+    display: contents;
+  }
+
+  .ex-review-toolbar--drafting .ex-secondary-btn {
+    margin-right: auto;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-quota {
+    margin-left: 0;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-delete-wrap {
+    align-self: flex-end;
+  }
+
+  .ex-review-toolbar .ex-review-delete-wrap .ex-delete-draft-blocked {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 
