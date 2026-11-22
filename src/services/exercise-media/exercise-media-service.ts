@@ -484,12 +484,14 @@ export class ExerciseMediaService {
       title: string;
       starting_position: string;
       steps: string;
+      ending_position?: string;
     },
     regenerationNote?: string | null,
   ): ExerciseMediaPromptContext {
     return {
       title: version.title,
       startingPosition: version.starting_position,
+      endingPosition: version.ending_position,
       steps: version.steps,
       regenerationNote,
     };

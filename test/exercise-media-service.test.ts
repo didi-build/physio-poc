@@ -3,6 +3,8 @@ import type { ImageGenerationPort } from "../src/storage/ports/image-generation.
 import {
   buildEndImagePrompt,
   buildStartImagePrompt,
+  resolveEndPoseDescription,
+  selectEndPoseStepFromSteps,
 } from "../src/domain/exercise-media-prompts.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
@@ -20,6 +22,9 @@ import {
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 describe("exercise media prompts (unit)", () => {
+  const STYLE_TAIL =
+    "Single adult figure, androgynous, neutral skin tone, plain light grey studio background, soft even lighting. Clean 3D medical illustration style, teal accent on minimal athletic clothing, no text, no logos, no facial identity. Side or three-quarter view with unobstructed limbs and joints.";
+
   it("uses the shared clinical illustration template without patient-specific fields", () => {
     const start = buildStartImagePrompt({
       title: "Heel slide",
@@ -33,10 +38,429 @@ describe("exercise media prompts (unit)", () => {
     expect(start).not.toMatch(/patient|diagnosis|PHI/i);
   });
 
-  it("builds distinct start and end prompts", () => {
+  it("pins the start prompt unchanged", () => {
     const ctx = { title: "Bridge", startingPosition: "Supine" };
-    expect(buildStartImagePrompt(ctx)).toContain("starting position");
-    expect(buildEndImagePrompt(ctx)).toContain("end position");
+    expect(buildStartImagePrompt(ctx)).toBe(
+      `Clinical physiotherapy exercise demonstration: Bridge. Supine. ${STYLE_TAIL} Hold the starting position of the exercise, stable and anatomically neutral.`,
+    );
+  });
+
+  it("never puts starting-position text in the end prompt", () => {
+    const distinctiveStart = "FEET_WIDE_SUMO_START_UNIQUE_D1281";
+    const end = buildEndImagePrompt({
+      title: "Sumo Squat",
+      startingPosition: distinctiveStart,
+      steps: "Lower hips\nDrive up to standing",
+    });
+    expect(end).not.toContain(distinctiveStart);
+    expect(end).not.toContain("FEET_WIDE_SUMO");
+  });
+
+  it("pins the end-prompt edit wording and movement clause", () => {
+    const end = buildEndImagePrompt({
+      title: "Sumo Squat",
+      startingPosition: "Wide stance",
+      steps: "Lower into squat\nThighs parallel to floor",
+    });
+    expect(end).toContain(
+      "Same figure, clothing, camera angle, background and lighting. Change only the pose to the end position: Thighs parallel to floor. Change only the body parts that this exercise moves; keep every other body part exactly as in the start image.",
+    );
+  });
+
+  it("uses the last non-empty step for end pose when ending_position is absent", () => {
+    const end = buildEndImagePrompt({
+      title: "Lunge",
+      startingPosition: "Standing",
+      steps: "Step forward with one leg\nBend both knees\nReturn to start",
+    });
+    expect(end).toContain("Change only the pose to the end position: Bend both knees.");
+  });
+
+  it("prefers ending_position over steps when present", () => {
+    const end = buildEndImagePrompt({
+      title: "Shoulder press",
+      startingPosition: "Seated",
+      endingPosition: "Arms extended overhead",
+      steps: "Press dumbbells up\nLower with control",
+    });
+    expect(end).toContain(
+      "Change only the pose to the end position: Arms extended overhead.",
+    );
+    expect(end).not.toContain("Lower with control");
+  });
+
+  it("uses ending_position even when it would match an excluded step pattern", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Row",
+        endingPosition: "Return to start",
+        steps: "Pull handle toward ribs",
+      }),
+    ).toBe("Return to start");
+  });
+
+  it("skips whitespace-only gaps and trailing hold lines when picking from steps", () => {
+    const end = buildEndImagePrompt({
+      title: "Test",
+      startingPosition: "Any",
+      steps: "Brace core\n  \n\nHold at top\n\n",
+    });
+    expect(end).toContain("Change only the pose to the end position: Brace core.");
+  });
+
+  it("uses the fallback end pose description when steps are empty", () => {
+    const end = buildEndImagePrompt({
+      title: "Plank",
+      startingPosition: "Prone",
+      steps: "   \n\t\n",
+    });
+    expect(end).toContain(
+      "Change only the pose to the end position: the end of the exercise movement.",
+    );
+  });
+
+  it("appends regeneration note only to pose content on end prompts", () => {
+    const end = buildEndImagePrompt({
+      title: "Bridge",
+      steps: "Lift hips",
+      regenerationNote: "smaller range",
+    });
+    expect(end).toContain("Additional guidance from the practitioner: smaller range.");
+    expect(end.indexOf("Additional guidance")).toBeGreaterThan(
+      end.indexOf("Change only the body parts"),
+    );
+  });
+});
+
+describe("end pose step guard (unit)", () => {
+  it("skips a trailing return line when walking steps from the end", () => {
+    expect(
+      selectEndPoseStepFromSteps(
+        "Press weights overhead\nLock elbows softly\nReturn to start",
+      ),
+    ).toBe("Lock elbows softly");
+  });
+
+  it("skips a trailing repeat line when walking steps from the end", () => {
+    expect(selectEndPoseStepFromSteps("Lower under control\nRepeat")).toBe(
+      "Lower under control",
+    );
+  });
+
+  it("skips a trailing reps count line when walking steps from the end", () => {
+    expect(selectEndPoseStepFromSteps("Squat down deep\n10 reps")).toBe(
+      "Squat down deep",
+    );
+  });
+
+  it("skips several trailing excluded lines and picks the last real movement line", () => {
+    expect(
+      selectEndPoseStepFromSteps(
+        "Hinge at hips\nFlatten back\nHold for 2 seconds\nReturn\nRepeat 10 times",
+      ),
+    ).toBe("Flatten back");
+  });
+
+  it("does not let a mid-list return line override a real last movement line", () => {
+    expect(
+      selectEndPoseStepFromSteps(
+        "Step forward\nReturn to start\nDrive through front heel",
+      ),
+    ).toBe("Drive through front heel");
+  });
+
+  it("uses the fallback when every step line matches exclusion patterns", () => {
+    expect(
+      resolveEndPoseDescription({ title: "Empty", steps: "Return to start\n10 reps" }),
+    ).toBe("the end of the exercise movement");
+  });
+
+  it("strips numbering before matching excluded start-position phrasing", () => {
+    expect(
+      selectEndPoseStepFromSteps(
+        "Arms locked overhead\n4. Return to the starting position",
+      ),
+    ).toBe("Arms locked overhead");
+  });
+
+  it("strips bullets before matching lines that begin with return", () => {
+    expect(selectEndPoseStepFromSteps("Knee fully extended\n- Return slowly")).toBe(
+      "Knee fully extended",
+    );
+  });
+
+  it("skips back to the start phrasing as a distinct pattern family", () => {
+    expect(selectEndPoseStepFromSteps("Lift chest tall\nGo back to the start")).toBe(
+      "Lift chest tall",
+    );
+  });
+
+  it("skips original position phrasing", () => {
+    expect(
+      selectEndPoseStepFromSteps("Pelvis neutral\nRestore original position"),
+    ).toBe("Pelvis neutral");
+  });
+
+  it("skips beginning position phrasing", () => {
+    expect(
+      selectEndPoseStepFromSteps("Tuck chin gently\nMove to beginning position"),
+    ).toBe("Tuck chin gently");
+  });
+
+  it("skips lines that begin with relax", () => {
+    expect(
+      selectEndPoseStepFromSteps("Pack shoulder blades\nRelax the shoulders"),
+    ).toBe("Pack shoulder blades");
+  });
+
+  it("skips perform followed by a number at line start", () => {
+    expect(selectEndPoseStepFromSteps("Set hips square\nPerform 12")).toBe(
+      "Set hips square",
+    );
+  });
+
+  it("skips set-count phrasing in the middle of a line", () => {
+    expect(selectEndPoseStepFromSteps("Lower to depth\nComplete 3 sets")).toBe(
+      "Lower to depth",
+    );
+  });
+
+  it("skips breathe-only instruction lines", () => {
+    expect(selectEndPoseStepFromSteps("Ribs down\nBreathe out")).toBe("Ribs down");
+  });
+
+  it("skips hold-only instruction lines", () => {
+    expect(selectEndPoseStepFromSteps("Shoulders packed\nHold for 2 seconds")).toBe(
+      "Shoulders packed",
+    );
+  });
+
+  it("skips lines that begin with hold including Hold at top", () => {
+    expect(selectEndPoseStepFromSteps("Raise arms overhead\nHold at top")).toBe(
+      "Raise arms overhead",
+    );
+  });
+
+  it("strips numbering and bullets from the chosen end pose text", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Squat",
+        steps: "1. Stand tall\n2. Lower slowly",
+      }),
+    ).toBe("Lower slowly");
+  });
+
+  it("does not exclude a movement line that uses starting in a non-position sense", () => {
+    expect(
+      selectEndPoseStepFromSteps(
+        "Press up from a starting stance\nReturn to the starting position",
+      ),
+    ).toBe("Press up from a starting stance");
+  });
+
+  it("does not exclude a movement line that begins with restore when not matched as original position", () => {
+    expect(selectEndPoseStepFromSteps("Restore scapular control\nRepeat 8 times")).toBe(
+      "Restore scapular control",
+    );
+  });
+
+  it("matches exclusion patterns case-insensitively after numbering trim", () => {
+    expect(
+      selectEndPoseStepFromSteps("Arms extended\n3) RETURN TO THE STARTING POSITION"),
+    ).toBe("Arms extended");
+  });
+
+  it("skips Lower to the start position phrasing when picking end pose", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Hip hinge",
+        steps: "Maintain flat back\nLower to the start position",
+      }),
+    ).toContain(
+      "Change only the pose to the end position: Maintain flat back. Change only the body parts",
+    );
+  });
+
+  it("skips Move into start position phrasing when picking end pose", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Split squat",
+        steps: "Front knee over ankle\nMove into start position",
+      }),
+    ).toContain(
+      "Change only the pose to the end position: Front knee over ankle. Change only the body parts",
+    );
+  });
+
+  it("skips lines that begin with rest when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Curl",
+        steps: "Elbow fixed at 90 degrees\nRest 30 seconds",
+      }),
+    ).toContain("Change only the pose to the end position: Elbow fixed at 90 degrees.");
+  });
+
+  it("skips lines that begin with reset when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Row",
+        steps: "Squeeze shoulder blades\nReset your stance",
+      }),
+    ).toBe("Squeeze shoulder blades");
+  });
+
+  it("skips lines that begin with switch sides when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Lunge",
+        steps: "Drive through front heel\nSwitch sides",
+      }),
+    ).toBe("Drive through front heel");
+  });
+
+  it("skips lines that begin with alternate when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Leg raise",
+        steps: "Lift leg without arching\nAlternate legs",
+      }),
+    ).toBe("Lift leg without arching");
+  });
+
+  it("skips lines that begin with swap when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Carry",
+        steps: "Walk with level pelvis\nSwap hands",
+      }),
+    ).toBe("Walk with level pelvis");
+  });
+
+  it("skips lines that begin with do followed by a number when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Bridge",
+        steps: "Press through heels\nDo 15",
+      }),
+    ).toContain("Change only the pose to the end position: Press through heels.");
+  });
+
+  it("skips lines that begin with complete followed by a number when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "RDL",
+        steps: "Hinge with neutral spine\nComplete 8",
+      }),
+    ).toContain("Change only the pose to the end position: Hinge with neutral spine.");
+  });
+
+  it("skips lines that begin with perform followed by a number when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Plank",
+        steps: "Ribs toward pelvis\nPerform 6",
+      }),
+    ).toContain("Change only the pose to the end position: Ribs toward pelvis.");
+  });
+
+  it("skips times count phrasing when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Step-up",
+        steps: "Control the descent\n8 times",
+      }),
+    ).toBe("Control the descent");
+  });
+
+  it("skips singular set count phrasing when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Band pull",
+        steps: "Pull band to ribs\n1 set",
+      }),
+    ).toBe("Pull band to ribs");
+  });
+
+  it("skips repetitions count phrasing when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Clam",
+        steps: "Open knee without rolling\n10 repetitions",
+      }),
+    ).toBe("Open knee without rolling");
+  });
+
+  it("skips lines that begin with pause when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Wall sit",
+        steps: "Thighs parallel to floor\nPause here",
+      }),
+    ).toContain("Change only the pose to the end position: Thighs parallel to floor.");
+  });
+
+  it("skips lines that begin with inhale when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Cat cow",
+        steps: "Round upper back\nInhale deeply",
+      }),
+    ).toBe("Round upper back");
+  });
+
+  it("skips lines that begin with exhale when walking steps from the end", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Dead bug",
+        steps: "Opposite arm and leg reach\nExhale slowly",
+      }),
+    ).toBe("Opposite arm and leg reach");
+  });
+
+  it("strips a 2) line prefix when resolving end pose text", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Squat",
+        steps: "1. Sit back\n2) Drive hips up",
+      }),
+    ).toBe("Drive hips up");
+  });
+
+  it("strips a bullet line prefix when resolving end pose text", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Reach",
+        steps: "• Reach arms overhead",
+      }),
+    ).toBe("Reach arms overhead");
+  });
+
+  it("strips a bullet then a numbering prefix when resolving end pose text", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "RDL",
+        steps: "1. Stand tall\n• 2. Lower slowly",
+      }),
+    ).toBe("Lower slowly");
+  });
+
+  it("skips mid-line return to the start phrasing when walking steps from the end", () => {
+    expect(
+      buildEndImagePrompt({
+        title: "Step-up",
+        steps: "Align spine tall\nSlowly return to the start",
+      }),
+    ).toContain("Change only the pose to the end position: Align spine tall.");
+  });
+
+  it("does not skip a movement line that contains a number unrelated to rep counts", () => {
+    expect(
+      resolveEndPoseDescription({
+        title: "Raise",
+        steps: "Set scapula down\nRaise arms 90 degrees",
+      }),
+    ).toBe("Raise arms 90 degrees");
   });
 });
 
@@ -51,8 +475,16 @@ describe("prefix media storage (unit)", () => {
 });
 
 describe("ExerciseMediaService (integration)", () => {
+  const D1281_END_PROMPT_MARK =
+    "Change only the body parts that this exercise moves; keep every other body part exactly as in the start image.";
+  const GUARDED_STEPS =
+    "Slide heel toward hip\nExtend knee to full range\nReturn to the starting position";
+  const GUARDED_END_POSE_SENTENCE =
+    "Change only the pose to the end position: Extend knee to full range.";
+
   async function seedDraftVersion(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    extras?: { steps?: string },
   ) {
     const practitionerId = await seedPractitioner(storage);
     const exerciseId = await seedExercise(storage, practitionerId);
@@ -70,10 +502,133 @@ describe("ExerciseMediaService (integration)", () => {
         status: "draft",
         title: "Heel slide",
         starting_position: "Supine",
+        steps: extras?.steps ?? GUARDED_STEPS,
       }),
     );
     return { practitionerId, exerciseId, versionId: FIXTURE_VERSION_ID };
   }
+
+  it("passes the reworked end prompt on initial generation", async () => {
+    const storage = await openMigratedDatabase();
+    const generateStartAndEndImages = vi.fn(
+      async (input: { startPrompt: string; endPrompt: string }) =>
+        new FakeImageGeneration().generateStartAndEndImages(input),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages,
+        generateStartImage: vi.fn(),
+        generateEndImage: vi.fn(),
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      expect(generateStartAndEndImages).toHaveBeenCalledOnce();
+      const { endPrompt } = generateStartAndEndImages.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+      expect(endPrompt).toContain(GUARDED_END_POSE_SENTENCE);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("passes the reworked end prompt when regenerating both images", async () => {
+    const storage = await openMigratedDatabase();
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage,
+        generateEndImage,
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      generateEndImage.mockClear();
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "both",
+      });
+      expect(generateEndImage).toHaveBeenCalledOnce();
+      const endPrompt = generateEndImage.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+      expect(endPrompt).toContain(GUARDED_END_POSE_SENTENCE);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("passes the reworked end prompt when regenerating end only", async () => {
+    const storage = await openMigratedDatabase();
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage: vi.fn(),
+        generateEndImage,
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      generateEndImage.mockClear();
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "end",
+      });
+      expect(generateEndImage).toHaveBeenCalledOnce();
+      const endPrompt = generateEndImage.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+      expect(endPrompt).toContain(GUARDED_END_POSE_SENTENCE);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("passes guarded end pose text when regenerate falls back to generateStartAndEndImages", async () => {
+    const storage = await openMigratedDatabase();
+    const generateStartAndEndImages = vi.fn(
+      async (input: { startPrompt: string; endPrompt: string }) =>
+        new FakeImageGeneration().generateStartAndEndImages(input),
+    );
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages,
+        generateStartImage,
+        generateEndImage: vi.fn(),
+      });
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "start",
+      });
+      expect(generateStartAndEndImages).toHaveBeenCalledOnce();
+      const { endPrompt } = generateStartAndEndImages.mock.calls[0]![0];
+      expect(endPrompt).toContain(GUARDED_END_POSE_SENTENCE);
+    } finally {
+      storage.close();
+    }
+  });
 
   async function createService(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,

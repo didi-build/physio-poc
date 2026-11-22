@@ -182,10 +182,11 @@ describe("media-test prompts (unit)", () => {
     );
   });
 
-  it("swaps pose clause for end images", () => {
+  it("builds production-aligned end edit prompt without starting-position text", () => {
     const end = buildExerciseImagePrompt("sit to stand", "end");
-    expect(end).toContain("sit to stand");
-    expect(end).toContain("Hold the end position of the exercise");
+    expect(end).toBe(
+      "Clinical physiotherapy exercise demonstration: sit to stand. Single adult figure, androgynous, neutral skin tone, plain light grey studio background, soft even lighting. Clean 3D medical illustration style, teal accent on minimal athletic clothing, no text, no logos, no facial identity. Side or three-quarter view with unobstructed limbs and joints. Same figure, clothing, camera angle, background and lighting. Change only the pose to the end position: the end of the exercise movement. Change only the body parts that this exercise moves; keep every other body part exactly as in the start image.",
+    );
     expect(end).not.toContain("starting position");
   });
 });
