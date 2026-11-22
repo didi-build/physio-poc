@@ -9,11 +9,18 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../src/app-routes.js";
 import type { InProgressRequestListItem } from "../../src/services/exercise-requests/types.js";
 import { ExerciseRequestsApiProvider } from "../../src/ui/api/exercise-requests-context.js";
-import { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-client.js";
+import {
+  ExerciseRequestsClient,
+  ExerciseRequestsRequestError,
+} from "../../src/ui/api/exercise-requests-client.js";
 import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { DraftReviewPage } from "../../src/ui/exercise-requests/DraftReviewPage.js";
 import { RequestsAndDraftsPage } from "../../src/ui/exercise-requests/RequestsAndDraftsPage.js";
+import { PhysioApp } from "../../src/ui/App.js";
 import { NavigationTestProviders } from "./navigation-test-providers.js";
+import { stubPractitionerSessionClient } from "./fake-practitioner-session-fixture.js";
+import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import type { ExerciseLibraryClient } from "../../src/ui/api/exercise-library-client.js";
 import { ExerciseRequestsRefreshProvider } from "../../src/ui/api/exercise-requests-refresh-context.js";
 import { ExerciseMediaApiProvider } from "../../src/ui/api/exercise-media-context.js";
 import { ExerciseMediaClient } from "../../src/ui/api/exercise-media-client.js";
@@ -338,9 +345,11 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
   });
 
   it("maps draft_generation_in_progress to D7 and disables delete after a lock race", async () => {
+    let generationRunning = false;
     const fetchFn = vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/withdraw")) {
+        generationRunning = true;
         return Promise.resolve(
           jsonResponse(
             {
@@ -354,7 +363,9 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
       if (url.includes("/in-progress")) {
         return Promise.resolve(
           jsonResponse({
-            requests: [listItem({ generation_in_progress: false })],
+            requests: [
+              listItem({ generation_in_progress: generationRunning, status: "open" }),
+            ],
             in_progress_count: 1,
           }),
         );
@@ -378,49 +389,68 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
   });
 
   it("shows D12 only when draft review GET returns request_not_found", async () => {
-    const fetchFn = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/req-gone") && !url.includes("/withdraw")) {
-        return Promise.resolve(
-          jsonResponse(
-            { error: "request_not_found", message: "Request not found" },
-            404,
-          ),
-        );
-      }
-      if (url.includes("/regeneration-quota")) {
-        return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
-      }
-      return Promise.resolve(jsonResponse({}, 500));
-    });
-    const client = new ExerciseRequestsClient({ fetchFn });
-    const mediaClient = new ExerciseMediaClient({
-      fetchFn: vi.fn(() =>
-        Promise.resolve(jsonResponse({ remaining: 3, limitReached: false })),
-      ),
-    });
+    const getRequest = vi.fn().mockRejectedValue(
+      new ExerciseRequestsRequestError("Request not found", {
+        status: 404,
+        error: "request_not_found",
+      }),
+    );
+    const requestsClient = {
+      getRequest,
+      getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      listSimilar: vi
+        .fn()
+        .mockResolvedValue({ library_matches: [], drafts_in_progress: [] }),
+    } as unknown as ExerciseRequestsClient;
+    const libraryClient = {
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: { new_from_requests: [], pinned: [], recently_used_and_saved: [] },
+      }),
+      searchApproved: vi.fn().mockResolvedValue({
+        exercises: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+      }),
+    } as unknown as ExerciseLibraryClient;
+    const programsClient = {
+      listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+      listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as ProgramsClient;
     render(
       <MemoryRouter
         initialEntries={[
           fillPhysioAppRoutePattern("requestReview", { requestId: "req-gone" }),
         ]}
       >
-        <NavigationTestProviders>
-          <ToastProvider>
-            <ExerciseRequestsApiProvider client={client}>
-              <ExerciseMediaApiProvider client={mediaClient}>
-                <DraftReviewPage />
-              </ExerciseMediaApiProvider>
-            </ExerciseRequestsApiProvider>
-          </ToastProvider>
-        </NavigationTestProviders>
+        <ToastProvider>
+          <PhysioApp
+            practitionerSessionClient={stubPractitionerSessionClient()}
+            exerciseRequestsClient={requestsClient}
+            exerciseLibraryClient={libraryClient}
+            exerciseMediaClient={
+              {
+                getRegenerationQuota: vi.fn().mockResolvedValue({
+                  remaining: 3,
+                  limitReached: false,
+                }),
+              } as unknown as ExerciseMediaClient
+            }
+            programsClient={programsClient}
+          />
+        </ToastProvider>
       </MemoryRouter>,
     );
     await waitFor(() => {
+      expect(getRequest).toHaveBeenCalled();
       expect(screen.getByText(PIN_D12)).toBeInTheDocument();
     });
     expect(screen.queryByText(PIN_DELETE_DRAFT)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: PIN_REQUESTS })).toHaveFocus();
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: PIN_REQUESTS })).toHaveFocus();
+    });
   });
 
   it("Cancel closes the dialog without calling withdraw", async () => {

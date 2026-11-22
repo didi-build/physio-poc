@@ -116,7 +116,7 @@ describe("physio_request_withdrawn audit log", () => {
       expect(parsed.request_id).toBe(requestId);
       expect(parsed.practitioner_id).toBe(practitioner);
       expect(parsed.requester_practitioner_id).toBe(practitioner);
-      expect(parsed.previous_status).toBe("open");
+      expect(parsed.previous_status).toBe("drafting");
     } finally {
       storage.close();
     }
