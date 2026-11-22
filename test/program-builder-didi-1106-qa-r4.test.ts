@@ -6,6 +6,7 @@ import {
   ProgramBuilderServiceError,
 } from "../src/services/programs/program-builder-service.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import { SqlBatchGuardError } from "../src/storage/errors/sql-batch-error.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -68,6 +69,25 @@ async function seedTypeMismatchRow(
   );
   const view = await service.getProgram(owner, programId);
   return { draftUpdatedAt: view.draft_updated_at };
+}
+
+function forceTypeMismatchLinkBatchFailure(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+): void {
+  const runBatch = storage.batch.bind(storage);
+  storage.batch = async (statements) => {
+    if (
+      statements.some(
+        (statement) =>
+          typeof statement.sql === "string" &&
+          statement.sql.includes("UPDATE program_rows SET") &&
+          statement.sql.includes("exercise_request_id = NULL"),
+      )
+    ) {
+      throw new SqlBatchGuardError();
+    }
+    return runBatch(statements);
+  };
 }
 
 function apiDeps(
@@ -273,10 +293,11 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
         rowId,
         reqId,
       );
-      await storage.run(
-        `UPDATE exercise_requests SET exercise_id = NULL WHERE id = ?`,
-        [reqId],
-      );
+      await storage.run(`UPDATE exercises SET category = ? WHERE id = ?`, [
+        "strengthening",
+        FIXTURE_EXERCISE_ID,
+      ]);
+      forceTypeMismatchLinkBatchFailure(storage);
       const { deps, cookie } = apiDeps(storage, owner);
       const url = `${BASE}${programRowLinkTypeMismatchPath(programId, rowId)}`;
       const response = await handleRequest(
@@ -286,7 +307,7 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
             method: "POST",
             headers: { cookie, "content-type": "application/json" },
             body: JSON.stringify({
-              prescription_type: "stretching",
+              prescription_type: "concentric",
               draft_updated_at: draftUpdatedAt,
             }),
           }),
@@ -314,17 +335,18 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
         rowId,
         reqId,
       );
-      await storage.run(
-        `UPDATE exercise_requests SET exercise_id = NULL WHERE id = ?`,
-        [reqId],
-      );
+      await storage.run(`UPDATE exercises SET category = ? WHERE id = ?`, [
+        "strengthening",
+        FIXTURE_EXERCISE_ID,
+      ]);
+      forceTypeMismatchLinkBatchFailure(storage);
       const service = new ProgramBuilderService(storage);
       await expect(
         service.linkTypeMismatchPlaceholderRow(
           owner,
           programId,
           rowId,
-          "stretching",
+          "concentric",
           draftUpdatedAt,
         ),
       ).rejects.toBeInstanceOf(ProgramBuilderServiceError);
@@ -333,7 +355,7 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
           owner,
           programId,
           rowId,
-          "stretching",
+          "concentric",
           draftUpdatedAt,
         ),
       ).rejects.toMatchObject({ code: "invalid_input" });
