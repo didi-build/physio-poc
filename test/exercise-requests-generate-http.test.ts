@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { underDraftGenerationLock } from "../src/services/exercise-requests/exercise-request-generation-lock.js";
+import type { ExerciseRequestDraftView } from "../src/services/exercise-requests/types.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { handleExerciseMediaRequest } from "../src/http/routes/exercise-media.js";
@@ -258,6 +260,38 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
     } finally {
       storage.close();
     }
+  });
+
+  it("DIDI-1276 pinned: fresh lock short-circuits before tryAcquire (kills M14)", async () => {
+    const now = new Date().toISOString();
+    const view = {
+      request_id: "req-lock-sc",
+      requested_name: "Move",
+      exercise_note: null,
+      status: "drafting" as const,
+      requested_by: "p",
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: true, first_draft_complete: false },
+      draft: null,
+    } satisfies ExerciseRequestDraftView;
+    const tryAcquire = vi.fn().mockResolvedValue(false);
+    const run = vi.fn().mockResolvedValue({ ok: true });
+    const requests = {
+      getDraftGenerationLockedAt: vi.fn().mockResolvedValue(now),
+      tryAcquireDraftGenerationLock: tryAcquire,
+      releaseDraftGenerationLock: vi.fn(),
+    } as unknown as ExerciseRequestsRepository;
+    const result = await underDraftGenerationLock({
+      requestId: "req-lock-sc",
+      now,
+      requests,
+      loadView: async () => view,
+      run,
+    });
+    expect(result.kind).toBe("in_progress");
+    expect(tryAcquire).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("DIDI-1276 pinned: fresh lock during retry returns 202 in_progress", async () => {
