@@ -24,6 +24,7 @@ import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-request
 import {
   DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
   DRAFT_GENERATION_LOCK_RELEASED_EVENT,
+  DRAFT_GENERATION_RUN_ABANDONED_EVENT,
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
 import { createInProcessDraftGenerationWorkflowPort } from "../src/services/exercise-requests/in-process-draft-generation-workflow.js";
@@ -49,6 +50,9 @@ import {
   attachDraftGenerationTestWorkflow,
   drainDraftGeneration,
 } from "./helpers/draft-generation-test-workflow.js";
+import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
+import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
+import { installDidi1289DeepInfraFetchStub } from "./helpers/didi-1289-deepinfra-fetch-stub.js";
 
 const PIN_STALE_MS = 3 * 60 * 1000;
 
@@ -383,6 +387,15 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(started.status).toBe(202);
       await drainDraftGeneration(workflow, requestId);
       expect(images.startCalls).toBe(0);
+      const abandonedLogged = logSpy.mock.calls.some((call) => {
+        const line = call[0];
+        if (typeof line !== "string") {
+          return false;
+        }
+        const row = JSON.parse(line) as { event: string };
+        return row.event === DRAFT_GENERATION_RUN_ABANDONED_EVENT;
+      });
+      expect(abandonedLogged).toBe(true);
       const staleBefore = new Date(
         Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
       ).toISOString();
@@ -630,6 +643,356 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       ).toBe(true);
     } finally {
       storage.close();
+    }
+  });
+});
+
+describe("DIDI-1289 off-request-path draft generation (DeepInfra providers, fetch stubbed)", () => {
+  function deepInfraTestBundle(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    practitioner: string,
+    stopAfterStep?: "text" | "start_image",
+  ) {
+    const draftGenerator = createDeepInfraExerciseDraftGenerator({
+      apiKey: "test-key",
+    });
+    const images = new DeepInfraFluxKleinImageGeneration({ apiKey: "test-key" });
+    const auth = new FakeAuthPort({
+      practitioner: {
+        practitionerId: practitioner,
+        email: "deep@ex.com",
+        displayName: "Coach",
+      },
+    });
+    const base = {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      auth,
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+      exerciseDraftGenerator: draftGenerator,
+      exerciseMediaImages: images,
+      extraRouteHandlers: [handleExerciseMediaRequest],
+    };
+    const mediaService = new ExerciseMediaService(
+      base.sql,
+      images,
+      new PrefixMediaStorage(base.objects),
+    );
+    const requestService = new ExerciseRequestsService(base.sql, base.config, {
+      draftGenerator,
+      initialDraftMediaProgress: (versionId) =>
+        mediaService.getInitialDraftMediaProgress(versionId),
+    });
+    const { deps, workflow } = attachDraftGenerationTestWorkflow(
+      base,
+      (requestId) => requestService.loadDraftView(requestId),
+      stopAfterStep ? { stopAfterStep } : undefined,
+    );
+    return {
+      deps,
+      cookie: auth.createSessionCookieHeader(),
+      workflow,
+      requestService,
+      mediaService,
+    };
+  }
+
+  async function createRequest(cookie: string, bundle: AppDependencies) {
+    const created = await handleRequest(
+      authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+        method: "POST",
+        body: JSON.stringify({
+          requested_name: "Sumo squat",
+          form_opened_at: FORM_OPENED,
+        }),
+      }),
+      bundle,
+    );
+    const body = (await created.json()) as { request_id: string };
+    return body.request_id;
+  }
+
+  it("cancel after text: resume skips DeepInfra text chat (fetch counts)", async () => {
+    const stub = installDidi1289DeepInfraFetchStub();
+    try {
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id("pr-1289-di-text"),
+          "deep-text@ex.com",
+        );
+        const { deps, cookie, workflow } = deepInfraTestBundle(
+          storage,
+          practitioner,
+          "text",
+        );
+        const requestId = await createRequest(cookie, deps);
+        const started = await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          deps,
+        );
+        expect(started.status).toBe(202);
+        await drainDraftGeneration(workflow, requestId);
+        expect(stub.counts.textChat).toBe(1);
+        expect(stub.counts.startImageGeneration).toBe(0);
+        const afterText = { ...stub.counts };
+        const staleBefore = new Date(
+          Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
+        ).toISOString();
+        await storage.run(
+          "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+          [staleBefore, requestId],
+        );
+        const draftGenerator = createDeepInfraExerciseDraftGenerator({
+          apiKey: "test-key",
+        });
+        const resumeRequestService = new ExerciseRequestsService(
+          deps.sql,
+          deps.config,
+          {
+            draftGenerator,
+            initialDraftMediaProgress: (versionId) =>
+              new ExerciseMediaService(
+                deps.sql,
+                deps.exerciseMediaImages!,
+                new PrefixMediaStorage(deps.objects),
+              ).getInitialDraftMediaProgress(versionId),
+          },
+        );
+        const { workflow: resumeWorkflow } = attachDraftGenerationTestWorkflow(
+          deps,
+          (rid) => resumeRequestService.loadDraftView(rid),
+        );
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          { ...deps, draftGenerationWorkflow: resumeWorkflow },
+        );
+        await drainDraftGeneration(resumeWorkflow, requestId);
+        expect(stub.counts.textChat - afterText.textChat).toBe(0);
+        expect(stub.counts.startImageGeneration - afterText.startImageGeneration).toBe(
+          1,
+        );
+        expect(stub.counts.endImageEdit - afterText.endImageEdit).toBe(1);
+      } finally {
+        storage.close();
+      }
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("cancel after start image: resume skips text and start-image DeepInfra fetch", async () => {
+    const stub = installDidi1289DeepInfraFetchStub();
+    try {
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id("pr-1289-di-start"),
+          "deep-start@ex.com",
+        );
+        const { deps, cookie, workflow } = deepInfraTestBundle(
+          storage,
+          practitioner,
+          "start_image",
+        );
+        const requestId = await createRequest(cookie, deps);
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          deps,
+        );
+        await drainDraftGeneration(workflow, requestId);
+        expect(stub.counts.textChat).toBe(1);
+        expect(stub.counts.startImageGeneration).toBe(1);
+        expect(stub.counts.endImageEdit).toBe(0);
+        const afterStart = { ...stub.counts };
+        const staleBefore = new Date(
+          Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
+        ).toISOString();
+        await storage.run(
+          "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+          [staleBefore, requestId],
+        );
+        const draftGenerator = createDeepInfraExerciseDraftGenerator({
+          apiKey: "test-key",
+        });
+        const resumeRequestService = new ExerciseRequestsService(
+          deps.sql,
+          deps.config,
+          {
+            draftGenerator,
+            initialDraftMediaProgress: (versionId) =>
+              new ExerciseMediaService(
+                deps.sql,
+                deps.exerciseMediaImages!,
+                new PrefixMediaStorage(deps.objects),
+              ).getInitialDraftMediaProgress(versionId),
+          },
+        );
+        const { workflow: resumeWorkflow } = attachDraftGenerationTestWorkflow(
+          deps,
+          (rid) => resumeRequestService.loadDraftView(rid),
+        );
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          { ...deps, draftGenerationWorkflow: resumeWorkflow },
+        );
+        await drainDraftGeneration(resumeWorkflow, requestId);
+        expect(stub.counts.textChat - afterStart.textChat).toBe(0);
+        expect(stub.counts.startImageGeneration - afterStart.startImageGeneration).toBe(
+          0,
+        );
+        expect(stub.counts.endImageEdit - afterStart.endImageEdit).toBe(1);
+      } finally {
+        storage.close();
+      }
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("first /generate is not charged toward daily media quota; canceled run leaves quota unchanged", async () => {
+    const stub = installDidi1289DeepInfraFetchStub();
+    try {
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id("pr-1289-di-quota"),
+          "deep-quota@ex.com",
+        );
+        const capExerciseId = await seedExercise(storage, practitioner);
+        for (let i = 0; i < 5; i += 1) {
+          await storage.run(
+            `INSERT INTO media_regenerations (
+            id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+              id(`regen-1289-di-${i}`),
+              practitioner,
+              capExerciseId,
+              null,
+              "both",
+              0,
+              FORM_OPENED,
+            ],
+          );
+        }
+        const { deps, cookie, workflow } = deepInfraTestBundle(
+          storage,
+          practitioner,
+          "start_image",
+        );
+        const requestId = await createRequest(cookie, deps);
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          deps,
+        );
+        await drainDraftGeneration(workflow, requestId);
+        const count = await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+          [practitioner],
+        );
+        expect(count?.c).toBe(5);
+      } finally {
+        storage.close();
+      }
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("resume after partial run does not charge media quota twice", async () => {
+    const stub = installDidi1289DeepInfraFetchStub();
+    try {
+      const storage = await openMigratedDatabase();
+      try {
+        const practitioner = await seedPractitioner(
+          storage,
+          id("pr-1289-di-quota-resume"),
+          "deep-qr@ex.com",
+        );
+        const { deps, cookie, workflow } = deepInfraTestBundle(
+          storage,
+          practitioner,
+          "start_image",
+        );
+        const requestId = await createRequest(cookie, deps);
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          deps,
+        );
+        await drainDraftGeneration(workflow, requestId);
+        const before = await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+          [practitioner],
+        );
+        expect(before?.c).toBe(0);
+        const staleBefore = new Date(
+          Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
+        ).toISOString();
+        await storage.run(
+          "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+          [staleBefore, requestId],
+        );
+        const draftGenerator = createDeepInfraExerciseDraftGenerator({
+          apiKey: "test-key",
+        });
+        const resumeRequestService = new ExerciseRequestsService(
+          deps.sql,
+          deps.config,
+          {
+            draftGenerator,
+            initialDraftMediaProgress: (versionId) =>
+              new ExerciseMediaService(
+                deps.sql,
+                deps.exerciseMediaImages!,
+                new PrefixMediaStorage(deps.objects),
+              ).getInitialDraftMediaProgress(versionId),
+          },
+        );
+        const { workflow: resumeWorkflow } = attachDraftGenerationTestWorkflow(
+          deps,
+          (rid) => resumeRequestService.loadDraftView(rid),
+        );
+        await handleRequest(
+          authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+            method: "POST",
+            body: JSON.stringify({}),
+          }),
+          { ...deps, draftGenerationWorkflow: resumeWorkflow },
+        );
+        await drainDraftGeneration(resumeWorkflow, requestId);
+        const after = await storage.first<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+          [practitioner],
+        );
+        expect(after?.c).toBe(0);
+      } finally {
+        storage.close();
+      }
+    } finally {
+      stub.restore();
     }
   });
 });
