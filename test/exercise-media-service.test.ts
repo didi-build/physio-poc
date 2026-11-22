@@ -20,6 +20,9 @@ import {
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
 
 describe("exercise media prompts (unit)", () => {
+  const STYLE_TAIL =
+    "Single adult figure, androgynous, neutral skin tone, plain light grey studio background, soft even lighting. Clean 3D medical illustration style, teal accent on minimal athletic clothing, no text, no logos, no facial identity. Side or three-quarter view with unobstructed limbs and joints.";
+
   it("uses the shared clinical illustration template without patient-specific fields", () => {
     const start = buildStartImagePrompt({
       title: "Heel slide",
@@ -33,10 +36,87 @@ describe("exercise media prompts (unit)", () => {
     expect(start).not.toMatch(/patient|diagnosis|PHI/i);
   });
 
-  it("builds distinct start and end prompts", () => {
+  it("pins the start prompt unchanged", () => {
     const ctx = { title: "Bridge", startingPosition: "Supine" };
-    expect(buildStartImagePrompt(ctx)).toContain("starting position");
-    expect(buildEndImagePrompt(ctx)).toContain("end position");
+    expect(buildStartImagePrompt(ctx)).toBe(
+      `Clinical physiotherapy exercise demonstration: Bridge. Supine. ${STYLE_TAIL} Hold the starting position of the exercise, stable and anatomically neutral.`,
+    );
+  });
+
+  it("never puts starting-position text in the end prompt", () => {
+    const distinctiveStart = "FEET_WIDE_SUMO_START_UNIQUE_D1281";
+    const end = buildEndImagePrompt({
+      title: "Sumo Squat",
+      startingPosition: distinctiveStart,
+      steps: "Lower hips\nDrive up to standing",
+    });
+    expect(end).not.toContain(distinctiveStart);
+    expect(end).not.toContain("FEET_WIDE_SUMO");
+  });
+
+  it("pins the end-prompt edit wording and movement clause", () => {
+    const end = buildEndImagePrompt({
+      title: "Sumo Squat",
+      startingPosition: "Wide stance",
+      steps: "Lower into squat\nThighs parallel to floor",
+    });
+    expect(end).toContain(
+      "Same figure, clothing, camera angle, background and lighting. Change only the pose to the end position: Thighs parallel to floor. Change only the body parts that this exercise moves; keep every other body part exactly as in the start image.",
+    );
+  });
+
+  it("uses the last non-empty step for end pose when ending_position is absent", () => {
+    const end = buildEndImagePrompt({
+      title: "Lunge",
+      startingPosition: "Standing",
+      steps: "Step forward with one leg\nBend both knees\nReturn to start",
+    });
+    expect(end).toContain("Change only the pose to the end position: Return to start.");
+  });
+
+  it("prefers ending_position over steps when present", () => {
+    const end = buildEndImagePrompt({
+      title: "Shoulder press",
+      startingPosition: "Seated",
+      endingPosition: "Arms extended overhead",
+      steps: "Press dumbbells up\nLower with control",
+    });
+    expect(end).toContain(
+      "Change only the pose to the end position: Arms extended overhead.",
+    );
+    expect(end).not.toContain("Lower with control");
+  });
+
+  it("skips whitespace-only steps and uses the last real step", () => {
+    const end = buildEndImagePrompt({
+      title: "Test",
+      startingPosition: "Any",
+      steps: "Brace core\n  \n\nHold at top",
+    });
+    expect(end).toContain("Change only the pose to the end position: Hold at top.");
+  });
+
+  it("uses the fallback end pose description when steps are empty", () => {
+    const end = buildEndImagePrompt({
+      title: "Plank",
+      startingPosition: "Prone",
+      steps: "   \n\t\n",
+    });
+    expect(end).toContain(
+      "Change only the pose to the end position: the end of the exercise movement.",
+    );
+  });
+
+  it("appends regeneration note only to pose content on end prompts", () => {
+    const end = buildEndImagePrompt({
+      title: "Bridge",
+      steps: "Lift hips",
+      regenerationNote: "smaller range",
+    });
+    expect(end).toContain("Additional guidance from the practitioner: smaller range.");
+    expect(end.indexOf("Additional guidance")).toBeGreaterThan(
+      end.indexOf("Change only the body parts"),
+    );
   });
 });
 
@@ -51,8 +131,12 @@ describe("prefix media storage (unit)", () => {
 });
 
 describe("ExerciseMediaService (integration)", () => {
+  const D1281_END_PROMPT_MARK =
+    "Change only the body parts that this exercise moves; keep every other body part exactly as in the start image.";
+
   async function seedDraftVersion(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    extras?: { steps?: string },
   ) {
     const practitionerId = await seedPractitioner(storage);
     const exerciseId = await seedExercise(storage, practitionerId);
@@ -70,10 +154,104 @@ describe("ExerciseMediaService (integration)", () => {
         status: "draft",
         title: "Heel slide",
         starting_position: "Supine",
+        steps: extras?.steps ?? "Slide heel toward hip\nReturn slowly",
       }),
     );
     return { practitionerId, exerciseId, versionId: FIXTURE_VERSION_ID };
   }
+
+  it("passes the reworked end prompt on initial generation", async () => {
+    const storage = await openMigratedDatabase();
+    const generateStartAndEndImages = vi.fn(
+      async (input: { startPrompt: string; endPrompt: string }) =>
+        new FakeImageGeneration().generateStartAndEndImages(input),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages,
+        generateStartImage: vi.fn(),
+        generateEndImage: vi.fn(),
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      expect(generateStartAndEndImages).toHaveBeenCalledOnce();
+      const { endPrompt } = generateStartAndEndImages.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+      expect(endPrompt).toContain(
+        "Change only the pose to the end position: Return slowly.",
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("passes the reworked end prompt when regenerating both images", async () => {
+    const storage = await openMigratedDatabase();
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage,
+        generateEndImage,
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      generateEndImage.mockClear();
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "both",
+      });
+      expect(generateEndImage).toHaveBeenCalledOnce();
+      const endPrompt = generateEndImage.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("passes the reworked end prompt when regenerating end only", async () => {
+    const storage = await openMigratedDatabase();
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    try {
+      const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage: vi.fn(),
+        generateEndImage,
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      generateEndImage.mockClear();
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "end",
+      });
+      expect(generateEndImage).toHaveBeenCalledOnce();
+      const endPrompt = generateEndImage.mock.calls[0]![0];
+      expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
+    } finally {
+      storage.close();
+    }
+  });
 
   async function createService(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
