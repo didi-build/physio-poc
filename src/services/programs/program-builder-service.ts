@@ -45,6 +45,7 @@ import {
 import { ExerciseMediaSetsRepository } from "../../storage/repositories/exercise-media.js";
 import { exerciseVersionLacksStartOrEndImage } from "../../domain/exercise-publish-media.js";
 import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
   PROGRAM_ID_ALREADY_IN_USE,
@@ -1536,6 +1537,9 @@ export class ProgramBuilderService {
   }
 
   private mapRowWriteError(err: unknown): never {
+    if (err instanceof SqlBatchGuardError) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
     if (err instanceof FreeTextValidationError) {
       this.mapFreeTextError(err);
     }
