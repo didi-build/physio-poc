@@ -34,9 +34,14 @@ function exerciseLabel(ctx: ExerciseMediaPromptContext): string {
 /** Strips leading step numbering or bullets before end-pose pattern matching. */
 export function stripStepLinePrefixForEndPose(line: string): string {
   let trimmed = line.trim();
-  trimmed = trimmed.replace(/^\d+[.)]\s*/, "");
-  trimmed = trimmed.replace(/^[-*•]\s*/, "");
-  return trimmed.trim();
+  let previous = "";
+  while (trimmed !== previous) {
+    previous = trimmed;
+    trimmed = trimmed.replace(/^\d+[.)]\s*/, "");
+    trimmed = trimmed.replace(/^[-*•]\s*/, "");
+    trimmed = trimmed.trim();
+  }
+  return trimmed;
 }
 
 /** Whether a step line should be skipped when picking end pose text from steps (case-insensitive). */
@@ -53,7 +58,7 @@ export function isExcludedEndPoseStepLine(line: string): boolean {
   if (/\boriginal\s+position\b/.test(lower)) {
     return true;
   }
-  if (/\b(starting|beginning)\s+position\b/.test(lower)) {
+  if (/\b(start|starting|beginning)\s+position\b/.test(lower)) {
     return true;
   }
   if (/\breturn\s+to\s+(the\s+)?start\b/.test(lower)) {
@@ -88,7 +93,7 @@ export function isExcludedEndPoseStepLine(line: string): boolean {
     return true;
   }
 
-  if (/\d+\s*(reps?|times|sets)\b/.test(lower)) {
+  if (/\d+\s*(reps?|repetitions?|times|sets?)\b/.test(lower)) {
     return true;
   }
 
