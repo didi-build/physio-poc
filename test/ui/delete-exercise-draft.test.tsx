@@ -472,48 +472,62 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
   });
 
   it("does not show D12 when draft review GET fails with 500", async () => {
-    const requestsClient = new ExerciseRequestsClient({
-      fetchFn: vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("/regeneration-quota")) {
-          return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
-        }
-        if (
-          url.includes("/api/me/exercise-requests/") &&
-          !url.includes("in-progress")
-        ) {
-          return Promise.resolve(jsonResponse({ error: "server_error" }, 500));
-        }
-        return Promise.resolve(jsonResponse({ requests: [], in_progress_count: 0 }));
+    const getRequest = vi.fn().mockRejectedValue(
+      new ExerciseRequestsRequestError("Server error", {
+        status: 500,
+        error: "server_error",
       }),
-    });
-    const mediaClient = new ExerciseMediaClient({
-      fetchFn: vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.includes("regeneration-quota")) {
-          return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
-        }
-        return Promise.resolve(new Response("stub", { status: 200 }));
+    );
+    const requestsClient = {
+      getRequest,
+      getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      listSimilar: vi
+        .fn()
+        .mockResolvedValue({ library_matches: [], drafts_in_progress: [] }),
+    } as unknown as ExerciseRequestsClient;
+    const libraryClient = {
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: { new_from_requests: [], pinned: [], recently_used_and_saved: [] },
       }),
-    });
+      searchApproved: vi.fn().mockResolvedValue({
+        exercises: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+      }),
+    } as unknown as ExerciseLibraryClient;
+    const programsClient = {
+      listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+      listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as ProgramsClient;
     render(
       <MemoryRouter
         initialEntries={[
           fillPhysioAppRoutePattern("requestReview", { requestId: "req-500" }),
         ]}
       >
-        <NavigationTestProviders>
-          <ToastProvider>
-            <ExerciseRequestsApiProvider client={requestsClient}>
-              <ExerciseMediaApiProvider client={mediaClient}>
-                <DraftReviewPage />
-              </ExerciseMediaApiProvider>
-            </ExerciseRequestsApiProvider>
-          </ToastProvider>
-        </NavigationTestProviders>
+        <ToastProvider>
+          <PhysioApp
+            practitionerSessionClient={stubPractitionerSessionClient()}
+            exerciseRequestsClient={requestsClient}
+            exerciseLibraryClient={libraryClient}
+            exerciseMediaClient={
+              {
+                getRegenerationQuota: vi.fn().mockResolvedValue({
+                  remaining: 3,
+                  limitReached: false,
+                }),
+              } as unknown as ExerciseMediaClient
+            }
+            programsClient={programsClient}
+          />
+        </ToastProvider>
       </MemoryRouter>,
     );
     await waitFor(() => {
+      expect(getRequest).toHaveBeenCalled();
       expect(screen.getByText(DRAFT_ITEM_LOAD_TITLE)).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN })).toBeInTheDocument();
