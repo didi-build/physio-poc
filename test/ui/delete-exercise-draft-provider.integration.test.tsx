@@ -237,28 +237,31 @@ describe("Delete draft through real ExerciseRequestsApiProvider", () => {
     });
     vi.stubGlobal("fetch", fetchFn);
     render(
-      <MemoryRouter
-        initialEntries={[
-          fillPhysioAppRoutePattern("requestReview", { requestId: "req-review-int" }),
-        ]}
-      >
+      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("requests")]}>
         <PhysioApp practitionerSessionClient={stubPractitionerSessionClient()} />
       </MemoryRouter>,
     );
     await waitFor(() => {
+      expect(screen.getByText("Review delete")).toBeInTheDocument();
+    });
+    const listCallsBefore = calls.filter((c) => c === "list").length;
+    const reviewLink = screen.getByTestId("ex-requests-review-req-review-int");
+    await userEvent.click(reviewLink);
+    await waitFor(() => {
       expect(screen.getByRole("button", { name: PIN_DELETE_DRAFT })).toBeEnabled();
     });
-    const listCallsBefore = calls.length;
     await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_DRAFT }));
     const dialog = await screen.findByRole("alertdialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
     );
     await waitFor(() => {
-      expect(screen.getByText("Requests")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Requests and drafts" }),
+      ).toBeInTheDocument();
       expect(screen.queryByText("Review delete")).not.toBeInTheDocument();
     });
-    expect(calls.length).toBeGreaterThan(listCallsBefore);
+    expect(calls.filter((c) => c === "list").length).toBeGreaterThan(listCallsBefore);
     vi.unstubAllGlobals();
   });
 });
