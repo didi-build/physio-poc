@@ -178,7 +178,7 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toMatchObject({
         error: "request_not_deletable",
-        message: "This draft was approved, so it can no longer be deleted.",
+        message: "Request not deletable",
       });
       const after = await storage.first<{ status: string; updated_at: string }>(
         "SELECT status, updated_at FROM exercise_requests WHERE id = ?",
@@ -243,6 +243,10 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
         `UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?`,
         [lockAt, requestId],
       );
+      const before = await storage.first<{ updated_at: string }>(
+        "SELECT updated_at FROM exercise_requests WHERE id = ?",
+        [requestId],
+      );
       const response = await handleRequest(
         authedJsonRequest(exerciseRequestWithdrawPath(requestId), cookie, {
           method: "POST",
@@ -251,11 +255,79 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
         bundle,
       );
       expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "draft_generation_in_progress",
+      });
+      const row = await storage.first<{ status: string; updated_at: string }>(
+        "SELECT status, updated_at FROM exercise_requests WHERE id = ?",
+        [requestId],
+      );
+      expect(row?.status).toBe("drafting");
+      expect(row?.updated_at).toBe(before?.updated_at);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects practitioner_id in the withdraw body", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(storage, id("pr-body"), "b@ex.com");
+      const { deps: bundle, cookie } = deps(storage, practitioner);
+      const requestId = await createOpenRequest(cookie, bundle);
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestWithdrawPath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({ practitioner_id: id("other-pr") }),
+        }),
+        bundle,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({ error: "invalid_input" });
       const row = await storage.first<{ status: string }>(
         "SELECT status FROM exercise_requests WHERE id = ?",
         [requestId],
       );
-      expect(row?.status).toBe("drafting");
+      expect(row?.status).not.toBe("withdrawn");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("allows a different practitioner to withdraw another requester's draft (scope)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const requester = await seedPractitioner(storage, id("pr-req"), "req@ex.com");
+      const reviewer = await seedPractitioner(storage, id("pr-rev"), "rev@ex.com");
+      const { deps: bundle, cookie: requesterCookie } = deps(storage, requester);
+      const requestId = await createOpenRequest(requesterCookie, bundle);
+      const reviewerAuth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: reviewer,
+          email: "rev@ex.com",
+          displayName: "Reviewer",
+        },
+      });
+      const reviewerBundle = { ...bundle, auth: reviewerAuth };
+      const response = await handleRequest(
+        authedJsonRequest(
+          exerciseRequestWithdrawPath(requestId),
+          reviewerAuth.createSessionCookieHeader(),
+          { method: "POST", body: "{}" },
+        ),
+        reviewerBundle,
+      );
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        status: "withdrawn",
+        already_withdrawn: false,
+      });
+      const row = await storage.first<{ status: string; requested_by: string }>(
+        "SELECT status, requested_by FROM exercise_requests WHERE id = ?",
+        [requestId],
+      );
+      expect(row?.status).toBe("withdrawn");
+      expect(row?.requested_by).toBe(requester);
     } finally {
       storage.close();
     }
@@ -283,7 +355,10 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
         bundle,
       );
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({ status: "withdrawn" });
+      await expect(response.json()).resolves.toMatchObject({
+        status: "withdrawn",
+        already_withdrawn: false,
+      });
       const row = await storage.first<{ status: string }>(
         "SELECT status FROM exercise_requests WHERE id = ?",
         [requestId],

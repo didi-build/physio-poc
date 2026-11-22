@@ -45,6 +45,7 @@ import {
   isLockFresh,
 } from "./exercise-request-draft-generation.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
+import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
 import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
@@ -693,12 +694,22 @@ export class ExerciseRequestsService {
       Date.parse(nowIso) - DRAFT_GENERATION_LOCK_STALE_MS,
     ).toISOString();
 
+    const rowBeforeWithdraw = await this.requests.findById(requestId);
+
     const wrote = await this.requests.tryWithdrawToWithdrawn({
       id: requestId,
       updatedAt: nowIso,
       lockStaleBefore: staleBefore,
     });
     if (wrote) {
+      if (rowBeforeWithdraw) {
+        logRequestWithdrawn({
+          requestId,
+          practitionerId: input.practitionerId,
+          requesterPractitionerId: rowBeforeWithdraw.requested_by,
+          previousStatus: rowBeforeWithdraw.status,
+        });
+      }
       return {
         request_id: requestId,
         status: "withdrawn",
@@ -719,7 +730,7 @@ export class ExerciseRequestsService {
     }
     if (row.status === "approved") {
       throw new ExerciseRequestsServiceError(
-        "This draft was approved, so it can no longer be deleted.",
+        "Request not deletable",
         "request_not_deletable",
       );
     }

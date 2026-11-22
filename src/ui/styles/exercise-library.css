@@ -1128,7 +1128,7 @@
   flex: 1 1 100%;
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1280px) {
   .ex-review-delete-wrap {
     flex: 0 0 auto;
     margin-left: auto;
@@ -1142,8 +1142,13 @@
   color: var(--shell-slate-500);
 }
 
-@media (min-width: 1024px) {
-  .ex-review-quota {
+.ex-review-toolbar .ex-review-quota {
+  flex: 1 1 100%;
+}
+
+@media (min-width: 1280px) {
+  .ex-review-toolbar .ex-review-quota {
+    flex: 0 1 auto;
     margin-left: auto;
     order: 5;
   }

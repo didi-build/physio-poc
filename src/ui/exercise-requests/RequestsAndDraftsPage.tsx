@@ -132,7 +132,7 @@ export function RequestsAndDraftsPage() {
         <ul className="ex-requests-list">
           {requests.map((item) => {
             const title = item.draft_title ?? item.requested_name;
-            const generationInProgress = item.generation_in_progress ?? false;
+            const generationInProgress = item.generation_in_progress;
             const by = requestedByLabel({
               requestedBy: item.requested_by,
               requestedByEmail: item.requested_by_email,
@@ -187,17 +187,29 @@ export function RequestsAndDraftsPage() {
                     requestId={item.request_id}
                     title={title}
                     generationInProgress={generationInProgress}
+                    onGenerationBlocked={() => {
+                      void refresh({ force: true });
+                    }}
                     onSuccess={() => {
+                      const deletedIndex = requests.findIndex(
+                        (r) => r.request_id === item.request_id,
+                      );
                       showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
                       void refresh({ force: true }).then(() => {
-                        const firstReview = document.querySelector<HTMLElement>(
-                          '[data-testid^="ex-requests-review-"]',
-                        );
-                        if (firstReview) {
-                          firstReview.focus();
-                        } else {
+                        const reviewLinks = [
+                          ...document.querySelectorAll<HTMLElement>(
+                            '[data-testid^="ex-requests-review-"]',
+                          ),
+                        ];
+                        if (reviewLinks.length === 0) {
                           headingRef.current?.focus();
+                          return;
                         }
+                        const focusIndex =
+                          deletedIndex >= 0 && deletedIndex < reviewLinks.length
+                            ? deletedIndex
+                            : Math.max(0, reviewLinks.length - 1);
+                        reviewLinks[focusIndex]?.focus();
                       });
                     }}
                   />

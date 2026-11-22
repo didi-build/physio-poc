@@ -118,6 +118,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [ownGenerateInFlight, setOwnGenerateInFlight] = useState(false);
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
+  const requestsBackRef = useRef<HTMLAnchorElement>(null);
+  const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -134,6 +136,23 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     [sessionEpoch, sessionReady],
   );
 
+  const loadRequest = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        return await requestsClient.getRequest(requestId, { signal });
+      } catch (error) {
+        if (
+          error instanceof ExerciseRequestsRequestError &&
+          error.detail.error === "request_not_found"
+        ) {
+          setDraftNotFoundWithdrawn(true);
+        }
+        throw error;
+      }
+    },
+    [requestId, requestsClient],
+  );
+
   const {
     data: cachedView,
     loading: viewLoading,
@@ -142,7 +161,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   } = useSessionCachedRead<ExerciseRequestDraftView>({
     cacheKey: detailCacheKey,
     enabled: sessionReady && requestId.length > 0,
-    fetcher: (signal) => requestsClient.getRequest(requestId, { signal }),
+    fetcher: loadRequest,
   });
 
   const {
@@ -236,8 +255,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setGenerationFailure(null);
     setRegenError(null);
     setGenerationStartedElsewhere(false);
+    setDraftNotFoundWithdrawn(false);
     generateStarted.current = false;
   }, [requestId]);
+
+  useEffect(() => {
+    if (draftNotFoundWithdrawn) {
+      requestsBackRef.current?.focus();
+    }
+  }, [draftNotFoundWithdrawn]);
 
   useEffect(() => {
     if (generationFailure === "text") {
@@ -471,10 +497,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     );
   }
 
-  if (viewLoadFailed || !view) {
+  if (draftNotFoundWithdrawn) {
     return (
       <section className="ex-page" aria-labelledby="ex-review-heading">
         <Link
+          ref={requestsBackRef}
           to={fillPhysioAppRoutePattern("requests")}
           className="ex-back-link"
           data-testid="ex-review-withdrawn-back"
@@ -483,6 +510,19 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         </Link>
         <p className="ex-review-withdrawn-alert" role="alert">
           {DELETE_DRAFT_ALREADY_GONE}
+        </p>
+      </section>
+    );
+  }
+
+  if (viewLoadFailed || !view) {
+    return (
+      <section className="ex-page" aria-labelledby="ex-review-heading">
+        <Link to={fillPhysioAppRoutePattern("requests")} className="ex-back-link">
+          {REVIEW_BACK}
+        </Link>
+        <p className="ex-regen-limit" role="alert">
+          {AUTO_SAVE_TRY_AGAIN}
         </p>
       </section>
     );

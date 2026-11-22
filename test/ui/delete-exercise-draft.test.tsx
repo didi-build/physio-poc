@@ -26,6 +26,10 @@ const PIN_DIALOG_OFF_LIST = "It comes off Requests and drafts for every practiti
 const PIN_DIALOG_NO_UNDO = "You can't undo this.";
 const PIN_TOAST = "Draft deleted. It left Requests and drafts.";
 const PIN_CANCEL = "Cancel";
+const PIN_D10 = "Couldn't delete the draft. Try again.";
+const PIN_D11 = "This draft was approved, so it can no longer be deleted.";
+const PIN_D12 = "This draft was deleted. It is no longer in Requests and drafts.";
+const PIN_REQUESTS = "Requests";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -266,6 +270,157 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
     });
     expect(screen.getByText(PIN_TOAST)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("shows D10 when withdraw fails with a server error", async () => {
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: [listItem()], in_progress_count: 1 }),
+        );
+      }
+      if (url.includes("/withdraw")) {
+        return Promise.resolve(jsonResponse({ error: "server_error" }, 500));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText(PIN_D10)).toBeInTheDocument();
+    });
+    expect(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    ).toBeEnabled();
+  });
+
+  it("maps request_not_deletable to D11 and removes Delete draft from the dialog", async () => {
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: [listItem()], in_progress_count: 1 }),
+        );
+      }
+      if (url.includes("/withdraw")) {
+        return Promise.resolve(
+          jsonResponse(
+            { error: "request_not_deletable", message: "Request not deletable" },
+            409,
+          ),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText(PIN_D11)).toBeInTheDocument();
+    });
+    expect(
+      within(dialog).queryByRole("button", { name: PIN_DELETE_DRAFT }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("maps draft_generation_in_progress to D7 and disables delete after a lock race", async () => {
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              error: "draft_generation_in_progress",
+              message: "Draft generation is in progress",
+            },
+            409,
+          ),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({
+            requests: [listItem({ generation_in_progress: false })],
+            in_progress_count: 1,
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeEnabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByText(PIN_DELETE_BLOCKED)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeDisabled();
+    });
+  });
+
+  it("shows D12 only when draft review GET returns request_not_found", async () => {
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/req-gone") && !url.includes("/withdraw")) {
+        return Promise.resolve(
+          jsonResponse(
+            { error: "request_not_found", message: "Request not found" },
+            404,
+          ),
+        );
+      }
+      if (url.includes("/regeneration-quota")) {
+        return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
+      }
+      return Promise.resolve(jsonResponse({}, 500));
+    });
+    const client = new ExerciseRequestsClient({ fetchFn });
+    const mediaClient = new ExerciseMediaClient({
+      fetchFn: vi.fn(() =>
+        Promise.resolve(jsonResponse({ remaining: 3, limitReached: false })),
+      ),
+    });
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-gone" }),
+        ]}
+      >
+        <NavigationTestProviders>
+          <ToastProvider>
+            <ExerciseRequestsApiProvider client={client}>
+              <ExerciseMediaApiProvider client={mediaClient}>
+                <DraftReviewPage />
+              </ExerciseMediaApiProvider>
+            </ExerciseRequestsApiProvider>
+          </ToastProvider>
+        </NavigationTestProviders>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(PIN_D12)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(PIN_DELETE_DRAFT)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: PIN_REQUESTS })).toHaveFocus();
   });
 
   it("Cancel closes the dialog without calling withdraw", async () => {

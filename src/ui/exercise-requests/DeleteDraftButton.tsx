@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   DELETE_DRAFT,
   DELETE_DRAFT_BLOCKED_WHILE_GENERATING,
@@ -32,6 +32,12 @@ export function DeleteDraftButton({
 
   const disabled = generationInProgress;
   const showHint = disabled || showBlockedHint;
+
+  useEffect(() => {
+    if (!generationInProgress && !disabledReasonVisible) {
+      setShowBlockedHint(false);
+    }
+  }, [generationInProgress, disabledReasonVisible]);
 
   return (
     <>
