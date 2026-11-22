@@ -31,6 +31,86 @@ function exerciseLabel(ctx: ExerciseMediaPromptContext): string {
   return title;
 }
 
+/** Strips leading step numbering or bullets before end-pose pattern matching. */
+export function stripStepLinePrefixForEndPose(line: string): string {
+  let trimmed = line.trim();
+  trimmed = trimmed.replace(/^\d+[.)]\s*/, "");
+  trimmed = trimmed.replace(/^[-*•]\s*/, "");
+  return trimmed.trim();
+}
+
+/** Whether a step line should be skipped when picking end pose text from steps (case-insensitive). */
+export function isExcludedEndPoseStepLine(line: string): boolean {
+  const normalized = stripStepLinePrefixForEndPose(line);
+  if (normalized.length === 0) {
+    return true;
+  }
+  const lower = normalized.toLowerCase();
+
+  if (/back\s+to\s+(the\s+)?start\b/.test(lower)) {
+    return true;
+  }
+  if (/\boriginal\s+position\b/.test(lower)) {
+    return true;
+  }
+  if (/\b(starting|beginning)\s+position\b/.test(lower)) {
+    return true;
+  }
+  if (/\breturn\s+to\s+(the\s+)?start\b/.test(lower)) {
+    return true;
+  }
+
+  if (/^return\b/.test(lower)) {
+    return true;
+  }
+  if (/^repeat\b/.test(lower)) {
+    return true;
+  }
+  if (/^rest\b/.test(lower)) {
+    return true;
+  }
+  if (/^relax\b/.test(lower)) {
+    return true;
+  }
+  if (/^reset\b/.test(lower)) {
+    return true;
+  }
+  if (/^switch\s+sides\b/.test(lower)) {
+    return true;
+  }
+  if (/^alternate\b/.test(lower)) {
+    return true;
+  }
+  if (/^swap\b/.test(lower)) {
+    return true;
+  }
+  if (/^(do|perform|complete)\s+\d/.test(lower)) {
+    return true;
+  }
+
+  if (/\d+\s*(reps?|times|sets)\b/.test(lower)) {
+    return true;
+  }
+
+  if (/^(hold|pause|breathe|inhale|exhale)\b/.test(lower)) {
+    return true;
+  }
+
+  return false;
+}
+
+/** Walks non-empty step lines from the end; returns the first line not excluded, or null. */
+export function selectEndPoseStepFromSteps(steps: string | undefined): string | null {
+  const lines = parseNonEmptySteps(steps);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]!;
+    if (!isExcludedEndPoseStepLine(line)) {
+      return line;
+    }
+  }
+  return null;
+}
+
 function titleOnlyLabel(ctx: ExerciseMediaPromptContext): string {
   return validateExerciseTitle(ctx.title);
 }
@@ -65,10 +145,10 @@ export function resolveEndPoseDescription(ctx: ExerciseMediaPromptContext): stri
   if (endingRaw.length > 0) {
     return validateExerciseTemplateText(endingRaw, "Ending position").trim();
   }
-  const parsed = parseNonEmptySteps(ctx.steps);
-  const lastStep = parsed.at(-1);
-  if (lastStep) {
-    return validateExerciseTemplateText(lastStep, "Steps").trim();
+  const picked = selectEndPoseStepFromSteps(ctx.steps);
+  if (picked) {
+    const withoutNumbering = stripStepLinePrefixForEndPose(picked);
+    return validateExerciseTemplateText(withoutNumbering, "Steps").trim();
   }
   return END_POSE_DESCRIPTION_FALLBACK;
 }
