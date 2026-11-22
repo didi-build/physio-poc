@@ -33,7 +33,6 @@ import { focusAfterRequestsListDelete } from "../src/ui/exercise-requests/reques
 import {
   DRAFT_ITEM_LOAD_BACK,
   DRAFT_ITEM_LOAD_HINT,
-  DRAFT_ITEM_LOAD_TITLE,
   LOAD_TRY_AGAIN,
   LOAD_TRYING_AGAIN,
 } from "../src/ui/copy/shared-load-states.js";
@@ -285,7 +284,7 @@ describe("exercise request withdraw guards", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText(DRAFT_ITEM_LOAD_TITLE)).toBeInTheDocument();
+      expect(screen.getByText("Couldn't load this draft.")).toBeInTheDocument();
     });
     expect(screen.getByText(DRAFT_ITEM_LOAD_HINT)).toBeInTheDocument();
     expect(
