@@ -31,11 +31,52 @@ function mismatchRow(
   };
 }
 
-export type Programs1106HarnessScenario = "builder-type-mismatch";
+export type Programs1106HarnessScenario =
+  "builder-type-mismatch" | "publish-type-mismatch";
 
 export function builderProgramFor1106(
   scenario: Programs1106HarnessScenario,
 ): ProgramBuilderView {
+  if (scenario === "publish-type-mismatch") {
+    return {
+      program_id: PROGRAM_ID,
+      code: PROGRAMS_1106_CODE,
+      name: "Knee program",
+      created_at: "2026-10-24T12:00:00.000Z",
+      draft_updated_at: "2026-10-24T12:00:00.000Z",
+      auto_save_status: { kind: "not_published_yet" },
+      draft_saved_at: "2026-10-24T12:00:00.000Z",
+      exercise_count: 2,
+      library_updates_to_review: 0,
+      type_mismatch_placeholder_count: 1,
+      rows: [
+        mismatchRow("row-mm-harness", 0, "Bridge marching"),
+        {
+          id: "row-ex-harness",
+          position: 1,
+          kind: "exercise",
+          exercise_id: "ex-h1",
+          exercise_version_id: "ver-h1",
+          exercise_request_id: null,
+          pinned_version_number: 1,
+          prescription_type: "stretching",
+          params: { hold_s: 30 },
+          params_source: "global_defaults",
+          resolved_params: { hold_s: 30 },
+          resolved_params_source: "global_defaults",
+          text_snapshot: { title: "Heel slide" },
+          note: null,
+          library_update: null,
+          exercise_version_choices: [],
+        },
+      ],
+      open_share_link: false,
+      share_link_status: "none",
+      last_sent_at: null,
+      deleted_at: null,
+      routine_origin: null,
+    };
+  }
   if (scenario !== "builder-type-mismatch") {
     throw new Error(`Unknown 1106 harness scenario: ${scenario}`);
   }
@@ -91,11 +132,15 @@ export function programsClientFor1106Harness(
 }
 
 export const PROGRAMS_1106_FIXTURE_ROUTES: Record<
-  "programs-1106-type-mismatch",
+  "programs-1106-type-mismatch" | "programs-1106-publish-type-mismatch",
   { initialEntry: string; scenario: Programs1106HarnessScenario }
 > = {
   "programs-1106-type-mismatch": {
     initialEntry: `/programs/${PROGRAMS_1106_CODE}`,
     scenario: "builder-type-mismatch",
+  },
+  "programs-1106-publish-type-mismatch": {
+    initialEntry: `/programs/${PROGRAMS_1106_CODE}/publish`,
+    scenario: "publish-type-mismatch",
   },
 };

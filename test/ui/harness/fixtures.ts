@@ -175,6 +175,7 @@ export type HarnessFixtureId =
   | "programs-1014-share-open"
   | "programs-1014-share-closed"
   | "programs-1106-type-mismatch"
+  | "programs-1106-publish-type-mismatch"
   | "programs-1025-builder-from-routine"
   | "programs-1025-publish-from-routine"
   | "programs-1025-list-filters"
@@ -780,6 +781,7 @@ export function harnessFixture(
         routines: baseRoutinesClient(),
       };
     case "programs-1106-type-mismatch":
+    case "programs-1106-publish-type-mismatch":
       return programs1106HarnessFixture(id);
     case "programs-1014-publish-first":
     case "programs-1014-publish-name-required":
@@ -1094,7 +1096,9 @@ function programs1025HarnessFixture(
   };
 }
 
-function programs1106HarnessFixture(id: "programs-1106-type-mismatch"): HarnessFixture {
+function programs1106HarnessFixture(
+  id: "programs-1106-type-mismatch" | "programs-1106-publish-type-mismatch",
+): HarnessFixture {
   const route = PROGRAMS_1106_FIXTURE_ROUTES[id];
   return {
     initialEntries: [route.initialEntry],
