@@ -42,6 +42,7 @@ import {
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import {
@@ -204,6 +205,10 @@ describe("DIDI-1289 off-request-path draft generation", () => {
   it("refreshes lock heartbeat between generation steps", async () => {
     const storage = await openMigratedDatabase();
     try {
+      const refreshSpy = vi.spyOn(
+        ExerciseRequestsRepository.prototype,
+        "refreshDraftGenerationLock",
+      );
       const practitioner = await seedPractitioner(
         storage,
         id("pr-1289-heartbeat"),
@@ -223,13 +228,15 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         deps,
       );
       await drainDraftGeneration(workflow, requestId);
+      expect(refreshSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
       const lines = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line): line is string => typeof line === "string");
       const refreshed = lines
         .map((line) => JSON.parse(line) as { event: string })
         .filter((row) => row.event === DRAFT_GENERATION_LOCK_REFRESHED_EVENT);
-      expect(refreshed.length).toBeGreaterThanOrEqual(2);
+      expect(refreshed.length).toBeGreaterThanOrEqual(3);
+      refreshSpy.mockRestore();
     } finally {
       storage.close();
     }

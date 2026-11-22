@@ -33,7 +33,7 @@ for entry in "${mutants[@]}"; do
       perl -0pi -e 's/3 \* 60 \* 1000/15 * 60 * 1000/' src/services/exercise-requests/draft-generation-constants.ts
       ;;
     M2)
-      perl -0pi -e 's/await refreshGenerationLock\(\{/\/\/ refresh disabled\n    if (false) await refreshGenerationLock({/' src/services/exercise-requests/run-exercise-request-draft-generation.ts
+      perl -0pi -e 's/await refreshGenerationLock\(\{/if (false) await refreshGenerationLock({/g' src/services/exercise-requests/run-exercise-request-draft-generation.ts
       ;;
     M3)
       perl -0pi -e 's/started_elsewhere: true/started_elsewhere: false/g' src/services/exercise-requests/exercise-request-draft-generation.ts
