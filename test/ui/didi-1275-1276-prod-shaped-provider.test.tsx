@@ -204,6 +204,7 @@ describe("DIDI-1275/1276 prod-shaped ExerciseRequests provider", () => {
     const wrapped = wrapExerciseRequestsClientWithCacheInvalidation(inner);
     expect(typeof wrapped.generateRequest).toBe("function");
     expect(typeof wrapped.regenerateDraftText).toBe("function");
+    expect(typeof wrapped.withdrawRequest).toBe("function");
   });
 
   it("submit then View request sends POST /generate through the wrapped default client", async () => {

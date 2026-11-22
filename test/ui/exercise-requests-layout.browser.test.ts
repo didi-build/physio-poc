@@ -5,7 +5,7 @@ import { ensureLayoutHarnessBuilt } from "../helpers/ensure-layout-harness-built
 import { loadInterFontsInPage } from "../helpers/load-inter-fonts-in-page.js";
 import { startStaticFileServer } from "../helpers/static-file-server.js";
 import type { HarnessFixtureId } from "./harness/fixtures.js";
-import { REGENERATE } from "../../src/ui/copy/exercise-requests.js";
+import { REGENERATE, regenLeftText } from "../../src/ui/copy/exercise-requests.js";
 
 const HARNESS_DIST = join(process.cwd(), "dist/exercise-requests-layout-harness");
 
@@ -82,6 +82,70 @@ async function readGridColumnCount(page: Page, selector: string) {
     }
     return columns.split(" ").filter((part) => part.trim().length > 0).length;
   }, selector);
+}
+
+async function readDeleteBlockedHintLayout(page: Page) {
+  return page.evaluate(() => {
+    const hint = document.querySelector(
+      ".ex-review-delete-wrap .ex-delete-draft-blocked",
+    ) as HTMLElement | null;
+    const deleteBtn = document.querySelector(
+      ".ex-review-delete-wrap .ex-delete-draft-btn",
+    ) as HTMLElement | null;
+    if (!hint || !deleteBtn) {
+      return null;
+    }
+    const hintBox = hint.getBoundingClientRect();
+    const deleteBox = deleteBtn.getBoundingClientRect();
+    const hintStyle = getComputedStyle(hint);
+    return {
+      hintWidth: hintBox.width,
+      hintHeight: hintBox.height,
+      hintTop: hintBox.top,
+      hintLeft: hintBox.left,
+      hintRight: hintBox.right,
+      deleteBottom: deleteBox.bottom,
+      deleteLeft: deleteBox.left,
+      deleteRight: deleteBox.right,
+      visible:
+        hintStyle.visibility !== "hidden" &&
+        hintStyle.display !== "none" &&
+        hintBox.width > 0 &&
+        hintBox.height > 0,
+    };
+  });
+}
+
+async function readReviewToolbarQuotaLayout(page: Page) {
+  return page.evaluate(() => {
+    const toolbar = document.querySelector(".ex-review-toolbar") as HTMLElement | null;
+    if (!toolbar) {
+      return null;
+    }
+    const quota = toolbar.querySelector(".ex-review-quota") as HTMLElement | null;
+    const deleteWrap = toolbar.querySelector(
+      ".ex-review-delete-wrap",
+    ) as HTMLElement | null;
+    if (!quota || !deleteWrap) {
+      return null;
+    }
+    const toolbarBox = toolbar.getBoundingClientRect();
+    const quotaBox = quota.getBoundingClientRect();
+    const deleteButton = deleteWrap.querySelector(
+      ".ex-delete-draft-btn",
+    ) as HTMLElement | null;
+    const deleteBox =
+      deleteButton?.getBoundingClientRect() ?? deleteWrap.getBoundingClientRect();
+    return {
+      toolbarRight: toolbarBox.right,
+      quotaRight: quotaBox.right,
+      quotaBottom: quotaBox.bottom,
+      quotaTop: quotaBox.top,
+      deleteTop: deleteBox.top,
+      deleteLeft: deleteBox.left,
+      deleteRight: deleteBox.right,
+    };
+  });
 }
 
 async function readRequestSubmitBounds(page: Page) {
@@ -268,6 +332,99 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
       await browser.close();
     }
   }, 120_000);
+
+  it.each([390, 1280])(
+    "right-aligns regen quota in the review toolbar and places delete per breakpoint at %i px",
+    async (width) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await loadInterFontsInPage(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${baseUrl}/?fixture=draft-review`, { waitUntil: "load" });
+        await waitForScreen(page, ".ex-review-toolbar");
+        const quotaText = regenLeftText(5);
+        await waitForScreen(page, ".ex-review-quota");
+        await expect
+          .poll(async () => page.locator(".ex-review-quota").textContent())
+          .toBe(quotaText);
+
+        const layout = await readReviewToolbarQuotaLayout(page);
+        expect(layout).not.toBeNull();
+
+        if (width < 1024) {
+          expect(
+            Math.abs(layout!.quotaRight - layout!.toolbarRight),
+          ).toBeLessThanOrEqual(2);
+          expect(layout!.deleteTop).toBeGreaterThanOrEqual(layout!.quotaBottom - 1);
+        } else {
+          expect(layout!.deleteTop).toBeLessThan(layout!.quotaBottom + 2);
+          expect(layout!.deleteLeft).toBeGreaterThanOrEqual(layout!.quotaRight - 4);
+          expect(
+            Math.abs(layout!.deleteRight - layout!.toolbarRight),
+          ).toBeLessThanOrEqual(4);
+        }
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
+
+  it.each([390, 1280])(
+    "places review quota and delete on the drafting toolbar at %i px (fails a3878ca delete placement)",
+    async (width) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage();
+        await loadInterFontsInPage(page);
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${baseUrl}/?fixture=draft-review-drafting`, {
+          waitUntil: "load",
+        });
+        await waitForScreen(page, ".ex-review-toolbar");
+        await waitForScreen(page, "[data-testid='ex-review-ai-strip']");
+        const quotaText = regenLeftText(5);
+        await waitForScreen(page, ".ex-review-quota");
+        await expect
+          .poll(async () => page.locator(".ex-review-quota").textContent())
+          .toBe(quotaText);
+
+        const layout = await readReviewToolbarQuotaLayout(page);
+        expect(layout).not.toBeNull();
+        const d7 = await readDeleteBlockedHintLayout(page);
+
+        if (width < 1024) {
+          expect(
+            Math.abs(layout!.quotaRight - layout!.toolbarRight),
+          ).toBeLessThanOrEqual(2);
+          expect(layout!.deleteTop).toBeGreaterThanOrEqual(layout!.quotaBottom - 1);
+        } else {
+          expect(
+            Math.abs(layout!.deleteRight - layout!.toolbarRight),
+            JSON.stringify({ layout, d7 }),
+          ).toBeLessThanOrEqual(4);
+          expect(layout!.deleteRight).toBeGreaterThan(1100);
+          expect(Math.abs(layout!.deleteLeft - layout!.quotaRight)).toBeLessThanOrEqual(
+            120,
+          );
+          expect(Math.abs(layout!.deleteTop - layout!.quotaTop)).toBeLessThanOrEqual(
+            16,
+          );
+          expect(d7).not.toBeNull();
+          expect(d7!.visible).toBe(true);
+          expect(d7!.hintWidth).toBeGreaterThan(0);
+          expect(d7!.hintHeight).toBeGreaterThan(0);
+          expect(d7!.hintTop).toBeGreaterThanOrEqual(d7!.deleteBottom - 2);
+          expect(d7!.hintLeft).toBeGreaterThanOrEqual(d7!.deleteLeft - 4);
+          expect(d7!.hintRight).toBeLessThanOrEqual(d7!.deleteRight + 8);
+        }
+      } finally {
+        await browser.close();
+      }
+    },
+    120_000,
+  );
 
   it("uses a single-column draft review grid on phone and two columns on desktop", async () => {
     const browser = await chromium.launch();

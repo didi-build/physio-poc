@@ -40,10 +40,12 @@ import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import {
+  DRAFT_GENERATION_LOCK_STALE_MS,
   generateExerciseRequestDraft,
   isLockFresh,
 } from "./exercise-request-draft-generation.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
+import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
 import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
@@ -56,6 +58,7 @@ import type {
   SimilarExercisesResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
+  WithdrawExerciseRequestResult,
 } from "./types.js";
 
 const SIMILAR_LIBRARY_LIMIT = 10;
@@ -354,6 +357,7 @@ export class ExerciseRequestsService {
     await this.requirePractitioner(input.practitionerId);
     const rows = await this.requestsRead.listInProgress();
     const count = await this.requests.countInProgress();
+    const nowIso = this.now();
     return {
       in_progress_count: count,
       requests: rows.map((row) => ({
@@ -366,6 +370,7 @@ export class ExerciseRequestsService {
         exercise_id: row.exercise_id,
         draft_title: row.draft_title,
         updated_at: row.updated_at,
+        generation_in_progress: isLockFresh(row.draft_generation_locked_at, nowIso),
       })),
     };
   }
@@ -676,6 +681,69 @@ export class ExerciseRequestsService {
       approved_at: approvedAt,
       skipped_count: skippedCount,
     };
+  }
+
+  async withdrawRequest(input: {
+    practitionerId: string;
+    requestId: string;
+  }): Promise<WithdrawExerciseRequestResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const requestId = parseOpaqueId(input.requestId, "request_id");
+    const nowIso = this.now();
+    const staleBefore = new Date(
+      Date.parse(nowIso) - DRAFT_GENERATION_LOCK_STALE_MS,
+    ).toISOString();
+
+    const rowBeforeWithdraw = await this.requests.findById(requestId);
+
+    const wrote = await this.requests.tryWithdrawToWithdrawn({
+      id: requestId,
+      updatedAt: nowIso,
+      lockStaleBefore: staleBefore,
+    });
+    if (wrote) {
+      if (rowBeforeWithdraw) {
+        logRequestWithdrawn({
+          requestId,
+          practitionerId: input.practitionerId,
+          requesterPractitionerId: rowBeforeWithdraw.requested_by,
+          previousStatus: rowBeforeWithdraw.status,
+        });
+      }
+      return {
+        request_id: requestId,
+        status: "withdrawn",
+        already_withdrawn: false,
+      };
+    }
+
+    const row = await this.requests.findById(requestId);
+    if (!row) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
+    if (row.status === "withdrawn") {
+      return {
+        request_id: requestId,
+        status: "withdrawn",
+        already_withdrawn: true,
+      };
+    }
+    if (row.status === "approved") {
+      throw new ExerciseRequestsServiceError(
+        "Request not deletable",
+        "request_not_deletable",
+      );
+    }
+    if (isLockFresh(row.draft_generation_locked_at, nowIso)) {
+      throw new ExerciseRequestsServiceError(
+        "Draft generation is in progress",
+        "draft_generation_in_progress",
+      );
+    }
+    throw new ExerciseRequestsServiceError(
+      "Request not deletable",
+      "request_not_deletable",
+    );
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {

@@ -14,6 +14,7 @@ export type InProgressRequestRow = {
   draft_title: string | null;
   created_at: string;
   updated_at: string;
+  draft_generation_locked_at: string | null;
 };
 
 export type SimilarInProgressRow = {
@@ -108,7 +109,8 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title,
         er.created_at,
-        er.updated_at
+        er.updated_at,
+        er.draft_generation_locked_at
       FROM exercise_requests er
       INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')

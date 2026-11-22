@@ -334,14 +334,50 @@ describe("cross-domain invalidation and production wrappers", () => {
     expect(cache.peekSuccess(listKey)).toBeNull();
   });
 
+  it("wrapExerciseRequestsClientWithCacheInvalidation invalidates on withdraw", async () => {
+    const cache = new SessionReadCache();
+    setSessionReadCacheForTests(cache);
+    cache.bindSession("p1");
+    const listKey = buildSessionReadCacheKey("p1", {
+      resource: "exercise_requests.in_progress_list",
+    });
+    await cache.fetch(listKey, () =>
+      Promise.resolve({ requests: [], in_progress_count: 0 }),
+    );
+
+    const inner = {
+      listSimilar: async () => ({ items: [] }),
+      listInProgress: async () => ({ items: [] }),
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      getRequest: async () => {
+        throw new Error("unused");
+      },
+      updateDraft: async () => {
+        throw new Error("unused");
+      },
+      submitRequest: async () => ({ request_id: "r1", status: "drafting" as const }),
+      withdrawRequest: async () => ({
+        request_id: "r1",
+        status: "withdrawn" as const,
+        already_withdrawn: false,
+      }),
+    } as unknown as ExerciseRequestsClient;
+
+    const wrapped = wrapExerciseRequestsClientWithCacheInvalidation(inner);
+    await wrapped.withdrawRequest("req-1");
+    expect(cache.peekSuccess(listKey)).toBeNull();
+  });
+
   it("wrapExerciseRequestsClientWithCacheInvalidation invalidates on approve", async () => {
     const cache = new SessionReadCache();
     setSessionReadCacheForTests(cache);
     cache.bindSession("p1");
     const listKey = buildSessionReadCacheKey("p1", {
-      resource: "exercise_library.page",
+      resource: "exercise_requests.in_progress_list",
     });
-    await cache.fetch(listKey, () => Promise.resolve({ tab: "mine" }));
+    await cache.fetch(listKey, () =>
+      Promise.resolve({ requests: [], in_progress_count: 0 }),
+    );
 
     const inner = {
       listSimilar: async () => ({ items: [] }),

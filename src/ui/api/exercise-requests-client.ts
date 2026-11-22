@@ -4,6 +4,7 @@ import {
   exerciseRequestDraftPath,
   exerciseRequestGeneratePath,
   exerciseRequestRegenerateTextPath,
+  exerciseRequestWithdrawPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -20,6 +21,7 @@ import type {
   RegenerateDraftTextResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
+  WithdrawExerciseRequestResult,
 } from "../../services/exercise-requests/types.js";
 
 export type FetchFn = (
@@ -243,6 +245,18 @@ export class ExerciseRequestsClient {
         body: JSON.stringify({}),
       }),
     ).then((response) => readJson<ApproveExerciseRequestResult>(response));
+  }
+
+  withdrawRequest(requestId: string): Promise<WithdrawExerciseRequestResult> {
+    const url = exerciseRequestWithdrawPath(requestId);
+    return this.fetchFn(
+      url,
+      mutatingInit(url, {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({}),
+      }),
+    ).then((response) => readJson<WithdrawExerciseRequestResult>(response));
   }
 }
 

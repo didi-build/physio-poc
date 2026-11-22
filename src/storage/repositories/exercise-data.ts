@@ -972,4 +972,24 @@ export class ExerciseRequestsRepository {
     );
     return row?.count ?? 0;
   }
+
+  async tryWithdrawToWithdrawn(input: {
+    id: string;
+    updatedAt: string;
+    lockStaleBefore: string;
+  }): Promise<boolean> {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET status = 'withdrawn', updated_at = ?
+       WHERE id = ?
+         AND status IN ('open', 'drafting')
+         AND (
+           draft_generation_locked_at IS NULL
+           OR draft_generation_locked_at < ?
+         )`,
+      [input.updatedAt, id, input.lockStaleBefore],
+    );
+    return result.rowsAffected > 0;
+  }
 }

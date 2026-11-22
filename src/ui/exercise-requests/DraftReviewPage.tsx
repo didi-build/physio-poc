@@ -68,6 +68,13 @@ import {
 } from "../copy/exercise-requests.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
+  DRAFT_ITEM_LOAD_BACK,
+  DRAFT_ITEM_LOAD_HINT,
+  DRAFT_ITEM_LOAD_TITLE,
+  LOAD_TRYING_AGAIN,
+  LOAD_TRY_AGAIN,
+} from "../copy/shared-load-states.js";
+import {
   DraftReviewExerciseStill,
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
@@ -75,6 +82,11 @@ import { DraftTextField } from "./DraftTextField.js";
 import { RegenerateMediaSheet, type RegeneratePick } from "./RegenerateMediaSheet.js";
 import { isPatientDetailNoteInvalidInput } from "./patient-detail-note-error.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import { DeleteDraftButton } from "./DeleteDraftButton.js";
+import {
+  DELETE_DRAFT_ALREADY_GONE,
+  DELETE_DRAFT_TOAST_SUCCESS,
+} from "../copy/delete-exercise-draft.js";
 
 type GenerationFailure = "text" | "images" | "daily" | null;
 
@@ -113,6 +125,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [ownGenerateInFlight, setOwnGenerateInFlight] = useState(false);
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
+  const requestsBackRef = useRef<HTMLAnchorElement>(null);
+  const detailTryAgainRef = useRef<HTMLButtonElement>(null);
+  const detailRetryFocusAfterRef = useRef(false);
+  const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
+  const [detailRetrying, setDetailRetrying] = useState(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -129,14 +146,32 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     [sessionEpoch, sessionReady],
   );
 
+  const loadRequest = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        return await requestsClient.getRequest(requestId, { signal });
+      } catch (error) {
+        if (
+          error instanceof ExerciseRequestsRequestError &&
+          error.detail.error === "request_not_found"
+        ) {
+          setDraftNotFoundWithdrawn(true);
+        }
+        throw error;
+      }
+    },
+    [requestId, requestsClient],
+  );
+
   const {
     data: cachedView,
     loading: viewLoading,
+    loadFailed: viewLoadFailed,
     refresh: refreshView,
   } = useSessionCachedRead<ExerciseRequestDraftView>({
     cacheKey: detailCacheKey,
     enabled: sessionReady && requestId.length > 0,
-    fetcher: (signal) => requestsClient.getRequest(requestId, { signal }),
+    fetcher: loadRequest,
   });
 
   const {
@@ -153,6 +188,20 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const view = viewOverride ?? cachedView ?? null;
   const loading = !sessionReady || viewLoading || quotaLoading;
+
+  useEffect(() => {
+    if (
+      !detailRetrying &&
+      detailRetryFocusAfterRef.current &&
+      (viewLoadFailed || !view)
+    ) {
+      detailRetryFocusAfterRef.current = false;
+      detailTryAgainRef.current?.focus();
+    }
+    if (!detailRetrying && view && !viewLoadFailed) {
+      detailRetryFocusAfterRef.current = false;
+    }
+  }, [detailRetrying, view, viewLoadFailed]);
 
   const isRequester =
     currentPractitioner.sessionIdentityReady &&
@@ -230,8 +279,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setGenerationFailure(null);
     setRegenError(null);
     setGenerationStartedElsewhere(false);
+    setDraftNotFoundWithdrawn(false);
     generateStarted.current = false;
   }, [requestId]);
+
+  useEffect(() => {
+    if (draftNotFoundWithdrawn) {
+      requestsBackRef.current?.focus();
+    }
+  }, [draftNotFoundWithdrawn]);
 
   useEffect(() => {
     if (generationFailure === "text") {
@@ -453,7 +509,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     }
   };
 
-  if (loading || !view) {
+  if (loading && !viewLoadFailed && !detailRetrying) {
     return (
       <section className="ex-page" aria-busy={true}>
         <div
@@ -461,6 +517,61 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           data-testid="exercise-library-busy-skeleton"
           aria-hidden
         />
+      </section>
+    );
+  }
+
+  if (draftNotFoundWithdrawn) {
+    return (
+      <section className="ex-page" aria-labelledby="ex-review-heading">
+        <Link
+          ref={requestsBackRef}
+          to={fillPhysioAppRoutePattern("requests")}
+          className="ex-back-link"
+          data-testid="ex-review-withdrawn-back"
+        >
+          {REVIEW_BACK}
+        </Link>
+        <p className="ex-review-withdrawn-alert" role="alert">
+          {DELETE_DRAFT_ALREADY_GONE}
+        </p>
+      </section>
+    );
+  }
+
+  if (viewLoadFailed || !view) {
+    return (
+      <section className="ex-page" aria-labelledby="ex-review-heading">
+        <Link
+          to={fillPhysioAppRoutePattern("requests")}
+          className="ex-back-link"
+          data-testid="ex-review-item-load-back"
+        >
+          {DRAFT_ITEM_LOAD_BACK}
+        </Link>
+        <div
+          className="ex-item-load-banner"
+          data-testid="ex-review-item-load-error"
+          role="alert"
+        >
+          <p>{DRAFT_ITEM_LOAD_TITLE}</p>
+          <p>{DRAFT_ITEM_LOAD_HINT}</p>
+          <button
+            ref={detailTryAgainRef}
+            type="button"
+            className="ex-secondary-btn"
+            disabled={detailRetrying}
+            onClick={() => {
+              setDetailRetrying(true);
+              detailRetryFocusAfterRef.current = true;
+              void refreshView({ force: true }).finally(() => {
+                setDetailRetrying(false);
+              });
+            }}
+          >
+            {detailRetrying ? LOAD_TRYING_AGAIN : LOAD_TRY_AGAIN}
+          </button>
+        </div>
       </section>
     );
   }
@@ -530,7 +641,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
-      <div className="ex-review-toolbar">
+      <div
+        className={
+          !firstDraftComplete || generationInProgress
+            ? "ex-review-toolbar ex-review-toolbar--drafting"
+            : "ex-review-toolbar"
+        }
+      >
         <button
           type="button"
           className="ex-primary-btn"
@@ -552,7 +669,24 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         >
           {REGENERATE}
         </button>
-        <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
+        <div className="ex-review-toolbar-trailing">
+          <span className="ex-review-quota">
+            {regenLeftText(quota?.remaining ?? 0)}
+          </span>
+          <DeleteDraftButton
+            requestId={requestId}
+            title={title}
+            generationInProgress={generationInProgress || ownGenerateInFlight}
+            onSuccess={() => {
+              showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
+              onRequestsChanged?.();
+              navigate(fillPhysioAppRoutePattern("requests"));
+            }}
+            onGenerationBlocked={() => {
+              void refreshView({ force: true });
+            }}
+          />
+        </div>
       </div>
       {textRegenBusy ? (
         <p className="ex-review-text-regen" role="status" aria-live="polite">

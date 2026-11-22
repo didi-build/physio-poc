@@ -3,6 +3,7 @@ import {
   exerciseRequestDraftPath,
   exerciseRequestGeneratePath,
   exerciseRequestRegenerateTextPath,
+  exerciseRequestWithdrawPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -44,6 +45,10 @@ export const EXERCISE_REQUESTS_HTTP_ROUTE_TABLE: readonly ExerciseRequestsHttpRo
       method: "POST",
       path: exerciseRequestRegenerateTextPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
     },
+    {
+      method: "POST",
+      path: exerciseRequestWithdrawPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+    },
   ];
 
 export function exerciseRequestsHttpRouteCases(
@@ -62,6 +67,7 @@ export function exerciseRequestsHttpRouteCases(
     { method: "POST", path: exerciseRequestApprovePath(requestId) },
     { method: "POST", path: exerciseRequestGeneratePath(requestId) },
     { method: "POST", path: exerciseRequestRegenerateTextPath(requestId) },
+    { method: "POST", path: exerciseRequestWithdrawPath(requestId) },
   ];
 }
 
@@ -91,7 +97,8 @@ export function exerciseRequestsHttpJsonBody(
   if (
     routeCase.path.endsWith("/approve") ||
     routeCase.path.endsWith("/generate") ||
-    routeCase.path.endsWith("/regenerate-text")
+    routeCase.path.endsWith("/regenerate-text") ||
+    routeCase.path.endsWith("/withdraw")
   ) {
     if (routeCase.path.endsWith("/regenerate-text")) {
       return JSON.stringify({ note: null });

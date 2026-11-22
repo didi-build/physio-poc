@@ -1131,6 +1131,140 @@
   color: var(--shell-slate-500);
 }
 
+.ex-review-toolbar-trailing {
+  display: contents;
+}
+
+.ex-review-delete-wrap {
+  flex: 1 0 100%;
+  position: relative;
+}
+
+@media (min-width: 1024px) {
+  .ex-review-toolbar {
+    flex-wrap: nowrap;
+  }
+
+  .ex-review-delete-wrap {
+    flex: 0 0 auto;
+  }
+
+  .ex-review-toolbar-trailing .ex-review-delete-wrap {
+    flex: 0 0 auto;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-toolbar-trailing {
+    display: contents;
+  }
+
+  .ex-review-toolbar--drafting .ex-secondary-btn {
+    margin-right: auto;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-quota {
+    margin-left: 0;
+  }
+
+  .ex-review-toolbar--drafting .ex-review-delete-wrap {
+    align-self: flex-end;
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  .ex-review-toolbar--drafting .ex-delete-draft-blocked {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 0.25rem;
+    text-align: right;
+    width: auto;
+    max-width: 14rem;
+  }
+}
+
+.ex-item-load-banner {
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--shell-amber-200, #fde68a);
+  border-radius: 0.75rem;
+  background: #fffbeb;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
+.ex-item-load-banner p {
+  margin: 0 0 0.5rem;
+}
+
+.ex-item-load-banner p:last-of-type {
+  margin-bottom: 0.75rem;
+}
+
+.ex-delete-draft-btn {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  border: none;
+  background: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.ex-delete-draft-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ex-delete-draft-btn--dialog {
+  border-radius: 0.75rem;
+  background: #b91c1c;
+  color: white;
+  padding: 0.5rem 1rem;
+}
+
+.ex-delete-draft-btn--dialog:disabled {
+  opacity: 0.6;
+}
+
+.ex-delete-draft-blocked {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--shell-slate-600);
+}
+
+.ex-delete-dialog-alert {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #991b1b;
+}
+
+.ex-requests-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1024px) {
+  .ex-requests-row-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+}
+
+.ex-review-withdrawn-alert {
+  margin: 0.75rem 0 0;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  background: #fef2f2;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
+
 .ex-regen-limit {
   margin: 0.75rem 0 0;
   border: 1px solid #fecaca;

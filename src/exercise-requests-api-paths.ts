@@ -32,3 +32,7 @@ export function exerciseRequestGeneratePath(requestId: string): string {
 export function exerciseRequestRegenerateTextPath(requestId: string): string {
   return `${exerciseRequestPath(requestId)}/regenerate-text`;
 }
+
+export function exerciseRequestWithdrawPath(requestId: string): string {
+  return `${exerciseRequestPath(requestId)}/withdraw`;
+}

@@ -65,7 +65,9 @@ function errorResponse(error: unknown): Response {
             : error.code === "approve_failed" ||
                 error.code === "alias_conflict" ||
                 error.code === "request_already_approved" ||
-                error.code === "submit_failed"
+                error.code === "submit_failed" ||
+                error.code === "draft_generation_in_progress" ||
+                error.code === "request_not_deletable"
               ? 409
               : 400;
     return Response.json(
@@ -330,6 +332,30 @@ export async function handleExerciseRequestsHttpRequest(
       if (result.outcome === "daily_limit") {
         return Response.json(result, { status: 429, headers: JSON_HEADERS });
       }
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const withdrawMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/withdraw$`,
+  ).exec(path);
+  if (withdrawMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(withdrawMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    try {
+      const result = await service(deps).withdrawRequest({
+        practitionerId,
+        requestId,
+      });
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {
       return errorResponse(error);

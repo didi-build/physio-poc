@@ -66,6 +66,7 @@ export type InProgressRequestListItem = {
   exercise_id: string | null;
   draft_title: string | null;
   updated_at: string;
+  generation_in_progress: boolean;
 };
 
 export type InProgressRequestsResult = {
@@ -126,6 +127,12 @@ export type ExerciseRequestDraftView = {
     cue_concentric: string | null;
     cue_eccentric: string | null;
   } | null;
+};
+
+export type WithdrawExerciseRequestResult = {
+  request_id: string;
+  status: "withdrawn";
+  already_withdrawn: boolean;
 };
 
 export type ApproveExerciseRequestResult = {

@@ -21,4 +21,5 @@ export type {
   SimilarExercisesResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
+  WithdrawExerciseRequestResult,
 } from "./types.js";
