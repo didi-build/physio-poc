@@ -339,9 +339,11 @@ describe("cross-domain invalidation and production wrappers", () => {
     setSessionReadCacheForTests(cache);
     cache.bindSession("p1");
     const listKey = buildSessionReadCacheKey("p1", {
-      resource: "exercise_library.page",
+      resource: "exercise_requests.in_progress_list",
     });
-    await cache.fetch(listKey, () => Promise.resolve({ tab: "mine" }));
+    await cache.fetch(listKey, () =>
+      Promise.resolve({ requests: [], in_progress_count: 0 }),
+    );
 
     const inner = {
       listSimilar: async () => ({ items: [] }),
@@ -371,9 +373,11 @@ describe("cross-domain invalidation and production wrappers", () => {
     setSessionReadCacheForTests(cache);
     cache.bindSession("p1");
     const listKey = buildSessionReadCacheKey("p1", {
-      resource: "exercise_library.page",
+      resource: "exercise_requests.in_progress_list",
     });
-    await cache.fetch(listKey, () => Promise.resolve({ tab: "mine" }));
+    await cache.fetch(listKey, () =>
+      Promise.resolve({ requests: [], in_progress_count: 0 }),
+    );
 
     const inner = {
       listSimilar: async () => ({ items: [] }),

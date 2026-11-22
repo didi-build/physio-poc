@@ -29,6 +29,7 @@ import {
   DRAFT_ITEM_LOAD_HINT,
   DRAFT_ITEM_LOAD_TITLE,
   LOAD_TRY_AGAIN,
+  LOAD_TRYING_AGAIN,
 } from "../../src/ui/copy/shared-load-states.js";
 import { AI_DRAFTING, REQUESTS_HEADING } from "../../src/ui/copy/exercise-requests.js";
 import { NavigationTestProviders } from "./navigation-test-providers.js";
@@ -537,6 +538,10 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
       screen.getByRole("link", { name: DRAFT_ITEM_LOAD_BACK }),
     ).toBeInTheDocument();
     expect(screen.queryByText(PIN_D12)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: LOAD_TRYING_AGAIN }),
+    ).not.toBeInTheDocument();
   });
 
   it("clears D7 once generation_in_progress is false again", async () => {
