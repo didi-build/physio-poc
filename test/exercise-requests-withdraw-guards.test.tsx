@@ -1031,6 +1031,140 @@ describe("exercise request withdraw guards", () => {
     }
   });
 
+  it("M5b: withdraw preserves exercise_media_sets file keys and stored draft objects", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(storage, id("pr-m5b"), "m5b@ex.com");
+      const objectStorage = new InMemoryObjectStorage();
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "m5b@ex.com",
+          displayName: "M5b",
+        },
+      });
+      const bundle = {
+        sql: storage,
+        objects: objectStorage,
+        config: MCP_TEST_CONFIG,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        auth,
+      };
+      const cookie = auth.createSessionCookieHeader();
+      const created = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "M5b media keys guard",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      expect(created.status).toBe(200);
+      const { request_id: rid } = (await created.json()) as { request_id: string };
+      const { ExerciseRequestsService } =
+        await import("../src/services/exercise-requests/exercise-requests-service.js");
+      const { ExerciseMediaService } =
+        await import("../src/services/exercise-media/exercise-media-service.js");
+      const { FakeImageGeneration } =
+        await import("../src/storage/adapters/memory/fake-image-generation.js");
+      const { PrefixMediaStorage } =
+        await import("../src/storage/adapters/memory/prefix-media-storage.js");
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T11:00:00.000Z",
+      });
+      const mediaStorage = new PrefixMediaStorage(objectStorage);
+      const mediaService = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        mediaStorage,
+      );
+      await service.generateRequest({
+        practitionerId: practitioner,
+        requestId: rid,
+        mediaService,
+      });
+      const mediaSetId = await storage.first<{ media_set_id: string }>(
+        `SELECT ev.media_set_id AS media_set_id
+         FROM exercise_versions ev
+         JOIN exercise_requests er ON er.exercise_id = ev.exercise_id
+         WHERE er.id = ? AND ev.status = 'draft'
+         ORDER BY ev.version_number DESC LIMIT 1`,
+        [rid],
+      );
+      expect(mediaSetId?.media_set_id).toBeTruthy();
+      const setId = mediaSetId!.media_set_id;
+
+      const readMediaSnapshot = async () => {
+        const row = await storage.first<{
+          id: string;
+          start_object_key: string;
+          end_object_key: string;
+          start_provider_url: string | null;
+          visibility: string;
+          created_at: string;
+        }>(
+          `SELECT id, start_object_key, end_object_key, start_provider_url, visibility, created_at
+           FROM exercise_media_sets WHERE id = ?`,
+          [setId],
+        );
+        expect(row).toBeTruthy();
+        const startStored = await mediaStorage.getImage(row!.start_object_key, "draft");
+        const endStored = await mediaStorage.getImage(row!.end_object_key, "draft");
+        expect(startStored).toBeTruthy();
+        expect(endStored).toBeTruthy();
+        return {
+          row: row!,
+          startStored: {
+            contentType: startStored!.contentType,
+            body: startStored!.body,
+          },
+          endStored: {
+            contentType: endStored!.contentType,
+            body: endStored!.body,
+          },
+        };
+      };
+
+      const before = await readMediaSnapshot();
+      expect(before.row.visibility).toBe("draft");
+      expect(before.startStored.contentType).toBe("image/png");
+      expect(before.endStored.contentType).toBe("image/png");
+
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestWithdrawPath(rid), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        bundle,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        request_id: string;
+        status: string;
+        already_withdrawn: boolean;
+      };
+      expect(body).toEqual({
+        request_id: rid,
+        status: "withdrawn",
+        already_withdrawn: false,
+      });
+
+      const after = await readMediaSnapshot();
+      expect(after.row).toEqual(before.row);
+      expect(after.startStored).toEqual(before.startStored);
+      expect(after.endStored).toEqual(before.endStored);
+      const rowExists = await storage.first<{ id: string }>(
+        "SELECT id FROM exercise_media_sets WHERE id = ?",
+        [setId],
+      );
+      expect(rowExists).toEqual({ id: setId });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("S14: in-progress list reports generation_in_progress from lock freshness", async () => {
     const storage = await openMigratedDatabase();
     try {
