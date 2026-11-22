@@ -91,7 +91,7 @@ describe("exercise media prompts (unit)", () => {
     const end = buildEndImagePrompt({
       title: "Test",
       startingPosition: "Any",
-      steps: "Brace core\n  \n\nHold at top",
+      steps: "Brace core\n  \n\nHold at top\n\n",
     });
     expect(end).toContain("Change only the pose to the end position: Hold at top.");
   });
