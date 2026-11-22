@@ -22,6 +22,7 @@ import {
 import {
   DRAFT_AI_IMAGE_FAILURE,
   DRAFT_AI_TEXT_FAILURE,
+  DRAFT_REGENERATE_TEXT,
 } from "../../src/ui/copy/draft-review-ai-states.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../../src/ui/copy/programs.js";
 import { MemoryRouter } from "react-router-dom";
@@ -172,6 +173,72 @@ describe("DIDI-1276 draft review retry and failure mapping", () => {
     await userEvent.click(screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN }));
     await waitFor(() => {
       expect(screen.queryByText(DRAFT_AI_IMAGE_FAILURE)).not.toBeInTheDocument();
+      expect(screen.getAllByText(GENERATING).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("clears G2 and shows Generating when Regenerate text is pressed", async () => {
+    const view = {
+      request_id: "req-1276-text",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting" as const,
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: false, first_draft_complete: false },
+      draft: null,
+    };
+    const generateRequest = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* hold in flight */
+          }),
+      );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-1276-text" }),
+        ]}
+      >
+        <PhysioApp
+          exerciseRequestsClient={
+            {
+              getRequest: vi.fn().mockResolvedValue(view),
+              generateRequest,
+              regenerateDraftText: vi.fn(),
+              updateDraft: vi.fn(),
+              approveRequest: vi.fn(),
+              getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+              listInProgress: vi.fn(),
+              listSimilar: vi.fn(),
+              submitRequest: vi.fn(),
+            } as unknown as ExerciseRequestsClient
+          }
+          exerciseMediaClient={
+            {
+              getRegenerationQuota: vi.fn().mockResolvedValue({
+                limit: 5,
+                used: 0,
+                remaining: 5,
+                limitReached: false,
+              }),
+              draftStillObjectUrl: vi.fn().mockResolvedValue(null),
+              regenerateDraftMedia: vi.fn(),
+            } as unknown as import("../../src/ui/api/exercise-media-client.js").ExerciseMediaClient
+          }
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(DRAFT_AI_TEXT_FAILURE)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: DRAFT_REGENERATE_TEXT }));
+    await waitFor(() => {
+      expect(screen.queryByText(DRAFT_AI_TEXT_FAILURE)).not.toBeInTheDocument();
       expect(screen.getAllByText(GENERATING).length).toBeGreaterThan(0);
     });
   });
