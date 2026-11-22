@@ -125,4 +125,140 @@ describe("Delete draft through real ExerciseRequestsApiProvider", () => {
     });
     vi.unstubAllGlobals();
   });
+
+  it("review-page delete re-fetches in-progress list through the caching provider", async () => {
+    const calls: string[] = [];
+    let listed = true;
+    const fetchFn = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url.includes("/api/me/exercise-requests/in-progress") && method === "GET") {
+        calls.push("list");
+      }
+      if (url.includes("/api/me/practitioner-session")) {
+        return Promise.resolve(
+          jsonResponse({
+            practitioner_id: "11111111-1111-4111-8111-111111111111",
+            display_name: "Coach",
+          }),
+        );
+      }
+      if (url.includes("/withdraw")) {
+        listed = false;
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "req-review-int",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/regeneration-quota")) {
+        return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
+      }
+      if (url.includes("/req-review-int") && method === "GET") {
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "req-review-int",
+            requested_name: "Review delete",
+            exercise_note: null,
+            status: "drafting",
+            requested_by: "11111111-1111-4111-8111-111111111111",
+            requested_by_email: "k@example.com",
+            exercise_id: "ex-int",
+            generation: {
+              generation_in_progress: false,
+              first_draft_complete: true,
+            },
+            draft: {
+              exercise_version_id: "ver-int",
+              version_number: 1,
+              title: "Review delete",
+              description: "d",
+              equipment: "",
+              starting_position: "s",
+              steps: "st",
+              common_mistakes: "",
+              regressions: "",
+              progressions: "",
+              precautions: "",
+              cue_stretching: null,
+              cue_isometric: null,
+              cue_concentric: null,
+              cue_eccentric: null,
+            },
+          }),
+        );
+      }
+      if (url.endsWith("/api/me/exercise-requests/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({
+            in_progress_count: listed ? 1 : 0,
+            requests: listed
+              ? [
+                  {
+                    request_id: "req-review-int",
+                    requested_name: "Review delete",
+                    exercise_note: null,
+                    status: "drafting",
+                    requested_by: "11111111-1111-4111-8111-111111111111",
+                    requested_by_email: "k@example.com",
+                    exercise_id: "ex-int",
+                    draft_title: "Review delete",
+                    updated_at: "2026-01-01T00:00:00.000Z",
+                    generation_in_progress: false,
+                  },
+                ]
+              : [],
+          }),
+        );
+      }
+      if (url.includes("/in-progress/count")) {
+        return Promise.resolve(jsonResponse({ in_progress_count: listed ? 1 : 0 }));
+      }
+      if (url.startsWith("/api/me/exercise-library")) {
+        return Promise.resolve(
+          jsonResponse({
+            list_state: "ok",
+            sections: {
+              new_from_requests: [],
+              pinned: [],
+              recently_used_and_saved: [],
+            },
+          }),
+        );
+      }
+      if (url.startsWith("/api/me/exercise-requests/similar")) {
+        return Promise.resolve(
+          jsonResponse({ library_matches: [], drafts_in_progress: [] }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal("fetch", fetchFn);
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-review-int" }),
+        ]}
+      >
+        <PhysioApp practitionerSessionClient={stubPractitionerSessionClient()} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_DRAFT })).toBeEnabled();
+    });
+    const listCallsBefore = calls.length;
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_DRAFT }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText("Requests")).toBeInTheDocument();
+      expect(screen.queryByText("Review delete")).not.toBeInTheDocument();
+    });
+    expect(calls.length).toBeGreaterThan(listCallsBefore);
+    vi.unstubAllGlobals();
+  });
 });

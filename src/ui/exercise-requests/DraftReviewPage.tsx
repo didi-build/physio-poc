@@ -68,6 +68,13 @@ import {
 } from "../copy/exercise-requests.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
+  DRAFT_ITEM_LOAD_BACK,
+  DRAFT_ITEM_LOAD_HINT,
+  DRAFT_ITEM_LOAD_TITLE,
+  LOAD_TRYING_AGAIN,
+  LOAD_TRY_AGAIN,
+} from "../copy/shared-load-states.js";
+import {
   DraftReviewExerciseStill,
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
@@ -120,6 +127,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
   const requestsBackRef = useRef<HTMLAnchorElement>(null);
   const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
+  const [detailRetrying, setDetailRetrying] = useState(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -518,12 +526,34 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   if (viewLoadFailed || !view) {
     return (
       <section className="ex-page" aria-labelledby="ex-review-heading">
-        <Link to={fillPhysioAppRoutePattern("requests")} className="ex-back-link">
-          {REVIEW_BACK}
+        <Link
+          to={fillPhysioAppRoutePattern("requests")}
+          className="ex-back-link"
+          data-testid="ex-review-item-load-back"
+        >
+          {DRAFT_ITEM_LOAD_BACK}
         </Link>
-        <p className="ex-regen-limit" role="alert">
-          {AUTO_SAVE_TRY_AGAIN}
-        </p>
+        <div
+          className="ex-item-load-banner"
+          data-testid="ex-review-item-load-error"
+          role="alert"
+        >
+          <p>{DRAFT_ITEM_LOAD_TITLE}</p>
+          <p>{DRAFT_ITEM_LOAD_HINT}</p>
+          <button
+            type="button"
+            className="ex-secondary-btn"
+            disabled={detailRetrying}
+            onClick={() => {
+              setDetailRetrying(true);
+              void refreshView({ force: true }).finally(() => {
+                setDetailRetrying(false);
+              });
+            }}
+          >
+            {detailRetrying ? LOAD_TRYING_AGAIN : LOAD_TRY_AGAIN}
+          </button>
+        </div>
       </section>
     );
   }

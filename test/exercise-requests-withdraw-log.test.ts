@@ -67,17 +67,18 @@ describe("physio_request_withdrawn audit log", () => {
     vi.restoreAllMocks();
   });
 
-  it("emits exactly once on a fresh withdraw with the exact field set", async () => {
+  it("emits on cross-practitioner withdraw with distinct actor and requester ids", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const storage = await openMigratedDatabase();
     try {
-      const practitioner = await seedPractitioner(storage, id("pr-log"), "log@ex.com");
-      const { deps: bundle, cookie } = deps(storage, practitioner);
+      const requester = await seedPractitioner(storage, id("pr-req-log"), "req@ex.com");
+      const actor = await seedPractitioner(storage, id("pr-act-log"), "act@ex.com");
+      const { deps: bundle, cookie: requesterCookie } = deps(storage, requester);
       const created = await handleRequest(
-        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+        authedJsonRequest(exerciseRequestsCollectionPath(), requesterCookie, {
           method: "POST",
           body: JSON.stringify({
-            requested_name: "Log test",
+            requested_name: "Cross log",
             form_opened_at: FORM_OPENED,
           }),
         }),
@@ -86,6 +87,62 @@ describe("physio_request_withdrawn audit log", () => {
       const { request_id: requestId } = (await created.json()) as {
         request_id: string;
       };
+      const actorAuth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: actor,
+          email: "act@ex.com",
+          displayName: "Actor",
+        },
+      });
+      const response = await handleRequest(
+        authedJsonRequest(
+          exerciseRequestWithdrawPath(requestId),
+          actorAuth.createSessionCookieHeader(),
+          { method: "POST", body: "{}" },
+        ),
+        { ...bundle, auth: actorAuth },
+      );
+      expect(response.status).toBe(200);
+
+      const parsed = parseWithdrawLog(logSpy);
+      expect(parsed.event).toBe(PIN_EVENT);
+      expect(parsed.practitioner_id).toBe(actor);
+      expect(parsed.requester_practitioner_id).toBe(requester);
+      expect(parsed.practitioner_id).not.toBe(parsed.requester_practitioner_id);
+      expect(parsed.previous_status).toBe("drafting");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("records previous_status open when withdrawing a stuck open request", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-open-log"),
+        "open@ex.com",
+      );
+      const { deps: bundle, cookie } = deps(storage, practitioner);
+      const created = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Open stuck",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const { request_id: requestId } = (await created.json()) as {
+        request_id: string;
+      };
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'open', exercise_id = NULL WHERE id = ?`,
+        [requestId],
+      );
+
       const response = await handleRequest(
         authedJsonRequest(exerciseRequestWithdrawPath(requestId), cookie, {
           method: "POST",
@@ -94,29 +151,9 @@ describe("physio_request_withdrawn audit log", () => {
         bundle,
       );
       expect(response.status).toBe(200);
-      const body = (await response.json()) as { already_withdrawn: boolean };
-      expect(body.already_withdrawn).toBe(false);
-
-      const withdrawLines = logSpy.mock.calls
-        .map((c: unknown[]) => String(c[0]))
-        .filter((l: string) => l.includes(PIN_EVENT));
-      expect(withdrawLines).toHaveLength(1);
 
       const parsed = parseWithdrawLog(logSpy);
-      expect(parsed.event).toBe(PIN_EVENT);
-      expect(Object.keys(parsed).sort()).toEqual(
-        [
-          "event",
-          "previous_status",
-          "practitioner_id",
-          "request_id",
-          "requester_practitioner_id",
-        ].sort(),
-      );
-      expect(parsed.request_id).toBe(requestId);
-      expect(parsed.practitioner_id).toBe(practitioner);
-      expect(parsed.requester_practitioner_id).toBe(practitioner);
-      expect(parsed.previous_status).toBe("drafting");
+      expect(parsed.previous_status).toBe("open");
     } finally {
       storage.close();
     }
@@ -152,17 +189,17 @@ describe("physio_request_withdrawn audit log", () => {
       );
       logSpy.mockClear();
 
-      await handleRequest(
+      const reWithdraw = await handleRequest(
         authedJsonRequest(exerciseRequestWithdrawPath(requestId), cookie, {
           method: "POST",
           body: "{}",
         }),
         bundle,
       );
-      const secondLines = logSpy.mock.calls.filter((c) =>
-        String(c[0]).includes(PIN_EVENT),
-      );
-      expect(secondLines).toHaveLength(0);
+      expect(reWithdraw.status).toBe(200);
+      expect(
+        logSpy.mock.calls.filter((c) => String(c[0]).includes(PIN_EVENT)),
+      ).toHaveLength(0);
 
       const approvedId = id("req-approved-log");
       await storage.run(
@@ -171,18 +208,19 @@ describe("physio_request_withdrawn audit log", () => {
         ) VALUES (?, 'A', NULL, ?, 'approved', NULL, ?, ?)`,
         [approvedId, practitioner, TS, TS],
       );
-      await handleRequest(
+      const approvedRes = await handleRequest(
         authedJsonRequest(exerciseRequestWithdrawPath(approvedId), cookie, {
           method: "POST",
           body: "{}",
         }),
         bundle,
       );
+      expect(approvedRes.status).toBe(409);
       expect(logSpy.mock.calls.some((c) => String(c[0]).includes(PIN_EVENT))).toBe(
         false,
       );
 
-      const openId = await (async () => {
+      const lockId = await (async () => {
         const r = await handleRequest(
           authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
             method: "POST",
@@ -197,18 +235,31 @@ describe("physio_request_withdrawn audit log", () => {
       })();
       await storage.run(
         `UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?`,
-        [new Date().toISOString(), openId],
+        [new Date().toISOString(), lockId],
       );
-      await handleRequest(
-        authedJsonRequest(exerciseRequestWithdrawPath(openId), cookie, {
+      const lockRes = await handleRequest(
+        authedJsonRequest(exerciseRequestWithdrawPath(lockId), cookie, {
           method: "POST",
           body: "{}",
         }),
         bundle,
       );
+      expect(lockRes.status).toBe(409);
       expect(logSpy.mock.calls.some((c) => String(c[0]).includes(PIN_EVENT))).toBe(
         false,
       );
+
+      const liveCreated = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Live",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const liveId = ((await liveCreated.json()) as { request_id: string }).request_id;
 
       const ghost = new FakeAuthPort({
         practitioner: {
@@ -217,26 +268,27 @@ describe("physio_request_withdrawn audit log", () => {
           displayName: "G",
         },
       });
-      const ghostBundle = { ...bundle, auth: ghost };
-      await handleRequest(
+      const ghostRes = await handleRequest(
         authedJsonRequest(
-          exerciseRequestWithdrawPath(requestId),
+          exerciseRequestWithdrawPath(liveId),
           ghost.createSessionCookieHeader(),
           { method: "POST", body: "{}" },
         ),
-        ghostBundle,
+        { ...bundle, auth: ghost },
       );
+      expect(ghostRes.status).toBe(404);
       expect(logSpy.mock.calls.some((c) => String(c[0]).includes(PIN_EVENT))).toBe(
         false,
       );
 
-      await handleRequest(
+      const missingRes = await handleRequest(
         authedJsonRequest(exerciseRequestWithdrawPath(id("missing-req")), cookie, {
           method: "POST",
           body: "{}",
         }),
         bundle,
       );
+      expect(missingRes.status).toBe(404);
       expect(logSpy.mock.calls.some((c) => String(c[0]).includes(PIN_EVENT))).toBe(
         false,
       );

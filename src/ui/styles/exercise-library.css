@@ -1124,34 +1124,28 @@
   margin-top: 1rem;
 }
 
-.ex-review-delete-wrap {
-  flex: 1 1 100%;
-}
-
-@media (min-width: 1280px) {
-  .ex-review-delete-wrap {
-    flex: 0 0 auto;
-    margin-left: auto;
-    order: 10;
-  }
-}
-
 .ex-review-quota {
+  margin-left: auto;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--shell-slate-500);
 }
 
-.ex-review-toolbar .ex-review-quota {
-  flex: 1 1 100%;
+.ex-item-load-banner {
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--shell-amber-200, #fde68a);
+  border-radius: 0.75rem;
+  background: #fffbeb;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
 }
 
-@media (min-width: 1280px) {
-  .ex-review-toolbar .ex-review-quota {
-    flex: 0 1 auto;
-    margin-left: auto;
-    order: 5;
-  }
+.ex-item-load-banner p {
+  margin: 0 0 0.5rem;
+}
+
+.ex-item-load-banner p:last-of-type {
+  margin-bottom: 0.75rem;
 }
 
 .ex-delete-draft-btn {

@@ -480,4 +480,130 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
       storage.close();
     }
   });
+
+  it("pins generation_in_progress on the in-progress list for fresh, expired, and absent locks", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-list-gen"),
+        "lg@ex.com",
+      );
+      const { deps: bundle, cookie } = deps(storage, practitioner);
+      const freshId = await createOpenRequest(cookie, bundle);
+      await storage.run(
+        `UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?`,
+        [new Date().toISOString(), freshId],
+      );
+      const expiredId = await createOpenRequest(cookie, bundle);
+      const staleLock = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 60_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?`,
+        [staleLock, expiredId],
+      );
+      const absentId = await createOpenRequest(cookie, bundle);
+
+      const list = await handleRequest(
+        new Request(`${BASE}${exerciseRequestsInProgressPath()}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      expect(list.status).toBe(200);
+      const body = (await list.json()) as {
+        requests: { request_id: string; generation_in_progress: boolean }[];
+      };
+      const byId = Object.fromEntries(
+        body.requests.map((r) => [r.request_id, r.generation_in_progress]),
+      );
+      expect(byId[freshId]).toBe(true);
+      expect(byId[expiredId]).toBe(false);
+      expect(byId[absentId]).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps exercise_versions and media_set_id after withdraw", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-med-after"),
+        "m@ex.com",
+      );
+      const { deps: bundle, cookie } = deps(storage, practitioner);
+      const created = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Media keep",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const { request_id: rid } = (await created.json()) as { request_id: string };
+      const { ExerciseRequestsService } =
+        await import("../src/services/exercise-requests/exercise-requests-service.js");
+      const { ExerciseMediaService } =
+        await import("../src/services/exercise-media/exercise-media-service.js");
+      const { FakeImageGeneration } =
+        await import("../src/storage/adapters/memory/fake-image-generation.js");
+      const { PrefixMediaStorage } =
+        await import("../src/storage/adapters/memory/prefix-media-storage.js");
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => "2026-10-30T11:00:00.000Z",
+      });
+      const mediaService = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        new PrefixMediaStorage(new InMemoryObjectStorage()),
+      );
+      await service.generateRequest({
+        practitionerId: practitioner,
+        requestId: rid,
+        mediaService,
+      });
+      const beforeVersion = await storage.first<{
+        id: string;
+        media_set_id: string | null;
+        status: string;
+      }>(
+        `SELECT ev.id, ev.media_set_id, ev.status
+         FROM exercise_versions ev
+         JOIN exercise_requests er ON er.exercise_id = ev.exercise_id
+         WHERE er.id = ? AND ev.status = 'draft'
+         ORDER BY ev.version_number DESC LIMIT 1`,
+        [rid],
+      );
+      expect(beforeVersion?.media_set_id).toBeTruthy();
+
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestWithdrawPath(rid), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        bundle,
+      );
+      expect(response.status).toBe(200);
+
+      const afterVersion = await storage.first<{
+        id: string;
+        media_set_id: string | null;
+        status: string;
+      }>(
+        `SELECT ev.id, ev.media_set_id, ev.status
+         FROM exercise_versions ev
+         WHERE ev.id = ?`,
+        [beforeVersion!.id],
+      );
+      expect(afterVersion?.status).toBe("draft");
+      expect(afterVersion?.media_set_id).toBe(beforeVersion?.media_set_id);
+    } finally {
+      storage.close();
+    }
+  });
 });

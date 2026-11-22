@@ -2,7 +2,14 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -17,6 +24,13 @@ import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { DraftReviewPage } from "../../src/ui/exercise-requests/DraftReviewPage.js";
 import { RequestsAndDraftsPage } from "../../src/ui/exercise-requests/RequestsAndDraftsPage.js";
 import { PhysioApp } from "../../src/ui/App.js";
+import {
+  DRAFT_ITEM_LOAD_BACK,
+  DRAFT_ITEM_LOAD_HINT,
+  DRAFT_ITEM_LOAD_TITLE,
+  LOAD_TRY_AGAIN,
+} from "../../src/ui/copy/shared-load-states.js";
+import { AI_DRAFTING, REQUESTS_HEADING } from "../../src/ui/copy/exercise-requests.js";
 import { NavigationTestProviders } from "./navigation-test-providers.js";
 import { stubPractitionerSessionClient } from "./fake-practitioner-session-fixture.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
@@ -77,6 +91,10 @@ function renderList(client: ExerciseRequestsClient) {
       </NavigationTestProviders>
     </MemoryRouter>,
   );
+}
+
+function deleteRowAria(title: string): string {
+  return `Delete ${title}`;
 }
 
 describe("Delete exercise-request draft UI (DIDI-1278)", () => {
@@ -450,6 +468,314 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
     expect(screen.queryByText(PIN_DELETE_DRAFT)).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole("link", { name: PIN_REQUESTS })).toHaveFocus();
+    });
+  });
+
+  it("does not show D12 when draft review GET fails with 500", async () => {
+    const requestsClient = new ExerciseRequestsClient({
+      fetchFn: vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/regeneration-quota")) {
+          return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
+        }
+        if (
+          url.includes("/api/me/exercise-requests/") &&
+          !url.includes("in-progress")
+        ) {
+          return Promise.resolve(jsonResponse({ error: "server_error" }, 500));
+        }
+        return Promise.resolve(jsonResponse({ requests: [], in_progress_count: 0 }));
+      }),
+    });
+    const mediaClient = new ExerciseMediaClient({
+      fetchFn: vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("regeneration-quota")) {
+          return Promise.resolve(jsonResponse({ remaining: 3, limitReached: false }));
+        }
+        return Promise.resolve(new Response("stub", { status: 200 }));
+      }),
+    });
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-500" }),
+        ]}
+      >
+        <NavigationTestProviders>
+          <ToastProvider>
+            <ExerciseRequestsApiProvider client={requestsClient}>
+              <ExerciseMediaApiProvider client={mediaClient}>
+                <DraftReviewPage />
+              </ExerciseMediaApiProvider>
+            </ExerciseRequestsApiProvider>
+          </ToastProvider>
+        </NavigationTestProviders>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(DRAFT_ITEM_LOAD_TITLE)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN })).toBeInTheDocument();
+    expect(screen.getByText(DRAFT_ITEM_LOAD_HINT)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: DRAFT_ITEM_LOAD_BACK }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(PIN_D12)).not.toBeInTheDocument();
+  });
+
+  it("clears D7 once generation_in_progress is false again", async () => {
+    let generationRunning = false;
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        generationRunning = true;
+        return Promise.resolve(
+          jsonResponse(
+            {
+              error: "draft_generation_in_progress",
+              message: "Draft generation is in progress",
+            },
+            409,
+          ),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({
+            requests: [
+              listItem({
+                generation_in_progress: generationRunning,
+                status: "open",
+              }),
+            ],
+            in_progress_count: 1,
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeEnabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(PIN_DELETE_BLOCKED)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeDisabled();
+    });
+    generationRunning = false;
+    fireEvent.focus(window);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: PIN_DELETE_ROW })).toBeEnabled();
+      expect(screen.queryByText(PIN_DELETE_BLOCKED)).not.toBeInTheDocument();
+    });
+  });
+
+  it("after row delete focuses the next row review control without skipping a row", async () => {
+    let rows = [
+      listItem({ request_id: "r-b", requested_name: "Stuck B", status: "open" }),
+      listItem({ request_id: "r-a", requested_name: "Row A", status: "drafting" }),
+      listItem({ request_id: "r-d", requested_name: "Row D", status: "drafting" }),
+      listItem({ request_id: "r-e", requested_name: "Row E", status: "drafting" }),
+    ];
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        rows = rows.filter((r) => r.request_id !== "r-a");
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "r-a",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: rows, in_progress_count: rows.length }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByText("Row A")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: deleteRowAria("Row A") }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("Row A")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("ex-requests-review-r-d")).toHaveFocus();
+    });
+  });
+
+  it("after row delete focuses delete on the next row when it has no review link", async () => {
+    let rows = [
+      listItem({ request_id: "r-a", requested_name: "Row A", status: "drafting" }),
+      listItem({ request_id: "r-open", requested_name: "Row open", status: "open" }),
+    ];
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        rows = rows.filter((r) => r.request_id !== "r-a");
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "r-a",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: rows, in_progress_count: rows.length }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByText("Row A")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: deleteRowAria("Row A") }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: deleteRowAria("Row open") }),
+      ).toHaveFocus();
+    });
+  });
+
+  it("after row delete focuses the row container when the next row has no enabled action", async () => {
+    let rows = [
+      listItem({ request_id: "r-a", requested_name: "Row A", status: "drafting" }),
+      listItem({
+        request_id: "r-run",
+        requested_name: "Row running",
+        status: "open",
+        generation_in_progress: true,
+      }),
+    ];
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        rows = rows.filter((r) => r.request_id !== "r-a");
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "r-a",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: rows, in_progress_count: rows.length }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByText("Row A")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: deleteRowAria("Row A") }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      const row = screen.getByLabelText(`Row running, ${AI_DRAFTING}`);
+      expect(row).toHaveFocus();
+    });
+  });
+
+  it("after deleting the last row focuses the previous row review control", async () => {
+    let rows = [
+      listItem({ request_id: "r-d", requested_name: "Row D", status: "drafting" }),
+      listItem({ request_id: "r-e", requested_name: "Row E", status: "drafting" }),
+    ];
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        rows = rows.filter((r) => r.request_id !== "r-e");
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "r-e",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: rows, in_progress_count: rows.length }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByText("Row E")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: deleteRowAria("Row E") }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("ex-requests-review-r-d")).toHaveFocus();
+    });
+  });
+
+  it("after deleting the only row focuses the list heading", async () => {
+    let rows = [listItem({ request_id: "r-only", requested_name: "Only row" })];
+    const fetchFn = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/withdraw")) {
+        rows = [];
+        return Promise.resolve(
+          jsonResponse({
+            request_id: "r-only",
+            status: "withdrawn",
+            already_withdrawn: false,
+          }),
+        );
+      }
+      if (url.includes("/in-progress")) {
+        return Promise.resolve(
+          jsonResponse({ requests: rows, in_progress_count: rows.length }),
+        );
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    renderList(new ExerciseRequestsClient({ fetchFn }));
+    await waitFor(() => {
+      expect(screen.getByText("Only row")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    const dialog = await screen.findByRole("alertdialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("Only row")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: REQUESTS_HEADING })).toHaveFocus();
     });
   });
 

@@ -26,6 +26,7 @@ import { requestedByLabel } from "./requested-by-label.js";
 import { DeleteDraftButton } from "./DeleteDraftButton.js";
 import { useToast } from "../components/Toast.js";
 import { DELETE_DRAFT_TOAST_SUCCESS } from "../copy/delete-exercise-draft.js";
+import { focusAfterRequestsListDelete } from "./requests-list-delete-focus.js";
 
 function reviewButtonLabel(
   item: InProgressRequestListItem,
@@ -56,6 +57,7 @@ export function RequestsAndDraftsPage() {
   const client = useExerciseRequestsApi();
   const { showToast } = useToast();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const currentPractitioner = useCurrentPractitionerIdentity();
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -129,9 +131,10 @@ export function RequestsAndDraftsPage() {
       ) : null}
 
       {!loading && !loadFailed && requests.length > 0 ? (
-        <ul className="ex-requests-list">
+        <ul className="ex-requests-list" ref={listRef}>
           {requests.map((item) => {
             const title = item.draft_title ?? item.requested_name;
+            const rowStatusLabel = listRowTag(item);
             const generationInProgress = item.generation_in_progress;
             const by = requestedByLabel({
               requestedBy: item.requested_by,
@@ -141,7 +144,13 @@ export function RequestsAndDraftsPage() {
               sessionIdentityReady: currentPractitioner.sessionIdentityReady,
             });
             return (
-              <li key={item.request_id} className="ex-requests-row">
+              <li
+                key={item.request_id}
+                className="ex-requests-row"
+                data-testid="ex-requests-row-focus"
+                tabIndex={-1}
+                aria-label={`${title}, ${rowStatusLabel}`}
+              >
                 <div className="ex-requests-row-body">
                   <h2 className="ex-requests-row-title">{title}</h2>
                   <div className="ex-requests-row-tags">
@@ -196,20 +205,11 @@ export function RequestsAndDraftsPage() {
                       );
                       showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
                       void refresh({ force: true }).then(() => {
-                        const reviewLinks = [
-                          ...document.querySelectorAll<HTMLElement>(
-                            '[data-testid^="ex-requests-review-"]',
-                          ),
-                        ];
-                        if (reviewLinks.length === 0) {
-                          headingRef.current?.focus();
-                          return;
-                        }
-                        const focusIndex =
-                          deletedIndex >= 0 && deletedIndex < reviewLinks.length
-                            ? deletedIndex
-                            : Math.max(0, reviewLinks.length - 1);
-                        reviewLinks[focusIndex]?.focus();
+                        focusAfterRequestsListDelete({
+                          listRoot: listRef.current,
+                          heading: headingRef.current,
+                          deletedIndex,
+                        });
                       });
                     }}
                   />
