@@ -38,12 +38,11 @@ import {
 import type { PractitionerSessionClient } from "../../src/ui/api/practitioner-session-client.js";
 import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import { FAKE_UI_PRACTITIONER_ID } from "./fake-practitioner-session-fixture.js";
-import {
-  PIN_AI_DRAFTING,
-  PIN_DRAFT_NOT_APPROVED,
-  PIN_REVIEW_DRAFT,
-  PIN_VIEW_REQUEST,
-} from "./didi-1275-pinned-strings.js";
+
+const LIT_AI_DRAFTING = "AI drafting";
+const LIT_DRAFT_NOT_APPROVED = "Draft, not approved";
+const LIT_REVIEW_DRAFT = "Review draft";
+const LIT_VIEW_REQUEST = "View request";
 
 afterEach(() => {
   cleanup();
@@ -107,7 +106,7 @@ function renderApp(
 
 describe("DIDI-1275 request review routing", () => {
   it("navigates View request to requestReview after created submit (kills onViewRequest list route mutant)", async () => {
-    expect(PIN_VIEW_REQUEST).toBe(VIEW_REQUEST);
+    expect(LIT_VIEW_REQUEST).toBe(VIEW_REQUEST);
     const submitRequest = vi.fn().mockResolvedValue({
       outcome: "created",
       request_id: "req-new-1275",
@@ -350,8 +349,8 @@ describe("DIDI-1275 request review routing", () => {
   });
 
   it("shows review link and AI drafting tag for drafting row without exercise_id (kills canReview exercise_id gate mutant)", async () => {
-    expect(PIN_AI_DRAFTING).toBe(AI_DRAFTING);
-    expect(PIN_REVIEW_DRAFT).toBe(REVIEW_DRAFT);
+    expect(LIT_AI_DRAFTING).toBe(AI_DRAFTING);
+    expect(LIT_REVIEW_DRAFT).toBe(REVIEW_DRAFT);
 
     renderApp(fillPhysioAppRoutePattern("requests"), {
       getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
@@ -379,16 +378,16 @@ describe("DIDI-1275 request review routing", () => {
       return el as HTMLElement;
     });
 
-    expect(within(row).getByText(PIN_AI_DRAFTING)).toBeInTheDocument();
-    expect(within(row).getByRole("link", { name: PIN_REVIEW_DRAFT })).toHaveAttribute(
+    expect(within(row).getByText(LIT_AI_DRAFTING)).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: LIT_REVIEW_DRAFT })).toHaveAttribute(
       "href",
       fillPhysioAppRoutePattern("requestReview", { requestId: "req-drafting-null" }),
     );
-    expect(within(row).queryByText(PIN_DRAFT_NOT_APPROVED)).not.toBeInTheDocument();
+    expect(within(row).queryByText(LIT_DRAFT_NOT_APPROVED)).not.toBeInTheDocument();
   });
 
   it("shows Draft, not approved on the list when exercise_id is set (kills list tag mutant)", async () => {
-    expect(PIN_DRAFT_NOT_APPROVED).toBe(DRAFT_NOT_APPROVED);
+    expect(LIT_DRAFT_NOT_APPROVED).toBe(DRAFT_NOT_APPROVED);
 
     renderApp(fillPhysioAppRoutePattern("requests"), {
       getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 1 }),
@@ -415,11 +414,11 @@ describe("DIDI-1275 request review routing", () => {
       expect(el).not.toBeNull();
       return el as HTMLElement;
     });
-    expect(within(row).getByText(PIN_DRAFT_NOT_APPROVED)).toBeInTheDocument();
-    expect(within(row).queryByText(PIN_AI_DRAFTING)).not.toBeInTheDocument();
+    expect(within(row).getByText(LIT_DRAFT_NOT_APPROVED)).toBeInTheDocument();
+    expect(within(row).queryByText(LIT_AI_DRAFTING)).not.toBeInTheDocument();
     expect(within(row).getByText("Sumo squat (draft title)")).toBeInTheDocument();
     expect(
-      within(row).getByRole("link", { name: PIN_REVIEW_DRAFT }),
+      within(row).getByRole("link", { name: LIT_REVIEW_DRAFT }),
     ).toBeInTheDocument();
   });
 });

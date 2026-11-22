@@ -243,16 +243,19 @@ describe("DIDI-1276 draft review retry and failure mapping", () => {
     });
   });
 
-  it("shows the AI strip without a failure card for 202 in_progress on retry", async () => {
+  it("shows the AI strip without a failure card when Try again gets 202 in_progress", async () => {
     const view = draftWithText();
-    const generateRequest = vi.fn().mockResolvedValue({
-      outcome: "in_progress",
-      started_elsewhere: false,
-      view: {
-        ...view,
-        generation: { generation_in_progress: true, first_draft_complete: false },
-      },
-    });
+    const generateRequest = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValue({
+        outcome: "in_progress",
+        started_elsewhere: false,
+        view: {
+          ...view,
+          generation: { generation_in_progress: true, first_draft_complete: false },
+        },
+      });
     render(
       <MemoryRouter
         initialEntries={[
@@ -289,11 +292,16 @@ describe("DIDI-1276 draft review retry and failure mapping", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
+      expect(screen.getByText(DRAFT_AI_IMAGE_FAILURE)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN }));
+    await waitFor(() => {
       expect(screen.getByTestId("ex-review-ai-strip")).toBeInTheDocument();
     });
     expect(screen.getByText(AI_DRAFTING)).toBeInTheDocument();
     expect(screen.getByText(USUALLY_READY)).toBeInTheDocument();
     expect(screen.queryByText(DRAFT_AI_TEXT_FAILURE)).not.toBeInTheDocument();
     expect(screen.queryByText(DRAFT_AI_IMAGE_FAILURE)).not.toBeInTheDocument();
+    expect(generateRequest).toHaveBeenCalledTimes(2);
   });
 });

@@ -183,11 +183,13 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
         [requestId],
       );
       expect(lock?.draft_generation_locked_at).toBeNull();
-      expect(
-        logSpy.mock.calls.some((c) =>
-          String(c[0]).includes(DRAFT_GENERATION_FAILED_EVENT),
-        ),
-      ).toBe(true);
+      const logLine = logSpy.mock.calls
+        .map((c) => String(c[0]))
+        .find((line) => line.includes(DRAFT_GENERATION_FAILED_EVENT));
+      expect(logLine).toBeTruthy();
+      const parsed = JSON.parse(logLine!) as { event: string; phase: string };
+      expect(parsed.event).toBe("physio_draft_generation_failed");
+      expect(parsed.phase).toBe("text");
     } finally {
       logSpy.mockRestore();
       storage.close();
