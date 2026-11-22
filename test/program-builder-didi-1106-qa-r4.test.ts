@@ -114,6 +114,39 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
     }
   });
 
+  it("L9 returns undo on type-mismatch link for toast Undo", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(storage, id("ph-l9s"), "l9s@example.com");
+      const programId = id("prog-l9s");
+      const rowId = id("row-l9s");
+      const reqId = id("req-l9s");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      await storage.run(`UPDATE exercises SET category = ? WHERE id = ?`, [
+        "strengthening",
+        FIXTURE_EXERCISE_ID,
+      ]);
+      const service = new ProgramBuilderService(storage);
+      const result = await service.linkTypeMismatchPlaceholderRow(
+        owner,
+        programId,
+        rowId,
+        "concentric",
+        draftUpdatedAt,
+      );
+      expect(result.undo).toBeDefined();
+      expect(result.undo?.kind).toBe("placeholder_type_mismatch_link");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("L8 bumps draft_updated_at on a successful type-mismatch link", async () => {
     const storage = await openMigratedDatabase();
     try {
