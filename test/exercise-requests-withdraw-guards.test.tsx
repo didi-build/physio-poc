@@ -37,7 +37,6 @@ import {
   DRAFT_ITEM_LOAD_HINT,
   DRAFT_ITEM_LOAD_TITLE,
   LOAD_TRY_AGAIN,
-  LOAD_TRYING_AGAIN,
 } from "../src/ui/copy/shared-load-states.js";
 import { fillPhysioAppRoutePattern } from "../src/app-routes.js";
 import { PhysioApp } from "../src/ui/App.js";
@@ -389,10 +388,12 @@ describe("exercise request withdraw guards", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText(DRAFT_ITEM_LOAD_HINT)).toBeInTheDocument();
+      expect(
+        screen.getByText("Check your connection, then try again."),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText(DRAFT_ITEM_LOAD_HINT).textContent).toBe(
-      DRAFT_ITEM_LOAD_HINT,
+    expect(screen.getByText("Check your connection, then try again.").textContent).toBe(
+      "Check your connection, then try again.",
     );
   });
 
@@ -516,10 +517,10 @@ describe("exercise request withdraw guards", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN }).textContent).toBe(
-      LOAD_TRY_AGAIN,
+    expect(screen.getByRole("button", { name: "Try again" }).textContent).toBe(
+      "Try again",
     );
   });
 
@@ -679,7 +680,7 @@ describe("exercise request withdraw guards", () => {
     await user.click(screen.getByRole("button", { name: LOAD_TRY_AGAIN }));
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: LOAD_TRYING_AGAIN }),
+        screen.getByRole("button", { name: "Trying again..." }),
       ).toBeInTheDocument();
     });
     expect(screen.getByText(DRAFT_ITEM_LOAD_TITLE)).toBeInTheDocument();
