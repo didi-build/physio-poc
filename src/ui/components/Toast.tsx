@@ -11,7 +11,9 @@ import { TOAST_UNDO } from "../copy/nav.js";
 
 export type ToastPayload = {
   message: string;
-  onUndo?: () => void;
+  onUndo?: () => void | Promise<void>;
+  /** Failed-save styling per design/app/shared-load-states/spec.md */
+  variant?: "default" | "alert";
 };
 
 type ToastContextValue = {
@@ -23,17 +25,21 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastPayload | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
 
   const dismissToast = useCallback(() => {
     setToast(null);
+    setUndoBusy(false);
   }, []);
 
   const showToast = useCallback((payload: ToastPayload) => {
+    setUndoBusy(false);
     setToast(payload);
   }, []);
 
   useEffect(() => {
     if (!toast) {
+      setUndoBusy(false);
       return;
     }
     const delayMs = toast.onUndo ? 5000 : 2600;
@@ -51,9 +57,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
-        aria-live="polite"
+        aria-live={toast?.variant === "alert" ? undefined : "polite"}
         aria-atomic="true"
-        className={toast ? "shell-toast" : "shell-toast-live sr-only"}
+        role={toast?.variant === "alert" ? "alert" : undefined}
+        className={
+          toast
+            ? `shell-toast${toast.variant === "alert" ? " shell-toast--alert" : ""}`
+            : "shell-toast-live sr-only"
+        }
       >
         {toast ? (
           <>
@@ -62,8 +73,25 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 className="shell-toast-undo"
+                disabled={undoBusy}
+                aria-busy={undoBusy}
                 onClick={() => {
-                  toast.onUndo?.();
+                  if (undoBusy) {
+                    return;
+                  }
+                  setUndoBusy(true);
+                  const result = toast.onUndo?.();
+                  if (result && typeof (result as Promise<void>).then === "function") {
+                    void (result as Promise<void>)
+                      .then(() => {
+                        dismissToast();
+                      })
+                      .catch(() => {
+                        setUndoBusy(false);
+                      });
+                    return;
+                  }
+                  setUndoBusy(false);
                   dismissToast();
                 }}
               >

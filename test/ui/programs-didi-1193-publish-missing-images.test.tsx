@@ -39,6 +39,7 @@ const baseProgram: ProgramBuilderView = {
   draft_saved_at: "2026-01-01T00:00:00.000Z",
   exercise_count: 1,
   library_updates_to_review: 0,
+  type_mismatch_placeholder_count: 0,
   rows: [exerciseRow("row-1", true)],
   open_share_link: false,
   share_link_status: "none",

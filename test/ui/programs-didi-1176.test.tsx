@@ -66,6 +66,7 @@ const BUILDER_FIXTURE: ProgramBuilderView = {
   draft_saved_at: "2026-10-24T12:00:00.000Z",
   exercise_count: 0,
   library_updates_to_review: 0,
+  type_mismatch_placeholder_count: 0,
   rows: [],
   open_share_link: false,
   share_link_status: "none",

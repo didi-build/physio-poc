@@ -62,4 +62,18 @@ export function programRowLibraryUpdateKeepPath(
   return `${programRowPath(programId, rowId)}/library-update/keep`;
 }
 
+export function programRowLinkTypeMismatchPath(
+  programId: string,
+  rowId: string,
+): string {
+  return `${programRowPath(programId, rowId)}/link-type-mismatch`;
+}
+
+export function programRowUndoTypeMismatchLinkPath(
+  programId: string,
+  rowId: string,
+): string {
+  return `${programRowPath(programId, rowId)}/undo-type-mismatch-link`;
+}
+
 export { PROGRAMS_API_BASE };

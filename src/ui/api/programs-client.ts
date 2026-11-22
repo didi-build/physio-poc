@@ -3,6 +3,7 @@ import type { PrescriptionType } from "../../domain/exercise-types.js";
 import type {
   ProgramBuilderView,
   ProgramMutationResult,
+  ProgramMutationWithUndoResult,
   ProgramOriginFilter,
   ProgramSearchResult,
 } from "../../services/programs/types.js";
@@ -22,6 +23,8 @@ import {
   programRowDuplicatePath,
   programRowLibraryUpdateApplyPath,
   programRowLibraryUpdateKeepPath,
+  programRowLinkTypeMismatchPath,
+  programRowUndoTypeMismatchLinkPath,
   programRowPath,
   programRowsPath,
   programRowsReorderPath,
@@ -299,6 +302,39 @@ export class ProgramsClient {
       withJsonContentType({
         method: "POST",
         body: "{}",
+      }),
+    ).then((response) => readJson<ProgramMutationResult>(response));
+  }
+
+  linkTypeMismatchPlaceholder(
+    programId: string,
+    rowId: string,
+    prescriptionType: PrescriptionType,
+    draftUpdatedAt?: string,
+  ): Promise<ProgramMutationWithUndoResult> {
+    const body: Record<string, string> = { prescription_type: prescriptionType };
+    if (draftUpdatedAt) {
+      body.draft_updated_at = draftUpdatedAt;
+    }
+    return this.fetchFn(
+      programRowLinkTypeMismatchPath(programId, rowId),
+      withJsonContentType({
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    ).then((response) => readJson<ProgramMutationWithUndoResult>(response));
+  }
+
+  undoTypeMismatchPlaceholderLink(
+    programId: string,
+    rowId: string,
+    draftUpdatedAt: string,
+  ): Promise<ProgramMutationResult> {
+    return this.fetchFn(
+      programRowUndoTypeMismatchLinkPath(programId, rowId),
+      withJsonContentType({
+        method: "POST",
+        body: JSON.stringify({ draft_updated_at: draftUpdatedAt }),
       }),
     ).then((response) => readJson<ProgramMutationResult>(response));
   }
