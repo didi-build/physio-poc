@@ -7,7 +7,7 @@ import {
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressPath,
 } from "../src/exercise-requests-api-paths.js";
-import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-requests/exercise-request-draft-generation.js";
+import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-requests/draft-generation-lock.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
   openMigratedDatabase,

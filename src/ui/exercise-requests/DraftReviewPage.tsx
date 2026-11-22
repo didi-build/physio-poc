@@ -25,7 +25,10 @@ import {
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
-import { showDraftGenerationElsewhere } from "./draft-review-generation-visibility.js";
+import {
+  draftReviewStaleGenerationEscape,
+  showDraftGenerationElsewhere,
+} from "./draft-review-generation-visibility.js";
 import {
   DESCRIPTION_FIELD,
   END_POSITION,
@@ -122,6 +125,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [startStillUrl, setStartStillUrl] = useState<string | null>(null);
   const [endStillUrl, setEndStillUrl] = useState<string | null>(null);
   const generateStarted = useRef(false);
+  const generationWaitStartedAt = useRef<number | null>(null);
+  const [generationWaitClock, setGenerationWaitClock] = useState(() => Date.now());
   const [ownGenerateInFlight, setOwnGenerateInFlight] = useState(false);
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
@@ -351,12 +356,45 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [startStillUrl, endStillUrl]);
 
   useEffect(() => {
-    if (!view || !isRequester || firstDraftComplete || generateStarted.current) {
+    if (!requestId || !currentPractitioner.sessionIdentityReady || firstDraftComplete) {
+      return;
+    }
+    if (!view || generateStarted.current) {
+      return;
+    }
+    if (view.requested_by !== currentPractitioner.practitionerId) {
       return;
     }
     generateStarted.current = true;
     void runGenerate();
-  }, [view, isRequester, firstDraftComplete, runGenerate]);
+  }, [
+    requestId,
+    currentPractitioner.sessionIdentityReady,
+    currentPractitioner.practitionerId,
+    view,
+    firstDraftComplete,
+    runGenerate,
+  ]);
+
+  useEffect(() => {
+    if (generationInProgress || ownGenerateInFlight) {
+      generationWaitStartedAt.current ??= Date.now();
+    } else {
+      generationWaitStartedAt.current = null;
+    }
+  }, [generationInProgress, ownGenerateInFlight]);
+
+  useEffect(() => {
+    if (!generationInProgress && !ownGenerateInFlight) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setGenerationWaitClock(Date.now());
+    }, 1000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [generationInProgress, ownGenerateInFlight]);
 
   useEffect(() => {
     if (!view || firstDraftComplete) {
@@ -592,6 +630,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     generationInProgress,
     generationFailure,
   });
+  const staleGenerationEscape = draftReviewStaleGenerationEscape({
+    firstDraftComplete,
+    generationInProgress,
+    ownGenerateInFlight,
+    waitStartedAt: generationWaitStartedAt.current,
+    nowMs: generationWaitClock,
+  });
+  const deleteBlockedByGeneration =
+    (generationInProgress || ownGenerateInFlight) && !staleGenerationEscape;
   const detailsGenerating = !draft;
   const imagesGenerating =
     Boolean(draft) &&
@@ -622,6 +669,18 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
             <p className="ex-review-ai-strip-sub">
               {DRAFT_GENERATION_STARTED_ELSEWHERE}
             </p>
+          ) : null}
+          {staleGenerationEscape && !showElsewhere ? (
+            <button
+              type="button"
+              className="ex-secondary-btn"
+              onClick={() => {
+                generateStarted.current = true;
+                void runGenerate();
+              }}
+            >
+              {AUTO_SAVE_TRY_AGAIN}
+            </button>
           ) : null}
           <div className="ex-review-ai-strip-bar" aria-hidden />
         </div>
@@ -676,7 +735,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           <DeleteDraftButton
             requestId={requestId}
             title={title}
-            generationInProgress={generationInProgress || ownGenerateInFlight}
+            generationInProgress={deleteBlockedByGeneration}
             onSuccess={() => {
               showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
               onRequestsChanged?.();

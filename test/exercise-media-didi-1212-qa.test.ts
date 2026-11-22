@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
 import { handleRequest } from "../src/http/app.js";
 import { EXERCISE_MEDIA_JSON_REQUEST_BODY_MAX_BYTES } from "../src/http/bounded-json-request-body.js";
 import { DAILY_MEDIA_REGENERATION_CAP } from "../src/services/exercise-media/exercise-media-service.js";
-import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import {
   exerciseMediaSessionCookie,
   exerciseMediaTestDeps,
 } from "./helpers/exercise-media-http.js";
+import { countingSplitImageGeneration } from "./helpers/counting-fake-image-generation.js";
 import {
   FIXTURE_VERSION_ID,
   openMigratedDatabase,
@@ -63,20 +62,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
-      let upstreamCalls = 0;
-      const images: ImageGenerationPort = {
-        async generateStartAndEndImages() {
-          upstreamCalls += 1;
-          return new FakeImageGeneration().generateStartAndEndImages({
-            startPrompt: "s",
-            endPrompt: "e",
-          });
-        },
-        generateStartImage: (...args) =>
-          new FakeImageGeneration().generateStartImage(...args),
-        generateEndImage: (...args) =>
-          new FakeImageGeneration().generateEndImage(...args),
-      };
+      const { port: images, upstreamCalls } = countingSplitImageGeneration();
       const deps = exerciseMediaTestDeps(
         storage,
         {
@@ -92,7 +78,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
         deps,
       );
       expect(first.status).toBe(201);
-      expect(upstreamCalls).toBe(1);
+      expect(upstreamCalls()).toBe(2);
       const second = await handleRequest(
         mediaRequest(url, deps, { method: "POST", body: JSON.stringify({}) }),
         deps,
@@ -101,7 +87,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
       await expect(second.json()).resolves.toEqual(
         EXERCISE_MEDIA_ALREADY_GENERATED_409_BODY,
       );
-      expect(upstreamCalls).toBe(1);
+      expect(upstreamCalls()).toBe(2);
     } finally {
       storage.close();
     }
@@ -111,20 +97,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
     const storage = await openMigratedDatabase();
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
-      let upstreamCalls = 0;
-      const images: ImageGenerationPort = {
-        async generateStartAndEndImages() {
-          upstreamCalls += 1;
-          return new FakeImageGeneration().generateStartAndEndImages({
-            startPrompt: "s",
-            endPrompt: "e",
-          });
-        },
-        generateStartImage: (...args) =>
-          new FakeImageGeneration().generateStartImage(...args),
-        generateEndImage: (...args) =>
-          new FakeImageGeneration().generateEndImage(...args),
-      };
+      const { port: images, upstreamCalls } = countingSplitImageGeneration();
       const deps = exerciseMediaTestDeps(
         storage,
         {
@@ -140,7 +113,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
         deps,
       );
       expect(initial.status).toBe(201);
-      expect(upstreamCalls).toBe(1);
+      expect(upstreamCalls()).toBe(2);
       const regenUrl = `http://127.0.0.1/api/me/exercise-versions/${versionId}/media/regenerate`;
       for (let i = 0; i < DAILY_MEDIA_REGENERATION_CAP - 1; i += 1) {
         const response = await handleRequest(
@@ -152,7 +125,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
         );
         expect(response.status).toBe(200);
       }
-      const upstreamBeforeCap = upstreamCalls;
+      const upstreamBeforeCap = upstreamCalls();
       const capped = await handleRequest(
         mediaRequest(generateUrl, deps, { method: "POST", body: JSON.stringify({}) }),
         deps,
@@ -160,7 +133,7 @@ describe("exercise media DIDI-1212 QA (Q1 generate cap, Q2 body size)", () => {
       expect(capped.status).toBe(429);
       const body = (await capped.json()) as { error?: string };
       expect(body.error).toBe("daily_limit_reached");
-      expect(upstreamCalls).toBe(upstreamBeforeCap);
+      expect(upstreamCalls()).toBe(upstreamBeforeCap);
     } finally {
       storage.close();
     }

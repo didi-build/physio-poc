@@ -8,9 +8,18 @@ import {
 } from "../src/exercise-media-api-paths.js";
 import {
   exerciseRequestGeneratePath,
+  exerciseRequestPath,
   exerciseRequestRegenerateTextPath,
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
+import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
+import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
+import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  attachDraftGenerationTestWorkflow,
+  drainDraftGeneration,
+} from "./helpers/draft-generation-test-workflow.js";
 import {
   createDelayedFakeExerciseDraftGenerator,
   createFakeExerciseDraftGenerator,
@@ -24,6 +33,7 @@ import {
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
 import { FailingFakeImageGeneration } from "./helpers/failing-fake-image-generation.js";
+import { ImageGenerationError } from "../src/storage/ports/image-generation.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import {
   MCP_TEST_CONFIG,
@@ -44,6 +54,15 @@ const GENERATION_NOT_REQUESTER_BODY = {
   message: "Only the requester can run draft generation",
 } as const;
 
+/** Initial draft generation uses separate start/end calls, not generateStartAndEndImages. */
+class FailingInitialDraftImageGeneration extends FailingFakeImageGeneration {
+  override async generateStartImage(): Promise<
+    import("../src/storage/ports/image-generation.js").GeneratedImage
+  > {
+    throw new ImageGenerationError("image_generation_request_failed", 502);
+  }
+}
+
 function authedJsonRequest(path: string, cookie: string, init: RequestInit): Request {
   const url = `${BASE}${path}`;
   const withCsrf = mutatingAppApiRequestInit(url, init);
@@ -62,18 +81,29 @@ function deps(
   const auth = new FakeAuthPort({
     practitioner: { practitionerId, email, displayName: "Coach" },
   });
+  const objects = new InMemoryObjectStorage();
+  const baseDeps = {
+    sql: storage,
+    objects,
+    config: MCP_TEST_CONFIG,
+    auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+    exerciseDraftGenerator,
+    exerciseMediaImages,
+    extraRouteHandlers: [handleExerciseMediaRequest],
+  };
+  const requestService = new ExerciseRequestsService(baseDeps.sql, baseDeps.config, {
+    draftGenerator: exerciseDraftGenerator,
+  });
+  const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+    baseDeps,
+    (requestId) => requestService.loadDraftView(requestId),
+  );
   return {
-    deps: {
-      sql: storage,
-      objects: new InMemoryObjectStorage(),
-      config: MCP_TEST_CONFIG,
-      auth,
-      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-      exerciseDraftGenerator,
-      exerciseMediaImages,
-      extraRouteHandlers: [handleExerciseMediaRequest],
-    },
+    deps: bundle,
     cookie: auth.createSessionCookieHeader(),
+    workflow,
+    objects,
   };
 }
 
@@ -82,13 +112,14 @@ async function createOpenRequest(
   practitionerId: string,
   email: string,
   exerciseDraftGenerator = fakeExerciseDraftGenerator,
+  exerciseMediaImages?: FailingFakeImageGeneration,
 ) {
-  const { deps: bundle, cookie } = deps(
-    storage,
-    practitionerId,
-    email,
-    exerciseDraftGenerator,
-  );
+  const {
+    deps: bundle,
+    cookie,
+    workflow,
+    objects,
+  } = deps(storage, practitionerId, email, exerciseDraftGenerator, exerciseMediaImages);
   const created = await handleRequest(
     authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
       method: "POST",
@@ -101,11 +132,11 @@ async function createOpenRequest(
   );
   expect(created.status).toBe(200);
   const body = (await created.json()) as { request_id: string };
-  return { requestId: body.request_id, cookie, bundle };
+  return { requestId: body.request_id, cookie, bundle, workflow, objects };
 }
 
 describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
-  it("B8 racing POST /generate: one 200 complete, one 202 started_elsewhere, single generator run", async () => {
+  it("B8 racing POST /generate: two 202 in_progress, one started_elsewhere, single generator run", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitioner = await seedPractitioner(
@@ -122,7 +153,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         generatorCalls += 1;
         return delayed(input, genDeps);
       };
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "race@example.com",
@@ -136,16 +167,21 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         );
       const [first, second] = await Promise.all([mk(), mk()]);
       const statuses = [first.status, second.status].sort();
-      expect(statuses).toEqual([200, 202]);
-      expect(generatorCalls).toBe(1);
+      expect(statuses).toEqual([202, 202]);
       const responses = [
         { status: first.status, body: await first.json() },
         { status: second.status, body: await second.json() },
       ];
-      const complete = responses.find((r) => r.status === 200);
-      const inProgress = responses.find((r) => r.status === 202);
-      expect(complete?.body).toMatchObject({ outcome: "complete" });
-      expect(inProgress?.body).toEqual({
+      await drainDraftGeneration(workflow, requestId);
+      expect(generatorCalls).toBe(1);
+      const startedHere = responses.find((r) => r.body.started_elsewhere === false);
+      const startedElsewhere = responses.find((r) => r.body.started_elsewhere === true);
+      expect(startedHere?.body).toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+        view: expect.objectContaining({ request_id: requestId }),
+      });
+      expect(startedElsewhere?.body).toEqual({
         outcome: "in_progress",
         started_elsewhere: true,
         view: expect.objectContaining({ request_id: requestId }),
@@ -205,7 +241,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         "textfail@example.com",
       );
       const generator = createFakeExerciseDraftGenerator({ failText: true });
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow, objects } = await createOpenRequest(
         storage,
         practitioner,
         "textfail@example.com",
@@ -218,8 +254,28 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         }),
         bundle,
       );
-      expect(response.status).toBe(502);
-      await expect(response.json()).resolves.toEqual({
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+        view: expect.objectContaining({ request_id: requestId }),
+      });
+      await drainDraftGeneration(workflow, requestId);
+      const requestService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: generator,
+      });
+      const mediaService = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        new PrefixMediaStorage(objects),
+      );
+      await expect(
+        requestService.generateRequest({
+          practitionerId: practitioner,
+          requestId,
+          mediaService,
+        }),
+      ).resolves.toEqual({
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_request_failed",
         view: null,
@@ -237,22 +293,43 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         id("pr-qa-img-fail"),
         "imgfail@example.com",
       );
-      const failImages = new FailingFakeImageGeneration(true);
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const failImages = new FailingInitialDraftImageGeneration(true);
+      const { requestId, cookie, bundle, workflow, objects } = await createOpenRequest(
         storage,
         practitioner,
         "imgfail@example.com",
+        fakeExerciseDraftGenerator,
+        failImages,
       );
       const response = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
           body: "{}",
         }),
-        { ...bundle, exerciseMediaImages: failImages },
+        bundle,
       );
-      expect(response.status).toBe(502);
-      const payload = await response.json();
-      expect(payload).toEqual({
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+        view: expect.objectContaining({ request_id: requestId }),
+      });
+      await drainDraftGeneration(workflow, requestId);
+      const requestService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const mediaService = new ExerciseMediaService(
+        storage,
+        failImages,
+        new PrefixMediaStorage(objects),
+      );
+      await expect(
+        requestService.generateRequest({
+          practitionerId: practitioner,
+          requestId,
+          mediaService,
+        }),
+      ).resolves.toEqual({
         outcome: "images_failed",
         view: expect.objectContaining({
           request_id: requestId,
@@ -277,7 +354,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         id("pr-qa-regen-o"),
         "regen-o@example.com",
       );
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         requester,
         "regen@example.com",
@@ -289,7 +366,22 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         }),
         bundle,
       );
-      expect(completeGenerate.status).toBe(200);
+      expect(completeGenerate.status).toBe(202);
+      await expect(completeGenerate.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      const ready = (await viewResponse.json()) as {
+        generation: { first_draft_complete: boolean };
+      };
+      expect(ready.generation.first_draft_complete).toBe(true);
 
       const ok = await handleRequest(
         authedJsonRequest(exerciseRequestRegenerateTextPath(requestId), cookie, {
@@ -403,7 +495,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         id("pr-qa-still"),
         "still@example.com",
       );
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "still@example.com",
@@ -415,10 +507,22 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         }),
         bundle,
       );
-      expect(generated.status).toBe(200);
-      const { view } = (await generated.json()) as {
-        view: { draft: { exercise_version_id: string } | null };
+      expect(generated.status).toBe(202);
+      await expect(generated.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      const { draft } = (await viewResponse.json()) as {
+        draft: { exercise_version_id: string } | null;
       };
+      const view = { draft };
       const versionId = view.draft?.exercise_version_id;
       expect(versionId).toBeTruthy();
 
@@ -454,7 +558,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         id("pr-qa-ms"),
         "ms@example.com",
       );
-      const { requestId, cookie, bundle } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "ms@example.com",
@@ -466,9 +570,18 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         }),
         bundle,
       );
-      const { view } = (await generated.json()) as {
-        view: { draft: { exercise_version_id: string } | null };
+      expect(generated.status).toBe(202);
+      await drainDraftGeneration(workflow, requestId);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      const { draft } = (await viewResponse.json()) as {
+        draft: { exercise_version_id: string } | null;
       };
+      const view = { draft };
       expect(view.draft?.exercise_version_id).toBeTruthy();
       const versionId = view.draft!.exercise_version_id;
       const missingId = testOpaqueEntityId("qa-media-missing");
@@ -513,12 +626,25 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
           return storage.batch(guarded);
         },
       };
-      const { requestId, cookie } = await createOpenRequest(
-        tracking,
-        practitioner,
-        "batch@example.com",
+      const {
+        deps: bundle,
+        cookie,
+        workflow,
+      } = deps(tracking, practitioner, "batch@example.com");
+      const created = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "QA batch guard",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
       );
-      const { deps: bundle } = deps(tracking, practitioner, "batch@example.com");
+      expect(created.status).toBe(200);
+      const { request_id: requestId } = (await created.json()) as {
+        request_id: string;
+      };
       const response = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
@@ -526,7 +652,12 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         }),
         bundle,
       );
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
       const row = await tracking.first<{ exercise_id: string | null }>(
         "SELECT exercise_id FROM exercise_requests WHERE id = ?",
         [requestId],

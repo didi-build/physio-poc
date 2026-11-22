@@ -19,3 +19,17 @@ export class FailingFakeImageGeneration extends FakeImageGeneration {
     return super.generateStartAndEndImages(input);
   }
 }
+
+/** Initial draft generation uses separate start/end calls, not generateStartAndEndImages. */
+export class FailingInitialDraftImageGeneration extends FailingFakeImageGeneration {
+  constructor(fail = true) {
+    super(fail);
+  }
+
+  override async generateStartImage(
+    startPrompt: string,
+  ): Promise<import("../../src/storage/ports/image-generation.js").GeneratedImage> {
+    void startPrompt;
+    throw new ImageGenerationError("image_generation_request_failed", 502);
+  }
+}

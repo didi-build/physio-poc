@@ -39,11 +39,12 @@ import {
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
+import { generateExerciseRequestDraft } from "./exercise-request-draft-generation.js";
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
-  generateExerciseRequestDraft,
   isLockFresh,
-} from "./exercise-request-draft-generation.js";
+} from "./draft-generation-lock.js";
+import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
@@ -470,25 +471,46 @@ export class ExerciseRequestsService {
     practitionerId: string;
     requestId: string;
     mediaService: ExerciseMediaService;
+    workflow?: DraftGenerationWorkflowPort;
   }): Promise<GenerateExerciseRequestDraftResult> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
     const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+    const loadView = (id: string) => this.loadDraftView(id);
+    const runDeps = {
+      sql: this.sql,
+      draftGenerator: this.draftGenerator,
+      now: this.now,
+      requests: this.requests,
+      exercises: this.exercises,
+      versions: this.versions,
+      versionMedia,
+    };
+    if (!input.workflow) {
+      const { runExerciseRequestDraftGeneration } =
+        await import("./run-exercise-request-draft-generation.js");
+      return runExerciseRequestDraftGeneration({
+        practitionerId: input.practitionerId,
+        requestId,
+        mediaService: input.mediaService,
+        loadView,
+        deps: runDeps,
+      });
+    }
     return generateExerciseRequestDraft({
       practitionerId: input.practitionerId,
       requestId,
       mediaService: input.mediaService,
-      loadView: (id) => this.buildDraftView(parseOpaqueId(id, "request_id")),
+      loadView,
       deps: {
-        sql: this.sql,
-        draftGenerator: this.draftGenerator,
-        now: this.now,
-        requests: this.requests,
-        exercises: this.exercises,
-        versions: this.versions,
-        versionMedia,
+        ...runDeps,
+        workflow: input.workflow,
       },
     });
+  }
+
+  async loadDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
+    return this.buildDraftView(parseOpaqueId(requestId, "request_id"));
   }
 
   private async buildDraftView(requestId: string): Promise<ExerciseRequestDraftView> {

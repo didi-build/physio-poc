@@ -6,7 +6,11 @@ import {
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
 import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
+import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
+import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import {
   openMigratedDatabase,
   seedPractitioner,
@@ -17,6 +21,10 @@ import {
   createTestPhysioMcpHttpHandler,
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import {
+  attachDraftGenerationTestWorkflow,
+  drainDraftGeneration,
+} from "./helpers/draft-generation-test-workflow.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -27,6 +35,41 @@ function authedJsonRequest(path: string, cookie: string, init: RequestInit): Req
   const headers = new Headers(withCsrf.headers);
   headers.set("cookie", cookie);
   return new Request(url, { ...withCsrf, headers });
+}
+
+function testDeps(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  email: string,
+  exerciseDraftGenerator: ReturnType<typeof createDeepInfraExerciseDraftGenerator>,
+) {
+  const auth = new FakeAuthPort({
+    practitioner: { practitionerId, email, displayName: "H" },
+  });
+  const objects = new InMemoryObjectStorage();
+  const baseDeps = {
+    sql: storage,
+    objects,
+    config: MCP_TEST_CONFIG,
+    auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+    exerciseDraftGenerator,
+  };
+  const requestService = new ExerciseRequestsService(baseDeps.sql, baseDeps.config, {
+    draftGenerator: exerciseDraftGenerator,
+  });
+  const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+    baseDeps,
+    (requestId) => requestService.loadDraftView(requestId),
+  );
+  return {
+    bundle,
+    workflow,
+    cookie: auth.createSessionCookieHeader(),
+    requestService,
+    objects,
+    practitionerId,
+  };
 }
 
 describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
@@ -40,28 +83,13 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
       );
       const fetchImpl = vi
         .fn()
-        .mockResolvedValueOnce(new Response("{}", { status: 503 }))
-        .mockResolvedValueOnce(new Response("{}", { status: 503 }));
+        .mockImplementation(() => new Response("{}", { status: 503 }));
       const generator = createDeepInfraExerciseDraftGenerator({
         apiKey: "key",
         fetchImpl,
       });
-      const auth = new FakeAuthPort({
-        practitioner: {
-          practitionerId: practitioner,
-          email: "h502@example.com",
-          displayName: "H",
-        },
-      });
-      const cookie = auth.createSessionCookieHeader();
-      const deps = {
-        sql: storage,
-        objects: new InMemoryObjectStorage(),
-        config: MCP_TEST_CONFIG,
-        auth,
-        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-        exerciseDraftGenerator: generator,
-      };
+      const { bundle, workflow, cookie, requestService, objects, practitionerId } =
+        testDeps(storage, practitioner, "h502@example.com", generator);
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -70,7 +98,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
             form_opened_at: FORM_OPENED,
           }),
         }),
-        deps,
+        bundle,
       );
       const createdBody = (await created.json()) as { request_id: string };
       const response = await handleRequest(
@@ -78,10 +106,33 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
           method: "POST",
           body: JSON.stringify({}),
         }),
-        deps,
+        bundle,
       );
-      expect(response.status).toBe(502);
-      const payload = await response.json();
+      expect(response.status).toBe(202);
+      await drainDraftGeneration(workflow, createdBody.request_id);
+
+      const secondCreated = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Upstream fail sync pin",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const secondBody = (await secondCreated.json()) as { request_id: string };
+      fetchImpl.mockClear();
+      const mediaService = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        new PrefixMediaStorage(objects),
+      );
+      const payload = await requestService.generateRequest({
+        practitionerId,
+        requestId: secondBody.request_id,
+        mediaService,
+      });
       const EXPECTED_UPSTREAM_FAIL = {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_request_failed",
@@ -120,44 +171,21 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         cue_concentric: null,
         cue_eccentric: null,
       };
-      const fetchImpl = vi
-        .fn()
-        .mockResolvedValueOnce(
+      const fetchImpl = vi.fn().mockImplementation(
+        () =>
           new Response(
             JSON.stringify({
               choices: [{ message: { content: JSON.stringify(emailAliasDraft) } }],
             }),
             { status: 200, headers: { "content-type": "application/json" } },
           ),
-        )
-        .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({
-              choices: [{ message: { content: JSON.stringify(emailAliasDraft) } }],
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
-        );
+      );
       const generator = createDeepInfraExerciseDraftGenerator({
         apiKey: "key",
         fetchImpl,
       });
-      const auth = new FakeAuthPort({
-        practitioner: {
-          practitionerId: practitioner,
-          email: "e01@example.com",
-          displayName: "E",
-        },
-      });
-      const cookie = auth.createSessionCookieHeader();
-      const deps = {
-        sql: storage,
-        objects: new InMemoryObjectStorage(),
-        config: MCP_TEST_CONFIG,
-        auth,
-        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-        exerciseDraftGenerator: generator,
-      };
+      const { bundle, workflow, cookie, requestService, objects, practitionerId } =
+        testDeps(storage, practitioner, "e01@example.com", generator);
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -166,7 +194,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
             form_opened_at: FORM_OPENED,
           }),
         }),
-        deps,
+        bundle,
       );
       const createdBody = (await created.json()) as { request_id: string };
       const response = await handleRequest(
@@ -174,10 +202,34 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
           method: "POST",
           body: JSON.stringify({}),
         }),
-        deps,
+        bundle,
       );
-      expect(response.status).toBe(502);
-      const payload = await response.json();
+      expect(response.status).toBe(202);
+      await drainDraftGeneration(workflow, createdBody.request_id);
+      expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+      const secondCreated = await handleRequest(
+        authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Email alias draft retry",
+            form_opened_at: FORM_OPENED,
+          }),
+        }),
+        bundle,
+      );
+      const secondBody = (await secondCreated.json()) as { request_id: string };
+      fetchImpl.mockClear();
+      const mediaService = new ExerciseMediaService(
+        storage,
+        new FakeImageGeneration(),
+        new PrefixMediaStorage(objects),
+      );
+      const payload = await requestService.generateRequest({
+        practitionerId,
+        requestId: secondBody.request_id,
+        mediaService,
+      });
       expect(payload).toMatchObject({
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_response_invalid",

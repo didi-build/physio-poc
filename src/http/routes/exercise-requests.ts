@@ -18,6 +18,11 @@ import {
   type SubmitResolution,
 } from "../../services/exercise-requests/index.js";
 import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
+import {
+  createInProcessDraftGenerationWorkflowPort,
+  draftGeneratorFromDeps,
+} from "../../services/exercise-requests/in-process-draft-generation-workflow.js";
+import type { DraftGenerationWorkflowPort } from "../../services/exercise-requests/draft-generation-workflow-types.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
 
@@ -34,6 +39,20 @@ function service(deps: AppDependencies): ExerciseRequestsService {
   return new ExerciseRequestsService(deps.sql, deps.config, {
     draftGenerator: deps.exerciseDraftGenerator,
   });
+}
+
+function resolveDraftGenerationWorkflow(
+  deps: AppDependencies,
+  requestService: ExerciseRequestsService,
+): DraftGenerationWorkflowPort {
+  if (deps.draftGenerationWorkflow) {
+    return deps.draftGenerationWorkflow;
+  }
+  return createInProcessDraftGenerationWorkflowPort(() => ({
+    deps,
+    loadView: (id) => requestService.loadDraftView(id),
+    draftGenerator: draftGeneratorFromDeps(deps),
+  }));
 }
 
 function errorResponse(error: unknown): Response {
@@ -312,10 +331,13 @@ export async function handleExerciseRequestsHttpRequest(
       new PrefixMediaStorage(deps.objects),
     );
     try {
-      const result = await service(deps).generateRequest({
+      const requestService = service(deps);
+      const workflow = resolveDraftGenerationWorkflow(deps, requestService);
+      const result = await requestService.generateRequest({
         practitionerId,
         requestId,
         mediaService,
+        workflow,
       });
       if (result.outcome === "complete") {
         return Response.json(result, { headers: JSON_HEADERS });

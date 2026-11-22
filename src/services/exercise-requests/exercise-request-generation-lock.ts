@@ -3,7 +3,7 @@ import { ExerciseRequestsRepository } from "../../storage/repositories/exercise-
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
   isLockFresh,
-} from "./exercise-request-draft-generation.js";
+} from "./draft-generation-lock.js";
 
 export type DraftGenerationLockOutcome<T> =
   | { kind: "in_progress"; view: ExerciseRequestDraftView; started_elsewhere: boolean }

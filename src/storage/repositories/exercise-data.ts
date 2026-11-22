@@ -790,6 +790,27 @@ export class ExerciseRequestsRepository {
     );
   }
 
+  async refreshDraftGenerationLock(input: {
+    requestId: string;
+    lockedAt: string;
+  }): Promise<void> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?
+       WHERE id = ? AND draft_generation_locked_at IS NOT NULL`,
+      [input.lockedAt, requestId],
+    );
+  }
+
+  async releaseDraftGenerationLockByRequestId(requestId: string): Promise<void> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    await this.sql.run(
+      `UPDATE exercise_requests SET draft_generation_locked_at = NULL WHERE id = ?`,
+      [id],
+    );
+  }
+
   async insert(input: {
     id: string;
     requestedName: string;

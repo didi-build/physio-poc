@@ -7,6 +7,11 @@ import {
   exerciseRequestPath,
 } from "../src/exercise-requests-api-paths.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  attachDraftGenerationTestWorkflow,
+  drainDraftGeneration,
+} from "./helpers/draft-generation-test-workflow.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -74,7 +79,7 @@ describe("DIDI-1276 empty-text pre-AI draft generate", () => {
           displayName: "Coach",
         },
       });
-      const bundle = {
+      const baseDeps = {
         sql: storage,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
@@ -84,6 +89,17 @@ describe("DIDI-1276 empty-text pre-AI draft generate", () => {
         exerciseMediaImages: new FakeImageGeneration(),
         extraRouteHandlers: [handleExerciseMediaRequest],
       };
+      const requestService = new ExerciseRequestsService(
+        baseDeps.sql,
+        baseDeps.config,
+        {
+          draftGenerator: fakeExerciseDraftGenerator,
+        },
+      );
+      const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+        baseDeps,
+        (rid) => requestService.loadDraftView(rid),
+      );
       const cookie = auth.createSessionCookieHeader();
 
       const generated = await handleRequest(
@@ -93,13 +109,17 @@ describe("DIDI-1276 empty-text pre-AI draft generate", () => {
         }),
         bundle,
       );
-      expect(generated.status).toBe(200);
+      expect(generated.status).toBe(202);
       const payload = (await generated.json()) as {
         outcome: string;
-        view: { generation: { first_draft_complete: boolean } };
+        started_elsewhere?: boolean;
       };
-      expect(payload.outcome).toBe("complete");
-      expect(payload.view.generation.first_draft_complete).toBe(true);
+      expect(payload.outcome).toBe("in_progress");
+      expect(payload).toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
 
       const version = await storage.first<{ description: string; steps: string }>(
         "SELECT description, steps FROM exercise_versions WHERE id = ?",

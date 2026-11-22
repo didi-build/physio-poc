@@ -9,6 +9,11 @@ import {
   exerciseRequestRegenerateTextPath,
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  attachDraftGenerationTestWorkflow,
+  drainDraftGeneration,
+} from "./helpers/draft-generation-test-workflow.js";
 import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
 import {
   createFakeExerciseDraftGenerator,
@@ -54,7 +59,7 @@ async function submitAndCompleteGenerate(
     practitioner: { practitionerId, email, displayName: "Coach" },
   });
   const cookie = auth.createSessionCookieHeader();
-  const bundle = {
+  const baseDeps = {
     sql: storage,
     objects: new InMemoryObjectStorage(),
     config: MCP_TEST_CONFIG,
@@ -63,6 +68,13 @@ async function submitAndCompleteGenerate(
     exerciseDraftGenerator,
     extraRouteHandlers: [handleExerciseMediaRequest],
   };
+  const requestService = new ExerciseRequestsService(baseDeps.sql, baseDeps.config, {
+    draftGenerator: exerciseDraftGenerator,
+  });
+  const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+    baseDeps,
+    (requestId) => requestService.loadDraftView(requestId),
+  );
   const created = await handleRequest(
     authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
       method: "POST",
@@ -81,8 +93,13 @@ async function submitAndCompleteGenerate(
     }),
     bundle,
   );
-  expect(generated.status).toBe(200);
-  return { requestId, cookie, bundle };
+  expect(generated.status).toBe(202);
+  await expect(generated.json()).resolves.toMatchObject({
+    outcome: "in_progress",
+    started_elsewhere: false,
+  });
+  await drainDraftGeneration(workflow, requestId);
+  return { requestId, cookie, bundle, workflow };
 }
 
 describe("Exercise request draft generation QA R3 (HTTP)", () => {
@@ -156,7 +173,7 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         },
       });
       const cookie = auth.createSessionCookieHeader();
-      const bundle = {
+      const baseDeps = {
         sql: storage,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
@@ -165,6 +182,17 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         exerciseDraftGenerator: fakeExerciseDraftGenerator,
         extraRouteHandlers: [handleExerciseMediaRequest],
       };
+      const requestService = new ExerciseRequestsService(
+        baseDeps.sql,
+        baseDeps.config,
+        {
+          draftGenerator: fakeExerciseDraftGenerator,
+        },
+      );
+      const { deps: bundle } = attachDraftGenerationTestWorkflow(
+        baseDeps,
+        (requestId) => requestService.loadDraftView(requestId),
+      );
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -326,7 +354,7 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         },
       });
       const cookie = auth.createSessionCookieHeader();
-      const bundle = {
+      const baseDeps = {
         sql: tracking,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
@@ -335,6 +363,17 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         exerciseDraftGenerator: fakeExerciseDraftGenerator,
         extraRouteHandlers: [handleExerciseMediaRequest],
       };
+      const requestService = new ExerciseRequestsService(
+        baseDeps.sql,
+        baseDeps.config,
+        {
+          draftGenerator: fakeExerciseDraftGenerator,
+        },
+      );
+      const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+        baseDeps,
+        (requestId) => requestService.loadDraftView(requestId),
+      );
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -355,7 +394,12 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         }),
         bundle,
       );
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
       const requestRow = await tracking.first<{ exercise_id: string | null }>(
         "SELECT exercise_id FROM exercise_requests WHERE id = ?",
         [requestId],
@@ -382,6 +426,7 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         id("pr-r3-m3"),
         "r3m3@example.com",
       );
+      const failGenerator = createFakeExerciseDraftGenerator({ failText: true });
       const auth = new FakeAuthPort({
         practitioner: {
           practitionerId: practitioner,
@@ -390,15 +435,26 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         },
       });
       const cookie = auth.createSessionCookieHeader();
-      const bundle = {
+      const baseDeps = {
         sql: storage,
         objects: new InMemoryObjectStorage(),
         config: MCP_TEST_CONFIG,
         auth,
         mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-        exerciseDraftGenerator: createFakeExerciseDraftGenerator({ failText: true }),
+        exerciseDraftGenerator: failGenerator,
         extraRouteHandlers: [handleExerciseMediaRequest],
       };
+      const requestService = new ExerciseRequestsService(
+        baseDeps.sql,
+        baseDeps.config,
+        {
+          draftGenerator: failGenerator,
+        },
+      );
+      const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+        baseDeps,
+        (requestId) => requestService.loadDraftView(requestId),
+      );
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -419,7 +475,12 @@ describe("Exercise request draft generation QA R3 (HTTP)", () => {
         }),
         bundle,
       );
-      expect(response.status).toBe(502);
+      expect(response.status).toBe(202);
+      await expect(response.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
+      await drainDraftGeneration(workflow, requestId);
       const row = await storage.first<{ exercise_id: string | null }>(
         "SELECT exercise_id FROM exercise_requests WHERE id = ?",
         [requestId],
