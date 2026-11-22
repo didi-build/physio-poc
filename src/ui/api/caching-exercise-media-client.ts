@@ -1,4 +1,5 @@
 import type { ExerciseMediaClient } from "./exercise-media-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import { invalidateAfterExerciseMediaRegeneration } from "./navigation-read-cache-invalidation.js";
 
 function afterRegeneration<T>(run: () => Promise<T>): Promise<T> {
@@ -12,9 +13,12 @@ function afterRegeneration<T>(run: () => Promise<T>): Promise<T> {
 export function wrapExerciseMediaClientWithCacheInvalidation(
   inner: ExerciseMediaClient,
 ): ExerciseMediaClient {
-  return {
+  const wrapped = {
     getRegenerationQuota: (options) => inner.getRegenerationQuota(options),
     regenerateDraftMedia: (input) =>
       afterRegeneration(() => inner.regenerateDraftMedia(input)),
-  } as ExerciseMediaClient;
+    draftStillObjectUrl: (exerciseVersionId, which, options) =>
+      inner.draftStillObjectUrl(exerciseVersionId, which, options),
+  } satisfies CacheWrappedClient<ExerciseMediaClient>;
+  return wrapped as ExerciseMediaClient;
 }

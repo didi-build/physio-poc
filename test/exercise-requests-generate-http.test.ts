@@ -260,6 +260,41 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
     }
   });
 
+  it("DIDI-1276 pinned: fresh lock during retry returns 202 in_progress", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-gen-retry-lock"),
+        "retry-lock@example.com",
+      );
+      const { bundle, cookie, requestId } = await submitAndGenerate(
+        storage,
+        practitioner,
+        "retry-lock@example.com",
+      );
+      const heldAt = new Date().toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [heldAt, requestId],
+      );
+      const retry = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        bundle,
+      );
+      expect(retry.status).toBe(202);
+      await expect(retry.json()).resolves.toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: true,
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns in_progress for a concurrent second generate while the lock is held", async () => {
     const storage = await openMigratedDatabase();
     try {

@@ -4,6 +4,7 @@ import type {
   RoutineMutationUndo,
 } from "../../services/routines/types.js";
 import type { RoutinesClient, RoutineDraftAutosaveInput } from "./routines-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import { invalidateAfterRoutineLibraryMutation } from "./navigation-read-cache-invalidation.js";
 
 function withRoutineInvalidation<T>(
@@ -19,7 +20,7 @@ function withRoutineInvalidation<T>(
 export function wrapRoutinesClientWithCacheInvalidation(
   inner: RoutinesClient,
 ): RoutinesClient {
-  return {
+  const wrapped = {
     searchCommunity: (params, options) => inner.searchCommunity(params, options),
     listMyRoutines: (params, options) => inner.listMyRoutines(params, options),
     getRoutineDetails: (routineId, options) =>
@@ -67,5 +68,6 @@ export function wrapRoutinesClientWithCacheInvalidation(
       ),
     getRoutineVersionHistory: (routineId, options) =>
       inner.getRoutineVersionHistory(routineId, options),
-  } as RoutinesClient;
+  } satisfies CacheWrappedClient<RoutinesClient>;
+  return wrapped as RoutinesClient;
 }

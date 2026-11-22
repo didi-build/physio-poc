@@ -36,7 +36,17 @@ function reviewButtonLabel(
 }
 
 function canReview(item: InProgressRequestListItem): boolean {
-  return item.status === "drafting" && item.exercise_id !== null;
+  return item.status === "drafting";
+}
+
+function listRowTag(item: InProgressRequestListItem): string {
+  if (item.status === "open") {
+    return AI_DRAFTING;
+  }
+  if (item.status === "drafting" && item.exercise_id === null) {
+    return AI_DRAFTING;
+  }
+  return DRAFT_NOT_APPROVED;
 }
 
 export function RequestsAndDraftsPage() {
@@ -124,11 +134,15 @@ export function RequestsAndDraftsPage() {
                 <div className="ex-requests-row-body">
                   <h2 className="ex-requests-row-title">{title}</h2>
                   <div className="ex-requests-row-tags">
-                    {item.status === "open" ? (
-                      <span className="ex-tag ex-tag--drafting">{AI_DRAFTING}</span>
-                    ) : (
-                      <span className="ex-tag ex-tag--draft">{DRAFT_NOT_APPROVED}</span>
-                    )}
+                    <span
+                      className={
+                        listRowTag(item) === AI_DRAFTING
+                          ? "ex-tag ex-tag--drafting"
+                          : "ex-tag ex-tag--draft"
+                      }
+                    >
+                      {listRowTag(item)}
+                    </span>
                   </div>
                   {by.length > 0 ? (
                     <p className="ex-requests-row-meta">

@@ -73,7 +73,11 @@ export function RequestConflictPage() {
       return;
     }
     if (result.outcome === "created") {
-      navigate(fillPhysioAppRoutePattern("requests"));
+      navigate(
+        fillPhysioAppRoutePattern("requestReview", {
+          requestId: result.request_id,
+        }),
+      );
     }
   };
 

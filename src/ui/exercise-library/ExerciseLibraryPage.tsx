@@ -168,6 +168,7 @@ export function ExerciseLibraryPage({
   );
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
+  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
   const location = useLocation();
 
@@ -264,6 +265,7 @@ export function ExerciseLibraryPage({
     if (q.trim()) {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setSubmittedRequestId(null);
       setReqExerciseName(q.trim());
     } else {
       setReqExerciseName("");
@@ -336,6 +338,7 @@ export function ExerciseLibraryPage({
     if (tab === "all") {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setSubmittedRequestId(null);
       setReqExerciseName(value.trim());
       if (value.trim()) {
         setSearchParams({ q: value.trim() });
@@ -384,6 +387,7 @@ export function ExerciseLibraryPage({
       }
       if (result.outcome === "created") {
         setSubmittedRequestName(requestedName);
+        setSubmittedRequestId(result.request_id);
         onRequestsChanged?.();
         void refreshInProgressCount();
       }
@@ -673,7 +677,13 @@ export function ExerciseLibraryPage({
                 <RequestSubmittedPanel
                   exerciseName={submittedRequestName}
                   onViewRequest={() => {
-                    navigate(fillPhysioAppRoutePattern("requests"));
+                    if (submittedRequestId) {
+                      navigate(
+                        fillPhysioAppRoutePattern("requestReview", {
+                          requestId: submittedRequestId,
+                        }),
+                      );
+                    }
                   }}
                 />
               ) : (
