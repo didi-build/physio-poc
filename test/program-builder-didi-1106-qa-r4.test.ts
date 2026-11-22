@@ -259,6 +259,47 @@ describe("DIDI-1106 QA R4 program builder (D9, L8, R7, R8, E1)", () => {
     }
   });
 
+  it("E1 maps a failed type-mismatch link batch to invalid_input at HTTP", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const owner = await seedPractitioner(storage, id("ph-e1h"), "e1h@example.com");
+      const programId = id("prog-e1h");
+      const rowId = id("row-e1h");
+      const reqId = id("req-e1h");
+      const { draftUpdatedAt } = await seedTypeMismatchRow(
+        storage,
+        owner,
+        programId,
+        rowId,
+        reqId,
+      );
+      await storage.run(
+        `UPDATE exercise_requests SET exercise_id = NULL WHERE id = ?`,
+        [reqId],
+      );
+      const { deps, cookie } = apiDeps(storage, owner);
+      const url = `${BASE}${programRowLinkTypeMismatchPath(programId, rowId)}`;
+      const response = await handleRequest(
+        new Request(
+          url,
+          mutatingAppApiRequestInit(url, {
+            method: "POST",
+            headers: { cookie, "content-type": "application/json" },
+            body: JSON.stringify({
+              prescription_type: "stretching",
+              draft_updated_at: draftUpdatedAt,
+            }),
+          }),
+        ),
+        deps,
+      );
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(INVALID_INPUT_BODY);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("E1 maps a failed type-mismatch link batch through mapRowWriteError", async () => {
     const storage = await openMigratedDatabase();
     try {
