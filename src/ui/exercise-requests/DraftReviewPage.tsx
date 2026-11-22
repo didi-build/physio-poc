@@ -164,7 +164,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   };
   const firstDraftComplete = generationMeta.first_draft_complete;
   const generationInProgress = generationMeta.generation_in_progress;
-  const showAiStrip = !firstDraftComplete && generationFailure !== "daily";
+  const showAiStrip =
+    !firstDraftComplete &&
+    generationFailure !== "daily" &&
+    generationFailure !== "text" &&
+    generationFailure !== "images";
 
   const applyGenerateResult = useCallback(
     (result: Awaited<ReturnType<typeof requestsClient.generateRequest>>) => {
@@ -208,11 +212,18 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         void refreshView({ force: true });
       }
     } catch {
-      setGenerationFailure("text");
+      const draftText = view?.draft;
+      const hasDraftText = Boolean(
+        draftText &&
+        (draftText.description.trim().length > 0 ||
+          draftText.starting_position.trim().length > 0 ||
+          draftText.steps.trim().length > 0),
+      );
+      setGenerationFailure(hasDraftText ? "images" : "text");
     } finally {
       setOwnGenerateInFlight(false);
     }
-  }, [applyGenerateResult, requestId, requestsClient, refreshView]);
+  }, [applyGenerateResult, requestId, requestsClient, refreshView, view?.draft]);
 
   useEffect(() => {
     setViewOverride(null);
@@ -360,6 +371,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setRegenNotePatientError(null);
     try {
       if (regenMode === "general" && (regenPick === "text" || regenPick === "all")) {
+        setGenerationFailure(null);
         setTextRegenBusy(true);
         let result;
         try {
@@ -471,7 +483,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   });
   const detailsGenerating = !draft;
   const imagesGenerating =
-    Boolean(draft) && !firstDraftComplete && generationFailure !== "images";
+    Boolean(draft) &&
+    !firstDraftComplete &&
+    generationFailure !== "images" &&
+    (generationFailure !== "text" || ownGenerateInFlight);
+  const detailsBusyGenerating = detailsGenerating;
   const canEdit = firstDraftComplete;
   const toolbarEnabled = firstDraftComplete && !regenBusy;
 
@@ -559,6 +575,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           message={DRAFT_AI_TEXT_FAILURE}
           actionLabel={DRAFT_REGENERATE_TEXT}
           onRetry={() => {
+            setGenerationFailure(null);
             generateStarted.current = true;
             void runGenerate();
           }}
@@ -573,7 +590,9 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                 {DRAFT_AI_IMAGE_FAILURE}
               </p>
             ) : null}
-            {imagesGenerating || !draft ? (
+            {imagesGenerating ||
+            !draft ||
+            (ownGenerateInFlight && generationFailure === null) ? (
               <p className="ex-requests-wait" role="status">
                 {GENERATING}
               </p>
@@ -645,7 +664,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
               <h2 className="ex-section-title">{EXERCISE_DETAILS}</h2>
               {canEdit ? <span className="ex-muted">{EDIT_ALL}</span> : null}
             </div>
-            {detailsGenerating ? (
+            {detailsBusyGenerating ? (
               <p className="ex-requests-wait" role="status">
                 {GENERATING}
               </p>

@@ -1,4 +1,5 @@
 import type { ProgramsClient } from "./programs-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import {
   invalidateAfterProgramBuilderMutation,
   invalidateAfterProgramsListMutation,
@@ -15,7 +16,7 @@ function withProgramsListInvalidation<T>(run: () => Promise<T>): Promise<T> {
 export function wrapProgramsClientWithCacheInvalidation(
   inner: ProgramsClient,
 ): ProgramsClient {
-  return {
+  const wrapped = {
     listPrograms: (searchQuery, originFilter, options) =>
       inner.listPrograms(searchQuery, originFilter, options),
     getProgramByCode: (programCode, options) =>
@@ -101,5 +102,6 @@ export function wrapProgramsClientWithCacheInvalidation(
         invalidateAfterProgramBuilderMutation(view.program_code);
         return view;
       }),
-  } as ProgramsClient;
+  } satisfies CacheWrappedClient<ProgramsClient>;
+  return wrapped as ProgramsClient;
 }

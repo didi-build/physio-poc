@@ -1,4 +1,5 @@
 import type { MyDefaultsClient } from "./my-defaults-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import { invalidateAfterMyDefaultsMutation } from "./navigation-read-cache-invalidation.js";
 
 function afterMyDefaultsMutation<T>(run: () => Promise<T>): Promise<T> {
@@ -12,7 +13,7 @@ function afterMyDefaultsMutation<T>(run: () => Promise<T>): Promise<T> {
 export function wrapMyDefaultsClientWithCacheInvalidation(
   inner: MyDefaultsClient,
 ): MyDefaultsClient {
-  return {
+  const wrapped = {
     getPage: (options) => inner.getPage(options),
     updateShareLinkExpiry: (expiresIn) =>
       afterMyDefaultsMutation(() => inner.updateShareLinkExpiry(expiresIn)),
@@ -20,5 +21,6 @@ export function wrapMyDefaultsClientWithCacheInvalidation(
       afterMyDefaultsMutation(() => inner.upsertTypeDefault(type, params)),
     resetTypeDefault: (type) =>
       afterMyDefaultsMutation(() => inner.resetTypeDefault(type)),
-  } as MyDefaultsClient;
+  } satisfies CacheWrappedClient<MyDefaultsClient>;
+  return wrapped as MyDefaultsClient;
 }
