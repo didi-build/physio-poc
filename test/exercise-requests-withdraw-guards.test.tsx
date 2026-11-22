@@ -1,8 +1,11 @@
 /**
- * Guards for DIDI-1278 QA R3 named mutants (integration + unit).
- * @vitest-environment jsdom (focus + layout cases)
+ * Guards for DIDI-1278 withdraw / delete-draft behavior (integration + UI).
+ * @vitest-environment jsdom (focus + draft load cases)
  */
+import "./ui/setup.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { handleRequest } from "../src/http/app.js";
 import {
   exerciseRequestWithdrawPath,
@@ -28,11 +31,19 @@ import {
 } from "../src/ui/api/exercise-requests-client.js";
 import { focusAfterRequestsListDelete } from "../src/ui/exercise-requests/requests-list-delete-focus.js";
 import {
+  DRAFT_ITEM_LOAD_BACK,
+  DRAFT_ITEM_LOAD_HINT,
   DRAFT_ITEM_LOAD_TITLE,
   LOAD_TRY_AGAIN,
+  LOAD_TRYING_AGAIN,
 } from "../src/ui/copy/shared-load-states.js";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import { fillPhysioAppRoutePattern } from "../src/app-routes.js";
+import { PhysioApp } from "../src/ui/App.js";
+import { ToastProvider } from "../src/ui/components/Toast.js";
+import type { ExerciseLibraryClient } from "../src/ui/api/exercise-library-client.js";
+import type { ProgramsClient } from "../src/ui/api/programs-client.js";
+import { ExerciseMediaClient } from "../src/ui/api/exercise-media-client.js";
+import { stubPractitionerSessionClient } from "./ui/fake-practitioner-session-fixture.js";
 
 const BASE = "https://physio.test.example";
 
@@ -67,7 +78,7 @@ function deps(
   };
 }
 
-describe("DIDI-1278 QA R3 mutant guards", () => {
+describe("exercise request withdraw guards", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = "";
@@ -217,23 +228,148 @@ describe("DIDI-1278 QA R3 mutant guards", () => {
     expect(init?.method).toBe("POST");
   });
 
-  it("L1: draft item load title string matches design copy", () => {
-    expect(DRAFT_ITEM_LOAD_TITLE).toBe("Couldn't load this draft.");
+  it("L1: draft review load failure shows the design load title (rendered)", async () => {
+    const getRequest = vi.fn().mockRejectedValue(
+      Object.assign(new Error("server"), {
+        status: 500,
+        detail: { error: "server_error" },
+      }),
+    );
+    const requestsClient = {
+      getRequest,
+      getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      listSimilar: vi
+        .fn()
+        .mockResolvedValue({ library_matches: [], drafts_in_progress: [] }),
+    } as unknown as ExerciseRequestsClient;
+    const libraryClient = {
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: { new_from_requests: [], pinned: [], recently_used_and_saved: [] },
+      }),
+      searchApproved: vi.fn().mockResolvedValue({
+        exercises: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+      }),
+    } as unknown as ExerciseLibraryClient;
+    const programsClient = {
+      listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+      listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as ProgramsClient;
+    const { render } = await import("@testing-library/react");
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-l1" }),
+        ]}
+      >
+        <ToastProvider>
+          <PhysioApp
+            practitionerSessionClient={stubPractitionerSessionClient()}
+            exerciseRequestsClient={requestsClient}
+            exerciseLibraryClient={libraryClient}
+            exerciseMediaClient={
+              {
+                getRegenerationQuota: vi.fn().mockResolvedValue({
+                  remaining: 3,
+                  limitReached: false,
+                }),
+              } as unknown as ExerciseMediaClient
+            }
+            programsClient={programsClient}
+          />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(DRAFT_ITEM_LOAD_TITLE)).toBeInTheDocument();
+    });
+    expect(screen.getByText(DRAFT_ITEM_LOAD_HINT)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: DRAFT_ITEM_LOAD_BACK }),
+    ).toBeInTheDocument();
+  });
+
+  it("L2: draft review load retry shows Try again, not Trying again... (rendered)", async () => {
+    const getRequest = vi.fn().mockRejectedValue(
+      Object.assign(new Error("server"), {
+        status: 500,
+        detail: { error: "server_error" },
+      }),
+    );
+    const requestsClient = {
+      getRequest,
+      getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
+      listInProgress: vi.fn().mockResolvedValue({ requests: [], in_progress_count: 0 }),
+      listSimilar: vi
+        .fn()
+        .mockResolvedValue({ library_matches: [], drafts_in_progress: [] }),
+    } as unknown as ExerciseRequestsClient;
+    const libraryClient = {
+      listMyExercises: vi.fn().mockResolvedValue({
+        list_state: "ok",
+        sections: { new_from_requests: [], pinned: [], recently_used_and_saved: [] },
+      }),
+      searchApproved: vi.fn().mockResolvedValue({
+        exercises: [],
+        next_cursor: null,
+        search_link: null,
+        total_count: 0,
+      }),
+    } as unknown as ExerciseLibraryClient;
+    const programsClient = {
+      listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+      listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as ProgramsClient;
+    const { render } = await import("@testing-library/react");
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("requestReview", { requestId: "req-l2" }),
+        ]}
+      >
+        <ToastProvider>
+          <PhysioApp
+            practitionerSessionClient={stubPractitionerSessionClient()}
+            exerciseRequestsClient={requestsClient}
+            exerciseLibraryClient={libraryClient}
+            exerciseMediaClient={
+              {
+                getRegenerationQuota: vi.fn().mockResolvedValue({
+                  remaining: 3,
+                  limitReached: false,
+                }),
+              } as unknown as ExerciseMediaClient
+            }
+            programsClient={programsClient}
+          />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: LOAD_TRY_AGAIN })).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("button", { name: LOAD_TRYING_AGAIN }),
+    ).not.toBeInTheDocument();
   });
 
   it("N5/F1: focusAfterRequestsListDelete focuses the row after the deleted index, not the first review link", () => {
     const listRoot = document.createElement("div");
     listRoot.innerHTML = `
-      <motion.article data-testid="ex-requests-row-focus">
+      <article data-testid="ex-requests-row-focus">
         <a data-testid="ex-requests-review-row-0" href="#0">R0</a>
-      </motion.article>
-      <motion.article data-testid="ex-requests-row-focus">
+      </article>
+      <article data-testid="ex-requests-row-focus">
         <a data-testid="ex-requests-review-row-1" href="#1">R1</a>
-      </motion.article>
-      <motion.article data-testid="ex-requests-row-focus">
+      </article>
+      <article data-testid="ex-requests-row-focus">
         <a data-testid="ex-requests-review-row-2" href="#2">R2</a>
-      </motion.article>
-    `.replaceAll("motion.", "");
+      </article>
+    `;
     document.body.append(listRoot);
     const heading = document.createElement("h1");
     const row0Review = listRoot.querySelector<HTMLElement>(
@@ -251,14 +387,6 @@ describe("DIDI-1278 QA R3 mutant guards", () => {
     });
     expect(focusRow1).toHaveBeenCalled();
     expect(focusRow0).not.toHaveBeenCalled();
-  });
-
-  it("Q1: review quota uses margin-left auto for toolbar right alignment", () => {
-    const css = readFileSync(
-      path.resolve(import.meta.dirname, "../src/ui/styles/exercise-library.css"),
-      "utf8",
-    );
-    expect(css).toMatch(/\.ex-review-quota\s*\{[^}]*margin-left:\s*auto/);
   });
 
   it("S14: in-progress list reports generation_in_progress from lock freshness", async () => {
@@ -289,12 +417,5 @@ describe("DIDI-1278 QA R3 mutant guards", () => {
     } finally {
       storage.close();
     }
-  });
-});
-
-describe("DIDI-1278 QA R3 copy guards", () => {
-  it("L2: load Try again label is not the in-progress label when idle", () => {
-    expect(LOAD_TRY_AGAIN).toBe("Try again");
-    expect(LOAD_TRY_AGAIN).not.toBe("Trying again...");
   });
 });
