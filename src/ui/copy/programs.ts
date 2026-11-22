@@ -285,7 +285,6 @@ export function listCountLabel(total: number, visible?: number): string | null {
 /** mockups/01 and 29 (approved copy, CTO 12c15756). */
 export const LIBRARY_UPDATES_TO_REVIEW_SINGULAR = "1 library update to review";
 
-/** design/app/programs/spec.md States table line 23 for counts 2+. */
 export function libraryUpdatesToReviewFlag(count: number): string | null {
   if (count <= 0) {
     return null;

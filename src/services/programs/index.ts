@@ -16,6 +16,8 @@ export {
   type PublicShareLinkView,
 } from "./program-publish-service.js";
 export { validateExerciseParamsForPrescriptionType } from "../../domain/exercise-params.js";
+export { derivePlaceholderState } from "./placeholder-state.js";
+export type { PlaceholderState } from "./placeholder-state.js";
 export type {
   ProgramAutoSaveStatus,
   ProgramBuilderRow,
@@ -23,7 +25,9 @@ export type {
   ProgramLibraryUpdatePrompt,
   ProgramListItem,
   ProgramMutationResult,
+  ProgramMutationWithUndoResult,
   ProgramOriginFilter,
+  ProgramPlaceholderTypeMismatchUndo,
   ProgramRoutineOriginView,
   ProgramSearchResult,
   RoutineProgramSource,

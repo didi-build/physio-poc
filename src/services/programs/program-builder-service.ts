@@ -24,6 +24,10 @@ import {
   parseProgramRowTextSnapshotJson,
   type ProgramRowTextSnapshot,
 } from "../../domain/program-types.js";
+import {
+  embedTypeMismatchUndoInTextSnapshotJson,
+  readTypeMismatchUndoFromTextSnapshotJson,
+} from "../../domain/type-mismatch-undo-snapshot.js";
 import * as programCodeDomain from "../../domain/program-code.js";
 import type {
   SqlBatchStatement,
@@ -41,6 +45,7 @@ import {
 import { ExerciseMediaSetsRepository } from "../../storage/repositories/exercise-media.js";
 import { exerciseVersionLacksStartOrEndImage } from "../../domain/exercise-publish-media.js";
 import { isSqlDuplicateIdError } from "../../storage/errors/sql-duplicate-id-error.js";
+import { SqlBatchGuardError } from "../../storage/errors/sql-batch-error.js";
 import {
   PROGRAM_RESTORE_AND_PURGE_WINDOW_MS,
   PROGRAM_ID_ALREADY_IN_USE,
@@ -68,6 +73,7 @@ import {
   parsePractitionerTextOverrides,
   resolveParamsForProgramRow,
 } from "./row-resolution.js";
+import { derivePlaceholderState } from "./placeholder-state.js";
 import type {
   ProgramAutoSaveStatus,
   ProgramBuilderRow,
@@ -75,7 +81,9 @@ import type {
   ProgramLibraryUpdatePrompt,
   ProgramListItem,
   ProgramMutationResult,
+  ProgramMutationWithUndoResult,
   ProgramOriginFilter,
+  ProgramPlaceholderTypeMismatchUndo,
   ProgramSearchResult,
   RoutineProgramSource,
   RoutineSentProgramStats,
@@ -758,6 +766,168 @@ export class ProgramBuilderService {
     return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
   }
 
+  async linkTypeMismatchPlaceholderRow(
+    practitionerId: string,
+    programId: string,
+    rowId: string,
+    prescriptionType: PrescriptionType,
+    expectedDraftUpdatedAt?: string | null,
+  ): Promise<ProgramMutationWithUndoResult> {
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    const targetType = this.parsePrescriptionTypeLiteral(prescriptionType);
+    const program = await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    this.assertProgramDraftFresh(program, expectedDraftUpdatedAt);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
+    if (!row.exercise_request_id || row.exercise_id || row.exercise_version_id) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const requestId = row.exercise_request_id;
+    const request = await this.exerciseRequests.findById(requestId);
+    this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
+    if (!request || derivePlaceholderState(request.status) !== "type_mismatch") {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    if (!request.exercise_id) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const version = await this.libraryRead.getLatestApprovedByExerciseId(
+      request.exercise_id,
+    );
+    if (!version) {
+      throw new ProgramBuilderServiceError("Exercise not found", "exercise_not_found");
+    }
+    this.assertPrescriptionAllowed(version, targetType);
+    const preLinkTextSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
+    const preLinkParams = parseExerciseParamsJson(row.params_json);
+    const undo: ProgramPlaceholderTypeMismatchUndo = {
+      kind: "placeholder_type_mismatch_link",
+      row_id: row.id,
+      exercise_request_id: requestId,
+      prescription_type: row.prescription_type,
+      params: preLinkParams,
+      note: row.note,
+      text_snapshot: preLinkTextSnapshot,
+    };
+    const resolved = await this.resolveRowDefaults(
+      program.created_by,
+      version,
+      targetType,
+    );
+    const params = filterExerciseParamsForPrescriptionType(preLinkParams, targetType);
+    const publicTextSnapshot = buildProgramRowTextSnapshot({
+      version,
+      overrides: resolved.overrides,
+      prescriptionType: targetType,
+    });
+    const textSnapshotJson = embedTypeMismatchUndoInTextSnapshotJson(
+      publicTextSnapshot,
+      {
+        exercise_request_id: requestId,
+        prescription_type: row.prescription_type,
+        params: preLinkParams,
+        note: row.note,
+        text_snapshot: preLinkTextSnapshot,
+      },
+    );
+    const draftUpdatedAt = this.now();
+    const statements = this.rows.buildTypeMismatchLinkBatchStatements({
+      programId: validatedProgramId,
+      rowId: row.id,
+      exerciseRequestId: requestId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      prescriptionType: targetType,
+      params,
+      textSnapshotJson,
+      draftUpdatedAt,
+      touchDraft: !program.deleted_at,
+    });
+    try {
+      await this.sql.batch(statements);
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
+    return {
+      program: await this.buildProgramView(practitionerId, validatedProgramId),
+      undo,
+    };
+  }
+
+  /**
+   * Reverts a type-mismatch link using the undo snapshot embedded in the linked row's
+   * text_snapshot_json. Callers must pass draft_updated_at so concurrent draft edits
+   * reject undo (stale_write) instead of restoring over newer program state.
+   */
+  async undoTypeMismatchPlaceholderLink(
+    practitionerId: string,
+    programId: string,
+    rowId: string,
+    expectedDraftUpdatedAt?: string | null,
+  ): Promise<ProgramMutationResult> {
+    const validatedProgramId = this.parseOpaqueId(programId, "Program id");
+    const validatedRowId = this.parseOpaqueId(rowId, "Program row id");
+    const program = await this.requireOwnedProgram(practitionerId, validatedProgramId);
+    this.assertProgramDraftFresh(program, expectedDraftUpdatedAt);
+    const row = await this.requireOwnedRow(validatedProgramId, validatedRowId);
+    if (
+      !row.exercise_id ||
+      row.exercise_version_id === null ||
+      row.exercise_request_id
+    ) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const storedUndo = readTypeMismatchUndoFromTextSnapshotJson(row.text_snapshot_json);
+    if (!storedUndo) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const request = await this.exerciseRequests.findById(
+      storedUndo.exercise_request_id,
+    );
+    this.assertExerciseRequestOwnedByPractitioner(practitionerId, request);
+    if (
+      !request ||
+      request.status !== "approved" ||
+      request.exercise_id !== row.exercise_id
+    ) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const title = request.requested_name.trim();
+    if (storedUndo.text_snapshot.title !== title) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
+    const params = filterExerciseParamsForPrescriptionType(
+      storedUndo.params,
+      storedUndo.prescription_type,
+    );
+    try {
+      validateExerciseParamsForPrescriptionType(
+        storedUndo.params,
+        storedUndo.prescription_type,
+      );
+    } catch (err) {
+      this.mapParamError(err);
+    }
+    try {
+      await this.rows.replaceRow({
+        id: row.id,
+        programId: validatedProgramId,
+        position: row.position,
+        exerciseRequestId: storedUndo.exercise_request_id,
+        prescriptionType: storedUndo.prescription_type,
+        params,
+        textSnapshot: storedUndo.text_snapshot,
+        note: storedUndo.note,
+        draftUpdatedAt: this.now(),
+      });
+    } catch (err) {
+      this.mapRowWriteError(err);
+    }
+    await this.markRoutineOriginTweakedAfterEdit(validatedProgramId);
+    return { program: await this.buildProgramView(practitionerId, validatedProgramId) };
+  }
+
   async removeRow(
     practitionerId: string,
     programId: string,
@@ -947,13 +1117,24 @@ export class ProgramBuilderService {
     const program = await this.programs.findById(programId);
     this.assertProgramAccess(practitionerId, program, options);
     const rows = program.deleted_at ? [] : await this.rows.listForProgram(programId);
+    const requestIds = rows
+      .map((row) => row.exercise_request_id)
+      .filter((id): id is string => id !== null);
+    const requestsById = await this.exerciseRequests.findManyByIds(requestIds);
+    const approvedCategoryByRequestId =
+      await this.loadApprovedCategoryByRequestId(requestsById);
+    const placeholderContext = { requestsById, approvedCategoryByRequestId };
     const builderRows: ProgramBuilderRow[] = [];
     let libraryUpdates = 0;
+    let typeMismatchCount = 0;
     for (const row of rows) {
-      const built = await this.toBuilderRow(practitionerId, row);
+      const built = await this.toBuilderRow(practitionerId, row, placeholderContext);
       builderRows.push(built);
       if (built.library_update) {
         libraryUpdates += 1;
+      }
+      if (built.placeholder_state === "type_mismatch") {
+        typeMismatchCount += 1;
       }
     }
     const openLink = program.deleted_at
@@ -972,6 +1153,7 @@ export class ProgramBuilderService {
       draft_saved_at: program.draft_updated_at,
       exercise_count: builderRows.length,
       library_updates_to_review: libraryUpdates,
+      type_mismatch_placeholder_count: typeMismatchCount,
       rows: builderRows,
       open_share_link: openShareLink,
       share_link_status: computeShareLinkStatus({
@@ -999,6 +1181,7 @@ export class ProgramBuilderService {
       draft_updated_at: view.draft_updated_at,
       auto_save_status: view.auto_save_status,
       library_updates_to_review: view.library_updates_to_review,
+      type_mismatch_placeholder_count: view.type_mismatch_placeholder_count,
       share_link_status: view.share_link_status,
       last_sent_at: view.last_sent_at,
       deleted_at: view.deleted_at,
@@ -1006,9 +1189,50 @@ export class ProgramBuilderService {
     };
   }
 
+  private async loadApprovedCategoryByRequestId(
+    requestsById: Map<
+      string,
+      {
+        status: import("../../domain/exercise-types.js").ExerciseRequestStatus;
+        exercise_id: string | null;
+      }
+    >,
+  ): Promise<Map<string, "strengthening" | "stretching">> {
+    const categories = new Map<string, "strengthening" | "stretching">();
+    const exerciseIds: string[] = [];
+    const requestIdsByExercise = new Map<string, string[]>();
+    for (const [requestId, request] of requestsById) {
+      if (request.status !== "approved" || !request.exercise_id) {
+        continue;
+      }
+      exerciseIds.push(request.exercise_id);
+      const list = requestIdsByExercise.get(request.exercise_id) ?? [];
+      list.push(requestId);
+      requestIdsByExercise.set(request.exercise_id, list);
+    }
+    const versions = await this.libraryRead.getLatestApprovedByExerciseIds(exerciseIds);
+    for (const [exerciseId, version] of versions) {
+      const category: "strengthening" | "stretching" =
+        version.category === "stretch" ? "stretching" : "strengthening";
+      for (const requestId of requestIdsByExercise.get(exerciseId) ?? []) {
+        categories.set(requestId, category);
+      }
+    }
+    return categories;
+  }
+
   private async toBuilderRow(
     practitionerId: string,
     row: ProgramRow,
+    placeholderContext: {
+      requestsById: Map<
+        string,
+        {
+          status: import("../../domain/exercise-types.js").ExerciseRequestStatus;
+        }
+      >;
+      approvedCategoryByRequestId: Map<string, "strengthening" | "stretching">;
+    },
   ): Promise<ProgramBuilderRow> {
     const textSnapshot = this.parseRowTextSnapshot(row.text_snapshot_json);
     const params = parseExerciseParamsJson(row.params_json);
@@ -1021,6 +1245,14 @@ export class ProgramBuilderService {
         resolved.params,
         row.prescription_type,
       );
+      const request = placeholderContext.requestsById.get(row.exercise_request_id);
+      const placeholder_state = request
+        ? derivePlaceholderState(request.status)
+        : "awaiting_approval";
+      const type_mismatch_approved_category =
+        placeholder_state === "type_mismatch"
+          ? placeholderContext.approvedCategoryByRequestId.get(row.exercise_request_id)
+          : undefined;
       return {
         id: row.id,
         position: row.position,
@@ -1039,6 +1271,8 @@ export class ProgramBuilderService {
         library_update: null,
         exercise_version_choices: [],
         lacks_start_or_end_image: false,
+        placeholder_state,
+        ...(type_mismatch_approved_category ? { type_mismatch_approved_category } : {}),
       };
     }
     const pinned = await this.libraryRead.getApprovedVersionById(
@@ -1303,6 +1537,9 @@ export class ProgramBuilderService {
   }
 
   private mapRowWriteError(err: unknown): never {
+    if (err instanceof SqlBatchGuardError) {
+      throw new ProgramBuilderServiceError("invalid_input", "invalid_input");
+    }
     if (err instanceof FreeTextValidationError) {
       this.mapFreeTextError(err);
     }
@@ -1654,6 +1891,21 @@ export class ProgramBuilderService {
     }
     if (program.deleted_at && !options?.allowDeleted) {
       throw new ProgramBuilderServiceError("Program not found", "program_not_found");
+    }
+  }
+
+  private assertProgramDraftFresh(
+    program: ProgramRecord,
+    expectedDraftUpdatedAt?: string | null,
+  ): void {
+    if (expectedDraftUpdatedAt === undefined) {
+      return;
+    }
+    if (
+      typeof expectedDraftUpdatedAt !== "string" ||
+      program.draft_updated_at !== expectedDraftUpdatedAt
+    ) {
+      throw new ProgramBuilderServiceError("Stale write", "stale_write");
     }
   }
 

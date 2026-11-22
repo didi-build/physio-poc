@@ -1093,6 +1093,70 @@ export class ProgramRowsRepository {
    * UPDATE runs. For approve plus link in one batch, run the approval UPDATE
    * before these statements in the same batch.
    */
+  buildTypeMismatchLinkBatchStatements(input: {
+    programId: string;
+    rowId: string;
+    exerciseRequestId: string;
+    exerciseId: string;
+    exerciseVersionId: string;
+    prescriptionType: PrescriptionType;
+    params: ExerciseParams;
+    textSnapshotJson: string;
+    draftUpdatedAt: string;
+    touchDraft: boolean;
+  }): SqlBatchStatement[] {
+    const programId = validateOpaqueEntityId(input.programId, "Program id");
+    const rowId = validateOpaqueEntityId(input.rowId, "Program row id");
+    const exerciseRequestId = validateOpaqueEntityId(
+      input.exerciseRequestId,
+      "Exercise request id",
+    );
+    const exerciseId = validateOpaqueEntityId(input.exerciseId, "Exercise id");
+    const exerciseVersionId = validateOpaqueEntityId(
+      input.exerciseVersionId,
+      "Exercise version id",
+    );
+    const paramsJson = JSON.stringify(validateExerciseParams(input.params));
+    const update: SqlBatchStatement = {
+      sql: `UPDATE program_rows SET
+        exercise_id = ?,
+        exercise_version_id = ?,
+        exercise_request_id = NULL,
+        prescription_type = ?,
+        params_json = ?,
+        text_snapshot_json = ?
+      WHERE id = ? AND program_id = ? AND exercise_request_id = ?
+        AND exercise_id IS NULL AND exercise_version_id IS NULL
+        AND EXISTS (
+          SELECT 1 FROM exercise_requests er
+          WHERE er.id = ? AND er.exercise_id = ? AND er.status = 'approved'
+        )`,
+      bindings: [
+        exerciseId,
+        exerciseVersionId,
+        input.prescriptionType,
+        paramsJson,
+        input.textSnapshotJson,
+        rowId,
+        programId,
+        exerciseRequestId,
+        exerciseRequestId,
+        exerciseId,
+      ],
+      minRowsAffected: 1,
+    };
+    if (!input.touchDraft) {
+      return [update];
+    }
+    return [
+      update,
+      new ProgramsRepository(this.sql).buildTouchDraftStatement(
+        programId,
+        input.draftUpdatedAt,
+      ),
+    ];
+  }
+
   buildLinkPlaceholderRowBatchStatements(input: {
     programId: string;
     rowId: string;

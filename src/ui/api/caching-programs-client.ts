@@ -12,6 +12,15 @@ function withProgramsListInvalidation<T>(run: () => Promise<T>): Promise<T> {
   });
 }
 
+function afterProgramBuilderMutation<T extends { program: { code: string } }>(
+  run: () => Promise<T>,
+): Promise<T> {
+  return run().then((result) => {
+    invalidateAfterProgramBuilderMutation(result.program.code);
+    return result;
+  });
+}
+
 /** Pass-through GETs; mutating calls invalidate navigation read cache keys (DIDI-1185). */
 export function wrapProgramsClientWithCacheInvalidation(
   inner: ProgramsClient,
@@ -85,6 +94,19 @@ export function wrapProgramsClientWithCacheInvalidation(
         invalidateAfterProgramBuilderMutation(result.program.code);
         return result;
       }),
+    linkTypeMismatchPlaceholder: (programId, rowId, prescriptionType, draftUpdatedAt) =>
+      afterProgramBuilderMutation(() =>
+        inner.linkTypeMismatchPlaceholder(
+          programId,
+          rowId,
+          prescriptionType,
+          draftUpdatedAt,
+        ),
+      ),
+    undoTypeMismatchPlaceholderLink: (programId, rowId, draftUpdatedAt) =>
+      afterProgramBuilderMutation(() =>
+        inner.undoTypeMismatchPlaceholderLink(programId, rowId, draftUpdatedAt),
+      ),
     getShareLink: (programId, options) => inner.getShareLink(programId, options),
     publishProgram: (programId, input) =>
       inner.publishProgram(programId, input).then((result) => {

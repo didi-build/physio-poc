@@ -10,6 +10,7 @@ import {
   programCardLinkStatusLine,
   programCodeChipLabel,
 } from "../copy/programs.js";
+import { typeMismatchCardFlag } from "../copy/program-type-mismatch.js";
 import { ProgramCardOriginLine } from "./ProgramCardOriginLine.js";
 import { ProgramCardSentAndLinkStatus } from "./ProgramCardSentAndLinkStatus.js";
 import { highlightMatchedCode } from "./programs-list-utils.js";
@@ -37,6 +38,10 @@ export function ProgramListCard({ item, matchedCode }: ProgramListCardProps) {
   const libraryFlag = libraryUpdatesToReviewFlag(item.library_updates_to_review);
   if (libraryFlag) {
     flags.push(libraryFlag);
+  }
+  const mismatchFlag = typeMismatchCardFlag(item.type_mismatch_placeholder_count);
+  if (mismatchFlag) {
+    flags.push(mismatchFlag);
   }
 
   return (

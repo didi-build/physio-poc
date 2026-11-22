@@ -93,6 +93,48 @@ function parseParams(raw: unknown): ExerciseParams | undefined {
   return raw as ExerciseParams;
 }
 
+const LINK_TYPE_MISMATCH_BODY_KEYS = new Set(["prescription_type", "draft_updated_at"]);
+const UNDO_TYPE_MISMATCH_BODY_KEYS = new Set(["draft_updated_at"]);
+
+function rejectUnexpectedBodyKeys(
+  body: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+): Response | null {
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) {
+      return canonicalInvalidInputResponse();
+    }
+  }
+  return null;
+}
+
+function parseOptionalDraftUpdatedAt(
+  body: Record<string, unknown>,
+): string | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(body, "draft_updated_at")) {
+    return undefined;
+  }
+  const value = body.draft_updated_at;
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+  return value;
+}
+
+function parseRequiredDraftUpdatedAt(body: Record<string, unknown>): string | Response {
+  if (!Object.prototype.hasOwnProperty.call(body, "draft_updated_at")) {
+    return canonicalInvalidInputResponse();
+  }
+  const parsed = parseOptionalDraftUpdatedAt(body);
+  if (parsed === null || parsed === undefined) {
+    return canonicalInvalidInputResponse();
+  }
+  return parsed;
+}
+
 function parseStringField(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -619,6 +661,95 @@ export async function handleProgramBuilderRequest(
         } catch (error) {
           return errorResponse(error);
         }
+      }
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] &&
+      segments[3] === "link-type-mismatch" &&
+      request.method === "POST"
+    ) {
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
+      }
+      const unexpected = rejectUnexpectedBodyKeys(body, LINK_TYPE_MISMATCH_BODY_KEYS);
+      if (unexpected) {
+        return unexpected;
+      }
+      const prescriptionType = parsePrescriptionType(body.prescription_type);
+      if (!prescriptionType) {
+        return Response.json(
+          {
+            error: "invalid_input",
+            message: `prescriptionType must be one of: ${PRESCRIPTION_TYPES.join(", ")}`,
+          },
+          { status: 400, headers: JSON_HEADERS },
+        );
+      }
+      const draftUpdatedAt = parseOptionalDraftUpdatedAt(body);
+      if (draftUpdatedAt === null) {
+        return canonicalInvalidInputResponse();
+      }
+      try {
+        const result = await service(deps).linkTypeMismatchPlaceholderRow(
+          practitionerId,
+          programId,
+          rowIdRaw,
+          prescriptionType,
+          draftUpdatedAt,
+        );
+        return Response.json(result, { headers: JSON_HEADERS });
+      } catch (error) {
+        return errorResponse(error);
+      }
+    }
+
+    if (
+      segments.length === 4 &&
+      segments[2] &&
+      segments[3] === "undo-type-mismatch-link" &&
+      request.method === "POST"
+    ) {
+      const rowIdRaw = safeDecodePathSegment(segments[2]!);
+      if (rowIdRaw === null) {
+        return programRowNotFoundResponse();
+      }
+      const body = await readJsonObjectBody(request);
+      if (body instanceof Response) {
+        return body;
+      }
+      const rejected = rejectBodyPractitionerId(body);
+      if (rejected) {
+        return rejected;
+      }
+      const unexpected = rejectUnexpectedBodyKeys(body, UNDO_TYPE_MISMATCH_BODY_KEYS);
+      if (unexpected) {
+        return unexpected;
+      }
+      const draftUpdatedAt = parseRequiredDraftUpdatedAt(body);
+      if (draftUpdatedAt instanceof Response) {
+        return draftUpdatedAt;
+      }
+      try {
+        const result = await service(deps).undoTypeMismatchPlaceholderLink(
+          practitionerId,
+          programId,
+          rowIdRaw,
+          draftUpdatedAt,
+        );
+        return Response.json(result, { headers: JSON_HEADERS });
+      } catch (error) {
+        return errorResponse(error);
       }
     }
 

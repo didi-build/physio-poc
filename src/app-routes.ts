@@ -54,6 +54,8 @@ export const MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH = 199;
 /** @deprecated Prefer measuring encoded length via MAX_ENCODED_EXERCISE_SEARCH_QUERY_LENGTH. */
 export const MAX_EXERCISE_SEARCH_QUERY_LENGTH = 200;
 export const FROM_ROUTINE_ID_QUERY_PARAM = "from_routine_id";
+/** Opens the builder with a type-mismatch row Fix panel expanded (DIDI-1106). */
+export const TYPE_MISMATCH_FIX_ROW_QUERY_PARAM = "fix_row_id";
 
 export type FillPhysioAppRouteParams = {
   readonly programCode?: string;
