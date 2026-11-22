@@ -8,7 +8,8 @@ export type ExerciseRequestsServiceErrorCode =
   | "approve_failed"
   | "request_already_approved"
   | "submit_failed"
-  | "alias_conflict";
+  | "alias_conflict"
+  | "generation_not_requester";
 
 export class ExerciseRequestsServiceError extends Error {
   constructor(

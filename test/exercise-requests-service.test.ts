@@ -21,6 +21,7 @@ import {
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { MAX_LENGTH_ROW_NOTES } from "../src/mcp-connector/text-limits.js";
 import { id, testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
 
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
 const BEFORE_FORM = "2026-10-30T09:00:00.000Z";
@@ -73,7 +74,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      await service.submitRequest({
+      await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practB,
         requestedName: "Copenhagen plank in progress",
         formOpenedAt: FORM_OPENED,
@@ -121,7 +122,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const otherService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await otherService.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(otherService, storage, {
         practitionerId: other,
         requestedName: "Short lever plank",
         formOpenedAt: BEFORE_FORM,
@@ -131,7 +132,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:00:00.000Z",
       });
-      const conflict = await service.submitRequest({
+      const conflict = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Short lever plank variation",
         exerciseNote: "supine",
@@ -143,7 +144,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       }
       expect(conflict.similar_request.requested_name).toBe("Short lever plank");
 
-      const noConflictBefore = await service.submitRequest({
+      const noConflictBefore = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Unrelated move",
         formOpenedAt: FORM_OPENED,
@@ -172,7 +173,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const existing = await ownerService.submitRequest({
+      const existing = await submitRequestWithGeneratedDraft(ownerService, storage, {
         practitionerId: owner,
         requestedName: "Copenhagen plank",
         formOpenedAt: BEFORE_FORM,
@@ -192,7 +193,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:00:00.000Z",
       });
-      const merged = await mergeService.submitRequest({
+      const merged = await submitRequestWithGeneratedDraft(mergeService, storage, {
         practitionerId: merger,
         requestedName: "Copenhagen plank short lever",
         exerciseNote: "rehab version",
@@ -235,7 +236,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const existing = await ownerService.submitRequest({
+      const existing = await submitRequestWithGeneratedDraft(ownerService, storage, {
         practitionerId: owner,
         requestedName: "Merge cap move",
         formOpenedAt: BEFORE_FORM,
@@ -293,7 +294,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await ownerService.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(ownerService, storage, {
         practitionerId: owner,
         requestedName: "Approved merge target",
         formOpenedAt: FORM_OPENED,
@@ -356,7 +357,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const serviceOne = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => BEFORE_FORM,
       });
-      const first = await serviceOne.submitRequest({
+      const first = await submitRequestWithGeneratedDraft(serviceOne, storage, {
         practitionerId: ownerOne,
         requestedName: "Dual open plank",
         exerciseNote: "first note",
@@ -370,7 +371,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const serviceTwo = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const second = await serviceTwo.submitRequest({
+      const second = await submitRequestWithGeneratedDraft(serviceTwo, storage, {
         practitionerId: ownerTwo,
         requestedName: "Dual open plank side",
         exerciseNote: "second note",
@@ -384,7 +385,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const mergeService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:30:00.000Z",
       });
-      const merged = await mergeService.submitRequest({
+      const merged = await submitRequestWithGeneratedDraft(mergeService, storage, {
         practitionerId: merger,
         requestedName: "Dual open plank merged alias",
         exerciseNote: "merger note",
@@ -429,7 +430,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Heel slide request",
         formOpenedAt: FORM_OPENED,
@@ -518,7 +519,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         now: () => AFTER_FORM,
       });
       expect(await service.getInProgressCount({ practitionerId: practId })).toBe(0);
-      await service.submitRequest({
+      await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practId,
         requestedName: "New move",
         formOpenedAt: FORM_OPENED,
@@ -560,7 +561,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "View draft move",
         formOpenedAt: FORM_OPENED,
@@ -626,7 +627,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:00:00.000Z",
       });
-      const atBoundary = await service.submitRequest({
+      const atBoundary = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Boundary plank variation",
         formOpenedAt: boundary,
@@ -671,7 +672,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => "2026-10-30T12:00:00.000Z",
       });
-      const conflict = await service.submitRequest({
+      const conflict = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "After boundary plank variation",
         formOpenedAt: formOpened,
@@ -698,7 +699,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Editable draft move",
         formOpenedAt: FORM_OPENED,
@@ -784,14 +785,14 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const first = await service.submitRequest({
+      const first = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practId,
         requestedName: "Self conflict move",
         formOpenedAt: BEFORE_FORM,
       });
       expect(first.outcome).toBe("created");
 
-      const second = await service.submitRequest({
+      const second = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practId,
         requestedName: "Self conflict move variation",
         formOpenedAt: FORM_OPENED,
@@ -818,7 +819,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
         }),
       ).rejects.toMatchObject({ code: "invalid_input" });
 
-      const ok = await service.submitRequest({
+      const ok = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practId,
         requestedName: "Future skew ok",
         formOpenedAt: "2026-10-30T12:01:59.000Z",
@@ -840,7 +841,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Self approve move",
         formOpenedAt: FORM_OPENED,
@@ -870,7 +871,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      await service.submitRequest({
+      await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: practId,
         requestedName: "No email leak",
         formOpenedAt: FORM_OPENED,
@@ -900,7 +901,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "New section move",
         formOpenedAt: FORM_OPENED,
@@ -942,7 +943,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Patch after approve",
         formOpenedAt: FORM_OPENED,
@@ -983,7 +984,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Pre approved version",
         formOpenedAt: FORM_OPENED,
@@ -1029,7 +1030,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Double approve",
         formOpenedAt: FORM_OPENED,
@@ -1069,7 +1070,7 @@ describe("ExerciseRequestsService (integration, SQLite)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Refresh guard move",
         formOpenedAt: FORM_OPENED,

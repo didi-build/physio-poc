@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import { linkApprovedPlaceholders } from "../src/services/programs/program-builder-service.js";
 import { ProgramRowsRepository } from "../src/storage/repositories/programs.js";
@@ -31,25 +32,32 @@ async function submitDraftingRequest(
   const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
     now: () => AFTER_FORM,
   });
-  const created = await service.submitRequest({
+  const created = await submitRequestWithGeneratedDraft(service, storage, {
     practitionerId: requester,
     requestedName,
     formOpenedAt: FORM_OPENED,
   });
   expect(created.outcome).toBe("created");
-  if (created.outcome !== "created" || !created.exercise_id) {
+  if (created.outcome !== "created") {
     throw new Error("expected created request");
+  }
+  const row = await storage.first<{ exercise_id: string }>(
+    "SELECT exercise_id FROM exercise_requests WHERE id = ? LIMIT 1",
+    [created.request_id],
+  );
+  if (!row?.exercise_id) {
+    throw new Error("expected exercise on request after generate");
   }
   const draft = await storage.first<{ id: string }>(
     `SELECT id FROM exercise_versions WHERE exercise_id = ? AND status = 'draft' LIMIT 1`,
-    [created.exercise_id],
+    [row.exercise_id],
   );
   if (!draft) {
     throw new Error("expected draft version");
   }
   return {
     requestId: created.request_id,
-    exerciseId: created.exercise_id,
+    exerciseId: row.exercise_id,
     draftVersionId: draft.id,
   };
 }

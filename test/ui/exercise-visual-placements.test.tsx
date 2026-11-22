@@ -17,7 +17,6 @@ import {
 import { EXERCISE_VISUAL_PLACEHOLDER_ALT } from "../../src/ui/exercise-visual/placeholders.js";
 
 const LIBRARY_VIDEO_LOOP_CAPTION = "Video, 6s loop";
-const DRAFT_REVIEW_VIDEO_LOOP_CAPTION = "AI video, 6s loop";
 
 afterEach(() => {
   cleanup();
@@ -29,9 +28,9 @@ describe("exercise visual placements", () => {
     expect(screen.getByText(LIBRARY_VIDEO_LOOP_CAPTION)).toBeInTheDocument();
   });
 
-  it("renders the draft review caption AI video, 6s loop", () => {
+  it("renders draft review motion without an AI video caption", () => {
     render(<DraftReviewExerciseVideo />);
-    expect(screen.getByText(DRAFT_REVIEW_VIDEO_LOOP_CAPTION)).toBeInTheDocument();
+    expect(screen.queryByText(/AI video/i)).not.toBeInTheDocument();
   });
 
   it("renders PublicLinkExerciseVideo with Play video toggle and consistent image alts", async () => {

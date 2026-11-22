@@ -1,7 +1,4 @@
-import type {
-  SqlBatchStatement,
-  SqlStoragePort,
-} from "../../storage/ports/sql-storage.js";
+import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import {
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
@@ -22,6 +19,9 @@ export type ExerciseDraftGeneratorInput = {
   regenerationNote?: string | null;
   requestedBy: string;
   now: string;
+  /** When set, replace draft text on this version instead of creating a new exercise. */
+  existingExerciseId?: string;
+  existingVersionId?: string;
 };
 
 export type ExerciseDraftGeneratorDeps = {
@@ -34,5 +34,3 @@ export type ExerciseDraftGenerator = (
   input: ExerciseDraftGeneratorInput,
   deps: ExerciseDraftGeneratorDeps,
 ) => Promise<ExerciseDraftGeneratorResult>;
-
-export type { SqlBatchStatement };

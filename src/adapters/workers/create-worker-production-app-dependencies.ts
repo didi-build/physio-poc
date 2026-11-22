@@ -19,11 +19,15 @@ import { createWorkerAssetsUiStaticPort } from "./worker-assets-ui-static-port.j
 import { resolveExerciseDraftGenerator } from "../deepinfra/resolve-exercise-draft-generator.js";
 import { handleExerciseMediaRequest } from "../../http/routes/exercise-media.js";
 import { createWorkerImageGenerationPort } from "./create-worker-image-generation-port.js";
+import { logWorkerFakeDeepinfraProviderOnce } from "./worker-fake-deepinfra-provider-log.js";
 
 /** Production Better Auth wiring (dynamic import from create-app-dependencies). */
 export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDependencies {
   if (!env.PHYSIO_DB) {
     throw new Error("PHYSIO_DB binding is required for production Worker auth");
+  }
+  if (!env.PHYSIO_DEEPINFRA_API_KEY?.trim()) {
+    logWorkerFakeDeepinfraProviderOnce();
   }
   const sql = new D1SqlStorage(env.PHYSIO_DB);
   const config = resolveWorkerPhysioServerConfig(env);

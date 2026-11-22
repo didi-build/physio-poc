@@ -230,6 +230,9 @@ d1_tables:
         whose: operational
       exercise_id:
         whose: operational
+      draft_generation_locked_at:
+        whose: operational
+        notes: concurrency lock for POST generate orchestration
       created_at:
         whose: operational
       updated_at:
