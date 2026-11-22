@@ -22,9 +22,11 @@ import {
 } from "../src/services/exercise-requests/fake-draft-generator.js";
 import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-requests/draft-generation-lock.js";
 import {
+  DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
   DRAFT_GENERATION_LOCK_RELEASED_EVENT,
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
+import { createInProcessDraftGenerationWorkflowPort } from "../src/services/exercise-requests/in-process-draft-generation-workflow.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
@@ -40,6 +42,8 @@ import {
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
+import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import {
   attachDraftGenerationTestWorkflow,
   drainDraftGeneration,
@@ -119,8 +123,16 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       exerciseMediaImages: images,
       extraRouteHandlers: [handleExerciseMediaRequest],
     };
+    const objects = base.objects;
+    const mediaService = new ExerciseMediaService(
+      base.sql,
+      images,
+      new PrefixMediaStorage(objects),
+    );
     const requestService = new ExerciseRequestsService(base.sql, base.config, {
       draftGenerator: fakeExerciseDraftGenerator,
+      initialDraftMediaProgress: (versionId) =>
+        mediaService.getInitialDraftMediaProgress(versionId),
     });
     const { deps, workflow } = attachDraftGenerationTestWorkflow(
       base,
@@ -184,6 +196,94 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         generation: { first_draft_complete: boolean };
       };
       expect(body.generation.first_draft_complete).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("refreshes lock heartbeat between generation steps", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-heartbeat"),
+        "hb@ex.com",
+      );
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      await drainDraftGeneration(workflow, requestId);
+      const lines = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line): line is string => typeof line === "string");
+      const refreshed = lines
+        .map((line) => JSON.parse(line) as { event: string })
+        .filter((row) => row.event === DRAFT_GENERATION_LOCK_REFRESHED_EVENT);
+      expect(refreshed.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("workflow port returns already_running for duplicate start", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-wf-port"),
+        "wf@ex.com",
+      );
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "wf@ex.com",
+          displayName: "Coach",
+        },
+      });
+      const base: AppDependencies = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: fakeExerciseDraftGenerator,
+        exerciseMediaImages: new FakeImageGeneration(),
+        extraRouteHandlers: [handleExerciseMediaRequest],
+      };
+      const requestService = new ExerciseRequestsService(base.sql, base.config, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const cookie = auth.createSessionCookieHeader();
+      const { deps } = attachDraftGenerationTestWorkflow(base, (requestId) =>
+        requestService.loadDraftView(requestId),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const direct = createInProcessDraftGenerationWorkflowPort(() => ({
+        deps,
+        loadView: (rid) => requestService.loadDraftView(rid),
+        draftGenerator: fakeExerciseDraftGenerator,
+      }));
+      const first = await direct.start({
+        requestId,
+        practitionerId: practitioner,
+      });
+      const second = await direct.start({
+        requestId,
+        practitionerId: practitioner,
+      });
+      expect(first).toBe("started");
+      expect(second).toBe("already_running");
+      await direct.drain(requestId);
     } finally {
       storage.close();
     }
@@ -317,6 +417,62 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     }
   });
 
+  it("cancel after start image: resume skips text and first image fetch calls", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-start-img"),
+        "img@ex.com",
+      );
+      const images = new CountingImageGeneration();
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        images,
+        "start_image",
+      );
+      const requestId = await createRequest(cookie, deps);
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      await drainDraftGeneration(workflow, requestId);
+      expect(images.startCalls).toBe(1);
+      expect(images.endCalls).toBe(0);
+      const staleBefore = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
+      ).toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [staleBefore, requestId],
+      );
+      const { workflow: resumeWorkflow } = attachDraftGenerationTestWorkflow(
+        deps,
+        (rid) =>
+          new ExerciseRequestsService(deps.sql, deps.config, {
+            draftGenerator: fakeExerciseDraftGenerator,
+          }).loadDraftView(rid),
+      );
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        { ...deps, draftGenerationWorkflow: resumeWorkflow },
+      );
+      await drainDraftGeneration(resumeWorkflow, requestId);
+      expect(images.startCalls).toBe(1);
+      expect(images.endCalls).toBe(1);
+      expect(images.pairCalls).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("first /generate is not charged toward daily media quota; canceled run leaves quota unchanged", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -363,6 +519,67 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         [practitioner],
       );
       expect(count?.c).toBe(5);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("resume after partial run does not charge media quota twice", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-quota-resume"),
+        "qr@ex.com",
+      );
+      const images = new CountingImageGeneration();
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        images,
+        "start_image",
+      );
+      const requestId = await createRequest(cookie, deps);
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      await drainDraftGeneration(workflow, requestId);
+      const before = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+        [practitioner],
+      );
+      expect(before?.c).toBe(0);
+      const staleBefore = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
+      ).toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [staleBefore, requestId],
+      );
+      const requestService = new ExerciseRequestsService(deps.sql, deps.config, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const { workflow: resumeWorkflow } = attachDraftGenerationTestWorkflow(
+        deps,
+        (rid) => requestService.loadDraftView(rid),
+      );
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        { ...deps, draftGenerationWorkflow: resumeWorkflow },
+      );
+      await drainDraftGeneration(resumeWorkflow, requestId);
+      const after = await storage.first<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
+        [practitioner],
+      );
+      expect(after?.c).toBe(0);
     } finally {
       storage.close();
     }

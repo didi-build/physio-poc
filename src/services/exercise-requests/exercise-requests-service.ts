@@ -47,7 +47,10 @@ import {
 import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
-import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
+import type {
+  ExerciseMediaService,
+  InitialDraftMediaProgress,
+} from "../exercise-media/exercise-media-service.js";
 import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
   ApproveExerciseRequestResult,
@@ -179,6 +182,9 @@ export class ExerciseRequestsService {
   private readonly practitionerExercises: PractitionerExercisesRepository;
   private readonly draftGenerator: ExerciseDraftGenerator;
   private readonly now: () => string;
+  private readonly initialDraftMediaProgress: (
+    exerciseVersionId: string,
+  ) => Promise<InitialDraftMediaProgress>;
 
   constructor(
     private readonly sql: SqlStoragePort,
@@ -186,6 +192,9 @@ export class ExerciseRequestsService {
     options?: {
       now?: () => string;
       draftGenerator?: ExerciseDraftGenerator;
+      initialDraftMediaProgress?: (
+        exerciseVersionId: string,
+      ) => Promise<InitialDraftMediaProgress>;
     },
   ) {
     this.requests = new ExerciseRequestsRepository(sql);
@@ -197,6 +206,16 @@ export class ExerciseRequestsService {
     this.practitionerExercises = new PractitionerExercisesRepository(sql);
     this.now = options?.now ?? (() => new Date().toISOString());
     this.draftGenerator = options?.draftGenerator ?? fakeExerciseDraftGenerator;
+    this.initialDraftMediaProgress =
+      options?.initialDraftMediaProgress ??
+      (async (exerciseVersionId) => {
+        const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+        const mediaRow = await versionMedia.findVersion(exerciseVersionId);
+        if (!mediaRow?.media_set_id) {
+          return "none";
+        }
+        return "complete";
+      });
   }
 
   async listSimilar(input: {
@@ -550,11 +569,8 @@ export class ExerciseRequestsService {
           cue_concentric: versionRow.cue_concentric,
           cue_eccentric: versionRow.cue_eccentric,
         };
-        const versionMedia = new ExerciseVersionMediaRepository(this.sql);
-        const mediaRow = await versionMedia.findVersion(versionRow.id);
-        firstDraftComplete =
-          typeof mediaRow?.media_set_id === "string" &&
-          mediaRow.media_set_id.length > 0;
+        const mediaProgress = await this.initialDraftMediaProgress(versionRow.id);
+        firstDraftComplete = mediaProgress === "complete";
       }
     }
 

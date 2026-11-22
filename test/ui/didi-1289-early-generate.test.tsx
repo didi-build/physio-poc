@@ -20,6 +20,7 @@ import { ExerciseMediaApiProvider } from "../../src/ui/api/exercise-media-contex
 import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { FAKE_UI_PRACTITIONER_ID } from "./fake-practitioner-session-fixture.js";
 import type { ExerciseRequestDraftView } from "../../src/services/exercise-requests/types.js";
+import * as PractitionerSessionContext from "../../src/ui/api/practitioner-session-context.js";
 
 afterEach(() => {
   cleanup();
@@ -41,6 +42,67 @@ function stubMediaClient(): ExerciseMediaClient {
 }
 
 describe("DIDI-1289 early first /generate", () => {
+  it("does not call generate while session identity is not ready", async () => {
+    const identitySpy = vi
+      .spyOn(PractitionerSessionContext, "useCurrentPractitionerIdentity")
+      .mockReturnValue({
+        practitionerId: FAKE_UI_PRACTITIONER_ID,
+        displayName: "Test Coach",
+        sessionIdentityReady: false,
+        sessionIdentityPending: true,
+      });
+    try {
+      const view: ExerciseRequestDraftView = {
+        request_id: "req-early-gate",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: null,
+        generation: { generation_in_progress: false, first_draft_complete: false },
+        draft: null,
+      };
+      const generateRequest = vi.fn();
+      const requestsClient = {
+        getRequest: vi.fn().mockResolvedValue(view),
+        generateRequest,
+        regenerateDraftText: vi.fn(),
+        updateDraft: vi.fn(),
+        approveRequest: vi.fn(),
+        getInProgressCount: vi.fn(),
+        listInProgress: vi.fn(),
+        listSimilar: vi.fn(),
+        submitRequest: vi.fn(),
+      } as unknown as ExerciseRequestsClient;
+      setExerciseRequestsClientForTests(requestsClient);
+      setExerciseMediaClientForTests(stubMediaClient());
+
+      render(
+        <MemoryRouter initialEntries={["/requests/req-early-gate"]}>
+          <NavigationTestProviders>
+            <ExerciseRequestsApiProvider client={requestsClient}>
+              <ExerciseMediaApiProvider client={stubMediaClient()}>
+                <ToastProvider>
+                  <Routes>
+                    <Route path="/requests/:requestId" element={<DraftReviewPage />} />
+                  </Routes>
+                </ToastProvider>
+              </ExerciseMediaApiProvider>
+            </ExerciseRequestsApiProvider>
+          </NavigationTestProviders>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(requestsClient.getRequest).toHaveBeenCalled();
+      });
+      expect(generateRequest).not.toHaveBeenCalled();
+    } finally {
+      identitySpy.mockRestore();
+    }
+  });
+
   it("calls generate as soon as sessionIdentityReady and view match requester", async () => {
     const view: ExerciseRequestDraftView = {
       request_id: "req-early-gen",

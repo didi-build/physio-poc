@@ -35,9 +35,20 @@ const SUBMIT_RESOLUTIONS = new Set<SubmitResolution>([
   "submit_anyway",
 ]);
 
+function mediaService(deps: AppDependencies): ExerciseMediaService {
+  return new ExerciseMediaService(
+    deps.sql,
+    deps.exerciseMediaImages ?? new FakeImageGeneration(),
+    new PrefixMediaStorage(deps.objects),
+  );
+}
+
 function service(deps: AppDependencies): ExerciseRequestsService {
+  const media = mediaService(deps);
   return new ExerciseRequestsService(deps.sql, deps.config, {
     draftGenerator: deps.exerciseDraftGenerator,
+    initialDraftMediaProgress: (versionId) =>
+      media.getInitialDraftMediaProgress(versionId),
   });
 }
 
