@@ -62,15 +62,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 function listItem(
   overrides: Partial<InProgressRequestListItem> = {},
 ): InProgressRequestListItem {
+  const requested_name = overrides.requested_name ?? "Wall angels";
   return {
     request_id: "req-list-1",
-    requested_name: "Wall angels",
+    requested_name,
     exercise_note: null,
     status: "drafting",
     requested_by: "11111111-1111-4111-8111-111111111111",
     requested_by_email: "k@example.com",
     exercise_id: "ex-1",
-    draft_title: "Wall angels",
+    draft_title: overrides.draft_title ?? requested_name,
     updated_at: "2026-01-01T00:00:00.000Z",
     generation_in_progress: false,
     ...overrides,
@@ -780,7 +781,9 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
     await waitFor(() => {
       expect(screen.getByText("Only row")).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole("button", { name: PIN_DELETE_ROW }));
+    await userEvent.click(
+      screen.getByRole("button", { name: deleteRowAria("Only row") }),
+    );
     const dialog = await screen.findByRole("alertdialog");
     await userEvent.click(
       within(dialog).getByRole("button", { name: PIN_DELETE_DRAFT }),

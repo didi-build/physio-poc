@@ -7,19 +7,24 @@ import {
 import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
 
 function ensureMatchMediaStub() {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  );
+  const impl = vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+  vi.stubGlobal("matchMedia", impl);
+  if (typeof window !== "undefined") {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: impl,
+    });
+  }
 }
 
 export { ensureMatchMediaStub };

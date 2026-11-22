@@ -205,10 +205,12 @@ export function RequestsAndDraftsPage() {
                       );
                       showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
                       void refresh({ force: true }).then(() => {
-                        focusAfterRequestsListDelete({
-                          listRoot: listRef.current,
-                          heading: headingRef.current,
-                          deletedIndex,
+                        requestAnimationFrame(() => {
+                          focusAfterRequestsListDelete({
+                            listRoot: listRef.current,
+                            heading: headingRef.current,
+                            deletedIndex,
+                          });
                         });
                       });
                     }}

@@ -713,7 +713,7 @@ export class ExerciseRequestsService {
       return {
         request_id: requestId,
         status: "withdrawn",
-        already_withdrawn: true,
+        already_withdrawn: false,
       };
     }
 

@@ -2,9 +2,12 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
+import { ensureMatchMediaStub } from "./setup.js";
+import { resetSessionReadCacheForTests } from "../../src/ui/api/session-read-cache.js";
+import { setExerciseRequestsClientForTests } from "../../src/ui/api/exercise-requests-client.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../src/app-routes.js";
 import { exerciseRequestWithdrawPath } from "../../src/exercise-requests-api-paths.js";
@@ -23,6 +26,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("Delete draft through real ExerciseRequestsApiProvider", () => {
+  beforeEach(() => {
+    ensureMatchMediaStub();
+    resetSessionReadCacheForTests();
+    setExerciseRequestsClientForTests(null);
+  });
+
   afterEach(() => {
     cleanup();
   });
