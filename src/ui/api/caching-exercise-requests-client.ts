@@ -38,6 +38,8 @@ export function wrapExerciseRequestsClientWithCacheInvalidation(
       afterDraftEdit(requestId, () => inner.regenerateDraftText(requestId, note)),
     approveRequest: (requestId) =>
       afterExerciseRequestMutation(() => inner.approveRequest(requestId)),
+    withdrawRequest: (requestId) =>
+      afterExerciseRequestMutation(() => inner.withdrawRequest(requestId)),
   } satisfies CacheWrappedClient<ExerciseRequestsClient>;
   return wrapped as ExerciseRequestsClient;
 }

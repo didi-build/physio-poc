@@ -75,6 +75,11 @@ import { DraftTextField } from "./DraftTextField.js";
 import { RegenerateMediaSheet, type RegeneratePick } from "./RegenerateMediaSheet.js";
 import { isPatientDetailNoteInvalidInput } from "./patient-detail-note-error.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import { DeleteDraftButton } from "./DeleteDraftButton.js";
+import {
+  DELETE_DRAFT_ALREADY_GONE,
+  DELETE_DRAFT_TOAST_SUCCESS,
+} from "../copy/delete-exercise-draft.js";
 
 type GenerationFailure = "text" | "images" | "daily" | null;
 
@@ -132,6 +137,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const {
     data: cachedView,
     loading: viewLoading,
+    loadFailed: viewLoadFailed,
     refresh: refreshView,
   } = useSessionCachedRead<ExerciseRequestDraftView>({
     cacheKey: detailCacheKey,
@@ -453,7 +459,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     }
   };
 
-  if (loading || !view) {
+  if (loading && !viewLoadFailed) {
     return (
       <section className="ex-page" aria-busy={true}>
         <div
@@ -461,6 +467,23 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           data-testid="exercise-library-busy-skeleton"
           aria-hidden
         />
+      </section>
+    );
+  }
+
+  if (viewLoadFailed || !view) {
+    return (
+      <section className="ex-page" aria-labelledby="ex-review-heading">
+        <Link
+          to={fillPhysioAppRoutePattern("requests")}
+          className="ex-back-link"
+          data-testid="ex-review-withdrawn-back"
+        >
+          {REVIEW_BACK}
+        </Link>
+        <p className="ex-review-withdrawn-alert" role="alert">
+          {DELETE_DRAFT_ALREADY_GONE}
+        </p>
       </section>
     );
   }
@@ -553,6 +576,19 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           {REGENERATE}
         </button>
         <span className="ex-review-quota">{regenLeftText(quota?.remaining ?? 0)}</span>
+        <DeleteDraftButton
+          requestId={requestId}
+          title={title}
+          generationInProgress={generationInProgress || ownGenerateInFlight}
+          onSuccess={() => {
+            showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
+            onRequestsChanged?.();
+            navigate(fillPhysioAppRoutePattern("requests"));
+          }}
+          onGenerationBlocked={() => {
+            void refreshView({ force: true });
+          }}
+        />
       </div>
       {textRegenBusy ? (
         <p className="ex-review-text-regen" role="status" aria-live="polite">

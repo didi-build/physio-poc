@@ -9,7 +9,9 @@ export type ExerciseRequestsServiceErrorCode =
   | "request_already_approved"
   | "submit_failed"
   | "alias_conflict"
-  | "generation_not_requester";
+  | "generation_not_requester"
+  | "draft_generation_in_progress"
+  | "request_not_deletable";
 
 export class ExerciseRequestsServiceError extends Error {
   constructor(

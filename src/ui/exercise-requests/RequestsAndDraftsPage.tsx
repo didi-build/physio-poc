@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { InProgressRequestListItem } from "../../services/exercise-requests/types.js";
@@ -23,6 +23,9 @@ import {
   USUALLY_READY,
 } from "../copy/exercise-requests.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import { DeleteDraftButton } from "./DeleteDraftButton.js";
+import { useToast } from "../components/Toast.js";
+import { DELETE_DRAFT_TOAST_SUCCESS } from "../copy/delete-exercise-draft.js";
 
 function reviewButtonLabel(
   item: InProgressRequestListItem,
@@ -51,6 +54,8 @@ function listRowTag(item: InProgressRequestListItem): string {
 
 export function RequestsAndDraftsPage() {
   const client = useExerciseRequestsApi();
+  const { showToast } = useToast();
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const currentPractitioner = useCurrentPractitionerIdentity();
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -102,7 +107,12 @@ export function RequestsAndDraftsPage() {
       aria-labelledby="ex-requests-heading"
       aria-busy={sessionBusy ? true : undefined}
     >
-      <h1 id="ex-requests-heading" className="ex-page-title">
+      <h1
+        id="ex-requests-heading"
+        className="ex-page-title"
+        ref={headingRef}
+        tabIndex={-1}
+      >
         {REQUESTS_HEADING}
       </h1>
       <p className="ex-page-intro">{REQUESTS_INTRO}</p>
@@ -122,6 +132,7 @@ export function RequestsAndDraftsPage() {
         <ul className="ex-requests-list">
           {requests.map((item) => {
             const title = item.draft_title ?? item.requested_name;
+            const generationInProgress = item.generation_in_progress ?? false;
             const by = requestedByLabel({
               requestedBy: item.requested_by,
               requestedByEmail: item.requested_by_email,
@@ -153,22 +164,44 @@ export function RequestsAndDraftsPage() {
                     <p className="ex-requests-row-note">{item.exercise_note}</p>
                   ) : null}
                 </div>
-                {canReview(item) ? (
-                  <Link
-                    to={fillPhysioAppRoutePattern("requestReview", {
-                      requestId: item.request_id,
-                    })}
-                    className="ex-primary-btn ex-requests-review-link"
-                  >
-                    {reviewButtonLabel(
-                      item,
-                      currentPractitioner.practitionerId,
-                      currentPractitioner.sessionIdentityReady,
-                    )}
-                  </Link>
-                ) : (
-                  <p className="ex-requests-wait">{USUALLY_READY}</p>
-                )}
+                <div className="ex-requests-row-actions">
+                  {canReview(item) ? (
+                    <Link
+                      to={fillPhysioAppRoutePattern("requestReview", {
+                        requestId: item.request_id,
+                      })}
+                      className="ex-primary-btn ex-requests-review-link"
+                      data-testid={`ex-requests-review-${item.request_id}`}
+                    >
+                      {reviewButtonLabel(
+                        item,
+                        currentPractitioner.practitionerId,
+                        currentPractitioner.sessionIdentityReady,
+                      )}
+                    </Link>
+                  ) : (
+                    <p className="ex-requests-wait">{USUALLY_READY}</p>
+                  )}
+                  <DeleteDraftButton
+                    listRow
+                    requestId={item.request_id}
+                    title={title}
+                    generationInProgress={generationInProgress}
+                    onSuccess={() => {
+                      showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
+                      void refresh({ force: true }).then(() => {
+                        const firstReview = document.querySelector<HTMLElement>(
+                          '[data-testid^="ex-requests-review-"]',
+                        );
+                        if (firstReview) {
+                          firstReview.focus();
+                        } else {
+                          headingRef.current?.focus();
+                        }
+                      });
+                    }}
+                  />
+                </div>
               </li>
             );
           })}

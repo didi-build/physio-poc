@@ -7,6 +7,7 @@ import {
   exerciseRequestDraftPath,
   exerciseRequestGeneratePath,
   exerciseRequestRegenerateTextPath,
+  exerciseRequestWithdrawPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -162,11 +163,15 @@ const PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES = [
     method: "POST",
     path: exerciseRequestRegenerateTextPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
   },
+  {
+    method: "POST",
+    path: exerciseRequestWithdrawPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
 ] as const;
 
 describe("Exercise requests HTTP routes (integration)", () => {
   it("pins the exercise request routes as literal method and path pairs", () => {
-    expect(PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES).toHaveLength(9);
+    expect(PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES).toHaveLength(10);
     expect(exerciseRequestsHttpRouteCases()).toEqual([
       ...PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES,
     ]);
