@@ -1167,18 +1167,19 @@
 
   .ex-review-toolbar--drafting .ex-review-delete-wrap {
     align-self: flex-end;
+    flex: 0 0 auto;
+    width: auto;
   }
 
-  .ex-review-toolbar .ex-review-delete-wrap .ex-delete-draft-blocked {
+  .ex-review-toolbar--drafting .ex-delete-draft-blocked {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 0.25rem;
+    text-align: right;
+    width: auto;
+    max-width: 14rem;
   }
 }
 

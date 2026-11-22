@@ -84,6 +84,38 @@ async function readGridColumnCount(page: Page, selector: string) {
   }, selector);
 }
 
+async function readDeleteBlockedHintLayout(page: Page) {
+  return page.evaluate(() => {
+    const hint = document.querySelector(
+      ".ex-review-delete-wrap .ex-delete-draft-blocked",
+    ) as HTMLElement | null;
+    const deleteBtn = document.querySelector(
+      ".ex-review-delete-wrap .ex-delete-draft-btn",
+    ) as HTMLElement | null;
+    if (!hint || !deleteBtn) {
+      return null;
+    }
+    const hintBox = hint.getBoundingClientRect();
+    const deleteBox = deleteBtn.getBoundingClientRect();
+    const hintStyle = getComputedStyle(hint);
+    return {
+      hintWidth: hintBox.width,
+      hintHeight: hintBox.height,
+      hintTop: hintBox.top,
+      hintLeft: hintBox.left,
+      hintRight: hintBox.right,
+      deleteBottom: deleteBox.bottom,
+      deleteLeft: deleteBox.left,
+      deleteRight: deleteBox.right,
+      visible:
+        hintStyle.visibility !== "hidden" &&
+        hintStyle.display !== "none" &&
+        hintBox.width > 0 &&
+        hintBox.height > 0,
+    };
+  });
+}
+
 async function readReviewToolbarQuotaLayout(page: Page) {
   return page.evaluate(() => {
     const toolbar = document.querySelector(".ex-review-toolbar") as HTMLElement | null;
@@ -360,16 +392,7 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
 
         const layout = await readReviewToolbarQuotaLayout(page);
         expect(layout).not.toBeNull();
-        const metrics = await page.evaluate(() => {
-          const toolbar = document.querySelector(".ex-review-toolbar");
-          const trailing = document.querySelector(".ex-review-toolbar-trailing");
-          const pageEl = document.querySelector(".ex-page");
-          return {
-            drafting: toolbar?.classList.contains("ex-review-toolbar--drafting"),
-            trailingDisplay: trailing ? getComputedStyle(trailing).display : null,
-            pageRight: pageEl?.getBoundingClientRect().right,
-          };
-        });
+        const d7 = await readDeleteBlockedHintLayout(page);
 
         if (width < 1024) {
           expect(
@@ -377,11 +400,9 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
           ).toBeLessThanOrEqual(2);
           expect(layout!.deleteTop).toBeGreaterThanOrEqual(layout!.quotaBottom - 1);
         } else {
-          expect(metrics.drafting).toBe(true);
-          expect(metrics.trailingDisplay).toBe("contents");
           expect(
             Math.abs(layout!.deleteRight - layout!.toolbarRight),
-            JSON.stringify({ layout, metrics }),
+            JSON.stringify({ layout, d7 }),
           ).toBeLessThanOrEqual(4);
           expect(layout!.deleteRight).toBeGreaterThan(1100);
           expect(Math.abs(layout!.deleteLeft - layout!.quotaRight)).toBeLessThanOrEqual(
@@ -390,6 +411,13 @@ describe("Exercise requests layout (real browser, DIDI-1009)", () => {
           expect(Math.abs(layout!.deleteTop - layout!.quotaTop)).toBeLessThanOrEqual(
             16,
           );
+          expect(d7).not.toBeNull();
+          expect(d7!.visible).toBe(true);
+          expect(d7!.hintWidth).toBeGreaterThan(0);
+          expect(d7!.hintHeight).toBeGreaterThan(0);
+          expect(d7!.hintTop).toBeGreaterThanOrEqual(d7!.deleteBottom - 2);
+          expect(d7!.hintLeft).toBeGreaterThanOrEqual(d7!.deleteLeft - 4);
+          expect(d7!.hintRight).toBeLessThanOrEqual(d7!.deleteRight + 8);
         }
       } finally {
         await browser.close();
