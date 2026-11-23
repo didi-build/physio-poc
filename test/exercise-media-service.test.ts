@@ -510,23 +510,29 @@ describe("ExerciseMediaService (integration)", () => {
 
   it("passes the reworked end prompt on initial generation", async () => {
     const storage = await openMigratedDatabase();
-    const generateStartAndEndImages = vi.fn(
-      async (input: { startPrompt: string; endPrompt: string }) =>
-        new FakeImageGeneration().generateStartAndEndImages(input),
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    const generateEndImage = vi.fn(
+      async (
+        endPrompt: string,
+        options?: { startReferenceImage?: { bytes: Uint8Array; contentType: string } },
+      ) => new FakeImageGeneration().generateEndImage(endPrompt, options),
     );
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
       const { service } = await createService(storage, {
-        generateStartAndEndImages,
-        generateStartImage: vi.fn(),
-        generateEndImage: vi.fn(),
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage,
+        generateEndImage,
       });
       await service.generateInitialMediaForVersion({
         practitionerId,
         exerciseVersionId: versionId,
       });
-      expect(generateStartAndEndImages).toHaveBeenCalledOnce();
-      const { endPrompt } = generateStartAndEndImages.mock.calls[0]![0];
+      expect(generateEndImage).toHaveBeenCalledOnce();
+      const endPrompt = generateEndImage.mock.calls[0]![0];
       expect(endPrompt).toContain(D1281_END_PROMPT_MARK);
       expect(endPrompt).toContain(GUARDED_END_POSE_SENTENCE);
     } finally {
@@ -576,10 +582,13 @@ describe("ExerciseMediaService (integration)", () => {
     );
     try {
       const { practitionerId, versionId } = await seedDraftVersion(storage);
+      const generateStartImage = vi.fn(async (startPrompt: string) =>
+        new FakeImageGeneration().generateStartImage(startPrompt),
+      );
       const { service } = await createService(storage, {
         generateStartAndEndImages: async (input) =>
           new FakeImageGeneration().generateStartAndEndImages(input),
-        generateStartImage: vi.fn(),
+        generateStartImage,
         generateEndImage,
       });
       await service.generateInitialMediaForVersion({

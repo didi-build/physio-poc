@@ -34,6 +34,7 @@ export type WorkerEnv = {
   PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL?: string;
   PHYSIO_DB?: PhysioD1Database;
   PHYSIO_MEDIA?: PhysioR2Bucket;
+  PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION?: import("./cloudflare-workflow-binding.js").PhysioExerciseRequestDraftGenerationBinding;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 

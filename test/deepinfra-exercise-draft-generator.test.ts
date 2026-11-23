@@ -37,6 +37,7 @@ import {
   submitRequestWithGeneratedDraft,
   testExerciseMediaService,
 } from "./helpers/exercise-requests-generate-fixture.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 import { MAX_LENGTH_EXERCISE_TEMPLATE_TEXT } from "../src/mcp-connector/text-limits.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
@@ -82,16 +83,18 @@ async function expectGenerateTextFailure(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   input: Parameters<ExerciseRequestsService["submitRequest"]>[0],
   expectedCode: string,
+  draftGenerator: ExerciseDraftGenerator,
 ): Promise<string> {
   const created = await service.submitRequest(input);
   expect(created.outcome).toBe("created");
   if (created.outcome !== "created") {
     throw new Error("expected created request");
   }
-  const generated = await service.generateRequest({
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
     practitionerId: input.practitionerId,
     requestId: created.request_id,
     mediaService: testExerciseMediaService(storage),
+    draftGenerator,
   });
   expect(generated).toMatchObject({ outcome: "text_failed", error: expectedCode });
   return created.request_id;
@@ -101,6 +104,7 @@ async function expectGenerateRejects(
   service: ExerciseRequestsService,
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   input: Parameters<ExerciseRequestsService["submitRequest"]>[0],
+  draftGenerator: ExerciseDraftGenerator,
   matcher: (
     result: Awaited<ReturnType<ExerciseRequestsService["generateRequest"]>>,
   ) => boolean,
@@ -110,10 +114,11 @@ async function expectGenerateRejects(
   if (created.outcome !== "created") {
     throw new Error("expected created request");
   }
-  const generated = await service.generateRequest({
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
     practitionerId: input.practitionerId,
     requestId: created.request_id,
     mediaService: testExerciseMediaService(storage),
+    draftGenerator,
   });
   expect(matcher(generated)).toBe(true);
 }
@@ -208,12 +213,17 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      const created = await submitRequestWithGeneratedDraft(service, storage, {
-        practitionerId: practitioner,
-        requestedName: "Heel slide",
-        exerciseNote: null,
-        formOpenedAt: FORM_OPENED,
-      });
+      const created = await submitRequestWithGeneratedDraft(
+        service,
+        storage,
+        {
+          practitionerId: practitioner,
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          formOpenedAt: FORM_OPENED,
+        },
+        { draftGenerator: generator },
+      );
       expect(created.outcome).toBe("created");
       if (created.outcome !== "created") {
         throw new Error("expected created outcome");
@@ -272,6 +282,7 @@ describe("DeepInfra exercise draft generator", () => {
           formOpenedAt: FORM_OPENED,
         },
         "deepinfra_exercise_draft_response_invalid",
+        generator,
       );
       expect(fetchImpl).toHaveBeenCalledTimes(2);
       const count = await storage.first<{ count: number }>(
@@ -331,6 +342,57 @@ describe("DeepInfra exercise draft generator", () => {
         "SELECT COUNT(*) AS count FROM exercise_aliases WHERE alias LIKE '%@%'",
       );
       expect(aliasRows?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Regenerate text permanent 503 makes exactly 2 fetches (R5)", async () => {
+    const fetchImpl = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen-503"),
+        "regen503@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const created = await submitRequestWithGeneratedDraft(
+        service,
+        storage,
+        {
+          practitionerId: practitioner,
+          requestedName: "Regen 503",
+          exerciseNote: null,
+          formOpenedAt: FORM_OPENED,
+        },
+        { draftGenerator: fakeExerciseDraftGenerator },
+      );
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created");
+      }
+      const regenService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      const result = await regenService.regenerateDraftText({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        note: "please retry",
+      });
+      expect(result).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }
@@ -416,6 +478,7 @@ describe("DeepInfra exercise draft generator", () => {
           formOpenedAt: FORM_OPENED,
         },
         "deepinfra_exercise_draft_response_invalid",
+        generator,
       );
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
@@ -453,6 +516,7 @@ describe("DeepInfra exercise draft generator", () => {
           formOpenedAt: FORM_OPENED,
         },
         "deepinfra_exercise_draft_response_invalid",
+        generator,
       );
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
@@ -460,11 +524,10 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once on HTTP 500 then maps to typed request_failed", async () => {
+  it("maps HTTP 500 to typed request_failed without a second in-provider fetch", async () => {
     const echo = JSON.stringify({ error: "Authorization Bearer " + SENTINEL_KEY });
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(new Response(echo, { status: 500 }))
       .mockResolvedValueOnce(new Response(echo, { status: 500 }));
     const generator = createDeepInfraExerciseDraftGenerator({
       apiKey: SENTINEL_KEY,
@@ -490,6 +553,7 @@ describe("DeepInfra exercise draft generator", () => {
           requestedName: "Http fail",
           formOpenedAt: FORM_OPENED,
         },
+        generator,
         (result) => {
           expect(result.outcome).toBe("text_failed");
           if (result.outcome !== "text_failed") {
@@ -499,7 +563,7 @@ describe("DeepInfra exercise draft generator", () => {
           return true;
         },
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       restoreConsoleSpies(spies);
       storage.close();
@@ -533,6 +597,7 @@ describe("DeepInfra exercise draft generator", () => {
             requestedName: `No retry ${status}`,
             formOpenedAt: FORM_OPENED,
           },
+          generator,
           (result) => {
             expect(result).toMatchObject({
               outcome: "text_failed",
@@ -573,6 +638,7 @@ describe("DeepInfra exercise draft generator", () => {
           requestedName: "Auth fail",
           formOpenedAt: FORM_OPENED,
         },
+        generator,
         (result) => {
           expect(result).toMatchObject({
             outcome: "text_failed",
@@ -624,10 +690,11 @@ describe("DeepInfra exercise draft generator", () => {
       if (created.outcome !== "created") {
         throw new Error("expected created request");
       }
-      const inflight = service.generateRequest({
+      const inflight = serviceGenerateRequestWithDrain(service, storage, {
         practitionerId: practitioner,
         requestId: created.request_id,
         mediaService: testExerciseMediaService(storage),
+        draftGenerator: generator,
       });
       inflight.catch(() => {});
       await vi.advanceTimersByTimeAsync(25);
@@ -638,7 +705,7 @@ describe("DeepInfra exercise draft generator", () => {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_timeout",
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
       storage.close();
@@ -680,10 +747,11 @@ describe("DeepInfra exercise draft generator", () => {
       if (created.outcome !== "created") {
         throw new Error("expected created request");
       }
-      const inflight = service.generateRequest({
+      const inflight = serviceGenerateRequestWithDrain(service, storage, {
         practitionerId: practitioner,
         requestId: created.request_id,
         mediaService: testExerciseMediaService(storage),
+        draftGenerator: generator,
       });
       await vi.advanceTimersByTimeAsync(25);
       await vi.advanceTimersByTimeAsync(25);
@@ -691,7 +759,7 @@ describe("DeepInfra exercise draft generator", () => {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_timeout",
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
       storage.close();
@@ -725,6 +793,7 @@ describe("DeepInfra exercise draft generator", () => {
           requestedName: "Network",
           formOpenedAt: FORM_OPENED,
         },
+        generator,
         (result) => {
           expect(result).toMatchObject({
             outcome: "text_failed",
@@ -733,7 +802,7 @@ describe("DeepInfra exercise draft generator", () => {
           return true;
         },
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
@@ -856,6 +925,7 @@ describe("DeepInfra exercise draft generator", () => {
           formOpenedAt: FORM_OPENED,
         },
         "deepinfra_exercise_draft_response_invalid",
+        generator,
       );
       expect(fetchImpl).toHaveBeenCalledTimes(2);
       const requestCount = await storage.first<{ count: number }>(

@@ -690,11 +690,13 @@ export class ExerciseRequestsRepository {
     created_at: string;
     updated_at: string;
     draft_generation_locked_at: string | null;
+    draft_generation_attempt_id: string | null;
+    draft_generation_failure_code: string | null;
   } | null> {
     const id = validateOpaqueEntityId(requestId, "Exercise request id");
     return this.sql.first(
       `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at,
-              draft_generation_locked_at
+              draft_generation_locked_at, draft_generation_attempt_id, draft_generation_failure_code
        FROM exercise_requests WHERE id = ? LIMIT 1`,
       [id],
     );
@@ -762,31 +764,124 @@ export class ExerciseRequestsRepository {
     return row?.draft_generation_locked_at ?? null;
   }
 
+  async getDraftGenerationAttemptId(requestId: string): Promise<string | null> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const row = await this.sql.first<{ draft_generation_attempt_id: string | null }>(
+      `SELECT draft_generation_attempt_id FROM exercise_requests WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return row?.draft_generation_attempt_id ?? null;
+  }
+
   async tryAcquireDraftGenerationLock(input: {
     requestId: string;
     lockedAt: string;
     staleBefore: string;
+    attemptId: string;
   }): Promise<boolean> {
     const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
     const result = await this.sql.run(
       `UPDATE exercise_requests
-       SET draft_generation_locked_at = ?
+       SET draft_generation_locked_at = ?,
+           draft_generation_attempt_id = ?,
+           draft_generation_failure_code = NULL,
+           draft_generation_abandon_logged_at = NULL
        WHERE id = ?
-         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at < ?)`,
-      [input.lockedAt, requestId, input.staleBefore],
+         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at <= ?)`,
+      [input.lockedAt, attemptId, requestId, input.staleBefore],
     );
     return result.rowsAffected > 0;
   }
 
   async releaseDraftGenerationLock(
     requestId: string,
-    holderLockedAt: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const attempt = validateOpaqueEntityId(attemptId, "draft_generation_attempt_id");
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = NULL, draft_generation_attempt_id = NULL
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [id, attempt],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async refreshDraftGenerationLock(input: {
+    requestId: string;
+    lockedAt: string;
+    attemptId: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [input.lockedAt, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async setDraftGenerationFailure(input: {
+    requestId: string;
+    attemptId: string;
+    failureCode: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_failure_code = ?
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [input.failureCode, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async markDraftGenerationAbandonLoggedIfUnlogged(input: {
+    requestId: string;
+    attemptId: string;
+    loggedAt: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_abandon_logged_at = ?
+       WHERE id = ?
+         AND draft_generation_attempt_id = ?
+         AND draft_generation_abandon_logged_at IS NULL`,
+      [input.loggedAt, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async clearDraftGenerationFailureOnSuccess(
+    requestId: string,
+    attemptId: string,
   ): Promise<void> {
     const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const attempt = validateOpaqueEntityId(attemptId, "draft_generation_attempt_id");
     await this.sql.run(
-      `UPDATE exercise_requests SET draft_generation_locked_at = NULL
-       WHERE id = ? AND draft_generation_locked_at = ?`,
-      [id, holderLockedAt],
+      `UPDATE exercise_requests
+       SET draft_generation_failure_code = NULL
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [id, attempt],
     );
   }
 

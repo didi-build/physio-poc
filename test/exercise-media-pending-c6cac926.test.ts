@@ -3,7 +3,7 @@ import { handleRequest } from "../src/http/app.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
-import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";
+import { countingSplitImageGeneration } from "./helpers/counting-fake-image-generation.js";
 import {
   FIXTURE_EXERCISE_ID,
   FIXTURE_VERSION_ID,
@@ -127,20 +127,7 @@ describe("exercise media pending model (c6cac926)", () => {
           approved_at: TS,
         }),
       ]);
-      let upstreamCalls = 0;
-      const images: ImageGenerationPort = {
-        async generateStartAndEndImages() {
-          upstreamCalls += 1;
-          return new FakeImageGeneration().generateStartAndEndImages({
-            startPrompt: "s",
-            endPrompt: "e",
-          });
-        },
-        generateStartImage: (...args) =>
-          new FakeImageGeneration().generateStartImage(...args),
-        generateEndImage: (...args) =>
-          new FakeImageGeneration().generateEndImage(...args),
-      };
+      const { port: images, upstreamCalls } = countingSplitImageGeneration();
       const deps = exerciseMediaTestDeps(
         storage,
         {
@@ -164,7 +151,7 @@ describe("exercise media pending model (c6cac926)", () => {
         deps,
       );
       expect(first.status).toBe(201);
-      expect(upstreamCalls).toBe(1);
+      expect(upstreamCalls()).toBe(2);
       const second = await handleRequest(
         new Request(
           genUrl,
@@ -180,7 +167,7 @@ describe("exercise media pending model (c6cac926)", () => {
       await expect(second.json()).resolves.toEqual(
         EXERCISE_MEDIA_ALREADY_GENERATED_409_BODY,
       );
-      expect(upstreamCalls).toBe(1);
+      expect(upstreamCalls()).toBe(2);
     } finally {
       storage.close();
     }

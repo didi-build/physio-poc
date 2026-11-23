@@ -24,6 +24,7 @@ import {
 } from "./helpers/exercise-sqlite-fixture.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
 import { testExerciseMediaService } from "./helpers/exercise-requests-generate-fixture.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { DeepInfraFluxKleinImageGeneration } from "../src/adapters/node/deepinfra-flux-klein-image-generation.js";
@@ -92,10 +93,11 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
       if (created.outcome !== "created") {
         throw new Error("expected created request");
       }
-      await service.generateRequest({
+      await serviceGenerateRequestWithDrain(service, storage, {
         practitionerId: practitioner,
         requestId: created.request_id,
         mediaService: testExerciseMediaService(storage),
+        draftGenerator: generator,
       });
       const init = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1];
       const messages = (
@@ -240,10 +242,11 @@ describe("DIDI-1271 PR131 follow-ups (QA R3 survivors)", () => {
         throw new Error("expected created request");
       }
       await expect(
-        service.generateRequest({
+        serviceGenerateRequestWithDrain(service, storage, {
           practitionerId: practitioner,
           requestId: created.request_id,
           mediaService: testExerciseMediaService(storage),
+          draftGenerator: generator,
         }),
       ).resolves.toMatchObject({ outcome: "complete" });
       expect(fetchImpl).toHaveBeenCalledTimes(1);

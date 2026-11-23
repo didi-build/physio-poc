@@ -3,7 +3,8 @@ import { ExerciseRequestsRepository } from "../../storage/repositories/exercise-
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
   isLockFresh,
-} from "./exercise-request-draft-generation.js";
+} from "./draft-generation-lock.js";
+import { logDraftGenerationLockAcquired } from "./draft-generation-lock-log.js";
 
 export type DraftGenerationLockOutcome<T> =
   | { kind: "in_progress"; view: ExerciseRequestDraftView; started_elsewhere: boolean }
@@ -23,6 +24,7 @@ export async function underDraftGenerationLock<T>(input: {
   }
 
   const lockHeldAt = input.now;
+  const attemptId = crypto.randomUUID();
   const staleBefore = new Date(
     Date.parse(input.now) - DRAFT_GENERATION_LOCK_STALE_MS,
   ).toISOString();
@@ -30,16 +32,23 @@ export async function underDraftGenerationLock<T>(input: {
     requestId: input.requestId,
     lockedAt: lockHeldAt,
     staleBefore,
+    attemptId,
   });
   if (!acquired) {
     const view = await input.loadView();
     return { kind: "in_progress", view, started_elsewhere: true };
   }
 
+  logDraftGenerationLockAcquired({
+    requestId: input.requestId,
+    lockedAt: lockHeldAt,
+    now: input.now,
+  });
+
   try {
     const result = await input.run();
     return { kind: "ran", result };
   } finally {
-    await input.requests.releaseDraftGenerationLock(input.requestId, lockHeldAt);
+    await input.requests.releaseDraftGenerationLock(input.requestId, attemptId);
   }
 }

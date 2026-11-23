@@ -13,6 +13,8 @@ export const MIGRATION_0009_ID = "0009_routine_conditions";
 export const MIGRATION_0011_ID = "0011_exercise_version_pending_media";
 export const MIGRATION_0012_ID = "0012_exercise_suggested_body_regions";
 export const MIGRATION_0013_ID = "0013_exercise_request_generation_lock";
+export const MIGRATION_0014_ID = "0014_draft_generation_attempt_and_failure";
+export const MIGRATION_0015_ID = "0015_draft_generation_abandon_logged";
 
 export function splitSqlStatements(sql: string): string[] {
   const withoutComments = sql

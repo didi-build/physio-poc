@@ -20,9 +20,13 @@ import { resolveExerciseDraftGenerator } from "../deepinfra/resolve-exercise-dra
 import { handleExerciseMediaRequest } from "../../http/routes/exercise-media.js";
 import { createWorkerImageGenerationPort } from "./create-worker-image-generation-port.js";
 import { logWorkerFakeDeepinfraProviderOnce } from "./worker-fake-deepinfra-provider-log.js";
+import { createWorkerDraftGenerationWorkflowPort } from "./worker-draft-generation-workflow-port.js";
+import type { ExerciseRequestDraftGenerationWorkflowEnv } from "./exercise-request-draft-generation-workflow.js";
 
 /** Production Better Auth wiring (dynamic import from create-app-dependencies). */
-export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDependencies {
+export function createWorkerProductionAppDependencies(
+  env: ExerciseRequestDraftGenerationWorkflowEnv,
+): AppDependencies {
   if (!env.PHYSIO_DB) {
     throw new Error("PHYSIO_DB binding is required for production Worker auth");
   }
@@ -55,6 +59,9 @@ export function createWorkerProductionAppDependencies(env: WorkerEnv): AppDepend
     exerciseDraftGenerator: resolveExerciseDraftGenerator(env),
     extraRouteHandlers: [handleExerciseMediaRequest],
     exerciseMediaImages: createWorkerImageGenerationPort(env),
+    draftGenerationWorkflow: env.PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION
+      ? createWorkerDraftGenerationWorkflowPort(env)
+      : undefined,
   };
 }
 

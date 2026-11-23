@@ -39,14 +39,21 @@ import {
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
+import { generateExerciseRequestDraft } from "./exercise-request-draft-generation.js";
+import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
-  generateExerciseRequestDraft,
   isLockFresh,
-} from "./exercise-request-draft-generation.js";
+} from "./draft-generation-lock.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
+import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
+import { logDraftGenerationRunCanceled } from "./draft-generation-lock-log.js";
+import { maybeLogDraftGenerationRunAbandoned } from "./maybe-log-draft-generation-run-abandoned.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
-import type { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
+import type {
+  ExerciseMediaService,
+  InitialDraftMediaProgress,
+} from "../exercise-media/exercise-media-service.js";
 import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
   ApproveExerciseRequestResult,
@@ -178,6 +185,9 @@ export class ExerciseRequestsService {
   private readonly practitionerExercises: PractitionerExercisesRepository;
   private readonly draftGenerator: ExerciseDraftGenerator;
   private readonly now: () => string;
+  private readonly initialDraftMediaProgress: (
+    exerciseVersionId: string,
+  ) => Promise<InitialDraftMediaProgress>;
 
   constructor(
     private readonly sql: SqlStoragePort,
@@ -185,6 +195,9 @@ export class ExerciseRequestsService {
     options?: {
       now?: () => string;
       draftGenerator?: ExerciseDraftGenerator;
+      initialDraftMediaProgress?: (
+        exerciseVersionId: string,
+      ) => Promise<InitialDraftMediaProgress>;
     },
   ) {
     this.requests = new ExerciseRequestsRepository(sql);
@@ -196,6 +209,16 @@ export class ExerciseRequestsService {
     this.practitionerExercises = new PractitionerExercisesRepository(sql);
     this.now = options?.now ?? (() => new Date().toISOString());
     this.draftGenerator = options?.draftGenerator ?? fakeExerciseDraftGenerator;
+    this.initialDraftMediaProgress =
+      options?.initialDraftMediaProgress ??
+      (async (exerciseVersionId) => {
+        const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+        const mediaRow = await versionMedia.findVersion(exerciseVersionId);
+        if (!mediaRow?.media_set_id) {
+          return "none";
+        }
+        return "complete";
+      });
   }
 
   async listSimilar(input: {
@@ -386,6 +409,22 @@ export class ExerciseRequestsService {
   }): Promise<ExerciseRequestDraftView> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
+    const row = await this.requests.findById(requestId);
+    const nowIso = this.now();
+    const lockedAt = row?.draft_generation_locked_at ?? null;
+    if (
+      lockedAt &&
+      !isLockFresh(lockedAt, nowIso) &&
+      row?.draft_generation_attempt_id
+    ) {
+      await maybeLogDraftGenerationRunAbandoned({
+        requests: this.requests,
+        requestId,
+        attemptId: row.draft_generation_attempt_id,
+        lockedAt,
+        now: nowIso,
+      });
+    }
     return this.buildDraftView(requestId);
   }
 
@@ -435,6 +474,7 @@ export class ExerciseRequestsService {
               now,
               existingExerciseId: row.exercise_id!,
               existingVersionId: draft.id,
+              providerAttempts: 2,
             },
             {
               exercises: this.exercises,
@@ -470,25 +510,41 @@ export class ExerciseRequestsService {
     practitionerId: string;
     requestId: string;
     mediaService: ExerciseMediaService;
+    workflow?: DraftGenerationWorkflowPort;
   }): Promise<GenerateExerciseRequestDraftResult> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
     const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+    const loadView = (id: string) => this.loadDraftView(id);
+    const runDeps = {
+      sql: this.sql,
+      draftGenerator: this.draftGenerator,
+      now: this.now,
+      requests: this.requests,
+      exercises: this.exercises,
+      versions: this.versions,
+      versionMedia,
+    };
+    if (!input.workflow) {
+      throw new ExerciseRequestsServiceError(
+        "Draft generation workflow is not configured",
+        "draft_generation_workflow_unavailable",
+      );
+    }
     return generateExerciseRequestDraft({
       practitionerId: input.practitionerId,
       requestId,
       mediaService: input.mediaService,
-      loadView: (id) => this.buildDraftView(parseOpaqueId(id, "request_id")),
+      loadView,
       deps: {
-        sql: this.sql,
-        draftGenerator: this.draftGenerator,
-        now: this.now,
-        requests: this.requests,
-        exercises: this.exercises,
-        versions: this.versions,
-        versionMedia,
+        ...runDeps,
+        workflow: input.workflow,
       },
     });
+  }
+
+  async loadDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
+    return this.buildDraftView(parseOpaqueId(requestId, "request_id"));
   }
 
   private async buildDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
@@ -528,11 +584,8 @@ export class ExerciseRequestsService {
           cue_concentric: versionRow.cue_concentric,
           cue_eccentric: versionRow.cue_eccentric,
         };
-        const versionMedia = new ExerciseVersionMediaRepository(this.sql);
-        const mediaRow = await versionMedia.findVersion(versionRow.id);
-        firstDraftComplete =
-          typeof mediaRow?.media_set_id === "string" &&
-          mediaRow.media_set_id.length > 0;
+        const mediaProgress = await this.initialDraftMediaProgress(versionRow.id);
+        firstDraftComplete = mediaProgress === "complete";
       }
     }
 
@@ -548,6 +601,11 @@ export class ExerciseRequestsService {
       generation: {
         generation_in_progress: generationInProgress,
         first_draft_complete: firstDraftComplete,
+        draft_generation_locked_at: lockRow?.draft_generation_locked_at ?? null,
+        generation_failure: failureCodeToPhase(
+          lockRow?.draft_generation_failure_code ?? null,
+        ),
+        generation_failure_code: lockRow?.draft_generation_failure_code ?? null,
       },
       draft,
     };
@@ -709,6 +767,17 @@ export class ExerciseRequestsService {
           requesterPractitionerId: rowBeforeWithdraw.requested_by,
           previousStatus: rowBeforeWithdraw.status,
         });
+        if (
+          rowBeforeWithdraw.draft_generation_attempt_id &&
+          rowBeforeWithdraw.draft_generation_locked_at
+        ) {
+          logDraftGenerationRunCanceled({
+            requestId,
+            attemptId: rowBeforeWithdraw.draft_generation_attempt_id,
+            lockedAt: rowBeforeWithdraw.draft_generation_locked_at,
+            now: nowIso,
+          });
+        }
       }
       return {
         request_id: requestId,

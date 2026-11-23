@@ -13,6 +13,7 @@ import {
 } from "../src/exercise-requests-api-paths.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 import {
+  createDelayedFakeExerciseDraftGenerator,
   createFakeExerciseDraftGenerator,
   fakeExerciseDraftGenerator,
 } from "../src/services/exercise-requests/fake-draft-generator.js";
@@ -23,13 +24,21 @@ import {
   seedExercise,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
-import { FailingFakeImageGeneration } from "./helpers/failing-fake-image-generation.js";
+import {
+  FailingFakeImageGeneration,
+  FailingInitialDraftImageGeneration,
+} from "./helpers/failing-fake-image-generation.js";
 import { mutatingAppApiRequestInit } from "./helpers/mutating-app-api-request.js";
 import {
   MCP_TEST_CONFIG,
   createTestPhysioMcpHttpHandler,
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import {
+  attachDraftGenerationTestWorkflow,
+  drainDraftGeneration,
+} from "./helpers/draft-generation-test-workflow.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -52,19 +61,57 @@ function deps(
   const auth = new FakeAuthPort({
     practitioner: { practitionerId, email, displayName: "Coach" },
   });
-  return {
-    deps: {
-      sql: storage,
-      objects: new InMemoryObjectStorage(),
-      config: MCP_TEST_CONFIG,
-      auth,
-      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-      exerciseDraftGenerator,
-      exerciseMediaImages,
-      extraRouteHandlers: [handleExerciseMediaRequest],
-    },
-    cookie: auth.createSessionCookieHeader(),
+  const baseDeps = {
+    sql: storage,
+    objects: new InMemoryObjectStorage(),
+    config: MCP_TEST_CONFIG,
+    auth,
+    mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+    exerciseDraftGenerator,
+    exerciseMediaImages,
+    extraRouteHandlers: [handleExerciseMediaRequest],
   };
+  const requestService = new ExerciseRequestsService(baseDeps.sql, baseDeps.config, {
+    draftGenerator: exerciseDraftGenerator,
+  });
+  const { deps: bundle, workflow } = attachDraftGenerationTestWorkflow(
+    baseDeps,
+    (requestId) => requestService.loadDraftView(requestId),
+  );
+  return {
+    deps: bundle,
+    cookie: auth.createSessionCookieHeader(),
+    workflow,
+    baseDeps,
+  };
+}
+
+async function createOpenRequest(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  email: string,
+  exerciseDraftGenerator = fakeExerciseDraftGenerator,
+  exerciseMediaImages?: FailingFakeImageGeneration,
+) {
+  const {
+    deps: bundle,
+    cookie,
+    workflow,
+    baseDeps,
+  } = deps(storage, practitionerId, email, exerciseDraftGenerator, exerciseMediaImages);
+  const created = await handleRequest(
+    authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
+      method: "POST",
+      body: JSON.stringify({
+        requested_name: "Heel slide draft",
+        form_opened_at: FORM_OPENED,
+      }),
+    }),
+    bundle,
+  );
+  expect(created.status).toBe(200);
+  const body = (await created.json()) as { request_id: string };
+  return { requestId: body.request_id, cookie, bundle, workflow, baseDeps };
 }
 
 async function submitAndGenerate(
@@ -74,13 +121,12 @@ async function submitAndGenerate(
   generator = fakeExerciseDraftGenerator,
   images?: FailingFakeImageGeneration,
 ) {
-  const { deps: bundle, cookie } = deps(
-    storage,
-    practitionerId,
-    email,
-    generator,
-    images,
-  );
+  const {
+    deps: bundle,
+    cookie,
+    workflow,
+    baseDeps,
+  } = deps(storage, practitionerId, email, generator, images);
   const created = await handleRequest(
     authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
       method: "POST",
@@ -100,7 +146,15 @@ async function submitAndGenerate(
     }),
     bundle,
   );
-  return { generateResponse: generated, requestId: body.request_id, cookie, bundle };
+  await drainDraftGeneration(workflow, body.request_id);
+  return {
+    generateResponse: generated,
+    requestId: body.request_id,
+    cookie,
+    bundle,
+    workflow,
+    baseDeps,
+  };
 }
 
 describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
@@ -117,17 +171,16 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         practitioner,
         "ok@example.com",
       );
-      expect(generateResponse.status).toBe(200);
+      expect(generateResponse.status).toBe(202);
       const payload = (await generateResponse.json()) as {
         outcome: string;
-        view: {
-          draft: { title: string } | null;
-          generation: { first_draft_complete: boolean };
-        };
+        started_elsewhere?: boolean;
       };
-      expect(payload.outcome).toBe("complete");
-      expect(payload.view.generation.first_draft_complete).toBe(true);
-      expect(payload.view.draft?.title).toBe("Heel slide draft");
+      expect(payload.outcome).toBe("in_progress");
+      expect(payload).toMatchObject({
+        outcome: "in_progress",
+        started_elsewhere: false,
+      });
 
       const viewResponse = await handleRequest(
         new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
@@ -159,21 +212,34 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         "text@example.com",
         generator,
       );
-      expect(first.generateResponse.status).toBe(502);
+      expect(first.generateResponse.status).toBe(202);
       const row = await storage.first<{ exercise_id: string | null }>(
         "SELECT exercise_id FROM exercise_requests WHERE id = ?",
         [first.requestId],
       );
       expect(row?.exercise_id).toBeNull();
 
+      first.baseDeps.exerciseDraftGenerator = fakeExerciseDraftGenerator;
+      first.bundle.exerciseDraftGenerator = fakeExerciseDraftGenerator;
       const retry = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(first.requestId), first.cookie, {
           method: "POST",
           body: JSON.stringify({}),
         }),
-        { ...first.bundle, exerciseDraftGenerator: fakeExerciseDraftGenerator },
+        first.bundle,
       );
-      expect(retry.status).toBe(200);
+      expect(retry.status).toBe(202);
+      await drainDraftGeneration(first.workflow, first.requestId);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(first.requestId)}`, {
+          headers: { cookie: first.cookie },
+        }),
+        first.bundle,
+      );
+      const view = (await viewResponse.json()) as {
+        generation: { first_draft_complete: boolean };
+      };
+      expect(view.generation.first_draft_complete).toBe(true);
     } finally {
       storage.close();
     }
@@ -187,7 +253,7 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         id("pr-gen-img"),
         "img@example.com",
       );
-      const failImages = new FailingFakeImageGeneration(true);
+      const failImages = new FailingInitialDraftImageGeneration(true);
       const first = await submitAndGenerate(
         storage,
         practitioner,
@@ -195,21 +261,35 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         fakeExerciseDraftGenerator,
         failImages,
       );
-      expect(first.generateResponse.status).toBe(502);
+      expect(first.generateResponse.status).toBe(202);
       const row = await storage.first<{ exercise_id: string | null }>(
         "SELECT exercise_id FROM exercise_requests WHERE id = ?",
         [first.requestId],
       );
       expect(row?.exercise_id).not.toBeNull();
 
+      const fixedImages = new FailingFakeImageGeneration(false);
+      first.baseDeps.exerciseMediaImages = fixedImages;
+      first.bundle.exerciseMediaImages = fixedImages;
       const retry = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(first.requestId), first.cookie, {
           method: "POST",
           body: JSON.stringify({}),
         }),
-        { ...first.bundle, exerciseMediaImages: new FailingFakeImageGeneration(false) },
+        first.bundle,
       );
-      expect(retry.status).toBe(200);
+      expect(retry.status).toBe(202);
+      await drainDraftGeneration(first.workflow, first.requestId);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(first.requestId)}`, {
+          headers: { cookie: first.cookie },
+        }),
+        first.bundle,
+      );
+      const view = (await viewResponse.json()) as {
+        generation: { first_draft_complete: boolean };
+      };
+      expect(view.generation.first_draft_complete).toBe(true);
     } finally {
       storage.close();
     }
@@ -302,11 +382,21 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         id("pr-gen-retry-lock"),
         "retry-lock@example.com",
       );
-      const { bundle, cookie, requestId } = await submitAndGenerate(
+      const delayed = createDelayedFakeExerciseDraftGenerator({ delayMs: 200 });
+      const { bundle, cookie, requestId, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "retry-lock@example.com",
+        delayed,
       );
+      const first = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        bundle,
+      );
+      expect(first.status).toBe(202);
       const heldAt = new Date().toISOString();
       await storage.run(
         "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
@@ -324,6 +414,39 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         outcome: "in_progress",
         started_elsewhere: true,
       });
+      await drainDraftGeneration(workflow, requestId);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("POST /generate returns 503 draft_generation_workflow_unavailable without a binding", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-gen-no-wf"),
+        "no-wf@example.com",
+      );
+      const { bundle, cookie, requestId } = await createOpenRequest(
+        storage,
+        practitioner,
+        "no-wf@example.com",
+      );
+      const withoutWorkflow = { ...bundle };
+      delete (withoutWorkflow as { draftGenerationWorkflow?: unknown })
+        .draftGenerationWorkflow;
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        withoutWorkflow,
+      );
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "draft_generation_workflow_unavailable",
+      });
     } finally {
       storage.close();
     }
@@ -337,11 +460,21 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         id("pr-gen-conc"),
         "conc@example.com",
       );
-      const { bundle, cookie, requestId } = await submitAndGenerate(
+      const delayed = createDelayedFakeExerciseDraftGenerator({ delayMs: 200 });
+      const { bundle, cookie, requestId, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "conc@example.com",
+        delayed,
       );
+      const first = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        bundle,
+      );
+      expect(first.status).toBe(202);
       const now = new Date().toISOString();
       await storage.run(
         "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
@@ -365,6 +498,7 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         outcome: "in_progress",
         started_elsewhere: true,
       });
+      await drainDraftGeneration(workflow, requestId);
     } finally {
       storage.close();
     }
@@ -395,11 +529,11 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
           ],
         );
       }
-      const { cookie, deps: bundle } = deps(
-        storage,
-        practitioner,
-        "quota-skip@example.com",
-      );
+      const {
+        cookie,
+        deps: bundle,
+        workflow,
+      } = deps(storage, practitioner, "quota-skip@example.com");
       const created = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
           method: "POST",
@@ -420,7 +554,8 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         }),
         bundle,
       );
-      expect(generated.status).toBe(200);
+      expect(generated.status).toBe(202);
+      await drainDraftGeneration(workflow, requestId);
       const count = await storage.first<{ c: number }>(
         "SELECT COUNT(*) AS c FROM media_regenerations WHERE practitioner_id = ?",
         [practitioner],
@@ -444,16 +579,22 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         id("pr-still-other"),
         "still-other@example.com",
       );
-      const { generateResponse, cookie, bundle } = await submitAndGenerate(
+      const { generateResponse, cookie, bundle, requestId } = await submitAndGenerate(
         storage,
         requester,
         "still-own@example.com",
       );
-      expect(generateResponse.status).toBe(200);
-      const payload = (await generateResponse.json()) as {
-        view: { draft: { exercise_version_id: string } | null };
+      expect(generateResponse.status).toBe(202);
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      const payload = (await viewResponse.json()) as {
+        draft: { exercise_version_id: string } | null;
       };
-      const versionId = payload.view.draft?.exercise_version_id;
+      const versionId = payload.draft?.exercise_version_id;
       expect(versionId).toBeTruthy();
       const ownStill = await handleRequest(
         new Request(`${BASE}${exerciseMediaDraftStillPath(versionId!, "start")}`, {
@@ -504,21 +645,25 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         requestedName: "Lock holder",
       });
       const heldAt = "2026-11-21T12:00:00.000Z";
-      const newerAt = "2026-11-21T12:05:00.000Z";
+      const attemptHeld = id("attempt-held");
+      const attemptNewer = id("attempt-newer");
       await requests.tryAcquireDraftGenerationLock({
         requestId,
         lockedAt: heldAt,
         staleBefore: "2026-11-21T11:00:00.000Z",
+        attemptId: attemptHeld,
       });
-      await requests.releaseDraftGenerationLock(requestId, "2026-11-21T11:00:00.000Z");
+      await requests.releaseDraftGenerationLock(requestId, id("attempt-wrong"));
       expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(heldAt);
       await storage.run(
-        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
-        [newerAt, requestId],
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        ["2026-11-21T12:05:00.000Z", attemptNewer, requestId],
       );
-      await requests.releaseDraftGenerationLock(requestId, heldAt);
-      expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(newerAt);
-      await requests.releaseDraftGenerationLock(requestId, newerAt);
+      await requests.releaseDraftGenerationLock(requestId, attemptHeld);
+      expect(await requests.getDraftGenerationLockedAt(requestId)).not.toBeNull();
+      await requests.releaseDraftGenerationLock(requestId, attemptNewer);
       expect(await requests.getDraftGenerationLockedAt(requestId)).toBeNull();
     } finally {
       storage.close();

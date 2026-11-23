@@ -1,10 +1,13 @@
 import { expect } from "vitest";
 import { ExerciseMediaService } from "../../src/services/exercise-media/exercise-media-service.js";
 import { ExerciseRequestsService } from "../../src/services/exercise-requests/exercise-requests-service.js";
+import type { ExerciseDraftGenerator } from "../../src/services/exercise-requests/exercise-draft-generator-types.js";
+import { fakeExerciseDraftGenerator } from "../../src/services/exercise-requests/fake-draft-generator.js";
 import { InMemoryObjectStorage } from "../../src/storage/adapters/memory/in-memory-object-storage.js";
 import { FakeImageGeneration } from "../../src/storage/adapters/memory/fake-image-generation.js";
 import { PrefixMediaStorage } from "../../src/storage/adapters/memory/prefix-media-storage.js";
 import type { SqlStoragePort } from "../../src/storage/ports/sql-storage.js";
+import { serviceGenerateRequestWithDrain } from "./test-draft-generation-workflow-port.js";
 
 export function testExerciseMediaService(
   storage: SqlStoragePort,
@@ -20,15 +23,18 @@ export async function submitRequestWithGeneratedDraft(
   service: ExerciseRequestsService,
   storage: SqlStoragePort,
   input: Parameters<ExerciseRequestsService["submitRequest"]>[0],
+  options?: { draftGenerator?: ExerciseDraftGenerator },
 ) {
   const created = await service.submitRequest(input);
   if (created.outcome !== "created") {
     return created;
   }
-  const generated = await service.generateRequest({
+  const mediaService = testExerciseMediaService(storage);
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
     practitionerId: input.practitionerId,
     requestId: created.request_id,
-    mediaService: testExerciseMediaService(storage),
+    mediaService,
+    draftGenerator: options?.draftGenerator ?? fakeExerciseDraftGenerator,
   });
   expect(generated.outcome).toBe("complete");
   const row = await storage.first<{ exercise_id: string | null }>(

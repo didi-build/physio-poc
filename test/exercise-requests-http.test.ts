@@ -15,6 +15,7 @@ import {
   EXERCISE_REQUESTS_API_BASE,
 } from "../src/exercise-requests-api-paths.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import {
   ExerciseRequestsRepository,
@@ -121,7 +122,7 @@ async function seedDraftingRequestForPractitioner(
     new FakeImageGeneration(),
     new PrefixMediaStorage(new InMemoryObjectStorage()),
   );
-  const generated = await service.generateRequest({
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
     practitionerId,
     requestId: created.request_id,
     mediaService,
