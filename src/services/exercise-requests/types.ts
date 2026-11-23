@@ -124,6 +124,7 @@ export type ExerciseRequestDraftView = {
     description: string;
     equipment: string;
     starting_position: string;
+    ending_position: string;
     steps: string;
     common_mistakes: string;
     regressions: string;
@@ -157,6 +158,7 @@ export type DraftFieldPatch = Partial<{
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;

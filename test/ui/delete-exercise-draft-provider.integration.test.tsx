@@ -186,6 +186,7 @@ describe("Delete draft through real ExerciseRequestsApiProvider", () => {
               description: "d",
               equipment: "",
               starting_position: "s",
+              ending_position: "",
               steps: "st",
               common_mistakes: "",
               regressions: "",

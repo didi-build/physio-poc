@@ -99,6 +99,9 @@ export function PublicLinkPage() {
           <PublicLinkExerciseRow
             key={row.position}
             title={row.title}
+            description={row.description}
+            startingPosition={row.starting_position}
+            endingPosition={row.ending_position}
             prescriptionType={row.prescription_type}
             params={row.params}
             note={row.note}

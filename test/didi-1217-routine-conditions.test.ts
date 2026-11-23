@@ -36,6 +36,7 @@ import {
   MIGRATION_0007_SQL,
   MIGRATION_0008_SQL,
   MIGRATION_0009_SQL,
+  applyExerciseVersionEndingPositionMigration,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
@@ -143,6 +144,7 @@ async function openD1MigratedStorage(): Promise<D1SqlStorage> {
   await applyMigration(sql, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   await applyMigration(sql, MIGRATION_0008_ID, MIGRATION_0008_SQL);
   await applyMigration(sql, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+  await applyExerciseVersionEndingPositionMigration(sql);
   return sql;
 }
 
@@ -278,6 +280,7 @@ describe("0009 routine conditions migration (integration)", () => {
   it("leaves routines, versions, saved copies, and program origin unchanged (0008 → 0009)", async () => {
     const storage = await openThroughMigration0008();
     try {
+      await applyExerciseVersionEndingPositionMigration(storage);
       const author = await seedPractitioner(storage);
       await seedApprovedExerciseVersion(storage, author);
       const routines = new RoutinesRepository(storage);

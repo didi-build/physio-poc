@@ -100,6 +100,9 @@ d1_tables:
       starting_position:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      ending_position:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
       steps:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write

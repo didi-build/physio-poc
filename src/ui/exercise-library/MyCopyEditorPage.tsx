@@ -11,6 +11,8 @@ import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
+import { STARTING_POSITION } from "../copy/exercise-requests.js";
+import { ENDING_POSITION_LABEL } from "../copy/ending-position.js";
 import {
   DESCRIPTION_FIELD,
   KEEP_MINE,
@@ -40,6 +42,8 @@ import {
 const FIELD_LABELS: Record<TextOverrideKey, string> = {
   title: TITLE_FIELD,
   description: DESCRIPTION_FIELD,
+  starting_position: STARTING_POSITION,
+  ending_position: ENDING_POSITION_LABEL,
   cue_stretching: cueFieldLabel("Stretching"),
   cue_isometric: cueFieldLabel("Isometric"),
   cue_concentric: cueFieldLabel("Concentric"),

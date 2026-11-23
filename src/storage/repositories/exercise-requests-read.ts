@@ -45,6 +45,7 @@ export type DraftVersionDetailRow = {
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;
@@ -78,7 +79,7 @@ export class ExerciseRequestsReadRepository {
   ): Promise<DraftVersionDetailRow | null> {
     return this.sql.first<DraftVersionDetailRow>(
       `
-      SELECT id, version_number, title, description, equipment, starting_position, steps,
+      SELECT id, version_number, title, description, equipment, starting_position, ending_position, steps,
              common_mistakes, regressions, progressions, precautions,
              cue_stretching, cue_isometric, cue_concentric, cue_eccentric
       FROM exercise_versions

@@ -229,5 +229,11 @@ export function validateTextOverrideValue(key: string, value: string): string {
     assertNoPatientDetails(trimmed, "Description");
     return trimmed;
   }
+  if (key === "starting_position") {
+    return validateExerciseTemplateText(value, "Starting position");
+  }
+  if (key === "ending_position") {
+    return validateExerciseTemplateText(value, "Ending position");
+  }
   throw new FreeTextValidationError(`Unknown text override key: ${key}`);
 }

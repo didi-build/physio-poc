@@ -59,6 +59,7 @@ describe("DIDI-1276 empty-text pre-AI draft generate", () => {
           title: "Dumbbell Shoulder Press",
           description: "",
           starting_position: "",
+          ending_position: "",
           steps: "",
         }),
       );

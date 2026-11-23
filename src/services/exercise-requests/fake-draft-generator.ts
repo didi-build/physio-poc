@@ -80,6 +80,7 @@ export const fakeExerciseDraftGenerator: ExerciseDraftGenerator = async (
       steps: "1. Perform the movement with control.",
       equipment: "None",
       startingPosition: "Start in a comfortable position.",
+      endingPosition: "Finish with heel near the buttock.",
     });
     return {
       exerciseId: input.existingExerciseId,

@@ -4,6 +4,8 @@ import { validateTextOverrideValue } from "./exercise-free-text.js";
 export const TEXT_OVERRIDE_KEYS = [
   "title",
   "description",
+  "starting_position",
+  "ending_position",
   "cue_stretching",
   "cue_isometric",
   "cue_concentric",
@@ -131,6 +133,8 @@ export function parseTextOverridesJson(json: string): TextOverrides {
 export type LibraryVersionText = {
   title: string;
   description: string;
+  starting_position: string;
+  ending_position: string;
   cue_stretching: string | null;
   cue_isometric: string | null;
   cue_concentric: string | null;

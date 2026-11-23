@@ -54,6 +54,7 @@ const VALID_STRETCH_DRAFT = {
   description: "Gentle knee flexion stretch.",
   equipment: "Mat",
   starting_position: "Supine on mat.",
+  ending_position: "Knee bent with heel slid toward the hip.",
   steps: "1. Bend knee\n2. Slide heel",
   common_mistakes: "Rushing",
   regressions: "Smaller range",
@@ -248,6 +249,17 @@ describe("DeepInfra exercise draft generator", () => {
       );
       expect(description?.description).toBe("Gentle knee flexion stretch.");
       expect(description?.description).not.toContain("Default sets and reps");
+      const positions = await storage.first<{
+        starting_position: string;
+        ending_position: string;
+      }>(
+        "SELECT starting_position, ending_position FROM exercise_versions WHERE exercise_id = ?",
+        [exerciseId],
+      );
+      expect(positions?.starting_position).toBe("Supine on mat.");
+      expect(positions?.ending_position).toBe(
+        "Knee bent with heel slid toward the hip.",
+      );
     } finally {
       storage.close();
     }

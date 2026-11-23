@@ -218,6 +218,7 @@ export type ExerciseVersionInsert = {
   description?: string;
   equipment?: string;
   startingPosition?: string;
+  endingPosition?: string;
   steps?: string;
   commonMistakes?: string;
   regressions?: string;
@@ -269,6 +270,7 @@ export class ExerciseVersionsRepository {
       description: string;
       equipment: string;
       startingPosition: string;
+      endingPosition: string;
       steps: string;
       commonMistakes: string;
       regressions: string;
@@ -298,6 +300,12 @@ export class ExerciseVersionsRepository {
       sets.push("starting_position = ?");
       bindings.push(
         validateExerciseTemplateText(patch.startingPosition, "Starting position"),
+      );
+    }
+    if (patch.endingPosition !== undefined) {
+      sets.push("ending_position = ?");
+      bindings.push(
+        validateExerciseTemplateText(patch.endingPosition, "Ending position"),
       );
     }
     if (patch.steps !== undefined) {
@@ -417,6 +425,10 @@ export class ExerciseVersionsRepository {
       input.startingPosition ?? "",
       "Starting position",
     );
+    const endingPosition = validateExerciseTemplateText(
+      input.endingPosition ?? "",
+      "Ending position",
+    );
     const steps = validateExerciseTemplateText(input.steps ?? "", "Steps");
     const commonMistakes = validateExerciseTemplateText(
       input.commonMistakes ?? "",
@@ -455,11 +467,11 @@ export class ExerciseVersionsRepository {
     await this.sql.run(
       `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         exerciseId,
@@ -471,6 +483,7 @@ export class ExerciseVersionsRepository {
         description,
         equipment,
         startingPosition,
+        endingPosition,
         steps,
         commonMistakes,
         regressions,
@@ -494,6 +507,7 @@ export class ExerciseVersionsRepository {
     description: string;
     equipment: string;
     startingPosition: string;
+    endingPosition: string;
     steps: string;
     commonMistakes: string;
     regressions: string;
@@ -513,6 +527,10 @@ export class ExerciseVersionsRepository {
     const startingPosition = validateExerciseTemplateText(
       input.startingPosition,
       "Starting position",
+    );
+    const endingPosition = validateExerciseTemplateText(
+      input.endingPosition,
+      "Ending position",
     );
     const steps = validateExerciseTemplateText(input.steps, "Steps");
     const commonMistakes = validateExerciseTemplateText(
@@ -545,11 +563,11 @@ export class ExerciseVersionsRepository {
     return {
       sql: `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
       /* didi-1008: AI full-draft insert — status must remain 'draft' (not minimal-draft path) */
       bindings: [
         id,
@@ -558,6 +576,7 @@ export class ExerciseVersionsRepository {
         description,
         equipment,
         startingPosition,
+        endingPosition,
         steps,
         commonMistakes,
         regressions,
@@ -585,11 +604,11 @@ export class ExerciseVersionsRepository {
     return {
       sql: `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, '', '', '', '', '', '', '', '', NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, '', '', '', '', '', '', '', '', '', NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
       bindings: [id, exerciseId, title, input.createdAt],
       minRowsAffected: 1,
     };

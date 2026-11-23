@@ -1333,6 +1333,77 @@
   font: inherit;
 }
 
+.ex-positions-card {
+  margin: 1rem 0;
+  border: 1px solid var(--shell-slate-200);
+  border-radius: 1rem;
+  padding: 0.75rem;
+}
+
+.ex-positions-card-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.ex-positions-helper {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  color: var(--shell-slate-600);
+}
+
+.ex-positions-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ex-positions-step {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: start;
+}
+
+.ex-positions-marker {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-top: 0.35rem;
+  border-radius: 9999px;
+  border: 2px solid var(--shell-teal-600, #0d9488);
+}
+
+.ex-positions-marker--start {
+  background: transparent;
+}
+
+.ex-positions-marker--end {
+  background: var(--shell-teal-600, #0d9488);
+}
+
+.ex-positions-thumb {
+  border-radius: 0.5rem;
+  border: 1px solid var(--shell-slate-200);
+  object-fit: cover;
+}
+
+.ex-positions-empty {
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px dashed var(--shell-slate-300);
+  border-radius: 0.5rem;
+  color: var(--shell-slate-600);
+  font-size: 0.875rem;
+}
+
+.ex-positions-add {
+  margin-top: 0.5rem;
+  min-height: 44px;
+}
+
 .ex-regen-scope-option {
   display: flex;
   gap: 0.75rem;

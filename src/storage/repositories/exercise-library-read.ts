@@ -29,6 +29,7 @@ export type LatestApprovedVersionRow = {
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;
@@ -316,6 +317,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,
@@ -361,6 +363,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,
@@ -404,6 +407,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,
@@ -442,6 +446,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,

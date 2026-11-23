@@ -91,6 +91,7 @@ export type ExerciseDetailsResult = {
     description: string;
     equipment: string;
     starting_position: string;
+    ending_position: string;
     steps: string;
     common_mistakes: string;
     regressions: string;

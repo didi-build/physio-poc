@@ -42,6 +42,7 @@ const VALID_STRETCH_DRAFT = {
   description: "Gentle knee flexion stretch.",
   equipment: "Mat",
   starting_position: "Supine on mat.",
+  ending_position: "Knee bent with heel slid toward the hip.",
   steps: "1. Bend knee\n2. Slide heel",
   common_mistakes: "Rushing",
   regressions: "Smaller range",
