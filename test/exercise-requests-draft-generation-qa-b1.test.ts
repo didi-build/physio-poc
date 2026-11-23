@@ -172,9 +172,6 @@ describe("QA B1: one workflow instance id per attempt", () => {
         exerciseMediaImages: new FakeImageGeneration(),
         extraRouteHandlers: [handleExerciseMediaRequest],
       };
-      const requestService = new ExerciseRequestsService(base.sql, base.config, {
-        draftGenerator: fakeExerciseDraftGenerator,
-      });
       const deps = {
         ...base,
         draftGenerationWorkflow: createWorkerDraftGenerationWorkflowPort({
