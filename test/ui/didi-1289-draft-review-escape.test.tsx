@@ -21,6 +21,7 @@ describe("DIDI-1289 draft review stale generation escape", () => {
       draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: true,
+        ownGenerateInFlight: false,
         draftGenerationLockedAt: lockAt,
         nowMs: beforeMs,
       }),
@@ -29,17 +30,31 @@ describe("DIDI-1289 draft review stale generation escape", () => {
       draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: true,
+        ownGenerateInFlight: false,
         draftGenerationLockedAt: lockAt,
         nowMs: atMs,
       }),
     ).toBe(true);
   });
 
-  it("enables escape when the lock is stale or absent", () => {
+  it("hides escape while own /generate is in flight", () => {
     expect(
       draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: false,
+        ownGenerateInFlight: true,
+        draftGenerationLockedAt: null,
+        nowMs: Date.now(),
+      }),
+    ).toBe(false);
+  });
+
+  it("enables escape when the lock is stale or absent and own generate is idle", () => {
+    expect(
+      draftReviewGenerationEscape({
+        firstDraftComplete: false,
+        generationInProgress: false,
+        ownGenerateInFlight: false,
         draftGenerationLockedAt: null,
         nowMs: Date.now(),
       }),
@@ -52,6 +67,7 @@ describe("DIDI-1289 draft review stale generation escape", () => {
       draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: false,
+        ownGenerateInFlight: false,
         draftGenerationLockedAt: lockAt,
         nowMs: Date.parse(lockAt) + 1000,
       }),

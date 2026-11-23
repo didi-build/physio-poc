@@ -12,7 +12,12 @@ import type {
   DraftGenerationWorkflowPort,
   ExerciseRequestDraftGenerationWorkflowParams,
 } from "./draft-generation-workflow-types.js";
-import { runExerciseRequestDraftGeneration } from "./run-exercise-request-draft-generation.js";
+import {
+  persistDraftGenerationTerminalFailure,
+  runExerciseRequestDraftGeneration,
+} from "./run-exercise-request-draft-generation.js";
+import { DraftGenerationTerminalFailure } from "./draft-generation-terminal-failure.js";
+import { throwDraftGenerationFailure } from "./draft-generation-error-mapping.js";
 import type { DraftGenerationStepName } from "./draft-generation-lock-log.js";
 import type { ExerciseRequestDraftView } from "./types.js";
 import { fakeExerciseDraftGenerator } from "./fake-draft-generator.js";
@@ -97,7 +102,32 @@ export function createInProcessDraftGenerationWorkflowPort(
         stopAfterStep: options.stopAfterStep,
       })
         .then(() => undefined)
-        .catch((error) => {
+        .catch(async (error) => {
+          const persistTerminal = async (
+            terminal: DraftGenerationTerminalFailure,
+          ): Promise<void> => {
+            await persistDraftGenerationTerminalFailure({
+              requests,
+              requestId: input.requestId,
+              attemptId: input.attemptId,
+              terminal: terminal.terminal,
+            });
+          };
+          if (error instanceof DraftGenerationTerminalFailure) {
+            await persistTerminal(error);
+          } else {
+            const row = await requests.findById(input.requestId);
+            const phase = row?.exercise_id ? "images" : "text";
+            try {
+              await throwDraftGenerationFailure(error, phase, input.requestId, () =>
+                loadView(input.requestId),
+              );
+            } catch (terminal) {
+              if (terminal instanceof DraftGenerationTerminalFailure) {
+                await persistTerminal(terminal);
+              }
+            }
+          }
           console.error(
             JSON.stringify({
               event: "physio_draft_generation_in_process_failed",

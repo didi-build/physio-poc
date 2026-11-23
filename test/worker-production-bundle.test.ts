@@ -21,6 +21,9 @@ const FORBIDDEN_BUNDLE_MARKERS = [
   "installFakeGoogleFetch",
   "__fake-google",
   "fake-google-oauth",
+  "createTestDraftGenerationWorkflowPort",
+  "serviceGenerateRequestWithDrain",
+  "test-draft-generation-workflow-port",
 ] as const;
 
 const REQUIRED_BUNDLE_MARKERS = [

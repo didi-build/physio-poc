@@ -5,10 +5,14 @@ export { DRAFT_GENERATION_UI_ESCAPE_MS };
 export function draftReviewGenerationEscape(input: {
   firstDraftComplete: boolean;
   generationInProgress: boolean;
+  ownGenerateInFlight: boolean;
   draftGenerationLockedAt: string | null;
   nowMs: number;
 }): boolean {
   if (input.firstDraftComplete) {
+    return false;
+  }
+  if (input.ownGenerateInFlight) {
     return false;
   }
   if (!input.generationInProgress) {
@@ -31,7 +35,8 @@ export function draftReviewStaleGenerationEscape(input: {
 }): boolean {
   return draftReviewGenerationEscape({
     firstDraftComplete: input.firstDraftComplete,
-    generationInProgress: input.generationInProgress || input.ownGenerateInFlight,
+    generationInProgress: input.generationInProgress,
+    ownGenerateInFlight: input.ownGenerateInFlight,
     draftGenerationLockedAt:
       input.waitStartedAt !== null ? new Date(input.waitStartedAt).toISOString() : null,
     nowMs: input.nowMs,

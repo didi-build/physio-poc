@@ -790,7 +790,7 @@ export class ExerciseRequestsRepository {
            draft_generation_attempt_id = ?,
            draft_generation_failure_code = NULL
        WHERE id = ?
-         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at < ?)`,
+         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at <= ?)`,
       [input.lockedAt, attemptId, requestId, input.staleBefore],
     );
     return result.rowsAffected > 0;

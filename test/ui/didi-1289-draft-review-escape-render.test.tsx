@@ -51,16 +51,21 @@ function renderDraftReview(
   initialView: ExerciseRequestDraftView,
   options?: {
     generateResult?: Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>;
+    generatePromise?: Promise<
+      Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>
+    >;
     getRequest?: ExerciseRequestsClient["getRequest"];
   },
 ) {
-  const generateRequest = vi.fn().mockResolvedValue(
-    options?.generateResult ?? {
-      outcome: "in_progress",
-      view: initialView,
-      started_elsewhere: false,
-    },
-  );
+  const generateRequest = options?.generatePromise
+    ? vi.fn().mockReturnValue(options.generatePromise)
+    : vi.fn().mockResolvedValue(
+        options?.generateResult ?? {
+          outcome: "in_progress",
+          view: initialView,
+          started_elsewhere: false,
+        },
+      );
   const getRequest =
     options?.getRequest ?? vi.fn().mockImplementation(async () => initialView);
   const requestsClient = {
@@ -198,6 +203,45 @@ describe("DIDI-1289 draft review escape (page render)", () => {
     });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN })).toBeTruthy();
+    });
+  });
+
+  it("hides Try again and enabled Delete during the first own /generate on a fresh draft", async () => {
+    const view = baseIncompleteView({
+      generation_in_progress: false,
+      first_draft_complete: false,
+      draft_generation_locked_at: null,
+    });
+    let resolveGenerate: (
+      value: Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>,
+    ) => void = () => {};
+    const generatePromise = new Promise<
+      Awaited<ReturnType<ExerciseRequestsClient["generateRequest"]>>
+    >((resolve) => {
+      resolveGenerate = resolve;
+    });
+    const { generateRequest } = renderDraftReview(view, {
+      getRequest: vi.fn().mockResolvedValue(view),
+      generatePromise,
+    });
+    await waitFor(() => {
+      expect(generateRequest).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("button", { name: AUTO_SAVE_TRY_AGAIN })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: DELETE_DRAFT }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    resolveGenerate({
+      outcome: "in_progress",
+      view: {
+        ...view,
+        generation: { ...view.generation, generation_in_progress: true },
+      },
+      started_elsewhere: false,
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: AUTO_SAVE_TRY_AGAIN })).toBeNull();
     });
   });
 

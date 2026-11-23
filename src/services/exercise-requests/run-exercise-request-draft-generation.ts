@@ -20,7 +20,6 @@ import { throwDraftGenerationFailure } from "./draft-generation-error-mapping.js
 import {
   logDraftGenerationLockRefreshed,
   logDraftGenerationLockReleased,
-  logDraftGenerationRunCanceled,
   logDraftGenerationStepEnded,
   logDraftGenerationStepStarted,
   type DraftGenerationStepName,
@@ -102,7 +101,7 @@ async function runTimedStep<T>(
   }
 }
 
-async function persistTerminalFailure(input: {
+export async function persistDraftGenerationTerminalFailure(input: {
   requests: ExerciseRequestsRepository;
   requestId: string;
   attemptId: string;
@@ -130,6 +129,8 @@ export type DraftGenerationWorkflowRunInput = {
   stopAfterStep?: DraftGenerationStepName;
   /** When false, the lock stays held for a later chunk (Workflow steps). */
   releaseLockOnFinish?: boolean;
+  /** When true, terminal failures throw without persisting (Workflow finalizes). */
+  deferTerminalPersistence?: boolean;
 };
 
 /**
@@ -198,7 +199,7 @@ export async function runExerciseRequestDraftGeneration(
           if (error instanceof ExerciseRequestsServiceError) {
             throw error;
           }
-          await throwDraftGenerationFailure(error, "text", requestId, loadView);
+          throw error;
         }
       })) as { exerciseId: string; versionId: string };
       exerciseId = textResult.exerciseId;
@@ -245,14 +246,13 @@ export async function runExerciseRequestDraftGeneration(
                 view: null,
               });
             }
-            await throwDraftGenerationFailure(error, "text", requestId, loadView);
+            throw error;
           }
         });
       }
     }
 
     if (input.stopAfterStep === "text") {
-      logDraftGenerationRunCanceled({ requestId, step: "text" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -300,13 +300,12 @@ export async function runExerciseRequestDraftGeneration(
             view: await loadView(),
           });
         } else {
-          await throwDraftGenerationFailure(error, "images", requestId, loadView);
+          throw error;
         }
       }
     }
 
     if (input.stopAfterStep === "start_image") {
-      logDraftGenerationRunCanceled({ requestId, step: "start_image" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -351,13 +350,12 @@ export async function runExerciseRequestDraftGeneration(
             view: await loadView(),
           });
         } else {
-          await throwDraftGenerationFailure(error, "images", requestId, loadView);
+          throw error;
         }
       }
     }
 
     if (input.stopAfterStep === "end_image") {
-      logDraftGenerationRunCanceled({ requestId, step: "end_image" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -380,33 +378,40 @@ export async function runExerciseRequestDraftGeneration(
     return { outcome: "complete", view };
   } catch (error) {
     if (error instanceof DraftGenerationTerminalFailure) {
-      await persistTerminalFailure({
-        requests: input.deps.requests,
-        requestId,
-        attemptId,
-        terminal: error.terminal,
-      });
-      return error.terminal;
+      if (input.deferTerminalPersistence !== true) {
+        await persistDraftGenerationTerminalFailure({
+          requests: input.deps.requests,
+          requestId,
+          attemptId,
+          terminal: error.terminal,
+        });
+      }
+      throw error;
     }
     if (error instanceof ExerciseRequestsServiceError) {
       throw error;
     }
-    return (await (async () => {
-      try {
-        await throwDraftGenerationFailure(error, "persist", requestId, loadView);
-      } catch (terminal) {
-        if (terminal instanceof DraftGenerationTerminalFailure) {
-          await persistTerminalFailure({
-            requests: input.deps.requests,
-            requestId,
-            attemptId,
-            terminal: terminal.terminal,
-          });
-          return terminal.terminal;
-        }
+    if (input.deferTerminalPersistence === true) {
+      throw error;
+    }
+    const failurePhase = (await input.deps.requests.findById(requestId))?.exercise_id
+      ? "images"
+      : "text";
+    try {
+      await throwDraftGenerationFailure(error, failurePhase, requestId, loadView);
+    } catch (terminal) {
+      if (terminal instanceof DraftGenerationTerminalFailure) {
+        await persistDraftGenerationTerminalFailure({
+          requests: input.deps.requests,
+          requestId,
+          attemptId,
+          terminal: terminal.terminal,
+        });
         throw terminal;
       }
-    })()) as GenerateExerciseRequestDraftResult;
+      throw terminal;
+    }
+    throw new Error("unreachable draft generation failure path");
   } finally {
     if (input.releaseLockOnFinish !== false) {
       const now = input.deps.now();
@@ -420,4 +425,8 @@ export async function runExerciseRequestDraftGeneration(
       }
     }
   }
+  throw new ExerciseRequestsServiceError(
+    "Draft generation ended without a result",
+    "draft_not_ready",
+  );
 }

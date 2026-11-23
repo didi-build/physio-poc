@@ -20,6 +20,7 @@ import {
   createTestPhysioMcpHttpHandler,
 } from "./mcp-server-test-utils.js";
 import { id } from "./helpers/opaque-test-ids.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -426,7 +427,7 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
-      await service.generateRequest({
+      await serviceGenerateRequestWithDrain(service, storage, {
         practitionerId: practitioner,
         requestId: rid,
         mediaService,
@@ -562,7 +563,7 @@ describe("POST /api/me/exercise-requests/:id/withdraw (DIDI-1278)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
-      await service.generateRequest({
+      await serviceGenerateRequestWithDrain(service, storage, {
         practitionerId: practitioner,
         requestId: rid,
         mediaService,

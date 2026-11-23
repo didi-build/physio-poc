@@ -25,6 +25,10 @@ import {
   attachDraftGenerationTestWorkflow,
   drainDraftGeneration,
 } from "./helpers/draft-generation-test-workflow.js";
+import {
+  createTestDraftGenerationWorkflowPort,
+  generateRequestAndDrainWorkflow,
+} from "./helpers/test-draft-generation-workflow-port.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -128,10 +132,18 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(objects),
       );
-      const payload = await requestService.generateRequest({
+      const syncWorkflow = createTestDraftGenerationWorkflowPort({
+        sql: storage,
+        loadView: (requestId) => requestService.loadDraftView(requestId),
+        draftGenerator: generator,
+        mediaService,
+      });
+      const payload = await generateRequestAndDrainWorkflow({
+        service: requestService,
         practitionerId,
         requestId: secondBody.request_id,
         mediaService,
+        workflow: syncWorkflow,
       });
       const EXPECTED_UPSTREAM_FAIL = {
         outcome: "text_failed",
@@ -225,10 +237,18 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(objects),
       );
-      const payload = await requestService.generateRequest({
+      const syncWorkflow = createTestDraftGenerationWorkflowPort({
+        sql: storage,
+        loadView: (requestId) => requestService.loadDraftView(requestId),
+        draftGenerator: generator,
+        mediaService,
+      });
+      const payload = await generateRequestAndDrainWorkflow({
+        service: requestService,
         practitionerId,
         requestId: secondBody.request_id,
         mediaService,
+        workflow: syncWorkflow,
       });
       expect(payload).toMatchObject({
         outcome: "text_failed",

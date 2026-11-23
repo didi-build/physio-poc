@@ -40,8 +40,6 @@ import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import { generateExerciseRequestDraft } from "./exercise-request-draft-generation.js";
-import { createInProcessDraftGenerationWorkflowPort } from "./in-process-draft-generation-workflow.js";
-import type { AppDependencies } from "../../http/app.js";
 import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
 import {
   DRAFT_GENERATION_LOCK_STALE_MS,
@@ -49,8 +47,6 @@ import {
 } from "./draft-generation-lock.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
-import { InMemoryObjectStorage } from "../../storage/adapters/memory/in-memory-object-storage.js";
-import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type {
   ExerciseMediaService,
@@ -510,66 +506,22 @@ export class ExerciseRequestsService {
       versions: this.versions,
       versionMedia,
     };
-    const syncDrainAfterStart = input.workflow === undefined;
-    const workflow =
-      input.workflow ??
-      this.createTestDraftGenerationWorkflowPort(loadView, input.mediaService);
-    const started = await generateExerciseRequestDraft({
+    if (!input.workflow) {
+      throw new ExerciseRequestsServiceError(
+        "Draft generation workflow is not configured",
+        "draft_generation_workflow_unavailable",
+      );
+    }
+    return generateExerciseRequestDraft({
       practitionerId: input.practitionerId,
       requestId,
       mediaService: input.mediaService,
       loadView,
       deps: {
         ...runDeps,
-        workflow,
+        workflow: input.workflow,
       },
     });
-    if (
-      syncDrainAfterStart &&
-      started.outcome === "in_progress" &&
-      "drain" in workflow &&
-      typeof (workflow as { drain?: (id: string) => Promise<void> }).drain ===
-        "function"
-    ) {
-      await (workflow as { drain: (id: string) => Promise<void> }).drain(requestId);
-      const view = await loadView(requestId);
-      if (view.generation.first_draft_complete) {
-        return { outcome: "complete", view };
-      }
-      const phase = view.generation.generation_failure ?? null;
-      const code = view.generation.generation_failure_code ?? null;
-      if (phase === "text") {
-        return {
-          outcome: "text_failed",
-          error: code ?? "unexpected_generation_failure",
-          view: null,
-        };
-      }
-      if (phase === "images") {
-        return { outcome: "images_failed", view };
-      }
-      if (phase === "daily") {
-        return { outcome: "daily_limit", view };
-      }
-    }
-    return started;
-  }
-
-  private createTestDraftGenerationWorkflowPort(
-    loadView: (requestId: string) => Promise<ExerciseRequestDraftView>,
-    mediaService: ExerciseMediaService,
-  ): DraftGenerationWorkflowPort {
-    const deps = {
-      sql: this.sql,
-      objects: new InMemoryObjectStorage(),
-      exerciseMediaImages: new FakeImageGeneration(),
-    } as unknown as AppDependencies;
-    return createInProcessDraftGenerationWorkflowPort(() => ({
-      deps,
-      loadView,
-      draftGenerator: this.draftGenerator,
-      mediaService,
-    }));
   }
 
   async loadDraftView(requestId: string): Promise<ExerciseRequestDraftView> {

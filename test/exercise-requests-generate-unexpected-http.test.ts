@@ -36,6 +36,8 @@ import {
   attachDraftGenerationTestWorkflow,
   drainDraftGeneration,
 } from "./helpers/draft-generation-test-workflow.js";
+import { generateRequestAndDrainWorkflow } from "./helpers/test-draft-generation-workflow-port.js";
+import { createTestDraftGenerationWorkflowPort } from "./helpers/test-draft-generation-workflow-port.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -144,10 +146,18 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
         new FakeImageGeneration(),
         new PrefixMediaStorage(throwingObjects),
       );
-      const failure = await requestService.generateRequest({
+      const syncWorkflow = createTestDraftGenerationWorkflowPort({
+        sql: storage,
+        loadView: (id) => requestService.loadDraftView(id),
+        draftGenerator: fakeExerciseDraftGenerator,
+        mediaService,
+      });
+      const failure = await generateRequestAndDrainWorkflow({
+        service: requestService,
         practitionerId,
         requestId,
         mediaService,
+        workflow: syncWorkflow,
       });
       expect(failure.outcome).toBe("images_failed");
       if (failure.outcome === "images_failed") {

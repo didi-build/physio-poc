@@ -105,6 +105,58 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     logSpy.mockRestore();
   });
 
+  it("fresh drafting request GET has no generation_failure (N27/N28)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-fresh-gf"),
+        "fresh-gf@ex.com",
+      );
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "fresh-gf@ex.com",
+          displayName: "Coach",
+        },
+      });
+      const base = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: fakeExerciseDraftGenerator,
+        exerciseMediaImages: new FakeImageGeneration(),
+        extraRouteHandlers: [handleExerciseMediaRequest],
+      };
+      const { deps } = attachDraftGenerationTestWorkflow(base, (requestId) =>
+        new ExerciseRequestsService(base.sql, base.config, {
+          draftGenerator: fakeExerciseDraftGenerator,
+        }).loadDraftView(requestId),
+      );
+      const cookie = auth.createSessionCookieHeader();
+      const requestId = await createRequest(cookie, deps);
+      const getRes = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      expect(getRes.status).toBe(200);
+      const body = (await getRes.json()) as {
+        generation: {
+          generation_failure: string | null;
+          generation_failure_code: string | null;
+        };
+      };
+      expect(body.generation.generation_failure ?? null).toBeNull();
+      expect(body.generation.generation_failure_code ?? null).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
   function testBundle(
     storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
     practitioner: string,
@@ -342,9 +394,10 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         deps,
       );
       expect(first.status).toBe(202);
-      expect(
-        workflow.inflightInstanceIds().some((key) => key.startsWith(`${requestId}:`)),
-      ).toBe(true);
+      const inflightAfterFirst = workflow
+        .inflightInstanceIds()
+        .filter((key) => key.startsWith(`${requestId}:`));
+      expect(inflightAfterFirst).toHaveLength(1);
       const second = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
@@ -357,9 +410,11 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         outcome: "in_progress",
         started_elsewhere: true,
       });
-      expect(
-        workflow.inflightInstanceIds().some((key) => key.startsWith(`${requestId}:`)),
-      ).toBe(true);
+      const inflightAfterSecond = workflow
+        .inflightInstanceIds()
+        .filter((key) => key.startsWith(`${requestId}:`));
+      expect(inflightAfterSecond).toHaveLength(1);
+      expect(inflightAfterSecond[0]).toBe(inflightAfterFirst[0]);
     } finally {
       storage.close();
     }
@@ -391,7 +446,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(started.status).toBe(202);
       await drainDraftGeneration(workflow, requestId);
       expect(images.startCalls).toBe(0);
-      const abandonedLogged = logSpy.mock.calls.some((call) => {
+      const canceledOnChunkStop = logSpy.mock.calls.some((call) => {
         const line = call[0];
         if (typeof line !== "string") {
           return false;
@@ -399,7 +454,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         const row = JSON.parse(line) as { event: string };
         return row.event === DRAFT_GENERATION_RUN_CANCELED_EVENT;
       });
-      expect(abandonedLogged).toBe(true);
+      expect(canceledOnChunkStop).toBe(false);
       const staleBefore = new Date(
         Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 1_000,
       ).toISOString();
@@ -687,6 +742,14 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(
         Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
       ).toBeGreaterThanOrEqual(Date.parse(refreshLockedAt[0]!));
+      const row = await storage.first<{ draft_generation_locked_at: string | null }>(
+        "SELECT draft_generation_locked_at FROM exercise_requests WHERE id = ?",
+        [requestId],
+      );
+      expect(row?.draft_generation_locked_at).toBeNull();
+      expect(Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!)).toBeGreaterThan(
+        Date.parse(acquiredAt!),
+      );
       const lines = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line): line is string => typeof line === "string");

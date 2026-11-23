@@ -259,6 +259,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
 
   const runGenerate = useCallback(async () => {
     setOwnGenerateInFlight(true);
+    generationWaitStartedAt.current = Date.now();
     try {
       const result = await requestsClient.generateRequest(requestId);
       applyGenerateResult(result);
@@ -639,7 +640,8 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   });
   const staleGenerationEscape = draftReviewGenerationEscape({
     firstDraftComplete,
-    generationInProgress: generationInProgress || ownGenerateInFlight,
+    generationInProgress,
+    ownGenerateInFlight,
     draftGenerationLockedAt:
       generationMeta.draft_generation_locked_at ??
       (generationWaitStartedAt.current !== null
