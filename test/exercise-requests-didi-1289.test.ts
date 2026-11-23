@@ -1035,30 +1035,37 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       );
       const repo = new ExerciseRequestsRepository(deps.sql);
       const requestId = await createRequest(cookie, deps);
-      const generatePromise = handleRequest(
+      const refreshBase =
+        ExerciseRequestsRepository.prototype.refreshDraftGenerationLock;
+      let failedRefresh = false;
+      vi.spyOn(
+        ExerciseRequestsRepository.prototype,
+        "refreshDraftGenerationLock",
+      ).mockImplementation(async function (
+        this: ExerciseRequestsRepository,
+        input: Parameters<ExerciseRequestsRepository["refreshDraftGenerationLock"]>[0],
+      ) {
+        if (failedRefresh) {
+          return false;
+        }
+        const ok = await refreshBase.call(this, input);
+        if (
+          ok &&
+          images.startCalls === 0 &&
+          (await repo.getDraftGenerationAttemptId(requestId))
+        ) {
+          failedRefresh = true;
+        }
+        return ok;
+      });
+      await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
           body: JSON.stringify({}),
         }),
         deps,
       );
-      const drainPromise = drainDraftGeneration(workflow, requestId);
-      let attemptId: string | null = null;
-      for (let i = 0; i < 40; i += 1) {
-        attemptId = await repo.getDraftGenerationAttemptId(requestId);
-        if (attemptId) {
-          break;
-        }
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 10);
-        });
-      }
-      expect(attemptId).toBeTruthy();
-      await storage.run(
-        "UPDATE exercise_requests SET draft_generation_attempt_id = ? WHERE id = ?",
-        [id("att-supersede"), requestId],
-      );
-      await Promise.all([generatePromise, drainPromise]);
+      await drainDraftGeneration(workflow, requestId);
       const viewRes = await handleRequest(
         new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
           headers: { cookie },
@@ -1073,6 +1080,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(view.generation.first_draft_complete).toBe(false);
       expect(images.endCalls).toBe(0);
     } finally {
+      vi.restoreAllMocks();
       storage.close();
     }
   });
