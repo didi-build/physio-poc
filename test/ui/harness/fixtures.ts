@@ -23,20 +23,23 @@ import {
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
 
-const draftReviewDraftingView = {
-  request_id: "req-layout-drafting",
-  requested_name: "Heel slide",
-  exercise_note: null,
-  status: "drafting" as const,
-  requested_by: DEV_PRACTITIONER_ID,
-  requested_by_email: "kojo@example.com",
-  exercise_id: null,
-  generation: {
-    generation_in_progress: true,
-    first_draft_complete: false,
-  },
-  draft: null,
-};
+function draftReviewDraftingView() {
+  return {
+    request_id: "req-layout-drafting",
+    requested_name: "Heel slide",
+    exercise_note: null,
+    status: "drafting" as const,
+    requested_by: DEV_PRACTITIONER_ID,
+    requested_by_email: "kojo@example.com",
+    exercise_id: null,
+    generation: {
+      generation_in_progress: true,
+      first_draft_complete: false,
+      draft_generation_locked_at: new Date().toISOString(),
+    },
+    draft: null,
+  };
+}
 
 const draftView = {
   request_id: "req-layout-1",
@@ -355,13 +358,16 @@ export function harnessFixture(
         initialEntries: ["/requests/req-layout-drafting"],
         library: baseLibraryClient(),
         requests: {
-          getRequest: async () => draftReviewDraftingView,
-          generateRequest: async () => ({
-            outcome: "in_progress" as const,
-            view: draftReviewDraftingView,
-            started_elsewhere: false,
-          }),
-          updateDraft: async () => draftReviewDraftingView,
+          getRequest: async () => draftReviewDraftingView(),
+          generateRequest: async () => {
+            const view = draftReviewDraftingView();
+            return {
+              outcome: "in_progress" as const,
+              view,
+              started_elsewhere: false,
+            };
+          },
+          updateDraft: async () => draftReviewDraftingView(),
           approveRequest: async () => {
             throw new Error("not ready");
           },
