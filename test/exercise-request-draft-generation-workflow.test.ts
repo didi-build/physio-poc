@@ -14,7 +14,10 @@ import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import {
   openMigratedDatabase,
   seedDraftingExerciseRequest,
+  seedExercise,
   seedPractitioner,
+  VERSION_INSERT_SQL,
+  versionInsertBindings,
 } from "./helpers/exercise-sqlite-fixture.js";
 import {
   MCP_TEST_CONFIG,
@@ -902,6 +905,86 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
       expect(step.attempts.get("text")).toBe(3);
       expect(callCount).toBe(3);
       expect(requestId).toBeTruthy();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("redraft resume path permanent 503 makes exactly 3 fetch calls (R6)", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () => new Response("unavailable", { status: 503 }),
+    ]);
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-wf-redraft"),
+        "redraft@ex.com",
+      );
+      const requestId = testOpaqueEntityId("wf-redraft-req");
+      const exerciseId = await seedExercise(storage, practitioner, id("ex-wf-redraft"));
+      const versionId = id("ver-wf-redraft");
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Redraft resume",
+      });
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({ id: versionId, exercise_id: exerciseId }),
+      );
+      await storage.run(`UPDATE exercise_requests SET exercise_id = ? WHERE id = ?`, [
+        exerciseId,
+        requestId,
+      ]);
+      const attemptId = crypto.randomUUID();
+      const lockedAt = new Date().toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [lockedAt, attemptId, requestId],
+      );
+      const draftGenerator = createDeepInfraExerciseDraftGenerator({
+        apiKey: "wf-redraft-key",
+      });
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "redraft@ex.com",
+          displayName: "Coach",
+        },
+      });
+      vi.mocked(createWorkerProductionAppDependencies).mockReturnValue({
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: draftGenerator,
+        exerciseMediaImages: new FakeImageGeneration(),
+        extraRouteHandlers: [handleExerciseMediaRequest],
+      } as never);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      try {
+        await workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        );
+      } catch {
+        // exhausted
+      }
+      expect(step.attempts.get("text")).toBe(3);
+      expect(fetch.callCount()).toBe(3);
     } finally {
       fetch.restore();
       storage.close();

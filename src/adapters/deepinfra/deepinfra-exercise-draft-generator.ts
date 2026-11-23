@@ -45,6 +45,23 @@ export type DeepInfraExerciseDraftGeneratorConfig = {
 
 const MAX_AI_ATTEMPTS = 2;
 
+function maxProviderAttempts(input: ExerciseDraftGeneratorInput): number {
+  return input.providerAttempts === 2 ? 2 : 1;
+}
+
+function isTransientProviderDeepInfraError(
+  error: DeepInfraExerciseDraftError,
+): boolean {
+  return (
+    error.code === "deepinfra_exercise_draft_timeout" ||
+    error.code === "deepinfra_exercise_draft_network_error" ||
+    (error.code === "deepinfra_exercise_draft_request_failed" &&
+      (error.httpStatus === undefined ||
+        error.httpStatus >= 500 ||
+        error.httpStatus === 429))
+  );
+}
+
 function buildUserPrompt(input: ExerciseDraftGeneratorInput): string {
   const lines = [`Exercise name: ${input.requestedName}`];
   lines.push(
@@ -214,8 +231,9 @@ export function createDeepInfraExerciseDraftGenerator(
         ],
         response_format: openAiJsonSchemaResponseFormat(),
       };
+      const attempts = maxProviderAttempts(input);
       let lastFailure: DeepInfraExerciseDraftError | null = null;
-      for (let attempt = 0; attempt < MAX_AI_ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {
           const completion = await client.complete(completionRequest);
           let parsedJson: unknown;
@@ -260,16 +278,12 @@ export function createDeepInfraExerciseDraftGenerator(
             );
           }
           if (error instanceof DeepInfraExerciseDraftError) {
-            if (
-              error.code === "deepinfra_exercise_draft_timeout" ||
-              error.code === "deepinfra_exercise_draft_network_error" ||
-              (error.code === "deepinfra_exercise_draft_request_failed" &&
-                (error.httpStatus === undefined ||
-                  error.httpStatus >= 500 ||
-                  error.httpStatus === 429))
-            ) {
-              lastFailure = error;
-              continue;
+            if (isTransientProviderDeepInfraError(error)) {
+              if (attempt + 1 < attempts) {
+                lastFailure = error;
+                continue;
+              }
+              throw error;
             }
             if (
               error.code === "deepinfra_exercise_draft_request_failed" &&
@@ -278,8 +292,11 @@ export function createDeepInfraExerciseDraftGenerator(
             ) {
               throw error;
             }
-            lastFailure = error;
-            continue;
+            if (attempt + 1 < attempts) {
+              lastFailure = error;
+              continue;
+            }
+            throw error;
           }
           throw error;
         }

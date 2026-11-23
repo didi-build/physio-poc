@@ -22,6 +22,11 @@ export type ExerciseDraftGeneratorInput = {
   /** When set, replace draft text on this version instead of creating a new exercise. */
   existingExerciseId?: string;
   existingVersionId?: string;
+  /**
+   * DeepInfra in-provider attempts for transient errors on the existing-version path.
+   * Default 1; pass 2 from Regenerate text only (Workflow uses step.do retries).
+   */
+  providerAttempts?: 1 | 2;
 };
 
 export type ExerciseDraftGeneratorDeps = {

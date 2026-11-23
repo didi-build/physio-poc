@@ -474,6 +474,7 @@ export class ExerciseRequestsService {
               now,
               existingExerciseId: row.exercise_id!,
               existingVersionId: draft.id,
+              providerAttempts: 2,
             },
             {
               exercises: this.exercises,
