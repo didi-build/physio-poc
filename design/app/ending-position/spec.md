@@ -123,7 +123,7 @@ Matches the link page rules in [programs/spec.md](../programs/spec.md), "Link pa
 | Row order, below 1024 px | Title (`h2` "{title}, {type}"), **description**, carousel, **Starting position** and **Ending position**, dose block, note. Mockup 11. |
 | Row order, 1024 px and up | The text column holds title, description, positions, dose and note; the carousel spans the right column as today. Mockup 11 desktop. |
 | Description | The pinned version's `description` field (the same field library details shows under the title, `ExerciseDetailsPage.tsx:129-131, :172`). Unlabelled paragraph, 15px, line height 1.625, slate-700, 0.25rem under the title. |
-| Positions | A definition list (`dl`): `dt` "Starting position" and `dt` E1, each followed by its text in a `dd` (15px, slate-700). Uses the same open-ring and filled-dot step markers (decorative). There is **no** E3 heading, **no** E4 helper and **no** thumbnails, because the carousel already shows Start and End. 0.75rem above the block. |
+| Positions | A definition list (`dl`): `dt` "Starting position" and `dt` E1, each followed by its text in a `dd` (15px, slate-700). Plain labels and text only (no Positions card step markers). There is **no** E3 heading, **no** E4 helper and **no** thumbnails, because the carousel already shows Start and End. 0.75rem above the block. |
 | No ending position | The Ending position `dt` and `dd` are left out; Starting position still shows. Patients never see E6 or E7, and never the last-step fallback. Mockup 12. |
 | No description | The paragraph is left out, with no placeholder and no label. Mockup 12. |
 | Source | The description and both position texts come from the pinned exercise version, like the media. |
@@ -134,8 +134,9 @@ Matches "Print and Save as PDF (DIDI-1195)" in programs/spec.md: three columns, 
 
 | Topic | Rule |
 | -- | -- |
-| Column 1 | Title (15px, weight 600), **description** (12px, line height 1.625), **positions** (labels 12px weight 600, text 12px), dose block (13px), note (12px). Mockups 13 and 13 desktop. |
+| Column 1 | Title (15px, weight 600), **description** (12px, line height 1.625), **positions** (plain "Starting position" and "Ending position" labels at 12px weight 600, text 12px; no Positions card step markers), dose block (13px), note (12px). Mockups 13 and 13 desktop. |
 | Columns 2 and 3 | Start and End stills with captions, unchanged. |
+| Step markers | The open-ring and filled-dot markers from the practitioner Positions card do **not** print; print shows the label and body text only, same as the patient link page `dl`. |
 | No ending position, no description | Same omissions as the link page. Mockup 14. |
 | Page breaks | `break-inside: avoid` on the row, unchanged. |
 
@@ -193,12 +194,12 @@ Patient-facing text from this spec is only "Starting position" and E1, plus exer
 | Layout (draft review, library details, edit form) | One **Positions** card: Starting then Ending position, each with a still thumbnail (`a46e01d7`) | CTO pick: an Ending position section of its own (`5a6fd98b`); today Starting position is a section of its own in draft review |
 | Library details | Positions card before How to do it | Neither position text showed; only How to do it |
 | Older version with no ending | E6, with E7 for editors; never the last-step fallback | n/a |
-| Patient link page row (phone) | Title, description, carousel, positions, dose, note | Title, carousel, dose, notes (DIDI-1192, G update 3: "media right after the title") |
+| Patient link page row (phone) | Title, description, carousel, positions, dose, note | Title, carousel, dose, notes (DIDI-1192; DIDI-594 G update 3: "can the media come before the set/reps&notes? (still after the title)") |
 | Print column 1 | Title, description, positions, dose, note | Title, dose, note |
 | Patient, no ending or no description | That item is left out | n/a |
 | End image on save | Not regenerated | n/a |
 
-The description before the carousel departs from DIDI-1192's "the media comes right after the title" on the phone link page. Diadem approved it on revision `475494418896523264` (1:42 PM EST, `4506b55d`).
+The description sits between the title and the media, which still keeps media after the title and before set/reps and notes (DIDI-594 G update 3: "can the media come before the set/reps&notes? (still after the title)"). Diadem approved it on revision `475494418896523264` (1:42 PM EST, `4506b55d`).
 
 ## States (mockups)
 
@@ -207,7 +208,7 @@ The description before the carousel departs from DIDI-1192's "the media comes ri
 | 00 | Baseline: draft review on main, Starting position only | [phone](mockups/00-baseline-draft-review-phone.png) | n/a |
 | 01 | Draft review, ready, editable | [phone](mockups/01-draft-review-phone.png) | [desktop](mockups/01-draft-review-desktop.png) |
 | 02 | Editing Ending position | [phone](mockups/02-draft-review-editing-ending-phone.png) | n/a |
-| 03 | Generating (text in, images generating) | [phone](mockups/03-generating-phone.png) | n/a |
+| 03 | Generating (text in, images generating). Mockup caveat: the PNG shows position thumbnails; **the spec wins**: no thumbnails until the stills exist | [phone](mockups/03-generating-phone.png) | n/a |
 | 04 | Old draft, no ending position (E6, E7) | [phone](mockups/04-old-draft-empty-phone.png) | n/a |
 | 05 | Old draft, adding (empty editor, E5) | [phone](mockups/05-old-draft-adding-phone.png) | n/a |
 | 06 | Edit for everyone, Positions fieldset | [phone](mockups/06-edit-for-everyone-phone.png) | [desktop](mockups/06-edit-for-everyone-desktop.png) |
@@ -228,7 +229,7 @@ Phone captures show the preview frame scaled to the column; build follows the Ma
 2. Patients see both position texts (`a46e01d7`) and the description (`9a307ad9`, `4506b55d`), all from the pinned version; empty ones are left out.
 3. The last-step fallback is used only for the image prompt and is never shown anywhere (`5a6fd98b`).
 4. Helper and placeholder describe only the moving body parts (`ac1c42dd`).
-5. Mobile first at **390 px**; **1280 px** keeps the existing review grid, library and link page layouts.
+5. Mobile first at **390 px**; **1280 px** keeps the existing review grid, library and link page layouts. Where this spec has no desktop mockup for a state, keep the existing 1280 px layout, with the Positions card in the same place as in the desktop mockups that do exist (01, 06, 08, 11, 13).
 6. No gallery components in the Physio POC (spec and mockups only).
 
 ## Build notes
