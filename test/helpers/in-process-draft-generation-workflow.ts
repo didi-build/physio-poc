@@ -1,4 +1,5 @@
 import type { AppDependencies } from "../../src/http/app.js";
+import { BetterSqliteStorage } from "../../src/adapters/node/better-sqlite-sql-storage.js";
 import { ExerciseMediaService } from "../../src/services/exercise-media/exercise-media-service.js";
 import { PrefixMediaStorage } from "../../src/storage/adapters/memory/prefix-media-storage.js";
 import { FakeImageGeneration } from "../../src/storage/adapters/memory/fake-image-generation.js";
@@ -103,6 +104,9 @@ export function createInProcessDraftGenerationWorkflowPort(
       })
         .then(() => undefined)
         .catch(async (error) => {
+          if (deps.sql instanceof BetterSqliteStorage && deps.sql.isClosed()) {
+            return;
+          }
           try {
             const persistTerminal = async (
               terminal: DraftGenerationTerminalFailure,
@@ -144,8 +148,11 @@ export function createInProcessDraftGenerationWorkflowPort(
                 error_name: error instanceof Error ? error.name : "Error",
               }),
             );
-          } catch {
-            // Test SQLITE DB may already be closed while the in-process workflow settles.
+          } catch (secondary) {
+            if (deps.sql instanceof BetterSqliteStorage && deps.sql.isClosed()) {
+              return;
+            }
+            throw secondary;
           }
         })
         .finally(() => {

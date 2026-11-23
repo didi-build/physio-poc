@@ -514,6 +514,16 @@ export class ExerciseRequestsService {
               view: null,
             };
           }
+          if (
+            error instanceof ExerciseRequestsServiceError &&
+            error.code === "draft_generation_in_progress"
+          ) {
+            return {
+              outcome: "in_progress" as const,
+              view: await this.buildDraftView(requestId),
+              started_elsewhere: true,
+            };
+          }
           throw error;
         }
         const view = await this.buildDraftView(requestId);

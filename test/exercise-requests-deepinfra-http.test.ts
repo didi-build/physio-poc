@@ -218,7 +218,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
       );
       expect(response.status).toBe(202);
       await drainDraftGeneration(workflow, createdBody.request_id);
-      expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(fetchImpl.mock.calls.length).toBe(1);
 
       const secondCreated = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {

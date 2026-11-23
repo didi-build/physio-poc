@@ -19,6 +19,7 @@ export function isRetryableDeepInfraExerciseDraftError(
       return false;
     }
     case "deepinfra_exercise_draft_response_invalid":
+      return true;
     case "deepinfra_exercise_draft_response_too_large":
       return false;
     default:

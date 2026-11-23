@@ -991,7 +991,7 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
     }
   });
 
-  it("invalid JSON then timeout in one text step attempt makes exactly 1 fetch (DIDI-1290 E)", async () => {
+  it("each text step attempt makes exactly one provider call (in-step content retry cap)", async () => {
     const storage = await openMigratedDatabase();
     const fetch = installChatFetch([
       () =>
@@ -1011,9 +1011,209 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
         storage,
         fetch,
       );
+      expect(step.attempts.get("text")).toBe(3);
+      expect(callCount).toBe(3);
+      expect(requestId).toBeTruthy();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  const INVALID_DEEPINFRA_CODE = "deepinfra_exercise_draft_response_invalid";
+  const REQUEST_FAILED_CODE = "deepinfra_exercise_draft_request_failed";
+
+  function invalidChatResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "not-json{{{" } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
+  function validChatResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify(STUB_DRAFT) } }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
+  it("DIDI-1290 R6 new-draft: response_invalid then valid succeeds with 2 provider calls", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([invalidChatResponse, validChatResponse]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(2);
+      expect(callCount).toBe(2);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBeNull();
+      expect(after.exercise_id).not.toBeNull();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("DIDI-1290 R6 new-draft: persistent response_invalid uses 3 provider calls then text_failed", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([invalidChatResponse]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(3);
+      expect(callCount).toBe(3);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_failure_code).toBe(INVALID_DEEPINFRA_CODE);
+      expect(after.generation.generation_in_progress).toBe(false);
+      expect(requestId).toBeTruthy();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("DIDI-1290 R6 new-draft: explicit HTTP 400 content rejection uses 1 provider call", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([() => new Response("{}", { status: 400 })]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
       expect(step.attempts.get("text")).toBe(1);
       expect(callCount).toBe(1);
-      expect(requestId).toBeTruthy();
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_failure_code).toBe(REQUEST_FAILED_CODE);
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  async function runLockedRedraftDeepInfraWorkflow(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    fetchStub: ReturnType<typeof installChatFetch>,
+  ) {
+    const practitioner = await seedPractitioner(
+      storage,
+      id("pr-wf-r6-redraft"),
+      "r6-redraft@ex.com",
+    );
+    const requestId = testOpaqueEntityId("wf-r6-redraft-req");
+    const exerciseId = await seedExercise(
+      storage,
+      practitioner,
+      id("ex-wf-r6-redraft"),
+    );
+    const versionId = id("ver-wf-r6-redraft");
+    await seedDraftingExerciseRequest(storage, {
+      requestId,
+      practitionerId: practitioner,
+      requestedName: "R6 redraft",
+    });
+    await storage.run(
+      VERSION_INSERT_SQL,
+      versionInsertBindings({ id: versionId, exercise_id: exerciseId }),
+    );
+    await storage.run(
+      `UPDATE exercise_versions
+       SET description = '', starting_position = '', steps = ''
+       WHERE id = ?`,
+      [versionId],
+    );
+    await storage.run(`UPDATE exercise_requests SET exercise_id = ? WHERE id = ?`, [
+      exerciseId,
+      requestId,
+    ]);
+    const attemptId = crypto.randomUUID();
+    const lockedAt = new Date().toISOString();
+    await storage.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+       WHERE id = ?`,
+      [lockedAt, attemptId, requestId],
+    );
+    const draftGenerator = createDeepInfraExerciseDraftGenerator({
+      apiKey: "wf-r6-key",
+    });
+    mockProductionDeps(storage, draftGenerator);
+    const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+      draftGenerator,
+    });
+    const workflow = new ExerciseRequestDraftGenerationWorkflow(
+      { waitUntil() {} } as FakeExecutionContext,
+      {} as never,
+    );
+    const step = new RecordingWorkflowStep();
+    try {
+      await workflow.run(
+        {
+          payload: { requestId, practitionerId: practitioner, attemptId },
+          timestamp: new Date(),
+          instanceId: `${requestId}:${attemptId}`,
+        },
+        step as never,
+      );
+    } catch {
+      // terminal
+    }
+    return { service, requestId, step, callCount: fetchStub.callCount() };
+  }
+
+  it("DIDI-1290 R6 redraft: response_invalid then valid succeeds with 2 provider calls", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([invalidChatResponse, validChatResponse]);
+    try {
+      const { service, requestId, step, callCount } =
+        await runLockedRedraftDeepInfraWorkflow(storage, fetch);
+      expect(step.attempts.get("text")).toBe(2);
+      expect(callCount).toBe(2);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBeNull();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("DIDI-1290 R6 redraft: persistent response_invalid uses 3 provider calls then text_failed", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([invalidChatResponse]);
+    try {
+      const { service, requestId, step, callCount } =
+        await runLockedRedraftDeepInfraWorkflow(storage, fetch);
+      expect(step.attempts.get("text")).toBe(3);
+      expect(callCount).toBe(3);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_failure_code).toBe(INVALID_DEEPINFRA_CODE);
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("DIDI-1290 R6 redraft: explicit HTTP 400 content rejection uses 1 provider call", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([() => new Response("{}", { status: 400 })]);
+    try {
+      const { service, requestId, step, callCount } =
+        await runLockedRedraftDeepInfraWorkflow(storage, fetch);
+      expect(step.attempts.get("text")).toBe(1);
+      expect(callCount).toBe(1);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_failure_code).toBe(REQUEST_FAILED_CODE);
     } finally {
       fetch.restore();
       storage.close();
