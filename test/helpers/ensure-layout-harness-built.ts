@@ -15,6 +15,8 @@ const HARNESS_INPUTS = [
   join(process.cwd(), "src/ui/programs/ProgramShareLinkPanel.tsx"),
   join(process.cwd(), "src/ui/routines/RoutinesPage.tsx"),
   join(process.cwd(), "test/ui/harness/fixtures.ts"),
+  join(process.cwd(), "test/ui/harness/main.tsx"),
+  join(process.cwd(), "test/ui/harness/practitioner-session-client-stub.ts"),
   join(process.cwd(), "test/ui/harness/programs-didi-1014-fixtures.ts"),
 ];
 
