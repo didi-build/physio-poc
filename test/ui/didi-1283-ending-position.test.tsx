@@ -575,20 +575,20 @@ describe("DIDI-1283 Edit my copy", () => {
 
   it("keeps thumbnail column on first render when showThumbnails and src are set", () => {
     const thumbSpy = vi
-    .spyOn(PositionThumbnailModule, "PositionThumbnail")
+      .spyOn(PositionThumbnailModule, "PositionThumbnail")
       .mockImplementation(({ src, show }) =>
         show && src ? <img src={src} alt="" className="ex-positions-thumb" /> : null,
       );
     try {
       render(
-      <ExercisePositionsCard
-        startingPosition={START_TEXT}
-        endingPosition={END_TEXT}
-        startStillSrc="https://cdn.example/start.png"
-        endStillSrc="https://cdn.example/end.png"
-        showThumbnails
-        editable={false}
-        showHelper={false}
+        <ExercisePositionsCard
+          startingPosition={START_TEXT}
+          endingPosition={END_TEXT}
+          startStillSrc="https://cdn.example/start.png"
+          endStillSrc="https://cdn.example/end.png"
+          showThumbnails
+          editable={false}
+          showHelper={false}
         />,
       );
       const startStep = document.querySelector(".ex-positions-step--start");
