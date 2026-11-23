@@ -508,6 +508,54 @@ describe("ExerciseMediaService (integration)", () => {
     return { practitionerId, exerciseId, versionId: FIXTURE_VERSION_ID };
   }
 
+  it("promptContextFromVersion uses stored ending_position instead of last step", async () => {
+    const storage = await openMigratedDatabase();
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    try {
+      const practitionerId = await seedPractitioner(storage);
+      const exerciseId = await seedExercise(storage, practitionerId);
+      const storedEnd = "Hips lifted, knees bent at 90 degrees.";
+      await storage.run(
+        `INSERT INTO exercise_versions (
+          id, exercise_id, version_number, status, approved_by, approved_at,
+          title, description, equipment, starting_position, ending_position, steps,
+          common_mistakes, regressions, progressions, precautions,
+          cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+          media_set_id, change_summary, created_at
+        ) VALUES (${Array(23).fill("?").join(", ")})`,
+        versionInsertBindings({
+          id: FIXTURE_VERSION_ID,
+          exercise_id: exerciseId,
+          status: "draft",
+          title: "Bridge",
+          starting_position: "Supine",
+          ending_position: storedEnd,
+          steps: GUARDED_STEPS,
+        }),
+      );
+      const { service } = await createService(storage, {
+        generateStartAndEndImages: async (input) =>
+          new FakeImageGeneration().generateStartAndEndImages(input),
+        generateStartImage,
+        generateEndImage,
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+      });
+      const endPrompt = generateEndImage.mock.calls[0]![0];
+      expect(endPrompt).toContain(storedEnd);
+      expect(endPrompt).not.toContain("Extend knee to full range");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("passes the reworked end prompt on initial generation", async () => {
     const storage = await openMigratedDatabase();
     const generateStartImage = vi.fn(async (startPrompt: string) =>
