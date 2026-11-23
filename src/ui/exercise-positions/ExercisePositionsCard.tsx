@@ -1,4 +1,4 @@
-import { useId, useRef, useState, useCallback } from "react";
+import { type RefObject, useId, useRef, useState, useCallback } from "react";
 import { PositionThumbnail } from "./PositionThumbnail.js";
 import { STARTING_POSITION } from "../copy/exercise-requests.js";
 import {
@@ -39,7 +39,6 @@ export type ExercisePositionsCardProps = {
   showThumbnails: boolean;
   editable: boolean;
   showHelper: boolean;
-  allowAddEndingWhenEmpty?: boolean;
   startingCopyMeta?: PositionsCopyFieldMeta;
   endingCopyMeta?: PositionsCopyFieldMeta;
   onSaveStarting?: (value: string) => Promise<void>;
@@ -60,6 +59,8 @@ function PositionStepBody({
   onCancel,
   describedBy,
   copyMeta,
+  editButtonRef,
+  onAfterCloseEdit,
 }: {
   label: string;
   value: string;
@@ -72,9 +73,10 @@ function PositionStepBody({
   onCancel: () => void;
   describedBy?: string;
   copyMeta?: PositionsCopyFieldMeta;
+  editButtonRef: RefObject<HTMLButtonElement | null>;
+  onAfterCloseEdit: () => void;
 }) {
   const inputId = useId();
-  const editButtonRef = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
 
@@ -121,9 +123,7 @@ function PositionStepBody({
               void onSave(draft)
                 .then(() => {
                   onCancel();
-                  setTimeout(() => {
-                    editButtonRef.current?.focus();
-                  }, 0);
+                  onAfterCloseEdit();
                 })
                 .catch(() => {
                   /* keep editor open with draft text */
@@ -142,9 +142,7 @@ function PositionStepBody({
             onClick={() => {
               setDraft(value);
               onCancel();
-              setTimeout(() => {
-                editButtonRef.current?.focus();
-              }, 0);
+              onAfterCloseEdit();
             }}
           >
             {CANCEL}
@@ -225,7 +223,6 @@ export function ExercisePositionsCard({
   showThumbnails,
   editable,
   showHelper,
-  allowAddEndingWhenEmpty = true,
   startingCopyMeta,
   endingCopyMeta,
   onSaveStarting,
@@ -236,8 +233,20 @@ export function ExercisePositionsCard({
   const [editing, setEditing] = useState<EditingField>(null);
   const endingMissing = endingPosition.trim().length === 0;
   const showEndingEmpty = endingMissing && !editable && editing !== "ending";
-  const showEndingEmptyEditable =
-    endingMissing && editable && allowAddEndingWhenEmpty && editing !== "ending";
+  const showEndingEmptyEditable = endingMissing && editable && editing !== "ending";
+
+  const startEditRef = useRef<HTMLButtonElement>(null);
+  const endEditRef = useRef<HTMLButtonElement>(null);
+  const focusStartEditLink = useCallback(() => {
+    setTimeout(() => {
+      startEditRef.current?.focus();
+    }, 0);
+  }, []);
+  const focusEndEditLink = useCallback(() => {
+    setTimeout(() => {
+      endEditRef.current?.focus();
+    }, 0);
+  }, []);
 
   const startEditable = editable && onSaveStarting;
   const endEditable = editable && onSaveEnding;
@@ -291,6 +300,8 @@ export function ExercisePositionsCard({
               describedBy={helperDescribedBy}
               editLinkLabel={editFieldLabel(STARTING_POSITION)}
               copyMeta={startingCopyMeta}
+              editButtonRef={startEditRef}
+              onAfterCloseEdit={focusStartEditLink}
               onBeginEdit={() => {
                 setEditing("starting");
               }}
@@ -307,6 +318,8 @@ export function ExercisePositionsCard({
               multiline
               editLinkLabel={editFieldLabel(STARTING_POSITION)}
               copyMeta={startingCopyMeta}
+              editButtonRef={startEditRef}
+              onAfterCloseEdit={focusStartEditLink}
               onBeginEdit={() => {
                 setEditing("starting");
               }}
@@ -353,6 +366,8 @@ export function ExercisePositionsCard({
               describedBy={helperDescribedBy}
               editLinkLabel={EDIT_ENDING_POSITION}
               copyMeta={endingCopyMeta}
+              editButtonRef={endEditRef}
+              onAfterCloseEdit={focusEndEditLink}
               onBeginEdit={() => {
                 setEditing("ending");
               }}
@@ -370,6 +385,8 @@ export function ExercisePositionsCard({
               placeholder={ENDING_POSITION_PLACEHOLDER}
               editLinkLabel={EDIT_ENDING_POSITION}
               copyMeta={endingCopyMeta}
+              editButtonRef={endEditRef}
+              onAfterCloseEdit={focusEndEditLink}
               onBeginEdit={() => {
                 setEditing("ending");
               }}

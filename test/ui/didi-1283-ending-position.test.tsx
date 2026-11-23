@@ -27,16 +27,26 @@ import {
   readPrintStylesheet,
   ruleDeclarationsInScope,
 } from "./public-link-print-css-scope.js";
-import { STARTING_POSITION } from "../../src/ui/copy/exercise-requests.js";
+import { CANCEL, SAVE } from "../../src/ui/copy/exercise-requests.js";
 import {
-  ADD_ENDING_POSITION,
-  EDIT_ENDING_POSITION,
-  ENDING_POSITION_EMPTY,
-  ENDING_POSITION_LABEL,
-  POSITIONS_HEADING,
-  POSITIONS_HELPER,
-} from "../../src/ui/copy/ending-position.js";
-import { CANCEL, SAVE, editFieldLabel } from "../../src/ui/copy/exercise-requests.js";
+  LIBRARY_CHANGED,
+  LIBRARY_NOW,
+  TEXT_SECTION,
+} from "../../src/ui/copy/exercise-library.js";
+
+/** Pinned E1–E7 and reset accessible name (not imported constants). */
+const PIN_E1 = "Positions";
+const PIN_E2 = "Edit Ending position";
+const PIN_E3 = "For example: knee bent, heel slid in toward the buttock";
+const PIN_E4 =
+  "Describe only the body parts that move in this exercise. Everything else stays as in the starting position.";
+const PIN_E5 = "Edit Starting position";
+const PIN_E6 = "Not added yet.";
+const PIN_E7 = "Add ending position";
+const PIN_ENDING_LABEL = "Ending position";
+const PIN_STARTING_LABEL = "Starting position";
+const PIN_RESET_START_ARIA = "Reset Starting position to the library version";
+const PIN_RESET_END_ARIA = "Reset Ending position to the library version";
 import { userEvent } from "@testing-library/user-event";
 import "../../src/ui/styles/exercise-library.css";
 import "../../src/ui/styles/public-link-page.css";
@@ -69,13 +79,13 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
     );
     const card = screen.getByTestId("exercise-positions-card");
     expect(card.getAttribute("aria-labelledby")).toBeTruthy();
-    const heading = screen.getByRole("heading", { name: POSITIONS_HEADING });
+    const heading = screen.getByRole("heading", { name: PIN_E1 });
     expect(heading.id).toBe(card.getAttribute("aria-labelledby"));
-    expect(screen.getByText(POSITIONS_HELPER)).toHaveAttribute("id");
-    expect(screen.getByRole("button", { name: EDIT_ENDING_POSITION })).toBeTruthy();
+    expect(screen.getByText(PIN_E4)).toHaveAttribute("id");
+    expect(screen.getByRole("button", { name: PIN_E2 })).toBeTruthy();
     expect(
       screen.getByRole("button", {
-        name: editFieldLabel(STARTING_POSITION),
+        name: PIN_E5,
       }),
     ).toBeTruthy();
     document.body.removeChild(container);
@@ -95,8 +105,8 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
       />,
       { container },
     );
-    expect(screen.getByText(ENDING_POSITION_EMPTY)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: ADD_ENDING_POSITION })).toBeNull();
+    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
     expect(screen.queryByText(LAST_STEP_FALLBACK)).toBeNull();
     document.body.removeChild(container);
   });
@@ -128,6 +138,17 @@ describe.each([390, 1280])("DIDI-1283 patient link row at %i px", (widthPx) => {
     return container;
   }
 
+  it("omits description paragraph when saved description is empty", () => {
+    const container = renderRow({
+      description: "",
+      startingPosition: START_TEXT,
+      endingPosition: END_TEXT,
+    });
+    expect(container.querySelector(".link-page-row-description")).toBeNull();
+    expect(screen.queryByText(DESC_TEXT)).toBeNull();
+    document.body.removeChild(container);
+  });
+
   it("renders exact pinned position and description text when both positions are set", () => {
     const container = renderRow({
       description: DESC_TEXT,
@@ -138,11 +159,11 @@ describe.each([390, 1280])("DIDI-1283 patient link row at %i px", (widthPx) => {
     const dl = container.querySelector(".link-page-positions");
     expect(dl).not.toBeNull();
     const region = within(dl as HTMLElement);
-    expect(region.getByText(STARTING_POSITION)).toBeTruthy();
+    expect(region.getByText(PIN_STARTING_LABEL)).toBeTruthy();
     expect(region.getByText(START_TEXT)).toBeTruthy();
-    expect(region.getByText(ENDING_POSITION_LABEL)).toBeTruthy();
+    expect(region.getByText(PIN_ENDING_LABEL)).toBeTruthy();
     expect(region.getByText(END_TEXT)).toBeTruthy();
-    expect(screen.queryByText(ENDING_POSITION_EMPTY)).toBeNull();
+    expect(screen.queryByText(PIN_E6)).toBeNull();
     expect(screen.queryByText(LAST_STEP_FALLBACK)).toBeNull();
     document.body.removeChild(container);
   });
@@ -157,8 +178,8 @@ describe.each([390, 1280])("DIDI-1283 patient link row at %i px", (widthPx) => {
     expect(dl).not.toBeNull();
     const region = within(dl as HTMLElement);
     expect(region.getByText(START_TEXT)).toBeTruthy();
-    expect(region.queryByText(ENDING_POSITION_LABEL)).toBeNull();
-    expect(screen.queryByText(ENDING_POSITION_EMPTY)).toBeNull();
+    expect(region.queryByText(PIN_ENDING_LABEL)).toBeNull();
+    expect(screen.queryByText(PIN_E6)).toBeNull();
     expect(screen.queryByText(LAST_STEP_FALLBACK)).toBeNull();
     document.body.removeChild(container);
   });
@@ -203,7 +224,7 @@ describe.each([390, 1280])("DIDI-1283 patient link row at %i px", (widthPx) => {
     const dl = container.querySelector(".link-page-positions");
     expect(dl).not.toBeNull();
     const region = within(dl as HTMLElement);
-    expect(region.queryByText(STARTING_POSITION)).toBeNull();
+    expect(region.queryByText(PIN_STARTING_LABEL)).toBeNull();
     expect(region.getByText(END_TEXT)).toBeTruthy();
     document.body.removeChild(container);
   });
@@ -309,13 +330,13 @@ describe("DIDI-1283 Edit my copy", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: POSITIONS_HEADING })).toBeTruthy();
-      expect(screen.getByText(POSITIONS_HELPER)).toBeTruthy();
+      expect(screen.getByRole("heading", { name: PIN_E1 })).toBeTruthy();
+      expect(screen.getByText(PIN_E4)).toBeTruthy();
     });
     const card = screen.getByTestId("exercise-positions-card");
     await userEvent.click(
       within(card).getByRole("button", {
-        name: editFieldLabel(STARTING_POSITION),
+        name: PIN_E5,
       }),
     );
     const textarea = within(card).getByRole("textbox");
@@ -331,7 +352,7 @@ describe("DIDI-1283 Edit my copy", () => {
     expect(client.updateMyCopy).toHaveBeenCalledTimes(1);
   });
 
-  it("returns focus to the Edit link after Save on starting position", async () => {
+  it("returns focus to the new Edit link after Save on starting position", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     render(
@@ -347,11 +368,7 @@ describe("DIDI-1283 Edit my copy", () => {
       { container },
     );
     const card = screen.getByTestId("exercise-positions-card");
-    const editStarting = within(card).getByRole("button", {
-      name: editFieldLabel(STARTING_POSITION),
-    });
-    const focusAfterSave = vi.spyOn(editStarting, "focus");
-    await userEvent.click(editStarting);
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E5 }));
     const textarea = within(card).getByRole("textbox");
     await userEvent.clear(textarea);
     await userEvent.type(textarea, "Updated start.");
@@ -360,12 +377,13 @@ describe("DIDI-1283 Edit my copy", () => {
       expect(within(card).queryByRole("button", { name: SAVE })).toBeNull();
     });
     await waitFor(() => {
-      expect(focusAfterSave).toHaveBeenCalled();
+      const editStarting = within(card).getByRole("button", { name: PIN_E5 });
+      expect(document.activeElement).toBe(editStarting);
     });
     document.body.removeChild(container);
   });
 
-  it("returns focus to the Edit link after Cancel on ending position", async () => {
+  it("returns focus to the new Edit link after Cancel on ending position", async () => {
     const container = document.createElement("div");
     document.body.appendChild(container);
     render(
@@ -381,14 +399,62 @@ describe("DIDI-1283 Edit my copy", () => {
       { container },
     );
     const card = screen.getByTestId("exercise-positions-card");
-    const editEnding = within(card).getByRole("button", { name: EDIT_ENDING_POSITION });
-    const focusAfterCancel = vi.spyOn(editEnding, "focus");
-    await userEvent.click(editEnding);
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E2 }));
     await userEvent.click(within(card).getByRole("button", { name: CANCEL }));
     await waitFor(() => {
-      expect(focusAfterCancel).toHaveBeenCalled();
+      const editEnding = within(card).getByRole("button", { name: PIN_E2 });
+      expect(document.activeElement).toBe(editEnding);
     });
     document.body.removeChild(container);
+  });
+
+  it("pins E3 placeholder on ending position edit", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    render(
+      <ExercisePositionsCard
+        startingPosition={START_TEXT}
+        endingPosition={END_TEXT}
+        showThumbnails={false}
+        editable
+        showHelper
+        onSaveStarting={async () => {}}
+        onSaveEnding={async () => {}}
+      />,
+      { container },
+    );
+    const card = screen.getByTestId("exercise-positions-card");
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E2 }));
+    expect((within(card).getByRole("textbox") as HTMLTextAreaElement).placeholder).toBe(
+      PIN_E3,
+    );
+    document.body.removeChild(container);
+  });
+
+  it("pins reset accessible name on edited starting position", () => {
+    render(
+      <ExercisePositionsCard
+        startingPosition={START_TEXT}
+        endingPosition={END_TEXT}
+        showThumbnails={false}
+        editable
+        showHelper
+        startingCopyMeta={{
+          edited: true,
+          libraryUpdated: false,
+          libraryValue: "Library start.",
+          onReset: () => {},
+          onUseLibrary: () => {},
+          onKeepMine: () => {},
+        }}
+        onSaveStarting={async () => {}}
+        onSaveEnding={async () => {}}
+      />,
+    );
+    const card = screen.getByTestId("exercise-positions-card");
+    expect(
+      within(card).getByRole("button", { name: PIN_RESET_START_ARIA }),
+    ).toBeTruthy();
   });
 
   it("links E4 helper to both position textareas with aria-describedby", async () => {
@@ -406,20 +472,16 @@ describe("DIDI-1283 Edit my copy", () => {
       />,
       { container },
     );
-    const helper = screen.getByText(POSITIONS_HELPER);
+    const helper = screen.getByText(PIN_E4);
     const helperId = helper.getAttribute("id");
     expect(helperId).toBeTruthy();
     const card = screen.getByTestId("exercise-positions-card");
-    await userEvent.click(
-      within(card).getByRole("button", { name: editFieldLabel(STARTING_POSITION) }),
-    );
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E5 }));
     expect(within(card).getByRole("textbox").getAttribute("aria-describedby")).toBe(
       helperId,
     );
     await userEvent.click(within(card).getByRole("button", { name: CANCEL }));
-    await userEvent.click(
-      within(card).getByRole("button", { name: EDIT_ENDING_POSITION }),
-    );
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E2 }));
     expect(within(card).getByRole("textbox").getAttribute("aria-describedby")).toBe(
       helperId,
     );
@@ -436,9 +498,9 @@ describe("DIDI-1283 Edit my copy", () => {
         showHelper={false}
       />,
     );
-    expect(screen.getByText(ENDING_POSITION_EMPTY)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: ADD_ENDING_POSITION })).toBeNull();
-    expect(screen.queryByRole("button", { name: EDIT_ENDING_POSITION })).toBeNull();
+    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
+    expect(screen.queryByRole("button", { name: PIN_E2 })).toBeNull();
   });
 
   it("omits a still after image load error and uses full-width step layout", () => {
@@ -478,7 +540,7 @@ describe("DIDI-1283 Edit my copy", () => {
     const card = screen.getByTestId("exercise-positions-card");
     await userEvent.click(
       within(card).getByRole("button", {
-        name: editFieldLabel(STARTING_POSITION),
+        name: PIN_E5,
       }),
     );
     const textarea = within(card).getByRole("textbox");
@@ -501,14 +563,122 @@ describe("DIDI-1283 Edit my copy", () => {
         startingPosition={START_TEXT}
         endingPosition=""
         showThumbnails={false}
-        allowAddEndingWhenEmpty={false}
         editable={false}
         showHelper={false}
       />,
     );
-    expect(screen.getByText(ENDING_POSITION_EMPTY)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: ADD_ENDING_POSITION })).toBeNull();
-    expect(screen.queryByRole("button", { name: EDIT_ENDING_POSITION })).toBeNull();
+    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
+    expect(screen.queryByRole("button", { name: PIN_E2 })).toBeNull();
+  });
+
+  it("keeps thumbnail column on first render when showThumbnails and src are set", () => {
+    render(
+      <ExercisePositionsCard
+        startingPosition={START_TEXT}
+        endingPosition={END_TEXT}
+        startStillSrc="https://cdn.example/start.png"
+        endStillSrc="https://cdn.example/end.png"
+        showThumbnails
+        editable={false}
+        showHelper={false}
+      />,
+    );
+    const startStep = document.querySelector(".ex-positions-step--start");
+    const endStep = document.querySelector(".ex-positions-step--end");
+    expect(startStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
+    expect(endStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
+  });
+
+  it("G2 My copy keeps positions out of the Text section and supports reset and conflict flows", async () => {
+    const client = {
+      getExerciseDetails: vi.fn().mockResolvedValue({
+        exercise_id: "ex-g2",
+        library: {
+          title: "Heel slide",
+          starting_position: "Library start.",
+          ending_position: "Library end.",
+        },
+        resolved_text: [
+          {
+            key: "description",
+            resolved: "Patient description only.",
+            library_value: "Library description.",
+            library_updated: false,
+          },
+          {
+            key: "starting_position",
+            resolved: START_TEXT,
+            library_value: "Library start.",
+            library_updated: true,
+          },
+          {
+            key: "ending_position",
+            resolved: "My edited ending.",
+            library_value: "Library end.",
+            library_updated: false,
+          },
+        ],
+      }),
+      updateMyCopy: vi.fn().mockResolvedValue({}),
+      removeFromMyExercises: vi.fn(),
+      applyUndo: vi.fn(),
+    } as unknown as ExerciseLibraryClient;
+    render(
+      <MemoryRouter
+        initialEntries={[
+          fillPhysioAppRoutePattern("exerciseMyCopy", { exerciseId: "ex-g2" }),
+        ]}
+      >
+        <NavigationTestProviders>
+          <ExerciseLibraryApiProvider client={client}>
+            <ToastProvider>
+              <Routes>
+                <Route
+                  path={physioAppSpaRoutePath("exerciseMyCopy")}
+                  element={<MyCopyEditorPage />}
+                />
+              </Routes>
+            </ToastProvider>
+          </ExerciseLibraryApiProvider>
+        </NavigationTestProviders>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: PIN_E1 })).toBeTruthy();
+    });
+    const textPanel = screen.getByRole("heading", {
+      name: TEXT_SECTION,
+    }).parentElement!;
+    expect(within(textPanel as HTMLElement).queryByText(START_TEXT)).toBeNull();
+    expect(within(textPanel as HTMLElement).queryByText(END_TEXT)).toBeNull();
+    expect(
+      within(textPanel as HTMLElement).getByText("Patient description only."),
+    ).toBeTruthy();
+
+    const card = screen.getByTestId("exercise-positions-card");
+    expect(within(card).getByText(LIBRARY_CHANGED)).toBeTruthy();
+    expect(within(card).getByText(`${LIBRARY_NOW} Library start.`)).toBeTruthy();
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: PIN_RESET_END_ARIA,
+      }),
+    );
+    expect(client.updateMyCopy).toHaveBeenCalledWith("ex-g2", {
+      use_library_version: ["ending_position"],
+    });
+
+    await userEvent.click(within(card).getByRole("button", { name: PIN_E2 }));
+    const textarea = within(card).getByRole("textbox");
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, "Edited ending save.");
+    await userEvent.click(within(card).getByRole("button", { name: SAVE }));
+    expect(client.updateMyCopy).toHaveBeenCalledWith("ex-g2", {
+      text_overrides: { ending_position: "Edited ending save." },
+    });
+    expect(client.updateMyCopy).not.toHaveBeenCalledWith("ex-g2", {
+      text_overrides: { starting_position: "Edited ending save." },
+    });
   });
 });
 

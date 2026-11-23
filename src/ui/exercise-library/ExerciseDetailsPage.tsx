@@ -209,7 +209,6 @@ export function ExerciseDetailsPage() {
         startingPosition={details.library.starting_position ?? ""}
         endingPosition={details.library.ending_position ?? ""}
         showThumbnails={false}
-        allowAddEndingWhenEmpty={false}
         editable={false}
         showHelper={false}
       />

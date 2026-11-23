@@ -7,12 +7,50 @@ import { FreeTextValidationError } from "../src/domain/exercise-free-text.js";
 import { buildTextOverrideEntry } from "../src/domain/exercise-text-overrides.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
+import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
+import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import {
   ProgramPublishService,
   type PublicShareLinkOpenView,
 } from "../src/services/programs/program-publish-service.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
-import { buildProgramRowTextSnapshot } from "../src/services/programs/row-resolution.js";
+import {
+  buildProgramRowTextSnapshot,
+  resolvePatientTextFromProgramSnapshot,
+} from "../src/services/programs/row-resolution.js";
+import { parseAndValidateExerciseDraftAiPayload } from "../src/adapters/deepinfra/exercise-draft-ai-schema.js";
+import {
+  applyMigration,
+  MIGRATION_0001_ID,
+  MIGRATION_0002_ID,
+  MIGRATION_0003_ID,
+  MIGRATION_0005_ID,
+  MIGRATION_0007_ID,
+  MIGRATION_0008_ID,
+  MIGRATION_0009_ID,
+  MIGRATION_0011_ID,
+  MIGRATION_0012_ID,
+  MIGRATION_0013_ID,
+  MIGRATION_0014_ID,
+  MIGRATION_0015_ID,
+  MIGRATION_0016_ID,
+} from "../src/storage/migrations/apply.js";
+import { BetterSqliteStorage } from "../src/adapters/node/better-sqlite-sql-storage.js";
+import {
+  MIGRATION_0015_SQL,
+  MIGRATION_0016_SQL,
+  MIGRATION_0001_SQL,
+  MIGRATION_0002_SQL,
+  MIGRATION_0003_SQL,
+  MIGRATION_0005_SQL,
+  MIGRATION_0007_SQL,
+  MIGRATION_0008_SQL,
+  MIGRATION_0009_SQL,
+  MIGRATION_0011_SQL,
+  MIGRATION_0012_SQL,
+  MIGRATION_0013_SQL,
+  MIGRATION_0014_SQL,
+} from "./helpers/exercise-sqlite-fixture.js";
 import { draftVersionNeedsTextRedraft } from "../src/services/exercise-requests/run-exercise-request-draft-generation.js";
 import { publicShareLinkApiPath } from "../src/programs-api-paths.js";
 import {
@@ -1064,6 +1102,275 @@ describe("DIDI-1283 ending_position", () => {
       const details = await service.getExerciseDetails(practId, FIXTURE_EXERCISE_ID);
       const field = details.resolved_text.find((f) => f.key === "ending_position");
       expect(field?.resolved).not.toBe(bad);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("resolvePatientTextFromProgramSnapshot keeps empty saved description without pinned fallback", () => {
+    const resolved = resolvePatientTextFromProgramSnapshot(
+      {
+        title: "Heel slide",
+        description: "",
+        starting_position: "Frozen start.",
+        ending_position: "Frozen end.",
+      },
+      {
+        description: "Pinned description must not show.",
+        starting_position: "Pinned start.",
+        ending_position: "Pinned end.",
+      },
+    );
+    expect(resolved.description).toBe("");
+    expect(resolved.description).not.toBe("Pinned description must not show.");
+  });
+
+  it("resolvePatientTextFromProgramSnapshot keeps empty saved starting_position without pinned fallback", () => {
+    const resolved = resolvePatientTextFromProgramSnapshot(
+      {
+        title: "Heel slide",
+        description: "Frozen description.",
+        starting_position: "",
+        ending_position: "Frozen end.",
+      },
+      {
+        description: "Pinned description.",
+        starting_position: "Pinned start must not show.",
+        ending_position: "Pinned end.",
+      },
+    );
+    expect(resolved.starting_position).toBe("");
+    expect(resolved.starting_position).not.toBe("Pinned start must not show.");
+  });
+
+  it("public share link keeps empty saved description and starting_position without pinned fallback", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-q1-empty-save"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      await storage.run(
+        `UPDATE exercise_versions SET description = ?, starting_position = ?, ending_position = ?
+         WHERE id = ?`,
+        [
+          "Pinned description.",
+          "Pinned starting position.",
+          "Pinned ending position.",
+          FIXTURE_VERSION_ID,
+        ],
+      );
+      const programId = id("prog-q1-empty-save");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Empty saved text",
+      });
+      await new ProgramRowsRepository(storage).replaceRow({
+        id: id("row-q1-empty-save"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: {
+          title: "Heel slide",
+          description: "",
+          starting_position: "",
+          ending_position: "Patient ending only.",
+        },
+        draftUpdatedAt: TS,
+      });
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId,
+          email: "empty-save@example.com",
+          displayName: "Coach",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        {
+          sql: storage,
+          objects,
+          config: MCP_TEST_CONFIG,
+          mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+          auth,
+        },
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.description).toBe("");
+      expect(body.rows[0]?.starting_position).toBe("");
+      expect(body.rows[0]?.ending_position).toBe("Patient ending only.");
+      expect(body.rows[0]?.description).not.toBe("Pinned description.");
+      expect(body.rows[0]?.starting_position).not.toBe("Pinned starting position.");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("rejects AI draft payload missing ending_position", () => {
+    const payload = {
+      title: "Heel slide",
+      aliases: ["Heel slides"],
+      category: "stretch",
+      body_regions: ["knee"],
+      description: "Description.",
+      equipment: "Mat",
+      starting_position: "Supine.",
+      steps: "1. Bend knee",
+      common_mistakes: "Rushing",
+      regressions: "Smaller range",
+      progressions: "Hold longer",
+      precautions: "Stop if pain",
+      cue_stretching: "Move slowly",
+      cue_isometric: null,
+      cue_concentric: null,
+      cue_eccentric: null,
+    };
+    expect(parseAndValidateExerciseDraftAiPayload(payload)).toBeNull();
+  });
+
+  it("rejects AI draft payload with ending_position over MAX_LENGTH_EXERCISE_TEMPLATE_TEXT", () => {
+    const payload = {
+      title: "Heel slide",
+      aliases: ["Heel slides"],
+      category: "stretch",
+      body_regions: ["knee"],
+      description: "Description.",
+      equipment: "Mat",
+      starting_position: "Supine.",
+      ending_position: "z".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1),
+      steps: "1. Bend knee",
+      common_mistakes: "Rushing",
+      regressions: "Smaller range",
+      progressions: "Hold longer",
+      precautions: "Stop if pain",
+      cue_stretching: "Move slowly",
+      cue_isometric: null,
+      cue_concentric: null,
+      cue_eccentric: null,
+    };
+    expect(parseAndValidateExerciseDraftAiPayload(payload)).toBeNull();
+  });
+
+  it("regenerateMedia end prompt uses stored ending_position", async () => {
+    const storage = await openMigratedDatabase();
+    const storedEnd = "Knee deeply flexed with heel at hip.";
+    const lastStep = "Extend knee to full range.";
+    const generateEndImage = vi.fn(async (endPrompt: string) =>
+      new FakeImageGeneration().generateEndImage(endPrompt),
+    );
+    const generateStartImage = vi.fn(async (startPrompt: string) =>
+      new FakeImageGeneration().generateStartImage(startPrompt),
+    );
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-regen-end-d1283"));
+      const exerciseId = await seedExercise(storage, practitionerId);
+      const versionId = id("ver-regen-end-d1283");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          status: "draft",
+          title: "Heel slide",
+          starting_position: "Supine.",
+          ending_position: storedEnd,
+          steps: `1. Slide heel\n2. ${lastStep}`,
+        }),
+      );
+      const media = new PrefixMediaStorage(new InMemoryObjectStorage());
+      let mediaSetSerial = 0;
+      const service = new ExerciseMediaService(
+        storage,
+        {
+          generateStartAndEndImages: async (input) =>
+            new FakeImageGeneration().generateStartAndEndImages(input),
+          generateStartImage,
+          generateEndImage,
+        },
+        media,
+        () => new Date(TS),
+        () => id(`media-regen-end-${String(mediaSetSerial++)}`),
+      );
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+      });
+      generateEndImage.mockClear();
+      await service.regenerateMedia({
+        practitionerId,
+        exerciseVersionId: versionId,
+        scope: "end",
+      });
+      const endPrompt = generateEndImage.mock.calls[0]![0] as string;
+      expect(endPrompt).toContain(storedEnd);
+      expect(endPrompt).not.toContain(lastStep);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("migration 0016 backfills ending_position as empty string on existing rows", async () => {
+    const storage = BetterSqliteStorage.openInMemory();
+    try {
+      await applyMigration(storage, MIGRATION_0001_ID, MIGRATION_0001_SQL);
+      await applyMigration(storage, MIGRATION_0002_ID, MIGRATION_0002_SQL);
+      await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
+      await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
+      await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+      await applyMigration(storage, MIGRATION_0008_ID, MIGRATION_0008_SQL);
+      await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+      await applyMigration(storage, MIGRATION_0011_ID, MIGRATION_0011_SQL);
+      await applyMigration(storage, MIGRATION_0012_ID, MIGRATION_0012_SQL);
+      await applyMigration(storage, MIGRATION_0013_ID, MIGRATION_0013_SQL);
+      await applyMigration(storage, MIGRATION_0014_ID, MIGRATION_0014_SQL);
+      await applyMigration(storage, MIGRATION_0015_ID, MIGRATION_0015_SQL);
+      const practitionerId = await seedPractitioner(storage, id("pr-mig-0016"));
+      const exerciseId = await seedExercise(storage, practitionerId, id("ex-mig-0016"));
+      const versionId = id("ver-mig-0016");
+      await storage.run(
+        `INSERT INTO exercise_versions (
+          id, exercise_id, version_number, status, approved_by, approved_at,
+          title, description, equipment, starting_position, steps,
+          common_mistakes, regressions, progressions, precautions,
+          cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
+          media_set_id, change_summary, created_at
+        ) VALUES (?, ?, 1, 'approved', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          versionId,
+          exerciseId,
+          practitionerId,
+          TS,
+          "Heel slide",
+          "Description.",
+          "Mat",
+          "Supine.",
+          "1. Step",
+          "None",
+          "Easier",
+          "Harder",
+          "Care",
+          "Cue",
+          null,
+          null,
+          null,
+          null,
+          "Created",
+          TS,
+        ],
+      );
+      await applyMigration(storage, MIGRATION_0016_ID, MIGRATION_0016_SQL);
+      const row = await storage.first<{ ending_position: string }>(
+        "SELECT ending_position FROM exercise_versions WHERE id = ?",
+        [versionId],
+      );
+      expect(row?.ending_position).toBe("");
     } finally {
       storage.close();
     }

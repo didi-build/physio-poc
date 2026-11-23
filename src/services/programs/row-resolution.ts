@@ -102,14 +102,14 @@ export function resolvePatientTextFromProgramSnapshot(
   };
   return {
     description:
-      snapshot.description !== undefined ? snapshot.description : fallback.description,
+      "description" in snapshot ? (snapshot.description ?? "") : fallback.description,
     starting_position:
-      snapshot.starting_position !== undefined
-        ? snapshot.starting_position
+      "starting_position" in snapshot
+        ? (snapshot.starting_position ?? "")
         : fallback.starting_position,
     ending_position:
-      snapshot.ending_position !== undefined
-        ? snapshot.ending_position
+      "ending_position" in snapshot
+        ? (snapshot.ending_position ?? "")
         : fallback.ending_position,
   };
 }
