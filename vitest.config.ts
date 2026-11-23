@@ -10,6 +10,10 @@ export default defineConfig({
         import.meta.dirname,
         "test/helpers/cloudflare-workers-vitest-shim.ts",
       ),
+      "cloudflare:workflows": resolve(
+        import.meta.dirname,
+        "test/helpers/cloudflare-workflows-vitest-shim.ts",
+      ),
     },
   },
   test: {

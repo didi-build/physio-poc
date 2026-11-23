@@ -14,6 +14,7 @@ import { handleExerciseMediaRequest } from "../src/http/routes/exercise-media.js
 import {
   exerciseRequestGeneratePath,
   exerciseRequestPath,
+  exerciseRequestWithdrawPath,
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
 import {
@@ -25,6 +26,7 @@ import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-request
 import {
   DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
   DRAFT_GENERATION_LOCK_RELEASED_EVENT,
+  DRAFT_GENERATION_RUN_ABANDONED_EVENT,
   DRAFT_GENERATION_RUN_CANCELED_EVENT,
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
@@ -720,7 +722,10 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     }
   });
 
-  it("heartbeat refresh advances locked_at and logs pre-refresh lock_age_ms (kills M11/M12)", async () => {
+  it("heartbeat refresh advances locked_at with strict ordering (kills M11/M12/R15)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const start = new Date("2026-10-30T10:00:00.000Z");
+    vi.setSystemTime(start);
     const storage = await openMigratedDatabase();
     try {
       const practitioner = await seedPractitioner(
@@ -728,10 +733,13 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         id("pr-1289-hb-age"),
         "hb-age@ex.com",
       );
+      const slowDraft = createDelayedFakeExerciseDraftGenerator({ delayMs: 64 });
       const { deps, cookie, workflow } = testBundle(
         storage,
         practitioner,
         new FakeImageGeneration(),
+        undefined,
+        slowDraft,
       );
       const requestId = await createRequest(cookie, deps);
       const repo = new ExerciseRequestsRepository(deps.sql);
@@ -769,12 +777,14 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       );
       const acquiredAt = await repo.getDraftGenerationLockedAt(requestId);
       expect(acquiredAt).toBeTruthy();
-      await drainDraftGeneration(workflow, requestId);
+      const drainPromise = drainDraftGeneration(workflow, requestId);
+      await vi.runAllTimersAsync();
+      await drainPromise;
       expect(refreshLockedAt.length).toBeGreaterThan(0);
       expect(storedLockedAtAfterRefresh.length).toBe(refreshLockedAt.length);
       for (let i = 0; i < refreshLockedAt.length; i += 1) {
         expect(storedLockedAtAfterRefresh[i]).toBe(refreshLockedAt[i]);
-        expect(Date.parse(refreshLockedAt[i]!)).toBeGreaterThanOrEqual(
+        expect(Date.parse(refreshLockedAt[i]!)).toBeGreaterThan(
           Date.parse(acquiredAt!),
         );
         expect(
@@ -789,9 +799,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         [requestId],
       );
       expect(row?.draft_generation_locked_at).toBeNull();
-      expect(
-        Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
-      ).toBeGreaterThanOrEqual(Date.parse(acquiredAt!));
+      expect(Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!)).toBeGreaterThan(
+        Date.parse(acquiredAt!),
+      );
       const lines = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line): line is string => typeof line === "string");
@@ -813,6 +823,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       });
       expect(stepStarted).toBe(true);
     } finally {
+      vi.useRealTimers();
       vi.restoreAllMocks();
       storage.close();
     }
@@ -1200,6 +1211,177 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         exerciseVersionId: versionId!.id,
       });
       expect(images.startCalls).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("acquire stores a fresh attempt id on stale retry (N04)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-n04"),
+        "n04@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const repo = new ExerciseRequestsRepository(deps.sql);
+      const requestId = await createRequest(cookie, deps);
+      const staleAttempt = id("att-stale-n04");
+      const staleLockedAt = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [staleLockedAt, staleAttempt, requestId],
+      );
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      const stored = await repo.getDraftGenerationAttemptId(requestId);
+      expect(stored).toBeTruthy();
+      expect(stored).not.toBe(staleAttempt);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("logs run_abandoned once when POST /generate takes a stale lock", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-abandon-gen"),
+        "abandon-gen@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const priorAttempt = id("att-prior-abandon");
+      const staleLockedAt = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [staleLockedAt, priorAttempt, requestId],
+      );
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      const abandoned = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line): line is string => typeof line === "string")
+        .map((line) => JSON.parse(line) as { event: string; attempt_id?: string })
+        .filter((row) => row.event === DRAFT_GENERATION_RUN_ABANDONED_EVENT);
+      expect(abandoned).toHaveLength(1);
+      expect(abandoned[0]?.attempt_id).toBe(priorAttempt);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("logs run_abandoned once when GET sees a stale lock", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-abandon-get"),
+        "abandon-get@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const priorAttempt = id("att-prior-get");
+      const staleLockedAt = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [staleLockedAt, priorAttempt, requestId],
+      );
+      await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const abandoned = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line): line is string => typeof line === "string")
+        .map((line) => JSON.parse(line) as { event: string; attempt_id?: string })
+        .filter((row) => row.event === DRAFT_GENERATION_RUN_ABANDONED_EVENT);
+      expect(abandoned).toHaveLength(1);
+      expect(abandoned[0]?.attempt_id).toBe(priorAttempt);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("logs run_canceled once when delete draft ends a stale running attempt", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-cancel"),
+        "cancel@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const repo = new ExerciseRequestsRepository(deps.sql);
+      const requestId = await createRequest(cookie, deps);
+      const attemptId = id("att-cancel");
+      const staleLockedAt = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [staleLockedAt, attemptId, requestId],
+      );
+      const withdraw = await handleRequest(
+        authedJsonRequest(exerciseRequestWithdrawPath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      expect(withdraw.status).toBe(200);
+      expect(await repo.getDraftGenerationAttemptId(requestId)).toBe(attemptId);
+      const canceled = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line): line is string => typeof line === "string")
+        .map((line) => JSON.parse(line) as { event: string; attempt_id?: string })
+        .filter((row) => row.event === DRAFT_GENERATION_RUN_CANCELED_EVENT);
+      expect(canceled).toHaveLength(1);
+      expect(canceled[0]?.attempt_id).toBe(attemptId);
     } finally {
       storage.close();
     }

@@ -150,6 +150,74 @@ describe("QA B1: one workflow instance id per attempt", () => {
     }
   });
 
+  it("worker port passes attemptId in Workflow create params (N32)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(storage, id("pr-n32"), "n32@ex.com");
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "n32@ex.com",
+          displayName: "Coach",
+        },
+      });
+      const createSpy = vi.fn(async () => ({}));
+      const base = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: fakeExerciseDraftGenerator,
+        exerciseMediaImages: new FakeImageGeneration(),
+        extraRouteHandlers: [handleExerciseMediaRequest],
+      };
+      const requestService = new ExerciseRequestsService(base.sql, base.config, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const deps = {
+        ...base,
+        draftGenerationWorkflow: createWorkerDraftGenerationWorkflowPort({
+          PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION: {
+            create: createSpy,
+            get: vi.fn(),
+          },
+        } as never),
+      };
+      const cookie = auth.createSessionCookieHeader();
+      const created = await handleRequest(
+        req(exerciseRequestsCollectionPath(), cookie, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_name: "Sumo squat",
+            form_opened_at: "2026-10-30T10:00:00.000Z",
+          }),
+        }),
+        deps,
+      );
+      const { request_id: requestId } = (await created.json()) as {
+        request_id: string;
+      };
+      await handleRequest(
+        req(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: "{}",
+        }),
+        deps,
+      );
+      const repo = new ExerciseRequestsRepository(storage);
+      const storedAttempt = await repo.getDraftGenerationAttemptId(requestId);
+      expect(storedAttempt).toBeTruthy();
+      expect(createSpy).toHaveBeenCalledTimes(1);
+      const createInput = createSpy.mock.calls[0]![0] as {
+        params: { attemptId: string };
+      };
+      expect(createInput.params.attemptId).toBe(storedAttempt);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("create() throw releases lock and returns typed 502, never 202", async () => {
     const storage = await openMigratedDatabase();
     try {

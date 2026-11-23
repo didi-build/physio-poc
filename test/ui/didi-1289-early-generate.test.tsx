@@ -103,6 +103,56 @@ describe("DIDI-1289 early first /generate", () => {
     }
   });
 
+  it("never calls generateRequest when the viewer is not the requester (M30)", async () => {
+    const otherPractitionerId = "33333333-3333-4333-8333-333333333333";
+    const view: ExerciseRequestDraftView = {
+      request_id: "req-non-requester",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: otherPractitionerId,
+      requested_by_email: "other@example.com",
+      exercise_id: null,
+      generation: { generation_in_progress: false, first_draft_complete: false },
+      draft: null,
+    };
+    const generateRequest = vi.fn();
+    const requestsClient = {
+      getRequest: vi.fn().mockResolvedValue(view),
+      generateRequest,
+      regenerateDraftText: vi.fn(),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    setExerciseRequestsClientForTests(requestsClient);
+    setExerciseMediaClientForTests(stubMediaClient());
+
+    render(
+      <MemoryRouter initialEntries={["/requests/req-non-requester"]}>
+        <NavigationTestProviders>
+          <ExerciseRequestsApiProvider client={requestsClient}>
+            <ExerciseMediaApiProvider client={stubMediaClient()}>
+              <ToastProvider>
+                <Routes>
+                  <Route path="/requests/:requestId" element={<DraftReviewPage />} />
+                </Routes>
+              </ToastProvider>
+            </ExerciseMediaApiProvider>
+          </ExerciseRequestsApiProvider>
+        </NavigationTestProviders>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(requestsClient.getRequest).toHaveBeenCalled();
+    });
+    expect(generateRequest).not.toHaveBeenCalled();
+  });
+
   it("calls generate as soon as sessionIdentityReady and view match requester", async () => {
     const view: ExerciseRequestDraftView = {
       request_id: "req-early-gen",

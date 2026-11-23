@@ -339,7 +339,16 @@ export function createDeepInfraExerciseDraftGenerator(
         return { exerciseId: prepared.exerciseId, versionId: prepared.versionId };
       } catch (error) {
         if (error instanceof DeepInfraExerciseDraftError) {
-          lastFailure = error;
+          if (
+            error.code === "deepinfra_exercise_draft_timeout" ||
+            error.code === "deepinfra_exercise_draft_network_error" ||
+            (error.code === "deepinfra_exercise_draft_request_failed" &&
+              (error.httpStatus === undefined ||
+                error.httpStatus >= 500 ||
+                error.httpStatus === 429))
+          ) {
+            throw error;
+          }
           if (
             error.code === "deepinfra_exercise_draft_request_failed" &&
             error.httpStatus !== undefined &&
@@ -347,6 +356,7 @@ export function createDeepInfraExerciseDraftGenerator(
           ) {
             throw error;
           }
+          lastFailure = error;
           continue;
         }
         throw error;

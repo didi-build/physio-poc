@@ -3,11 +3,7 @@ import {
   type WorkflowEvent,
   type WorkflowStep,
 } from "cloudflare:workers";
-
-/** Matches Cloudflare Workflows non-retryable step errors (name is what the runtime checks). */
-class NonRetryableError extends Error {
-  override readonly name = "NonRetryableError";
-}
+import { NonRetryableError } from "cloudflare:workflows";
 
 function isNonRetryableError(error: unknown): error is NonRetryableError {
   return (
@@ -35,8 +31,10 @@ import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-s
 import { ExerciseRequestsServiceError } from "../../services/exercise-requests/errors.js";
 import type { DraftGenerationStepName } from "../../services/exercise-requests/draft-generation-lock-log.js";
 import { logDraftGenerationLockReleased } from "../../services/exercise-requests/draft-generation-lock-log.js";
+import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
 import { DraftGenerationTerminalFailure } from "../../services/exercise-requests/draft-generation-terminal-failure.js";
 import { throwDraftGenerationFailure } from "../../services/exercise-requests/draft-generation-error-mapping.js";
+import { ImageGenerationError } from "../../storage/ports/image-generation.js";
 
 export type ExerciseRequestDraftGenerationWorkflowEnv = WorkerEnv & {
   PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION?: PhysioExerciseRequestDraftGenerationBinding;
@@ -92,7 +90,9 @@ export class ExerciseRequestDraftGenerationWorkflow extends WorkflowEntrypoint<
         throw error;
       }
       await this.finalizeExhaustedStepFailure(context, stepName, error);
-      throw error;
+      throw new NonRetryableError(
+        error instanceof Error ? error.message : "draft_generation_step_failed",
+      );
     }
   }
 
@@ -180,8 +180,21 @@ export class ExerciseRequestDraftGenerationWorkflow extends WorkflowEntrypoint<
     );
     const loadView = () => requestService.loadDraftView(context.requestId);
     const phase: "text" | "images" =
-      stepName === "text" || stepName === "finalize" ? "text" : "images";
+      stepName === "start_image" || stepName === "end_image" ? "images" : "text";
     try {
+      if (error instanceof DeepInfraExerciseDraftError) {
+        throw new DraftGenerationTerminalFailure({
+          outcome: phase === "text" ? "text_failed" : "images_failed",
+          error: error.code,
+          view: phase === "text" ? null : await loadView(),
+        });
+      }
+      if (error instanceof ImageGenerationError) {
+        throw new DraftGenerationTerminalFailure({
+          outcome: "images_failed",
+          view: await loadView(),
+        });
+      }
       await throwDraftGenerationFailure(error, phase, context.requestId, loadView);
     } catch (terminal) {
       if (terminal instanceof DraftGenerationTerminalFailure) {

@@ -47,6 +47,10 @@ import {
 } from "./draft-generation-lock.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
+import {
+  logDraftGenerationRunAbandoned,
+  logDraftGenerationRunCanceled,
+} from "./draft-generation-lock-log.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type {
   ExerciseMediaService,
@@ -407,6 +411,21 @@ export class ExerciseRequestsService {
   }): Promise<ExerciseRequestDraftView> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
+    const row = await this.requests.findById(requestId);
+    const nowIso = this.now();
+    const lockedAt = row?.draft_generation_locked_at ?? null;
+    if (
+      lockedAt &&
+      !isLockFresh(lockedAt, nowIso) &&
+      row?.draft_generation_attempt_id
+    ) {
+      logDraftGenerationRunAbandoned({
+        requestId,
+        attemptId: row.draft_generation_attempt_id,
+        lockedAt,
+        now: nowIso,
+      });
+    }
     return this.buildDraftView(requestId);
   }
 
@@ -748,6 +767,17 @@ export class ExerciseRequestsService {
           requesterPractitionerId: rowBeforeWithdraw.requested_by,
           previousStatus: rowBeforeWithdraw.status,
         });
+        if (
+          rowBeforeWithdraw.draft_generation_attempt_id &&
+          rowBeforeWithdraw.draft_generation_locked_at
+        ) {
+          logDraftGenerationRunCanceled({
+            requestId,
+            attemptId: rowBeforeWithdraw.draft_generation_attempt_id,
+            lockedAt: rowBeforeWithdraw.draft_generation_locked_at,
+            now: nowIso,
+          });
+        }
       }
       return {
         request_id: requestId,

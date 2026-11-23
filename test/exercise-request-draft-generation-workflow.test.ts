@@ -4,7 +4,7 @@ vi.mock("../src/adapters/workers/create-worker-production-app-dependencies.js", 
   createWorkerProductionAppDependencies: vi.fn(),
 }));
 
-import { NonRetryableError } from "./helpers/cloudflare-workers-vitest-shim.js";
+import { NonRetryableError } from "cloudflare:workflows";
 import {
   DRAFT_GENERATION_WORKFLOW_STEP_RETRY,
   ExerciseRequestDraftGenerationWorkflow,
@@ -36,6 +36,12 @@ import {
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
+import { createDeepInfraExerciseDraftGenerator } from "../src/adapters/deepinfra/deepinfra-exercise-draft-generator.js";
+import { DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
+import {
+  ImageGenerationError,
+  type ImageGenerationPort,
+} from "../src/storage/ports/image-generation.js";
 
 type FakeExecutionContext = { waitUntil: (_promise: Promise<unknown>) => void };
 
@@ -130,6 +136,7 @@ describe("ExerciseRequestDraftGenerationWorkflow.run", () => {
   it("pins STEP_RETRY limit at 2 (3 Cloudflare attempts)", () => {
     expect(DRAFT_GENERATION_WORKFLOW_STEP_RETRY.retries.limit).toBe(2);
     expect(DRAFT_GENERATION_WORKFLOW_STEP_RETRY.retries.backoff).toBe("exponential");
+    expect(DRAFT_GENERATION_WORKFLOW_STEP_RETRY.retries.delay).toBe("1 second");
   });
 
   it("replays completed step.do callbacks and retries transient throws up to 3", async () => {
@@ -302,6 +309,9 @@ describe("ExerciseRequestDraftGenerationWorkflow integration (real class, provid
         calls += 1;
         throw new DeepInfraExerciseDraftError(
           "deepinfra_exercise_draft_request_failed",
+          {
+            httpStatus: 401,
+          },
         );
       };
       mockProductionDeps(storage, generator);
@@ -378,6 +388,170 @@ describe("ExerciseRequestDraftGenerationWorkflow integration (real class, provid
     }
   });
 
+  it("exhausted text step persists failure, releases lock, and maps text phase (R04/R09)", async () => {
+    const storage = await openMigratedDatabase();
+    const failureSpy = vi.spyOn(
+      ExerciseRequestsRepository.prototype,
+      "setDraftGenerationFailure",
+    );
+    const releaseSpy = vi.spyOn(
+      ExerciseRequestsRepository.prototype,
+      "releaseDraftGenerationLock",
+    );
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      let calls = 0;
+      const generator: ExerciseDraftGenerator = async () => {
+        calls += 1;
+        throw new Error("transient_provider");
+      };
+      mockProductionDeps(storage, generator);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: generator,
+      });
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(calls).toBe(3);
+      expect(failureSpy).toHaveBeenCalledTimes(1);
+      expect(releaseSpy).toHaveBeenCalledTimes(1);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_in_progress).toBe(false);
+    } finally {
+      failureSpy.mockRestore();
+      releaseSpy.mockRestore();
+      storage.close();
+    }
+  });
+
+  it("superseded lock is not retried (R07)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      mockProductionDeps(storage, fakeExerciseDraftGenerator);
+      const refreshBase =
+        ExerciseRequestsRepository.prototype.refreshDraftGenerationLock;
+      let refreshCalls = 0;
+      vi.spyOn(
+        ExerciseRequestsRepository.prototype,
+        "refreshDraftGenerationLock",
+      ).mockImplementation(async function (
+        this: ExerciseRequestsRepository,
+        input: Parameters<ExerciseRequestsRepository["refreshDraftGenerationLock"]>[0],
+      ) {
+        refreshCalls += 1;
+        if (refreshCalls === 1) {
+          return false;
+        }
+        return refreshBase.call(this, input);
+      });
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("text")).toBe(1);
+      expect(step.attempts.get("start_image")).toBe(1);
+    } finally {
+      vi.restoreAllMocks();
+      storage.close();
+    }
+  });
+
+  it("exhausted image step maps images phase failure (R09)", async () => {
+    const storage = await openMigratedDatabase();
+    const failureSpy = vi.spyOn(
+      ExerciseRequestsRepository.prototype,
+      "setDraftGenerationFailure",
+    );
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const images: ImageGenerationPort = {
+        async generateStartImage() {
+          throw new ImageGenerationError("image_generation_network_failed", 503);
+        },
+        async generateEndImage() {
+          throw new ImageGenerationError("image_generation_network_failed", 503);
+        },
+        async generateStartAndEndImages() {
+          throw new ImageGenerationError("image_generation_network_failed", 503);
+        },
+      };
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId: practitioner,
+          email: "wf-img@ex.com",
+          displayName: "Coach",
+        },
+      });
+      const base = {
+        sql: storage,
+        objects: new InMemoryObjectStorage(),
+        config: MCP_TEST_CONFIG,
+        auth,
+        mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+        exerciseDraftGenerator: fakeExerciseDraftGenerator,
+        exerciseMediaImages: images,
+        extraRouteHandlers: [handleExerciseMediaRequest],
+      };
+      vi.mocked(createWorkerProductionAppDependencies).mockReturnValue(base as never);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("start_image")).toBe(3);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("images");
+      expect(failureSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      failureSpy.mockRestore();
+      storage.close();
+    }
+  });
+
   it("pins lock_acquired event literal", () => {
     expect(DRAFT_GENERATION_LOCK_ACQUIRED_EVENT).toBe(
       "physio_draft_generation_lock_acquired",
@@ -391,5 +565,168 @@ describe("ExerciseRequestDraftGenerationWorkflow integration (real class, provid
     expect(DRAFT_GENERATION_RUN_CANCELED_EVENT).toBe(
       "physio_draft_generation_run_canceled",
     );
+  });
+});
+
+describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetch stubbed)", () => {
+  const STUB_DRAFT = {
+    title: "Heel slide",
+    aliases: ["Heel slides"],
+    category: "stretch",
+    body_regions: ["knee"],
+    description: "Gentle knee flexion stretch.",
+    equipment: "Mat",
+    starting_position: "Supine on mat.",
+    steps: "1. Bend\n2. Slide heel",
+    common_mistakes: "Rushing",
+    regressions: "Smaller range",
+    progressions: "Hold longer",
+    precautions: "Stop if pain",
+    cue_stretching: "Move slowly",
+    cue_isometric: null,
+    cue_concentric: null,
+    cue_eccentric: null,
+  } as const;
+
+  function installChatFetch(responses: Array<() => Response>) {
+    let calls = 0;
+    const original = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (
+        url === DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL ||
+        url.endsWith("/v1/openai/chat/completions")
+      ) {
+        const next = responses[Math.min(calls, responses.length - 1)]!;
+        calls += 1;
+        return next();
+      }
+      return original(input, init);
+    };
+    return {
+      callCount: () => calls,
+      restore: () => {
+        globalThis.fetch = original;
+      },
+    };
+  }
+
+  async function runLockedDeepInfraWorkflow(
+    storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+    _fetchStub: ReturnType<typeof installChatFetch>,
+  ) {
+    const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+    const draftGenerator = createDeepInfraExerciseDraftGenerator({ apiKey: "wf-key" });
+    const auth = new FakeAuthPort({
+      practitioner: {
+        practitionerId: practitioner,
+        email: "wf-di@ex.com",
+        displayName: "Coach",
+      },
+    });
+    const base = {
+      sql: storage,
+      objects: new InMemoryObjectStorage(),
+      config: MCP_TEST_CONFIG,
+      auth,
+      mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+      exerciseDraftGenerator: draftGenerator,
+      exerciseMediaImages: new FakeImageGeneration(),
+      extraRouteHandlers: [handleExerciseMediaRequest],
+    };
+    vi.mocked(createWorkerProductionAppDependencies).mockReturnValue(base as never);
+    const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+      draftGenerator,
+    });
+    const workflow = new ExerciseRequestDraftGenerationWorkflow(
+      { waitUntil() {} } as FakeExecutionContext,
+      {} as never,
+    );
+    const step = new RecordingWorkflowStep();
+    try {
+      await workflow.run(
+        {
+          payload: { requestId, practitionerId: practitioner, attemptId },
+          timestamp: new Date(),
+          instanceId: `${requestId}:${attemptId}`,
+        },
+        step as never,
+      );
+    } catch {
+      // exhausted failure paths
+    }
+    return { service, requestId, step, callCount: _fetchStub.callCount() };
+  }
+
+  it("503 then 200 succeeds on attempt 2 with real generator and Workflow", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () => new Response("unavailable", { status: 503 }),
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify(STUB_DRAFT) } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    ]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(2);
+      expect(callCount).toBe(2);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBeNull();
+      expect(after.exercise_id).not.toBeNull();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("three timeouts fail after exactly 3 fetch calls", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () => {
+        const err = new DOMException("The operation was aborted.", "AbortError");
+        throw err;
+      },
+    ]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(3);
+      expect(callCount).toBe(3);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+      expect(after.generation.generation_in_progress).toBe(false);
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("401 makes exactly 1 fetch call", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () => new Response("unauthorized", { status: 401 }),
+    ]);
+    try {
+      const { service, requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(1);
+      expect(callCount).toBe(1);
+      const after = await service.loadDraftView(requestId);
+      expect(after.generation.generation_failure).toBe("text");
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
   });
 });

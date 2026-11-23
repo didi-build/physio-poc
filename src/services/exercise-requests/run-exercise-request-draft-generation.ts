@@ -1,4 +1,8 @@
 import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
+import {
+  isRetryableDeepInfraExerciseDraftError,
+  isRetryableImageGenerationError,
+} from "./draft-generation-provider-retry.js";
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
 import type {
@@ -190,6 +194,12 @@ export async function runExerciseRequestDraftGeneration(
           return generated;
         } catch (error) {
           if (error instanceof DeepInfraExerciseDraftError) {
+            if (
+              input.deferTerminalPersistence === true &&
+              isRetryableDeepInfraExerciseDraftError(error)
+            ) {
+              throw error;
+            }
             throw new DraftGenerationTerminalFailure({
               outcome: "text_failed",
               error: error.code,
@@ -240,6 +250,12 @@ export async function runExerciseRequestDraftGeneration(
             );
           } catch (error) {
             if (error instanceof DeepInfraExerciseDraftError) {
+              if (
+                input.deferTerminalPersistence === true &&
+                isRetryableDeepInfraExerciseDraftError(error)
+              ) {
+                throw error;
+              }
               throw new DraftGenerationTerminalFailure({
                 outcome: "text_failed",
                 error: error.code,
@@ -295,6 +311,12 @@ export async function runExerciseRequestDraftGeneration(
             });
           }
         } else if (error instanceof ImageGenerationError) {
+          if (
+            input.deferTerminalPersistence === true &&
+            isRetryableImageGenerationError(error)
+          ) {
+            throw error;
+          }
           throw new DraftGenerationTerminalFailure({
             outcome: "images_failed",
             view: await loadView(),
@@ -345,6 +367,12 @@ export async function runExerciseRequestDraftGeneration(
             });
           }
         } else if (error instanceof ImageGenerationError) {
+          if (
+            input.deferTerminalPersistence === true &&
+            isRetryableImageGenerationError(error)
+          ) {
+            throw error;
+          }
           throw new DraftGenerationTerminalFailure({
             outcome: "images_failed",
             view: await loadView(),

@@ -96,26 +96,32 @@ export function logDraftGenerationStepEnded(input: {
 
 export function logDraftGenerationRunCanceled(input: {
   requestId: string;
-  step: DraftGenerationStepName | null;
+  attemptId: string;
+  lockedAt: string | null;
+  now: string;
 }): void {
   console.log(
     JSON.stringify({
       event: DRAFT_GENERATION_RUN_CANCELED_EVENT,
       request_id: input.requestId,
-      step: input.step,
+      attempt_id: input.attemptId,
+      lock_age_ms: lockAgeMs(input.lockedAt, input.now),
     }),
   );
 }
 
 export function logDraftGenerationRunAbandoned(input: {
   requestId: string;
-  step: DraftGenerationStepName | null;
+  attemptId: string;
+  lockedAt: string | null;
+  now: string;
 }): void {
   console.log(
     JSON.stringify({
       event: DRAFT_GENERATION_RUN_ABANDONED_EVENT,
       request_id: input.requestId,
-      step: input.step,
+      attempt_id: input.attemptId,
+      lock_age_ms: lockAgeMs(input.lockedAt, input.now),
     }),
   );
 }

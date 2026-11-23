@@ -68,6 +68,18 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("createWorkerProductionAppDependencies wires draftGenerationWorkflow when binding is set (M49b)", () => {
+    const env = buildWorkerProductionAuthEnv({
+      PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION: {
+        create: vi.fn(),
+        get: vi.fn(),
+      },
+    } as never);
+    const deps = createWorkerProductionAppDependencies(env);
+    expect(deps.draftGenerationWorkflow).toBeDefined();
+    expect(typeof deps.draftGenerationWorkflow?.start).toBe("function");
+  });
+
   it("createWorkerProductionAppDependencies uses the real DeepInfra generator and global fetch", async () => {
     const globalFetch = stubThisSensitiveGlobalFetch(() =>
       envelope(JSON.stringify(VALID_STRETCH_DRAFT)),

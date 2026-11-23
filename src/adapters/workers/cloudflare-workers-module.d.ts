@@ -1,3 +1,9 @@
+declare module "cloudflare:workflows" {
+  export class NonRetryableError extends Error {
+    readonly name = "NonRetryableError";
+  }
+}
+
 declare module "cloudflare:workers" {
   export type WorkflowEvent<T> = {
     payload: Readonly<T>;
@@ -23,10 +29,6 @@ declare module "cloudflare:workers" {
       callback: () => Promise<T>,
     ): Promise<T>;
   };
-
-  export class NonRetryableError extends Error {
-    readonly name = "NonRetryableError";
-  }
 
   export class WorkflowEntrypoint<Env = unknown, T = unknown> {
     protected readonly env: Env;
