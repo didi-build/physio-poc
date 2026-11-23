@@ -1145,7 +1145,14 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       await drainDraftGeneration(workflow, requestId);
       expect(images.startCalls).toBe(1);
       const row = await new ExerciseRequestsRepository(deps.sql).findById(requestId);
-      expect(row?.exercise_version_id).toBeTruthy();
+      expect(row?.exercise_id).toBeTruthy();
+      const versionId = await deps.sql.first<{ id: string }>(
+        `SELECT id FROM exercise_versions
+         WHERE exercise_id = ? AND status = 'draft'
+         ORDER BY version_number DESC LIMIT 1`,
+        [row!.exercise_id!],
+      );
+      expect(versionId?.id).toBeTruthy();
       const mediaService = new ExerciseMediaService(
         deps.sql,
         images,
@@ -1153,7 +1160,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       );
       await mediaService.generateInitialStartImageForVersion({
         practitionerId: practitioner,
-        exerciseVersionId: row!.exercise_version_id!,
+        exerciseVersionId: versionId!.id,
       });
       expect(images.startCalls).toBe(1);
     } finally {
