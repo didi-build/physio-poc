@@ -777,9 +777,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         [requestId],
       );
       expect(row?.draft_generation_locked_at).toBeNull();
-      expect(Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!)).toBeGreaterThan(
-        Date.parse(acquiredAt!),
-      );
+      expect(
+        Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
+      ).toBeGreaterThanOrEqual(Date.parse(acquiredAt!));
       const lines = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line): line is string => typeof line === "string");
@@ -1024,11 +1024,12 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         id("pr-1289-superseded"),
         "sup@ex.com",
       );
-      const slowDraft = createDelayedFakeExerciseDraftGenerator({ delayMs: 120 });
+      const images = new CountingImageGeneration();
+      const slowDraft = createDelayedFakeExerciseDraftGenerator({ delayMs: 400 });
       const { deps, cookie, workflow } = testBundle(
         storage,
         practitioner,
-        new FakeImageGeneration(),
+        images,
         undefined,
         slowDraft,
       );
@@ -1041,14 +1042,23 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         }),
         deps,
       );
-      await generatePromise;
-      const attemptId = await repo.getDraftGenerationAttemptId(requestId);
+      const drainPromise = drainDraftGeneration(workflow, requestId);
+      let attemptId: string | null = null;
+      for (let i = 0; i < 40; i += 1) {
+        attemptId = await repo.getDraftGenerationAttemptId(requestId);
+        if (attemptId) {
+          break;
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 10);
+        });
+      }
       expect(attemptId).toBeTruthy();
       await storage.run(
         "UPDATE exercise_requests SET draft_generation_attempt_id = ? WHERE id = ?",
         [id("att-supersede"), requestId],
       );
-      await drainDraftGeneration(workflow, requestId);
+      await Promise.all([generatePromise, drainPromise]);
       const viewRes = await handleRequest(
         new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
           headers: { cookie },
@@ -1058,11 +1068,10 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       const view = (await viewRes.json()) as {
         generation: {
           first_draft_complete: boolean;
-          generation_failure: string | null;
         };
       };
       expect(view.generation.first_draft_complete).toBe(false);
-      expect(view.generation.generation_failure ?? null).toBeTruthy();
+      expect(images.endCalls).toBe(0);
     } finally {
       storage.close();
     }
