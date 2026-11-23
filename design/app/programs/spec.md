@@ -37,7 +37,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Share screen | PDF preview made from the link page, Share link, Link page, Download PDF, close link |
 | Close link | "Close this share link?": the program stays in Programs; anyone who opens the old link sees "This link was closed"; "Create a new link" later |
 | Link page | What anyone with the link sees, no sign-in: latest published version, Save as PDF, Print, each exercise's media carousel, and the expiry line (on screen only; it is not printed, DIDI-1192) |
-| Link page exercise media | Each exercise shows one carousel: slide 1 the start to end transition (6s loop), slide 2 Start, slide 3 End. Phone: title, carousel, dose, notes. 1024 px and up: text left, carousel right. Print and PDF: text, Start, End in three columns, no video and no controls. Load failed: "Images didn't load." with "Try again". No tag, no identifiers. See "Link page exercise media (DIDI-1192)" |
+| Link page exercise media | Each exercise shows one carousel: slide 1 the start to end transition (6s loop), slide 2 Start, slide 3 End. Phone: title, description, carousel, Starting and Ending position, dose, notes (description and positions from the pinned version, left out when empty; [ending-position/spec.md](../ending-position/spec.md)). 1024 px and up: text left, carousel right. Print and PDF: text, Start, End in three columns, no video and no controls. Load failed: "Images didn't load." with "Try again". No tag, no identifiers. See "Link page exercise media (DIDI-1192)" |
 | Missing images block publish | Any exercise without its start or end image blocks Publish now on "Publish to the live link?" (including Use for a patient) and on "Publish this routine?". Remove is the only action. See "Publish blocked by missing images (DIDI-1192)" |
 | Leave with unsaved edits | Dialog title "Leave without saving?", body "Your latest changes aren't saved yet. If you leave now, you'll lose them.", buttons "Keep editing" (default, focused) and "Leave". Shown only when there are unsaved edits |
 
@@ -307,7 +307,7 @@ Design: E7, https://designs.magicpath.ai/v1/keen-current-4842 (MagicPath project
 
 Page: `.link-page` column `max-width: 42rem` below 1024 px, unchanged (public-link-page.css :1-5). **Changed:** at `(min-width: 1024px)` the column widens to `max-width: 64rem`, so the carousel has room in the second column. Breakpoint as useMinWidth1024.ts :3. Row box `.link-page-row` and the 1rem row gap are unchanged.
 
-DOM order in every row: `h2` "{title}, {type}" (PublicLinkPage.tsx :103), the carousel, the dose block, then the note (:107). Reading and tab order follow it, so the media comes right after the title at every width (DIDI-594 G update 3).
+DOM order in every row: `h2` "{title}, {type}" (PublicLinkPage.tsx :103), the description, the carousel, the Starting and Ending position `dl`, the dose block, then the note (:107). Reading and tab order follow it. The description sits between the title and the media (DIDI-1282, Diadem Nov 23, 2026, 1:42 PM EST, DIDI-594 `4506b55d`); see [ending-position/spec.md](../ending-position/spec.md). Was: media right after the title (DIDI-594 G update 3).
 
 | Element | Below 1024 px (390 px reference) | 1024 px and up (1280 px reference) |
 | -- | -- | -- |
@@ -392,7 +392,7 @@ Uses the existing `@media print` block (public-link-page.css :87-103). The heade
 | Element | Print |
 | -- | -- |
 | Row | Grid `grid-template-columns: minmax(0, 1fr) 11rem 11rem`, gap 0.75rem, `break-inside: avoid` |
-| Column 1 | Title (15px, weight 600), dose block (13px, the same three lines and bold numbers), note (12px, line height 1.625) |
+| Column 1 | Title (15px, weight 600), description (12px, line height 1.625), Starting and Ending position (labels 12px weight 600, text 12px; [ending-position/spec.md](../ending-position/spec.md)), dose block (13px, the same three lines and bold numbers), note (12px, line height 1.625). Description and Ending position are left out when empty |
 | Columns 2 and 3 | Start and End images, 4:3, `object-fit: cover`, radius 0.75rem, with captions "Start" / "End" (0.75rem, `#64748b`, 0.25rem above) |
 | Load failed | Column 1 as above. Columns 2 and 3 merge into one cell (`grid-column: 2 / 4`) with a dashed slate-300 border and radius 0.75rem, min height equal to the image height (8.25rem), with "Images didn't load." (13px, slate-500) centred. No "Try again" |
 | Not printed | The loop, carousel controls, indicators, chevrons, Pause/Play, and the expiry footer |
@@ -1088,6 +1088,7 @@ Not printed (DIDI-1192, CTO, Nov 9, 2026): "This link works until {exp.date}." a
 
 ## Changes
 
+- **Nov 23, 2026**: DIDI-1282. Link page and print add the exercise description and the Starting and Ending position text from the pinned version, left out when empty (DIDI-594 `a46e01d7`, `9a307ad9`, `4506b55d`). See [ending-position/spec.md](../ending-position/spec.md). https://linear.app/didi-build/issue/DIDI-1282
 - **Nov 21, 2026**: DIDI-1105 follow-up. Publish notice body **T18** / **T19** (`a3f73814`); States overview lists both placeholder kinds. https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 PR #142 QA R1. Publish notice: `type_mismatch` rows use **Didn't link**, **Fix**, and Remove in builder order (**Designer pick**, `b650a678`). https://linear.app/didi-build/issue/DIDI-1105
 - **Nov 21, 2026**: DIDI-1105 cross-reference. Programs list flags for type-mismatch placeholders ("1 exercise didn't link" / "{n} exercises didn't link") and builder behaviour live in [program-type-mismatch/spec.md](../program-type-mismatch/spec.md). https://linear.app/didi-build/issue/DIDI-1105
