@@ -24,6 +24,8 @@ const FORBIDDEN_BUNDLE_MARKERS = [
   "createTestDraftGenerationWorkflowPort",
   "serviceGenerateRequestWithDrain",
   "test-draft-generation-workflow-port",
+  "in-process-draft-generation-workflow",
+  "createInProcessDraftGenerationWorkflowPort",
 ] as const;
 
 const REQUIRED_BUNDLE_MARKERS = [

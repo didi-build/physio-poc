@@ -10,12 +10,17 @@ export type DraftGenerationLockOutcome<T> =
   | { kind: "in_progress"; view: ExerciseRequestDraftView; started_elsewhere: boolean }
   | { kind: "ran"; result: T };
 
+export type DraftGenerationHeldLock = {
+  attemptId: string;
+  lockedAt: string;
+};
+
 export async function underDraftGenerationLock<T>(input: {
   requestId: string;
   now: string;
   requests: ExerciseRequestsRepository;
   loadView: () => Promise<ExerciseRequestDraftView>;
-  run: () => Promise<T>;
+  run: (lock: DraftGenerationHeldLock) => Promise<T>;
 }): Promise<DraftGenerationLockOutcome<T>> {
   const lockedAt = await input.requests.getDraftGenerationLockedAt(input.requestId);
   if (isLockFresh(lockedAt, input.now)) {
@@ -46,7 +51,7 @@ export async function underDraftGenerationLock<T>(input: {
   });
 
   try {
-    const result = await input.run();
+    const result = await input.run({ attemptId, lockedAt: lockHeldAt });
     return { kind: "ran", result };
   } finally {
     await input.requests.releaseDraftGenerationLock(input.requestId, attemptId);

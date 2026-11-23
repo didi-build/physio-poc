@@ -4,7 +4,7 @@ import {
   createInProcessDraftGenerationWorkflowPort,
   draftGeneratorFromDeps,
   type InProcessDraftGenerationWorkflowOptions,
-} from "../../src/services/exercise-requests/in-process-draft-generation-workflow.js";
+} from "./in-process-draft-generation-workflow.js";
 
 export type DraftGenerationTestWorkflowHandle = ReturnType<
   typeof createInProcessDraftGenerationWorkflowPort

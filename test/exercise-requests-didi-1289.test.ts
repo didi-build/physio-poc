@@ -30,7 +30,7 @@ import {
   DRAFT_GENERATION_RUN_CANCELED_EVENT,
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
-import { createInProcessDraftGenerationWorkflowPort } from "../src/services/exercise-requests/in-process-draft-generation-workflow.js";
+import { createInProcessDraftGenerationWorkflowPort } from "./helpers/in-process-draft-generation-workflow.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import type { ImageGenerationPort } from "../src/storage/ports/image-generation.js";

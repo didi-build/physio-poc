@@ -23,10 +23,12 @@ export type ExerciseDraftGeneratorInput = {
   existingExerciseId?: string;
   existingVersionId?: string;
   /**
-   * DeepInfra in-provider attempts for transient errors on the existing-version path.
+   * DeepInfra in-provider attempts for transient HTTP/network errors and content retries.
    * Default 1; pass 2 from Regenerate text only (Workflow uses step.do retries).
    */
   providerAttempts?: 1 | 2;
+  /** Heartbeat the generation lock between in-provider attempts (Regenerate text). */
+  refreshLockAfterProviderAttempt?: () => Promise<void>;
 };
 
 export type ExerciseDraftGeneratorDeps = {

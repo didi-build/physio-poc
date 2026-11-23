@@ -991,6 +991,35 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
     }
   });
 
+  it("invalid JSON then timeout in one text step attempt makes exactly 1 fetch (DIDI-1290 E)", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "not-json{{{" } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      () => {
+        const err = new DOMException("The operation was aborted.", "AbortError");
+        throw err;
+      },
+    ]);
+    try {
+      const { requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(1);
+      expect(callCount).toBe(1);
+      expect(requestId).toBeTruthy();
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
   it("401 makes exactly 1 fetch call", async () => {
     const storage = await openMigratedDatabase();
     const fetch = installChatFetch([

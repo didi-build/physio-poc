@@ -284,7 +284,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const count = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Bad json move"],
@@ -329,6 +329,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -433,6 +434,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -480,7 +482,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
@@ -518,7 +520,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
@@ -927,7 +929,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const requestCount = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Template PII"],
@@ -1083,6 +1085,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -1128,6 +1131,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),

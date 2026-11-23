@@ -47,7 +47,10 @@ import {
 } from "./draft-generation-lock.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
-import { logDraftGenerationRunCanceled } from "./draft-generation-lock-log.js";
+import {
+  logDraftGenerationLockRefreshed,
+  logDraftGenerationRunCanceled,
+} from "./draft-generation-lock-log.js";
 import { maybeLogDraftGenerationRunAbandoned } from "./maybe-log-draft-generation-run-abandoned.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type {
@@ -461,7 +464,7 @@ export class ExerciseRequestsService {
       now,
       requests: this.requests,
       loadView: () => this.buildDraftView(requestId),
-      run: async () => {
+      run: async (lock) => {
         try {
           await this.draftGenerator(
             {
@@ -475,6 +478,27 @@ export class ExerciseRequestsService {
               existingExerciseId: row.exercise_id!,
               existingVersionId: draft.id,
               providerAttempts: 2,
+              refreshLockAfterProviderAttempt: async () => {
+                const refreshNow = this.now();
+                const lockedBefore =
+                  await this.requests.getDraftGenerationLockedAt(requestId);
+                const refreshed = await this.requests.refreshDraftGenerationLock({
+                  requestId,
+                  lockedAt: refreshNow,
+                  attemptId: lock.attemptId,
+                });
+                if (!refreshed) {
+                  throw new ExerciseRequestsServiceError(
+                    "Draft generation lock was superseded",
+                    "draft_generation_in_progress",
+                  );
+                }
+                logDraftGenerationLockRefreshed({
+                  requestId,
+                  lockedAt: lockedBefore ?? lock.lockedAt,
+                  now: refreshNow,
+                });
+              },
             },
             {
               exercises: this.exercises,

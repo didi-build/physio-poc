@@ -1,6 +1,6 @@
 import type { AppDependencies } from "../../src/http/app.js";
 import { ExerciseMediaService } from "../../src/services/exercise-media/exercise-media-service.js";
-import { createInProcessDraftGenerationWorkflowPort } from "../../src/services/exercise-requests/in-process-draft-generation-workflow.js";
+import { createInProcessDraftGenerationWorkflowPort } from "./in-process-draft-generation-workflow.js";
 import type { DraftGenerationWorkflowPort } from "../../src/services/exercise-requests/draft-generation-workflow-types.js";
 import type { ExerciseDraftGenerator } from "../../src/services/exercise-requests/exercise-draft-generator-types.js";
 import type {
