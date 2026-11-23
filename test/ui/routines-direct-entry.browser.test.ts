@@ -7,8 +7,35 @@ import { startStaticFileServer } from "../helpers/static-file-server.js";
 
 const HARNESS_DIST = join(process.cwd(), "dist/exercise-requests-layout-harness");
 
+async function waitForHarnessFixture(page: Page, fixture: string): Promise<void> {
+  await page.waitForSelector(`[data-layout-root="${fixture}"]`, {
+    state: "attached",
+    timeout: 30_000,
+  });
+}
+
 async function waitForDetail(page: Page): Promise<void> {
   await page.waitForSelector(".rt-detail", { state: "visible", timeout: 30_000 });
+}
+
+async function waitForRoutineDetailLoadFailed(page: Page): Promise<void> {
+  await page.waitForSelector(".rt-detail", { state: "attached", timeout: 30_000 });
+  await page.waitForFunction(
+    () => {
+      const detail = document.querySelector(".rt-detail");
+      if (!detail) {
+        return false;
+      }
+      const error = detail.querySelector(
+        '[data-testid="exercise-library-detail-error-slot"]',
+      );
+      const busy = detail.querySelector(
+        '[data-testid="exercise-library-busy-skeleton"]',
+      );
+      return error !== null && busy === null;
+    },
+    { timeout: 30_000 },
+  );
 }
 
 async function waitForMyCopy(page: Page): Promise<void> {
@@ -48,15 +75,7 @@ describe("Routines direct entry (browser, DIDI-1022)", () => {
     },
     {
       fixture: "routines-detail-load-failed",
-      ready: async (page: Page) => {
-        await page.waitForSelector(
-          '[data-testid="exercise-library-detail-error-slot"]',
-          {
-            state: "attached",
-            timeout: 30_000,
-          },
-        );
-      },
+      ready: waitForRoutineDetailLoadFailed,
       assertNoListSearch: true,
       title: null,
     },
@@ -69,7 +88,10 @@ describe("Routines direct entry (browser, DIDI-1022)", () => {
           const page = await browser.newPage();
           await loadInterFontsInPage(page);
           await page.setViewportSize({ width, height: 900 });
-          await page.goto(`${baseUrl}/?fixture=${fixture}`, { waitUntil: "load" });
+          await page.goto(`${baseUrl}/?fixture=${fixture}`, {
+            waitUntil: "domcontentloaded",
+          });
+          await waitForHarnessFixture(page, fixture);
           await ready(page);
 
           if (title) {
