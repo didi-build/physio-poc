@@ -27,7 +27,8 @@ import {
   POSITIONS_HEADING,
   POSITIONS_HELPER,
 } from "../../src/ui/copy/ending-position.js";
-import { editFieldLabel } from "../../src/ui/copy/exercise-requests.js";
+import { SAVE, editFieldLabel } from "../../src/ui/copy/exercise-requests.js";
+import { userEvent } from "@testing-library/user-event";
 import "../../src/ui/styles/exercise-library.css";
 import "../../src/ui/styles/public-link-page.css";
 
@@ -47,7 +48,6 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
     document.body.appendChild(container);
     render(
       <ExercisePositionsCard
-        variant="draft"
         startingPosition={START_TEXT}
         endingPosition={END_TEXT}
         showThumbnails={false}
@@ -78,7 +78,6 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
     document.body.appendChild(container);
     render(
       <ExercisePositionsCard
-        variant="draft"
         startingPosition={START_TEXT}
         endingPosition=""
         showThumbnails={false}
@@ -185,12 +184,22 @@ describe.each([390, 1280])("DIDI-1283 patient link row at %i px", (widthPx) => {
 });
 
 describe("DIDI-1283 Edit my copy", () => {
-  it("lists ending position among editable override fields", async () => {
+  it("edits starting and ending positions in the Positions card", async () => {
     const client = {
       getExerciseDetails: vi.fn().mockResolvedValue({
         exercise_id: "ex-1",
-        library: { title: "Heel slide" },
+        library: {
+          title: "Heel slide",
+          starting_position: "Supine.",
+          ending_position: "Knee extended.",
+        },
         resolved_text: [
+          {
+            key: "starting_position",
+            resolved: START_TEXT,
+            library_value: "Supine.",
+            library_updated: false,
+          },
           {
             key: "ending_position",
             resolved: "Heel near hip.",
@@ -199,7 +208,7 @@ describe("DIDI-1283 Edit my copy", () => {
           },
         ],
       }),
-      updateMyCopy: vi.fn(),
+      updateMyCopy: vi.fn().mockResolvedValue({}),
       removeFromMyExercises: vi.fn(),
       applyUndo: vi.fn(),
     } as unknown as ExerciseLibraryClient;
@@ -224,8 +233,41 @@ describe("DIDI-1283 Edit my copy", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(screen.getByText(ENDING_POSITION_LABEL)).toBeTruthy();
-      expect(screen.getByText("Heel near hip.")).toBeTruthy();
+      expect(screen.getByRole("heading", { name: POSITIONS_HEADING })).toBeTruthy();
+      expect(screen.getByText(POSITIONS_HELPER)).toBeTruthy();
     });
+    const card = screen.getByTestId("exercise-positions-card");
+    await userEvent.click(
+      within(card).getByRole("button", {
+        name: editFieldLabel(STARTING_POSITION),
+      }),
+    );
+    const textarea = within(card).getByRole("textbox");
+    await userEvent.clear(textarea);
+    await userEvent.type(textarea, "On your side.");
+    await userEvent.click(within(card).getByRole("button", { name: SAVE }));
+    expect(client.updateMyCopy).toHaveBeenCalledWith("ex-1", {
+      text_overrides: { starting_position: "On your side." },
+    });
+    await waitFor(() => {
+      expect(within(card).queryByRole("button", { name: SAVE })).toBeNull();
+    });
+    expect(client.updateMyCopy).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows library-details legacy empty ending without add action", () => {
+    render(
+      <ExercisePositionsCard
+        startingPosition={START_TEXT}
+        endingPosition=""
+        showThumbnails={false}
+        allowAddEndingWhenEmpty={false}
+        editable={false}
+        showHelper={false}
+      />,
+    );
+    expect(screen.getByText(ENDING_POSITION_EMPTY)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: ADD_ENDING_POSITION })).toBeNull();
+    expect(screen.queryByRole("button", { name: EDIT_ENDING_POSITION })).toBeNull();
   });
 });

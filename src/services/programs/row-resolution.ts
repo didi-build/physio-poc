@@ -40,6 +40,18 @@ export function toLibraryVersionText(
   };
 }
 
+function frozenProgramTextField(
+  overrides: TextOverrides,
+  key: "description" | "starting_position" | "ending_position",
+  libraryValue: string,
+): string {
+  const override = overrides[key];
+  if (override) {
+    return override.value;
+  }
+  return libraryValue;
+}
+
 export function buildProgramRowTextSnapshot(input: {
   version: LatestApprovedVersionRow;
   overrides: TextOverrides;
@@ -47,21 +59,59 @@ export function buildProgramRowTextSnapshot(input: {
 }): ProgramRowTextSnapshot {
   const library = toLibraryVersionText(input.version);
   const title = input.overrides.title?.value ?? library.title;
-  const description =
-    input.overrides.description?.value ??
-    (library.description !== "" ? library.description : undefined);
   const cueKey = cueKeyForPrescriptionType(input.prescriptionType);
   const overrideCue = input.overrides[cueKey]?.value;
   const libraryCue = library[cueKey] ?? "";
   const cueRaw = overrideCue ?? libraryCue;
-  const snapshot: ProgramRowTextSnapshot = { title };
-  if (description !== undefined && description !== "") {
-    snapshot.description = description;
-  }
+  const snapshot: ProgramRowTextSnapshot = {
+    title,
+    description: frozenProgramTextField(
+      input.overrides,
+      "description",
+      library.description,
+    ),
+    starting_position: frozenProgramTextField(
+      input.overrides,
+      "starting_position",
+      library.starting_position,
+    ),
+    ending_position: frozenProgramTextField(
+      input.overrides,
+      "ending_position",
+      library.ending_position,
+    ),
+  };
   if (cueRaw !== "") {
     snapshot.cue = cueRaw;
   }
   return snapshot;
+}
+
+export function resolvePatientTextFromProgramSnapshot(
+  snapshot: ProgramRowTextSnapshot,
+  pinned: {
+    description: string;
+    starting_position: string;
+    ending_position: string;
+  } | null,
+): { description: string; starting_position: string; ending_position: string } {
+  const fallback = pinned ?? {
+    description: "",
+    starting_position: "",
+    ending_position: "",
+  };
+  return {
+    description:
+      snapshot.description !== undefined ? snapshot.description : fallback.description,
+    starting_position:
+      snapshot.starting_position !== undefined
+        ? snapshot.starting_position
+        : fallback.starting_position,
+    ending_position:
+      snapshot.ending_position !== undefined
+        ? snapshot.ending_position
+        : fallback.ending_position,
+  };
 }
 
 export function resolveParamsForProgramRow(input: {

@@ -1,4 +1,5 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, useCallback } from "react";
+import { PositionThumbnail } from "./PositionThumbnail.js";
 import { STARTING_POSITION } from "../copy/exercise-requests.js";
 import {
   ADD_ENDING_POSITION,
@@ -10,9 +11,26 @@ import {
   POSITIONS_HELPER,
 } from "../copy/ending-position.js";
 import { CANCEL, SAVE, editFieldLabel } from "../copy/exercise-requests.js";
+import {
+  KEEP_MINE,
+  LIBRARY_CHANGED,
+  LIBRARY_NOW,
+  RESET,
+  TAG_EDITED,
+  TAG_LIBRARY_UPDATED,
+  USE_LIBRARY_VERSION,
+} from "../copy/exercise-library.js";
+
+export type PositionsCopyFieldMeta = {
+  edited: boolean;
+  libraryUpdated: boolean;
+  libraryValue: string;
+  onReset: () => void;
+  onUseLibrary: () => void;
+  onKeepMine: () => void;
+};
 
 export type ExercisePositionsCardProps = {
-  variant: "draft" | "library";
   startingPosition: string;
   endingPosition: string;
   startStillSrc?: string | null;
@@ -20,17 +38,17 @@ export type ExercisePositionsCardProps = {
   showThumbnails: boolean;
   editable: boolean;
   showHelper: boolean;
+  allowAddEndingWhenEmpty?: boolean;
+  startingCopyMeta?: PositionsCopyFieldMeta;
+  endingCopyMeta?: PositionsCopyFieldMeta;
   onSaveStarting?: (value: string) => Promise<void>;
   onSaveEnding?: (value: string) => Promise<void>;
 };
 
 type EditingField = "starting" | "ending" | null;
 
-function PositionThumbnail({ src, show }: { src?: string | null; show: boolean }) {
-  if (!show || !src) {
-    return null;
-  }
-  return <img src={src} alt="" className="ex-positions-thumb" width={56} height={56} />;
+function resetFieldAriaLabel(label: string): string {
+  return `Reset ${label} to the library version`;
 }
 
 function PositionStepBody({
@@ -43,6 +61,8 @@ function PositionStepBody({
   onBeginEdit,
   onSave,
   onCancel,
+  describedBy,
+  copyMeta,
 }: {
   label: string;
   value: string;
@@ -53,6 +73,8 @@ function PositionStepBody({
   onBeginEdit: () => void;
   onSave: (next: string) => Promise<void>;
   onCancel: () => void;
+  describedBy?: string;
+  copyMeta?: PositionsCopyFieldMeta;
 }) {
   const inputId = useId();
   const editButtonRef = useRef<HTMLButtonElement>(null);
@@ -72,6 +94,7 @@ function PositionStepBody({
             rows={4}
             value={draft}
             placeholder={placeholder}
+            aria-describedby={describedBy}
             onChange={(event) => {
               setDraft(event.target.value);
             }}
@@ -100,6 +123,10 @@ function PositionStepBody({
               setSaving(true);
               void onSave(draft).finally(() => {
                 setSaving(false);
+                onCancel();
+                queueMicrotask(() => {
+                  editButtonRef.current?.focus();
+                });
               });
             }}
           >
@@ -125,18 +152,62 @@ function PositionStepBody({
   return (
     <div className="ex-positions-step-body">
       <div className="ex-draft-field-head">
-        <span className="ex-draft-field-label">{label}</span>
-        <button
-          type="button"
-          className="ex-link-btn"
-          ref={editButtonRef}
-          aria-label={editLinkLabel}
-          onClick={onBeginEdit}
-        >
-          {editLinkLabel}
-        </button>
+        <div className="ex-override-label-row">
+          <span className="ex-draft-field-label">{label}</span>
+          {copyMeta?.edited ? (
+            <span className="ex-tag ex-tag--edited">{TAG_EDITED}</span>
+          ) : null}
+          {copyMeta?.libraryUpdated ? (
+            <span className="ex-tag ex-tag--updated">{TAG_LIBRARY_UPDATED}</span>
+          ) : null}
+        </div>
+        <div className="ex-draft-field-head-actions">
+          {copyMeta?.edited && !copyMeta.libraryUpdated ? (
+            <button
+              type="button"
+              className="ex-link-btn"
+              aria-label={resetFieldAriaLabel(label)}
+              onClick={copyMeta.onReset}
+            >
+              {RESET}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="ex-link-btn"
+            ref={editButtonRef}
+            aria-label={editLinkLabel}
+            onClick={onBeginEdit}
+          >
+            {editLinkLabel}
+          </button>
+        </div>
       </div>
       <p className="ex-draft-field-value">{value || "\u00a0"}</p>
+      {copyMeta?.libraryUpdated ? (
+        <div className="ex-conflict-box">
+          <p className="ex-conflict-title">{LIBRARY_CHANGED}</p>
+          <p>
+            {LIBRARY_NOW} {copyMeta.libraryValue}
+          </p>
+          <div className="ex-conflict-actions">
+            <button
+              type="button"
+              className="ex-primary-btn"
+              onClick={copyMeta.onUseLibrary}
+            >
+              {USE_LIBRARY_VERSION}
+            </button>
+            <button
+              type="button"
+              className="ex-secondary-btn"
+              onClick={copyMeta.onKeepMine}
+            >
+              {KEEP_MINE}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -149,6 +220,9 @@ export function ExercisePositionsCard({
   showThumbnails,
   editable,
   showHelper,
+  allowAddEndingWhenEmpty = true,
+  startingCopyMeta,
+  endingCopyMeta,
   onSaveStarting,
   onSaveEnding,
 }: ExercisePositionsCardProps) {
@@ -157,10 +231,20 @@ export function ExercisePositionsCard({
   const [editing, setEditing] = useState<EditingField>(null);
   const endingMissing = endingPosition.trim().length === 0;
   const showEndingEmpty = endingMissing && !editable && editing !== "ending";
-  const showEndingEmptyEditable = endingMissing && editable && editing !== "ending";
+  const showEndingEmptyEditable =
+    endingMissing && editable && allowAddEndingWhenEmpty && editing !== "ending";
 
   const startEditable = editable && onSaveStarting;
   const endEditable = editable && onSaveEnding;
+  const [startThumbPresent, setStartThumbPresent] = useState(false);
+  const [endThumbPresent, setEndThumbPresent] = useState(false);
+  const onStartThumbPresence = useCallback((present: boolean) => {
+    setStartThumbPresent(present);
+  }, []);
+  const onEndThumbPresence = useCallback((present: boolean) => {
+    setEndThumbPresent(present);
+  }, []);
+  const helperDescribedBy = showHelper ? helperId : undefined;
 
   return (
     <section
@@ -176,24 +260,32 @@ export function ExercisePositionsCard({
           {POSITIONS_HELPER}
         </p>
       ) : null}
-      <ol className="ex-positions-steps" aria-label={POSITIONS_HEADING}>
-        <li className="ex-positions-step ex-positions-step--start">
+      <ol className="ex-positions-steps">
+        <li
+          className={`ex-positions-step ex-positions-step--start${startThumbPresent ? "" : " ex-positions-step--no-thumb"}`}
+        >
           <span
             className="ex-positions-marker ex-positions-marker--start"
             aria-hidden
           />
-          <PositionThumbnail src={startStillSrc} show={showThumbnails} />
+          <PositionThumbnail
+            src={startStillSrc}
+            show={showThumbnails}
+            onPresenceChange={onStartThumbPresence}
+          />
           {startEditable && editing === "starting" ? (
             <PositionStepBody
               label={STARTING_POSITION}
               value={startingPosition}
               editing
               multiline
+              describedBy={helperDescribedBy}
               editLinkLabel={editFieldLabel(STARTING_POSITION)}
+              copyMeta={startingCopyMeta}
               onBeginEdit={() => {
                 setEditing("starting");
               }}
-              onSave={onSaveStarting}
+              onSave={onSaveStarting!}
               onCancel={() => {
                 setEditing(null);
               }}
@@ -205,10 +297,11 @@ export function ExercisePositionsCard({
               editing={false}
               multiline
               editLinkLabel={editFieldLabel(STARTING_POSITION)}
+              copyMeta={startingCopyMeta}
               onBeginEdit={() => {
                 setEditing("starting");
               }}
-              onSave={onSaveStarting}
+              onSave={onSaveStarting!}
               onCancel={() => {
                 setEditing(null);
               }}
@@ -217,9 +310,15 @@ export function ExercisePositionsCard({
             <p className="ex-draft-field-value">{startingPosition || "\u00a0"}</p>
           )}
         </li>
-        <li className="ex-positions-step ex-positions-step--end">
+        <li
+          className={`ex-positions-step ex-positions-step--end${endThumbPresent ? "" : " ex-positions-step--no-thumb"}`}
+        >
           <span className="ex-positions-marker ex-positions-marker--end" aria-hidden />
-          <PositionThumbnail src={endStillSrc} show={showThumbnails} />
+          <PositionThumbnail
+            src={endStillSrc}
+            show={showThumbnails}
+            onPresenceChange={onEndThumbPresence}
+          />
           {showEndingEmpty ? (
             <p className="ex-positions-empty">{ENDING_POSITION_EMPTY}</p>
           ) : showEndingEmptyEditable ? (
@@ -242,11 +341,13 @@ export function ExercisePositionsCard({
               editing
               multiline
               placeholder={ENDING_POSITION_PLACEHOLDER}
+              describedBy={helperDescribedBy}
               editLinkLabel={EDIT_ENDING_POSITION}
+              copyMeta={endingCopyMeta}
               onBeginEdit={() => {
                 setEditing("ending");
               }}
-              onSave={onSaveEnding}
+              onSave={onSaveEnding!}
               onCancel={() => {
                 setEditing(null);
               }}
@@ -259,10 +360,11 @@ export function ExercisePositionsCard({
               multiline
               placeholder={ENDING_POSITION_PLACEHOLDER}
               editLinkLabel={EDIT_ENDING_POSITION}
+              copyMeta={endingCopyMeta}
               onBeginEdit={() => {
                 setEditing("ending");
               }}
-              onSave={onSaveEnding}
+              onSave={onSaveEnding!}
               onCancel={() => {
                 setEditing(null);
               }}

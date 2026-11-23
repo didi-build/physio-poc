@@ -44,6 +44,7 @@ export type DraftGenerationRunDeps = {
 function draftVersionNeedsTextRedraft(draft: {
   description: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
 }): boolean {
   return (
@@ -221,9 +222,10 @@ export async function runExerciseRequestDraftGeneration(
         ? await input.deps.sql.first<{
             description: string;
             starting_position: string;
+            ending_position: string;
             steps: string;
           }>(
-            `SELECT description, starting_position, steps
+            `SELECT description, starting_position, ending_position, steps
              FROM exercise_versions WHERE id = ? LIMIT 1`,
             [draft.id],
           )

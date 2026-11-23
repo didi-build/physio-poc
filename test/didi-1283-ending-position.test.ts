@@ -425,6 +425,138 @@ describe("DIDI-1283 ending_position", () => {
     }
   });
 
+  it("allows trimmed empty ending_position override on Edit my copy", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage, id("pr-mycopy-empty"));
+      await seedApprovedExerciseVersion(storage, practId);
+      const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyExercises(practId, FIXTURE_EXERCISE_ID);
+      await service.updateMyCopy({
+        practitionerId: practId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        textOverrides: { ending_position: "  \n\t  " },
+      });
+      const details = await service.getExerciseDetails(practId, FIXTURE_EXERCISE_ID);
+      const field = details.resolved_text.find((f) => f.key === "ending_position");
+      expect(field?.resolved).toBe("");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("public share link rows use frozen snapshot text after the library version changes", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-frozen-d1283"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const frozenDescription = "Frozen description for patients.";
+      const frozenStart = "Frozen starting pose.";
+      const frozenEnd = "Frozen ending pose.";
+      const programId = id("prog-frozen-d1283");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Frozen program",
+      });
+      await new ProgramRowsRepository(storage).replaceRow({
+        id: id("row-frozen-d1283"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: {
+          title: "Heel slide",
+          description: frozenDescription,
+          starting_position: frozenStart,
+          ending_position: frozenEnd,
+        },
+        draftUpdatedAt: TS,
+      });
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      await storage.run(
+        `UPDATE exercise_versions SET description = ?, starting_position = ?, ending_position = ?
+         WHERE id = ?`,
+        ["Live description.", "Live start.", "Live end.", FIXTURE_VERSION_ID],
+      );
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId,
+          email: "frozen@example.com",
+          displayName: "Coach",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        {
+          sql: storage,
+          objects,
+          config: MCP_TEST_CONFIG,
+          mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+          auth,
+        },
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.description).toBe(frozenDescription);
+      expect(body.rows[0]?.starting_position).toBe(frozenStart);
+      expect(body.rows[0]?.ending_position).toBe(frozenEnd);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("allows saving trimmed empty ending_position on draft PATCH", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-d1283-empty-patch"),
+        "empty-patch@example.com",
+      );
+      const requestId = id("req-d1283-empty-patch");
+      const exerciseId = await seedExercise(
+        storage,
+        practitioner,
+        id("ex-d1283-empty-patch"),
+      );
+      const versionId = id("ver-d1283-empty-patch");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          title: "Heel slide",
+        }),
+      );
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
+      await storage.run("UPDATE exercise_requests SET exercise_id = ? WHERE id = ?", [
+        exerciseId,
+        requestId,
+      ]);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const view = await service.updateDraft({
+        practitionerId: practitioner,
+        requestId,
+        patch: { ending_position: "  \n  " },
+      });
+      expect(view.draft?.ending_position).toBe("");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("public share link open rows carry pinned position text without step fallback", async () => {
     const storage = await openMigratedDatabase();
     const objects = new InMemoryObjectStorage();

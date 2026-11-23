@@ -88,6 +88,8 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
     grid-template-areas:
       "title media"
+      "description media"
+      "positions media"
       "dose media"
       "note media";
     gap: 0 1.5rem;
@@ -96,6 +98,14 @@
 
   .link-page-row-title {
     grid-area: title;
+  }
+
+  .link-page-row-description--grid {
+    grid-area: description;
+  }
+
+  .link-page-positions--grid {
+    grid-area: positions;
   }
 
   .link-page-carousel,
@@ -161,6 +171,20 @@
 
 .link-page-positions-marker--end {
   background: #0d9488;
+}
+
+.link-page-positions-pair {
+  position: relative;
+}
+
+.link-page-positions-pair:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0.3125rem;
+  top: 1.125rem;
+  bottom: -0.75rem;
+  width: 2px;
+  background: #99f6e4;
 }
 
 .link-page-carousel {
@@ -388,6 +412,8 @@
   }
 
   .link-page-row-title,
+  .link-page-row-description,
+  .link-page-positions,
   .link-page-dose,
   .link-page-row-note {
     grid-column: 1;
@@ -396,6 +422,20 @@
   .link-page-row-title {
     font-size: 15px;
     font-weight: 600;
+  }
+
+  .link-page-row-description {
+    font-size: 12px;
+    margin-top: 0.25rem;
+  }
+
+  .link-page-positions {
+    font-size: 12px;
+  }
+
+  .link-page-positions dt,
+  .link-page-positions dd {
+    font-size: 12px;
   }
 
   .link-page-dose {

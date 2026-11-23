@@ -1366,6 +1366,39 @@
   grid-template-columns: auto auto 1fr;
   gap: 0.5rem 0.75rem;
   align-items: start;
+  position: relative;
+}
+
+.ex-positions-step--start::after {
+  content: "";
+  position: absolute;
+  left: 0.375rem;
+  top: 1.25rem;
+  bottom: -0.75rem;
+  width: 2px;
+  background: #99f6e4;
+}
+
+.ex-positions-step--no-thumb {
+  grid-template-columns: auto 1fr;
+}
+
+.ex-positions-step--no-thumb .ex-positions-marker {
+  grid-column: 1;
+}
+
+.ex-positions-step--no-thumb .ex-positions-step-body,
+.ex-positions-step--no-thumb .ex-draft-field-value,
+.ex-positions-step--no-thumb .ex-positions-empty,
+.ex-positions-step--no-thumb .ex-positions-empty-block {
+  grid-column: 2;
+}
+
+.ex-draft-field-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .ex-positions-marker {

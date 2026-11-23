@@ -5,6 +5,8 @@ import type { ExerciseParams } from "./exercise-params.js";
 export type ProgramRowTextSnapshot = {
   title: string;
   description?: string;
+  starting_position?: string;
+  ending_position?: string;
   cue?: string;
   /** When set, library update prompts stay hidden until a newer approved version ships. */
   libraryUpdateDismissedVersionNumber?: number;
@@ -45,6 +47,12 @@ export function parseProgramRowTextSnapshotJson(raw: string): ProgramRowTextSnap
   const snapshot: ProgramRowTextSnapshot = { title: record.title.trim() };
   if (typeof record.description === "string") {
     snapshot.description = record.description;
+  }
+  if (typeof record.starting_position === "string") {
+    snapshot.starting_position = record.starting_position;
+  }
+  if (typeof record.ending_position === "string") {
+    snapshot.ending_position = record.ending_position;
   }
   if (typeof record.cue === "string") {
     snapshot.cue = record.cue;

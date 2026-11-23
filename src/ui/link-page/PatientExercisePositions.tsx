@@ -20,7 +20,7 @@ export function PatientExercisePositions({
   return (
     <dl className={`link-page-positions${className ? ` ${className}` : ""}`}>
       {start.length > 0 ? (
-        <>
+        <div className="link-page-positions-pair">
           <dt>
             <span
               className="link-page-positions-marker link-page-positions-marker--start"
@@ -29,10 +29,10 @@ export function PatientExercisePositions({
             {STARTING_POSITION}
           </dt>
           <dd>{start}</dd>
-        </>
+        </div>
       ) : null}
       {end.length > 0 ? (
-        <>
+        <div className="link-page-positions-pair">
           <dt>
             <span
               className="link-page-positions-marker link-page-positions-marker--end"
@@ -41,7 +41,7 @@ export function PatientExercisePositions({
             {ENDING_POSITION_LABEL}
           </dt>
           <dd>{end}</dd>
-        </>
+        </div>
       ) : null}
     </dl>
   );

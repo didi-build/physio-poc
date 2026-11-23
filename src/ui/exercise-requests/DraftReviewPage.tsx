@@ -891,7 +891,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                       onSave={(value) => patchField({ description: value })}
                     />
                     <ExercisePositionsCard
-                      variant="draft"
                       startingPosition={draft.starting_position}
                       endingPosition={draft.ending_position}
                       startStillSrc={startStillUrl}
@@ -918,7 +917,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                       {draft.description}
                     </p>
                     <ExercisePositionsCard
-                      variant="draft"
                       startingPosition={draft.starting_position}
                       endingPosition={draft.ending_position}
                       startStillSrc={imagesGenerating ? null : (startStillUrl ?? null)}

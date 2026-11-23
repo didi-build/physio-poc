@@ -206,10 +206,10 @@ export function ExerciseDetailsPage() {
       </div>
 
       <ExercisePositionsCard
-        variant="library"
         startingPosition={details.library.starting_position ?? ""}
         endingPosition={details.library.ending_position ?? ""}
         showThumbnails={false}
+        allowAddEndingWhenEmpty={false}
         editable={false}
         showHelper={false}
       />

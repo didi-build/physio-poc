@@ -13,6 +13,7 @@ import {
   validateExerciseAlias,
   validateExerciseCue,
   validateExerciseTemplateText,
+  validateOptionalTrimmedExerciseTemplateText,
   validateExerciseTitle,
   validateRequestNote,
   validateRequestedExerciseName,
@@ -299,13 +300,19 @@ export class ExerciseVersionsRepository {
     if (patch.startingPosition !== undefined) {
       sets.push("starting_position = ?");
       bindings.push(
-        validateExerciseTemplateText(patch.startingPosition, "Starting position"),
+        validateOptionalTrimmedExerciseTemplateText(
+          patch.startingPosition,
+          "Starting position",
+        ),
       );
     }
     if (patch.endingPosition !== undefined) {
       sets.push("ending_position = ?");
       bindings.push(
-        validateExerciseTemplateText(patch.endingPosition, "Ending position"),
+        validateOptionalTrimmedExerciseTemplateText(
+          patch.endingPosition,
+          "Ending position",
+        ),
       );
     }
     if (patch.steps !== undefined) {

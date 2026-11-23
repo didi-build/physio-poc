@@ -49,7 +49,9 @@ export function PublicLinkExerciseRow({
         {title}, {TYPE_LABELS[prescriptionType].toLowerCase()}
       </h2>
       {descriptionText.trim().length > 0 ? (
-        <p className="link-page-row-description">{descriptionText}</p>
+        <p className="link-page-row-description link-page-row-description--grid">
+          {descriptionText}
+        </p>
       ) : null}
       <PublicLinkExerciseCarousel
         title={title}
@@ -66,6 +68,7 @@ export function PublicLinkExerciseRow({
       <PatientExercisePositions
         startingPosition={startingText}
         endingPosition={endingText}
+        className="link-page-positions--grid"
       />
       <LinkPageDoseBlock params={params} />
       {note ? <p className="link-page-row-note">{note}</p> : null}
