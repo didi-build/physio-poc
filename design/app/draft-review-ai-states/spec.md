@@ -6,7 +6,7 @@ Area: app · Feature: draft-review-ai-states
 
 On the **draft review** page ([exercise-requests/spec.md](../exercise-requests/spec.md)), real AI generation runs when the requester opens the page: text first, then start and end images (DeepInfra, [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) entry J, [DIDI-1210](https://linear.app/didi-build/issue/DIDI-1210)). This spec covers **variant B**: the page **fills in place**; a teal progress strip sits at the top and each section shows its own status until the first draft is complete. It also covers **in progress elsewhere**, **generation failure with retry**, the **daily AI limit**, **regenerate text with a note**, and the updated **Regenerate** sheet (no video, no AI image tag).
 
-Parent flows (search, request, requests list, approved) stay in [exercise-requests/spec.md](../exercise-requests/spec.md). Body region on draft review stays in [body-region-picker/spec.md](../body-region-picker/spec.md).
+Parent flows (search, request, requests list, approved) stay in [exercise-requests/spec.md](../exercise-requests/spec.md). Body region on draft review stays in [body-region-picker/spec.md](../body-region-picker/spec.md). Starting position and Ending position (the Positions card, including its Generating and read-only states) stay in [ending-position/spec.md](../ending-position/spec.md).
 
 **Matches Product direction: yes.** Checked against [DIDI-594](https://linear.app/didi-build/issue/DIDI-594) entry J (comment `9d5e7ab5`, DeepInfra text and images), DIDI-829 media regeneration cap (5 per practitioner per day for media regenerates), the Oct 29, 2026 media direction (start and end images with a browser transition, no AI video in V0 and V1, as quoted in [programs/spec.md](../programs/spec.md)), and DIDI-1210 locks `f0d278ce`, `cfbd2e59`, `8b02e1ef`, `673158e8`, `b8ac5450`, and `a887af34`.
 
@@ -186,6 +186,7 @@ Includes **AI drafting**, **Usually ready in a minute**, **Generating**, **Appro
 
 ## Changes
 
+- **Nov 23, 2026**: DIDI-1282. Exercise details now shows Starting and Ending position in one Positions card; its Generating and read-only rules live in [ending-position/spec.md](../ending-position/spec.md). https://linear.app/didi-build/issue/DIDI-1282
 - **Nov 21, 2026**: DIDI-1210 QA follow-up (PR 143 R1). G12 cites `e87bf516`; mockup caveats (cropped PNGs, disabled **Approve**); state 01 uses **Generating** for **Images**; README Features row. https://linear.app/didi-build/issue/DIDI-1210
 - **Nov 21, 2026**: DIDI-1210 PR follow-up. G12: no **Approve** hint during first generation (Designer pick, `e87bf516`). https://linear.app/didi-build/issue/DIDI-1210
 - **Nov 21, 2026**: DIDI-1210. Variant B draft review AI states: generating, in progress elsewhere, failures, daily limit, Regenerate text, sheet rewords, cap rules, copy table, is/was for video and AI image tag. Diadem locks `f0d278ce`, `cfbd2e59`, `8b02e1ef`, `673158e8`, `b8ac5450`; Designer picks G11 to G12 under `a887af34`. Unblocks [DIDI-1215](https://linear.app/didi-build/issue/DIDI-1215). https://linear.app/didi-build/issue/DIDI-1210
