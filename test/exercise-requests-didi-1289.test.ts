@@ -1218,19 +1218,19 @@ describe("DIDI-1289 off-request-path draft generation", () => {
 
   it("acquire stores a fresh attempt id on stale retry (N04)", async () => {
     const storage = await openMigratedDatabase();
+    let requestId: string | undefined;
+    let workflow: DraftGenerationTestWorkflowHandle | undefined;
     try {
       const practitioner = await seedPractitioner(
         storage,
         id("pr-1289-n04"),
         "n04@ex.com",
       );
-      const { deps, cookie } = testBundle(
-        storage,
-        practitioner,
-        new FakeImageGeneration(),
-      );
+      const bundle = testBundle(storage, practitioner, new FakeImageGeneration());
+      workflow = bundle.workflow;
+      const { deps, cookie } = bundle;
       const repo = new ExerciseRequestsRepository(deps.sql);
-      const requestId = await createRequest(cookie, deps);
+      requestId = await createRequest(cookie, deps);
       const staleAttempt = id("att-stale-n04");
       const staleLockedAt = new Date(
         Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
@@ -1252,24 +1252,27 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(stored).toBeTruthy();
       expect(stored).not.toBe(staleAttempt);
     } finally {
+      if (workflow && requestId) {
+        await drainDraftGeneration(workflow, requestId).catch(() => undefined);
+      }
       storage.close();
     }
   });
 
   it("logs run_abandoned once when POST /generate takes a stale lock", async () => {
     const storage = await openMigratedDatabase();
+    let requestId: string | undefined;
+    let workflow: DraftGenerationTestWorkflowHandle | undefined;
     try {
       const practitioner = await seedPractitioner(
         storage,
         id("pr-1289-abandon-gen"),
         "abandon-gen@ex.com",
       );
-      const { deps, cookie } = testBundle(
-        storage,
-        practitioner,
-        new FakeImageGeneration(),
-      );
-      const requestId = await createRequest(cookie, deps);
+      const bundle = testBundle(storage, practitioner, new FakeImageGeneration());
+      workflow = bundle.workflow;
+      const { deps, cookie } = bundle;
+      requestId = await createRequest(cookie, deps);
       const priorAttempt = id("att-prior-abandon");
       const staleLockedAt = new Date(
         Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
@@ -1295,6 +1298,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(abandoned).toHaveLength(1);
       expect(abandoned[0]?.attempt_id).toBe(priorAttempt);
     } finally {
+      if (workflow && requestId) {
+        await drainDraftGeneration(workflow, requestId).catch(() => undefined);
+      }
       storage.close();
     }
   });
