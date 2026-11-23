@@ -154,6 +154,16 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       };
       expect(body.generation.generation_failure ?? null).toBeNull();
       expect(body.generation.generation_failure_code ?? null).toBeNull();
+      const raw = await storage.first<{
+        draft_generation_attempt_id: string | null;
+        draft_generation_failure_code: string | null;
+      }>(
+        `SELECT draft_generation_attempt_id, draft_generation_failure_code
+         FROM exercise_requests WHERE id = ?`,
+        [requestId],
+      );
+      expect(raw?.draft_generation_attempt_id ?? null).toBeNull();
+      expect(raw?.draft_generation_failure_code ?? null).toBeNull();
     } finally {
       storage.close();
     }
@@ -755,6 +765,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(storedLockedAtAfterRefresh.length).toBe(refreshLockedAt.length);
       for (let i = 0; i < refreshLockedAt.length; i += 1) {
         expect(storedLockedAtAfterRefresh[i]).toBe(refreshLockedAt[i]);
+        expect(Date.parse(refreshLockedAt[i]!)).toBeGreaterThanOrEqual(
+          Date.parse(acquiredAt!),
+        );
       }
       expect(
         Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
@@ -962,19 +975,187 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         failureCode: "text_failed",
       });
       await drainDraftGeneration(workflow, requestId);
+
+      const isolatedRequestId = await createRequest(cookie, deps);
+      const staleAttempt = id("att-stale-failure");
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_attempt_id = ?, draft_generation_failure_code = ?
+         WHERE id = ?`,
+        [staleAttempt, "text_failed", isolatedRequestId],
+      );
       const staleBefore = new Date(
         Date.now() - DRAFT_GENERATION_LOCK_STALE_MS,
       ).toISOString();
       const acquired = await repo.tryAcquireDraftGenerationLock({
-        requestId,
+        requestId: isolatedRequestId,
         lockedAt: new Date().toISOString(),
         staleBefore,
         attemptId: attemptB,
       });
       expect(acquired).toBe(true);
       expect(
-        (await repo.findById(requestId))?.draft_generation_failure_code ?? null,
+        (await repo.findById(isolatedRequestId))?.draft_generation_failure_code ?? null,
       ).toBeNull();
+
+      const refreshRequestId = await createRequest(cookie, deps);
+      await repo.tryAcquireDraftGenerationLock({
+        requestId: refreshRequestId,
+        lockedAt: new Date().toISOString(),
+        staleBefore,
+        attemptId: attemptA!,
+      });
+      const refreshed = await repo.refreshDraftGenerationLock({
+        requestId: refreshRequestId,
+        lockedAt: new Date().toISOString(),
+        attemptId: attemptB,
+      });
+      expect(refreshed).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("superseded attempt during run does not complete generation (N19)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-superseded"),
+        "sup@ex.com",
+      );
+      const slowDraft = createDelayedFakeExerciseDraftGenerator({ delayMs: 120 });
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+        undefined,
+        slowDraft,
+      );
+      const repo = new ExerciseRequestsRepository(deps.sql);
+      const requestId = await createRequest(cookie, deps);
+      const generatePromise = handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      await generatePromise;
+      const attemptId = await repo.getDraftGenerationAttemptId(requestId);
+      expect(attemptId).toBeTruthy();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_attempt_id = ? WHERE id = ?",
+        [id("att-supersede"), requestId],
+      );
+      await drainDraftGeneration(workflow, requestId);
+      const viewRes = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const view = (await viewRes.json()) as {
+        generation: {
+          first_draft_complete: boolean;
+          generation_failure: string | null;
+        };
+      };
+      expect(view.generation.first_draft_complete).toBe(false);
+      expect(view.generation.generation_failure ?? null).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("successful generation clears failure code for the same attempt (N18)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-clear-fail"),
+        "clear@ex.com",
+      );
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const repo = new ExerciseRequestsRepository(deps.sql);
+      const requestId = await createRequest(cookie, deps);
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      const attemptId = await repo.getDraftGenerationAttemptId(requestId);
+      expect(attemptId).toBeTruthy();
+      await repo.setDraftGenerationFailure({
+        requestId,
+        attemptId: attemptId!,
+        failureCode: "text_failed",
+      });
+      await drainDraftGeneration(workflow, requestId);
+      const getRes = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const body = (await getRes.json()) as {
+        generation: {
+          generation_failure: string | null;
+          generation_failure_code: string | null;
+          first_draft_complete: boolean;
+        };
+      };
+      expect(body.generation.first_draft_complete).toBe(true);
+      expect(body.generation.generation_failure ?? null).toBeNull();
+      expect(body.generation.generation_failure_code ?? null).toBeNull();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("skips duplicate initial start image when progress is start_only (M16)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-m16"),
+        "m16@ex.com",
+      );
+      const images = new CountingImageGeneration();
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        images,
+        "start_image",
+      );
+      const requestId = await createRequest(cookie, deps);
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      await drainDraftGeneration(workflow, requestId);
+      expect(images.startCalls).toBe(1);
+      const row = await new ExerciseRequestsRepository(deps.sql).findById(requestId);
+      expect(row?.exercise_version_id).toBeTruthy();
+      const mediaService = new ExerciseMediaService(
+        deps.sql,
+        images,
+        new PrefixMediaStorage(deps.objects),
+      );
+      await mediaService.generateInitialStartImageForVersion({
+        practitionerId: practitioner,
+        exerciseVersionId: row!.exercise_version_id!,
+      });
+      expect(images.startCalls).toBe(1);
     } finally {
       storage.close();
     }

@@ -129,6 +129,7 @@ async function seedLockedRequest(
 describe("ExerciseRequestDraftGenerationWorkflow.run", () => {
   it("pins STEP_RETRY limit at 2 (3 Cloudflare attempts)", () => {
     expect(DRAFT_GENERATION_WORKFLOW_STEP_RETRY.retries.limit).toBe(2);
+    expect(DRAFT_GENERATION_WORKFLOW_STEP_RETRY.retries.backoff).toBe("exponential");
   });
 
   it("replays completed step.do callbacks and retries transient throws up to 3", async () => {
