@@ -750,13 +750,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       expect(acquiredAt).toBeTruthy();
       await drainDraftGeneration(workflow, requestId);
       expect(refreshLockedAt.length).toBeGreaterThan(0);
-      expect(storedLockedAtAfterRefresh.length).toBeGreaterThan(0);
-      const maxStoredMs = Math.max(
-        ...storedLockedAtAfterRefresh.map((s) => Date.parse(s)),
-      );
-      expect(maxStoredMs).toBeGreaterThan(Date.parse(acquiredAt!));
-      if (storedLockedAtAfterRefresh.length >= 2) {
-        expect(new Set(storedLockedAtAfterRefresh).size).toBeGreaterThan(1);
+      expect(storedLockedAtAfterRefresh.length).toBe(refreshLockedAt.length);
+      for (let i = 0; i < refreshLockedAt.length; i += 1) {
+        expect(storedLockedAtAfterRefresh[i]).toBe(refreshLockedAt[i]);
       }
       expect(
         Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
