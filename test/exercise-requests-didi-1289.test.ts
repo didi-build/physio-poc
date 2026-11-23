@@ -45,6 +45,13 @@ import {
 import { id } from "./helpers/opaque-test-ids.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import { runExerciseRequestDraftGeneration } from "../src/services/exercise-requests/run-exercise-request-draft-generation.js";
+import {
+  ExerciseVersionsRepository,
+  ExercisesRepository,
+} from "../src/storage/repositories/exercise-data.js";
+import { ExerciseVersionMediaRepository } from "../src/storage/repositories/exercise-media.js";
+import { ExerciseRequestsServiceError } from "../src/services/exercise-requests/errors.js";
 import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
 import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
 import {
@@ -1025,59 +1032,67 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         "sup@ex.com",
       );
       const images = new CountingImageGeneration();
-      const slowDraft = createDelayedFakeExerciseDraftGenerator({ delayMs: 400 });
-      const { deps, cookie, workflow } = testBundle(
-        storage,
-        practitioner,
-        images,
-        undefined,
-        slowDraft,
+      const repo = new ExerciseRequestsRepository(storage);
+      const requestId = id("req-n19");
+      const attemptId = id("att-n19");
+      await storage.run(
+        `INSERT INTO exercise_requests (
+          id, requested_name, note, requested_by, status, created_at, updated_at,
+          draft_generation_locked_at, draft_generation_attempt_id
+        ) VALUES (?, ?, NULL, ?, 'drafting', ?, ?, ?, ?)`,
+        [
+          requestId,
+          "Squat",
+          practitioner,
+          FORM_OPENED,
+          FORM_OPENED,
+          FORM_OPENED,
+          attemptId,
+        ],
       );
-      const repo = new ExerciseRequestsRepository(deps.sql);
-      const requestId = await createRequest(cookie, deps);
-      const refreshBase =
-        ExerciseRequestsRepository.prototype.refreshDraftGenerationLock;
-      let failedRefresh = false;
-      vi.spyOn(
-        ExerciseRequestsRepository.prototype,
-        "refreshDraftGenerationLock",
-      ).mockImplementation(async function (
-        this: ExerciseRequestsRepository,
-        input: Parameters<ExerciseRequestsRepository["refreshDraftGenerationLock"]>[0],
-      ) {
-        if (failedRefresh) {
+      const refreshBase = repo.refreshDraftGenerationLock.bind(repo);
+      let refreshCalls = 0;
+      vi.spyOn(repo, "refreshDraftGenerationLock").mockImplementation(async (input) => {
+        refreshCalls += 1;
+        if (refreshCalls >= 2) {
           return false;
         }
-        const ok = await refreshBase.call(this, input);
-        if (
-          ok &&
-          images.startCalls === 0 &&
-          (await repo.getDraftGenerationAttemptId(requestId))
-        ) {
-          failedRefresh = true;
-        }
-        return ok;
+        return refreshBase(input);
       });
-      await handleRequest(
-        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
-          method: "POST",
-          body: JSON.stringify({}),
-        }),
-        deps,
+      const mediaService = new ExerciseMediaService(
+        storage,
+        images,
+        new PrefixMediaStorage(new InMemoryObjectStorage()),
       );
-      await drainDraftGeneration(workflow, requestId);
-      const viewRes = await handleRequest(
-        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
-          headers: { cookie },
+      const requestService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const requests = repo;
+      const exercises = new ExercisesRepository(storage);
+      const versions = new ExerciseVersionsRepository(storage);
+      const versionMedia = new ExerciseVersionMediaRepository(storage);
+      await expect(
+        runExerciseRequestDraftGeneration({
+          practitionerId: practitioner,
+          requestId,
+          attemptId,
+          mediaService,
+          loadView: (rid) => requestService.loadDraftView(rid),
+          deps: {
+            sql: storage,
+            draftGenerator: fakeExerciseDraftGenerator,
+            now: () => new Date().toISOString(),
+            requests,
+            exercises,
+            versions,
+            versionMedia,
+          },
         }),
-        deps,
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ExerciseRequestsServiceError &&
+          error.code === "draft_generation_in_progress",
       );
-      const view = (await viewRes.json()) as {
-        generation: {
-          first_draft_complete: boolean;
-        };
-      };
-      expect(view.generation.first_draft_complete).toBe(false);
       expect(images.endCalls).toBe(0);
     } finally {
       vi.restoreAllMocks();
