@@ -239,6 +239,9 @@ d1_tables:
       draft_generation_failure_code:
         whose: operational
         notes: persisted draft generation failure code for GET view
+      draft_generation_abandon_logged_at:
+        whose: operational
+        notes: timestamp when run_abandoned was logged for the current attempt
       created_at:
         whose: operational
       updated_at:

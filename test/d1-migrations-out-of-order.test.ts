@@ -38,6 +38,7 @@ const EXPECTED_MIGRATION_FILES = [
   "0012_exercise_suggested_body_regions.sql",
   "0013_exercise_request_generation_lock.sql",
   "0014_draft_generation_attempt_and_failure.sql",
+  "0015_draft_generation_abandon_logged.sql",
 ] as const;
 
 function materializePhase1MigrationsDir(targetDir: string): void {

@@ -347,6 +347,57 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
+  it("Regenerate text permanent 503 makes exactly 2 fetches (R5)", async () => {
+    const fetchImpl = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen-503"),
+        "regen503@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const created = await submitRequestWithGeneratedDraft(
+        service,
+        storage,
+        {
+          practitionerId: practitioner,
+          requestedName: "Regen 503",
+          exerciseNote: null,
+          formOpenedAt: FORM_OPENED,
+        },
+        { draftGenerator: fakeExerciseDraftGenerator },
+      );
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created");
+      }
+      const regenService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      const result = await regenService.regenerateDraftText({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        note: "please retry",
+      });
+      expect(result).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("retries once when a schema-valid alias clashes with the library", async () => {
     const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
     const generator = createDeepInfraExerciseDraftGenerator({

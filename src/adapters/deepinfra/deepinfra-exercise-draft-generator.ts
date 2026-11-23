@@ -259,6 +259,28 @@ export function createDeepInfraExerciseDraftGenerator(
               "deepinfra_exercise_draft_response_invalid",
             );
           }
+          if (error instanceof DeepInfraExerciseDraftError) {
+            if (
+              error.code === "deepinfra_exercise_draft_timeout" ||
+              error.code === "deepinfra_exercise_draft_network_error" ||
+              (error.code === "deepinfra_exercise_draft_request_failed" &&
+                (error.httpStatus === undefined ||
+                  error.httpStatus >= 500 ||
+                  error.httpStatus === 429))
+            ) {
+              lastFailure = error;
+              continue;
+            }
+            if (
+              error.code === "deepinfra_exercise_draft_request_failed" &&
+              error.httpStatus !== undefined &&
+              isNonRetryableDeepInfraHttpStatus(error.httpStatus)
+            ) {
+              throw error;
+            }
+            lastFailure = error;
+            continue;
+          }
           throw error;
         }
       }

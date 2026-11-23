@@ -89,6 +89,7 @@ class RecordingWorkflowStep {
 function mockProductionDeps(
   storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
   draftGenerator: ExerciseDraftGenerator,
+  exerciseMediaImages: ImageGenerationPort = new FakeImageGeneration(),
 ) {
   const auth = new FakeAuthPort({
     practitioner: {
@@ -104,7 +105,7 @@ function mockProductionDeps(
     auth,
     mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
     exerciseDraftGenerator: draftGenerator,
-    exerciseMediaImages: new FakeImageGeneration(),
+    exerciseMediaImages,
     extraRouteHandlers: [handleExerciseMediaRequest],
   };
   vi.mocked(createWorkerProductionAppDependencies).mockReturnValue(base as never);
@@ -552,6 +553,184 @@ describe("ExerciseRequestDraftGenerationWorkflow integration (real class, provid
     }
   });
 
+  it("network error on text is retried through step.do (P02)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const generator: ExerciseDraftGenerator = async () => {
+        throw new DeepInfraExerciseDraftError("deepinfra_exercise_draft_network_error");
+      };
+      mockProductionDeps(storage, generator);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("text")).toBe(3);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("HTTP 429 on text is retried through step.do (P03)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const generator: ExerciseDraftGenerator = async () => {
+        throw new DeepInfraExerciseDraftError(
+          "deepinfra_exercise_draft_request_failed",
+          {
+            httpStatus: 429,
+          },
+        );
+      };
+      mockProductionDeps(storage, generator);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("text")).toBe(3);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("text request_failed without HTTP status is retried (P06)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const generator: ExerciseDraftGenerator = async () => {
+        throw new DeepInfraExerciseDraftError(
+          "deepinfra_exercise_draft_request_failed",
+        );
+      };
+      mockProductionDeps(storage, generator);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("text")).toBe(3);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("image HTTP 503 is retried through step.do (P08)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const images: ImageGenerationPort = {
+        async generateStartImage() {
+          throw new ImageGenerationError("image_generation_request_failed", 503);
+        },
+        async generateEndImage() {
+          throw new ImageGenerationError("image_generation_request_failed", 503);
+        },
+        async generateStartAndEndImages() {
+          throw new ImageGenerationError("image_generation_request_failed", 503);
+        },
+      };
+      mockProductionDeps(storage, fakeExerciseDraftGenerator, images);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("start_image")).toBe(3);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("image HTTP 400 is not retried (P09)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const { practitioner, requestId, attemptId } = await seedLockedRequest(storage);
+      const images: ImageGenerationPort = {
+        async generateStartImage() {
+          throw new ImageGenerationError("image_generation_request_failed", 400);
+        },
+        async generateEndImage() {
+          throw new ImageGenerationError("image_generation_request_failed", 400);
+        },
+        async generateStartAndEndImages() {
+          throw new ImageGenerationError("image_generation_request_failed", 400);
+        },
+      };
+      mockProductionDeps(storage, fakeExerciseDraftGenerator, images);
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
+          },
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("start_image")).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("pins lock_acquired event literal", () => {
     expect(DRAFT_GENERATION_LOCK_ACQUIRED_EVENT).toBe(
       "physio_draft_generation_lock_acquired",
@@ -704,6 +883,25 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
       const after = await service.loadDraftView(requestId);
       expect(after.generation.generation_failure).toBe("text");
       expect(after.generation.generation_in_progress).toBe(false);
+    } finally {
+      fetch.restore();
+      storage.close();
+    }
+  });
+
+  it("permanent 503 on Workflow text step makes exactly 3 fetch calls (R5)", async () => {
+    const storage = await openMigratedDatabase();
+    const fetch = installChatFetch([
+      () => new Response("unavailable", { status: 503 }),
+    ]);
+    try {
+      const { requestId, step, callCount } = await runLockedDeepInfraWorkflow(
+        storage,
+        fetch,
+      );
+      expect(step.attempts.get("text")).toBe(3);
+      expect(callCount).toBe(3);
+      expect(requestId).toBeTruthy();
     } finally {
       fetch.restore();
       storage.close();

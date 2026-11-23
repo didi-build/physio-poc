@@ -15,6 +15,7 @@ import {
   MIGRATION_0007_ID,
   MIGRATION_0013_ID,
   MIGRATION_0014_ID,
+  MIGRATION_0015_ID,
 } from "../src/storage/migrations/apply.js";
 import {
   FIXTURE_EXERCISE_ID,
@@ -26,6 +27,7 @@ import {
   MIGRATION_0007_SQL,
   MIGRATION_0013_SQL,
   MIGRATION_0014_SQL,
+  MIGRATION_0015_SQL,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
@@ -62,6 +64,7 @@ async function openMigratedD1SqlStorage(): Promise<D1SqlStorage> {
   await applyMigration(sql, MIGRATION_0007_ID, MIGRATION_0007_SQL);
   await applyMigration(sql, MIGRATION_0013_ID, MIGRATION_0013_SQL);
   await applyMigration(sql, MIGRATION_0014_ID, MIGRATION_0014_SQL);
+  await applyMigration(sql, MIGRATION_0015_ID, MIGRATION_0015_SQL);
   return sql;
 }
 

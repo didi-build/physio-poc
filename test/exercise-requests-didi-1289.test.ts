@@ -1305,6 +1305,104 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     }
   });
 
+  function parseAbandonedRunLogs(
+    logSpy: MockInstance<typeof console.log>,
+  ): Array<{ event: string; attempt_id?: string }> {
+    return logSpy.mock.calls
+      .map((call) => call[0])
+      .filter((line): line is string => typeof line === "string")
+      .map((line) => JSON.parse(line) as { event: string; attempt_id?: string })
+      .filter((row) => row.event === "physio_draft_generation_run_abandoned");
+  }
+
+  it("logs exactly one run_abandoned across 3 GETs and 1 POST on one stale attempt (R5)", async () => {
+    const storage = await openMigratedDatabase();
+    let requestId: string | undefined;
+    let workflow: DraftGenerationTestWorkflowHandle | undefined;
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-abandon-dedup"),
+        "abandon-dedup@ex.com",
+      );
+      const bundle = testBundle(storage, practitioner, new FakeImageGeneration());
+      workflow = bundle.workflow;
+      const { deps, cookie } = bundle;
+      requestId = await createRequest(cookie, deps);
+      const priorAttempt = id("att-dedup-stale");
+      const staleLockedAt = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS - 5_000,
+      ).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [staleLockedAt, priorAttempt, requestId],
+      );
+      for (let i = 0; i < 3; i += 1) {
+        await handleRequest(
+          new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+            headers: { cookie },
+          }),
+          deps,
+        );
+      }
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      const abandoned = parseAbandonedRunLogs(logSpy);
+      expect(abandoned).toHaveLength(1);
+      expect(abandoned[0]?.attempt_id).toBe(priorAttempt);
+      expect(DRAFT_GENERATION_RUN_ABANDONED_EVENT).toBe(
+        "physio_draft_generation_run_abandoned",
+      );
+    } finally {
+      if (workflow && requestId) {
+        await drainDraftGeneration(workflow, requestId).catch(() => undefined);
+      }
+      storage.close();
+    }
+  });
+
+  it("does not log run_abandoned on GET with a fresh healthy lock (L12)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-fresh-lock"),
+        "fresh-lock@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const liveAttempt = id("att-live-healthy");
+      const freshLockedAt = new Date().toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        [freshLockedAt, liveAttempt, requestId],
+      );
+      await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const abandoned = parseAbandonedRunLogs(logSpy);
+      expect(abandoned).toHaveLength(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("logs run_abandoned once when GET sees a stale lock", async () => {
     const storage = await openMigratedDatabase();
     try {

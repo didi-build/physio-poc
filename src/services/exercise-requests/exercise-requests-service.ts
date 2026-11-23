@@ -47,10 +47,8 @@ import {
 } from "./draft-generation-lock.js";
 import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
 import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
-import {
-  logDraftGenerationRunAbandoned,
-  logDraftGenerationRunCanceled,
-} from "./draft-generation-lock-log.js";
+import { logDraftGenerationRunCanceled } from "./draft-generation-lock-log.js";
+import { maybeLogDraftGenerationRunAbandoned } from "./maybe-log-draft-generation-run-abandoned.js";
 import { logRequestWithdrawn } from "./request-withdrawn-log.js";
 import type {
   ExerciseMediaService,
@@ -419,7 +417,8 @@ export class ExerciseRequestsService {
       !isLockFresh(lockedAt, nowIso) &&
       row?.draft_generation_attempt_id
     ) {
-      logDraftGenerationRunAbandoned({
+      await maybeLogDraftGenerationRunAbandoned({
+        requests: this.requests,
         requestId,
         attemptId: row.draft_generation_attempt_id,
         lockedAt,

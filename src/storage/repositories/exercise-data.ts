@@ -788,7 +788,8 @@ export class ExerciseRequestsRepository {
       `UPDATE exercise_requests
        SET draft_generation_locked_at = ?,
            draft_generation_attempt_id = ?,
-           draft_generation_failure_code = NULL
+           draft_generation_failure_code = NULL,
+           draft_generation_abandon_logged_at = NULL
        WHERE id = ?
          AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at <= ?)`,
       [input.lockedAt, attemptId, requestId, input.staleBefore],
@@ -845,6 +846,27 @@ export class ExerciseRequestsRepository {
        SET draft_generation_failure_code = ?
        WHERE id = ? AND draft_generation_attempt_id = ?`,
       [input.failureCode, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async markDraftGenerationAbandonLoggedIfUnlogged(input: {
+    requestId: string;
+    attemptId: string;
+    loggedAt: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_abandon_logged_at = ?
+       WHERE id = ?
+         AND draft_generation_attempt_id = ?
+         AND draft_generation_abandon_logged_at IS NULL`,
+      [input.loggedAt, requestId, attemptId],
     );
     return result.rowsAffected > 0;
   }

@@ -18,10 +18,8 @@ import {
   isLockFresh,
 } from "./draft-generation-lock.js";
 import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
-import {
-  logDraftGenerationLockAcquired,
-  logDraftGenerationRunAbandoned,
-} from "./draft-generation-lock-log.js";
+import { logDraftGenerationLockAcquired } from "./draft-generation-lock-log.js";
+import { maybeLogDraftGenerationRunAbandoned } from "./maybe-log-draft-generation-run-abandoned.js";
 
 export {
   DRAFT_GENERATION_LOCK_STALE_MS,
@@ -69,7 +67,8 @@ export async function generateExerciseRequestDraft(input: {
     const priorAttemptId =
       await input.deps.requests.getDraftGenerationAttemptId(requestId);
     if (priorAttemptId) {
-      logDraftGenerationRunAbandoned({
+      await maybeLogDraftGenerationRunAbandoned({
+        requests: input.deps.requests,
         requestId,
         attemptId: priorAttemptId,
         lockedAt,
