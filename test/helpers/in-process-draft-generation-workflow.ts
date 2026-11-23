@@ -122,13 +122,9 @@ export function createInProcessDraftGenerationWorkflowPort(
               await persistTerminal(error);
             } else {
               let phase: "text" | "images" = "text";
-              try {
-                const row = await requests.findById(input.requestId);
-                if (row?.exercise_id) {
-                  phase = "images";
-                }
-              } catch {
-                phase = "text";
+              const row = await requests.findById(input.requestId);
+              if (row?.exercise_id) {
+                phase = "images";
               }
               try {
                 await throwDraftGenerationFailure(error, phase, input.requestId, () =>

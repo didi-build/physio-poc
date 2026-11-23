@@ -415,6 +415,62 @@ describe("DIDI-1290 draft generation follow-ups", () => {
     }
   });
 
+  it("markDraftGenerationAbandonLoggedIfUnlogged only marks the live attempt (D02 repository)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1290-d02-repo"),
+        "d02repo@ex.com",
+      );
+      const { deps, cookie } = testDeps(storage, practitioner);
+      const repo = new ExerciseRequestsRepository(storage);
+      const requestId = await createDraftingRequest(cookie, deps);
+      const attemptA = id("att-d02-repo-a");
+      const attemptB = id("att-d02-repo-b");
+      const lockedAt = new Date().toISOString();
+      const loggedAtB = new Date(Date.now() + 5_000).toISOString();
+      await storage.run(
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?,
+             draft_generation_attempt_id = ?,
+             draft_generation_abandon_logged_at = NULL
+         WHERE id = ?`,
+        [lockedAt, attemptB, requestId],
+      );
+      expect(
+        await repo.markDraftGenerationAbandonLoggedIfUnlogged({
+          requestId,
+          attemptId: attemptA,
+          loggedAt: lockedAt,
+        }),
+      ).toBe(false);
+      const afterWrongAttempt = await storage.first<{
+        draft_generation_abandon_logged_at: string | null;
+      }>(
+        `SELECT draft_generation_abandon_logged_at FROM exercise_requests WHERE id = ?`,
+        [requestId],
+      );
+      expect(afterWrongAttempt?.draft_generation_abandon_logged_at).toBeNull();
+      expect(
+        await repo.markDraftGenerationAbandonLoggedIfUnlogged({
+          requestId,
+          attemptId: attemptB,
+          loggedAt: loggedAtB,
+        }),
+      ).toBe(true);
+      const afterRightAttempt = await storage.first<{
+        draft_generation_abandon_logged_at: string | null;
+      }>(
+        `SELECT draft_generation_abandon_logged_at FROM exercise_requests WHERE id = ?`,
+        [requestId],
+      );
+      expect(afterRightAttempt?.draft_generation_abandon_logged_at).toBe(loggedAtB);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("tryAcquire on stale retry clears draft_generation_abandon_logged_at (D03)", async () => {
     const storage = await openMigratedDatabase();
     let requestId: string | undefined;
