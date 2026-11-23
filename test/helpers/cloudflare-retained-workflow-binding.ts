@@ -5,7 +5,7 @@ import {
   createInProcessDraftGenerationWorkflowPort,
   draftGeneratorFromDeps,
   type InProcessDraftGenerationWorkflowOptions,
-} from "../../src/services/exercise-requests/in-process-draft-generation-workflow.js";
+} from "./in-process-draft-generation-workflow.js";
 import { WORKFLOW_INSTANCE_ALREADY_EXISTS_ID } from "../../src/services/exercise-requests/workflow-instance-already-exists.js";
 
 export function createRetainedCloudflareWorkflowBinding(input: {

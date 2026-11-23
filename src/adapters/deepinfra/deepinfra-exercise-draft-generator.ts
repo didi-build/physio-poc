@@ -43,8 +43,6 @@ export type DeepInfraExerciseDraftGeneratorConfig = {
   responseMaxBytes?: number;
 };
 
-const MAX_AI_ATTEMPTS = 2;
-
 function maxProviderAttempts(input: ExerciseDraftGeneratorInput): number {
   return input.providerAttempts === 2 ? 2 : 1;
 }
@@ -234,6 +232,9 @@ export function createDeepInfraExerciseDraftGenerator(
       const attempts = maxProviderAttempts(input);
       let lastFailure: DeepInfraExerciseDraftError | null = null;
       for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (attempt > 0 && input.refreshLockAfterProviderAttempt) {
+          await input.refreshLockAfterProviderAttempt();
+        }
         try {
           const completion = await client.complete(completionRequest);
           let parsedJson: unknown;
@@ -317,7 +318,8 @@ export function createDeepInfraExerciseDraftGenerator(
 
     let lastFailure: DeepInfraExerciseDraftError | null = null;
 
-    for (let attempt = 0; attempt < MAX_AI_ATTEMPTS; attempt += 1) {
+    const attempts = maxProviderAttempts(input);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         const completion = await client.complete(completionRequest);
         let parsedJson: unknown;

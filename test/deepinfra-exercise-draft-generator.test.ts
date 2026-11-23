@@ -253,7 +253,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once on invalid JSON then fails without storing a draft", async () => {
+  it("fails on invalid JSON after one provider call without storing a draft", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(envelope("not-json{{{"))
@@ -284,7 +284,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const count = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Bad json move"],
@@ -329,6 +329,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -433,6 +434,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -447,7 +449,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once when repository validation fails after a schema-valid payload", async () => {
+  it("fails after one provider call when repository validation fails after a schema-valid payload", async () => {
     const tooLong = "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1);
     const overLimit = { ...VALID_STRETCH_DRAFT, description: tooLong };
     const fetchImpl = vi
@@ -480,13 +482,13 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
   });
 
-  it("retries once on schema miss then fails cleanly", async () => {
+  it("fails after one provider call on schema miss", async () => {
     const invalid = { ...VALID_STRETCH_DRAFT, cue_stretching: null };
     const fetchImpl = vi
       .fn()
@@ -518,7 +520,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
@@ -892,7 +894,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once without persisting when template text includes patient details", async () => {
+  it("fails after one provider call without persisting when template text includes patient details", async () => {
     const draftWithTemplatePii = {
       ...VALID_STRETCH_DRAFT,
       steps: "Jane Smith DOB 1990-01-02 — slide heel",
@@ -927,7 +929,7 @@ describe("DeepInfra exercise draft generator", () => {
         "deepinfra_exercise_draft_response_invalid",
         generator,
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const requestCount = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Template PII"],
@@ -1083,6 +1085,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -1128,6 +1131,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),

@@ -218,7 +218,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
       );
       expect(response.status).toBe(202);
       await drainDraftGeneration(workflow, createdBody.request_id);
-      expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(fetchImpl.mock.calls.length).toBe(1);
 
       const secondCreated = await handleRequest(
         authedJsonRequest(exerciseRequestsCollectionPath(), cookie, {
@@ -254,7 +254,7 @@ describe("Exercise requests submit upstream AI failure (DIDI-1008)", () => {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_response_invalid",
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }

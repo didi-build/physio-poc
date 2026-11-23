@@ -47,6 +47,7 @@ function normalizeBinding(value: SqlValue): SqlValue {
  */
 export class BetterSqliteStorage implements SqlStoragePort {
   private transactionDepth = 0;
+  private closed = false;
 
   constructor(private readonly db: Database.Database) {}
 
@@ -135,7 +136,12 @@ export class BetterSqliteStorage implements SqlStoragePort {
   }
 
   close(): void {
+    this.closed = true;
     this.db.close();
+  }
+
+  isClosed(): boolean {
+    return this.closed;
   }
 
   foreignKeysEnabled(): boolean {

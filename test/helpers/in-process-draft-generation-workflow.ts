@@ -1,28 +1,29 @@
-import type { AppDependencies } from "../../http/app.js";
-import { ExerciseMediaService } from "../exercise-media/exercise-media-service.js";
-import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
-import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
+import type { AppDependencies } from "../../src/http/app.js";
+import { BetterSqliteStorage } from "../../src/adapters/node/better-sqlite-sql-storage.js";
+import { ExerciseMediaService } from "../../src/services/exercise-media/exercise-media-service.js";
+import { PrefixMediaStorage } from "../../src/storage/adapters/memory/prefix-media-storage.js";
+import { FakeImageGeneration } from "../../src/storage/adapters/memory/fake-image-generation.js";
 import {
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
   ExercisesRepository,
-} from "../../storage/repositories/exercise-data.js";
-import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
+} from "../../src/storage/repositories/exercise-data.js";
+import { ExerciseVersionMediaRepository } from "../../src/storage/repositories/exercise-media.js";
 import type {
   DraftGenerationWorkflowPort,
   ExerciseRequestDraftGenerationWorkflowParams,
-} from "./draft-generation-workflow-types.js";
+} from "../../src/services/exercise-requests/draft-generation-workflow-types.js";
 import {
   persistDraftGenerationTerminalFailure,
   runExerciseRequestDraftGeneration,
-} from "./run-exercise-request-draft-generation.js";
-import { DraftGenerationTerminalFailure } from "./draft-generation-terminal-failure.js";
-import { throwDraftGenerationFailure } from "./draft-generation-error-mapping.js";
-import type { DraftGenerationStepName } from "./draft-generation-lock-log.js";
-import type { ExerciseRequestDraftView } from "./types.js";
-import { fakeExerciseDraftGenerator } from "./fake-draft-generator.js";
-import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
-import { WORKFLOW_INSTANCE_ALREADY_EXISTS_ID } from "./workflow-instance-already-exists.js";
+} from "../../src/services/exercise-requests/run-exercise-request-draft-generation.js";
+import { DraftGenerationTerminalFailure } from "../../src/services/exercise-requests/draft-generation-terminal-failure.js";
+import { throwDraftGenerationFailure } from "../../src/services/exercise-requests/draft-generation-error-mapping.js";
+import type { DraftGenerationStepName } from "../../src/services/exercise-requests/draft-generation-lock-log.js";
+import type { ExerciseRequestDraftView } from "../../src/services/exercise-requests/types.js";
+import { fakeExerciseDraftGenerator } from "../../src/services/exercise-requests/fake-draft-generator.js";
+import type { ExerciseDraftGenerator } from "../../src/services/exercise-requests/exercise-draft-generator-types.js";
+import { WORKFLOW_INSTANCE_ALREADY_EXISTS_ID } from "../../src/services/exercise-requests/workflow-instance-already-exists.js";
 
 export type InProcessDraftGenerationWorkflowOptions = {
   stopAfterStep?: DraftGenerationStepName;
@@ -103,50 +104,52 @@ export function createInProcessDraftGenerationWorkflowPort(
       })
         .then(() => undefined)
         .catch(async (error) => {
-          const persistTerminal = async (
-            terminal: DraftGenerationTerminalFailure,
-          ): Promise<void> => {
-            await persistDraftGenerationTerminalFailure({
-              requests,
-              requestId: input.requestId,
-              attemptId: input.attemptId,
-              terminal: terminal.terminal,
-            });
-          };
-          if (error instanceof DraftGenerationTerminalFailure) {
-            await persistTerminal(error);
-          } else {
-            let phase: "text" | "images" = "text";
-            try {
-              const row = await requests.findById(input.requestId);
-              phase = row?.exercise_id ? "images" : "text";
-            } catch (lookupError) {
-              if (
-                lookupError instanceof TypeError &&
-                lookupError.message.includes("database connection is not open")
-              ) {
-                return;
-              }
-              throw lookupError;
-            }
-            try {
-              await throwDraftGenerationFailure(error, phase, input.requestId, () =>
-                loadView(input.requestId),
-              );
-            } catch (terminal) {
-              if (terminal instanceof DraftGenerationTerminalFailure) {
-                await persistTerminal(terminal);
-              }
-            }
+          if (deps.sql instanceof BetterSqliteStorage && deps.sql.isClosed()) {
+            return;
           }
-          console.error(
-            JSON.stringify({
-              event: "physio_draft_generation_in_process_failed",
-              request_id: input.requestId,
-              attempt_id: input.attemptId,
-              error_name: error instanceof Error ? error.name : "Error",
-            }),
-          );
+          try {
+            const persistTerminal = async (
+              terminal: DraftGenerationTerminalFailure,
+            ): Promise<void> => {
+              await persistDraftGenerationTerminalFailure({
+                requests,
+                requestId: input.requestId,
+                attemptId: input.attemptId,
+                terminal: terminal.terminal,
+              });
+            };
+            if (error instanceof DraftGenerationTerminalFailure) {
+              await persistTerminal(error);
+            } else {
+              let phase: "text" | "images" = "text";
+              const row = await requests.findById(input.requestId);
+              if (row?.exercise_id) {
+                phase = "images";
+              }
+              try {
+                await throwDraftGenerationFailure(error, phase, input.requestId, () =>
+                  loadView(input.requestId),
+                );
+              } catch (terminal) {
+                if (terminal instanceof DraftGenerationTerminalFailure) {
+                  await persistTerminal(terminal);
+                }
+              }
+            }
+            console.error(
+              JSON.stringify({
+                event: "physio_draft_generation_in_process_failed",
+                request_id: input.requestId,
+                attempt_id: input.attemptId,
+                error_name: error instanceof Error ? error.name : "Error",
+              }),
+            );
+          } catch (secondary) {
+            if (deps.sql instanceof BetterSqliteStorage && deps.sql.isClosed()) {
+              return;
+            }
+            throw secondary;
+          }
         })
         .finally(() => {
           inflight.delete(instanceId);
