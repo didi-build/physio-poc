@@ -736,6 +736,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       const requestId = await createRequest(cookie, deps);
       const repo = new ExerciseRequestsRepository(deps.sql);
       const refreshLockedAt: string[] = [];
+      const refreshWallMs: number[] = [];
       const storedLockedAtAfterRefresh: string[] = [];
       const refreshBase =
         ExerciseRequestsRepository.prototype.refreshDraftGenerationLock;
@@ -746,6 +747,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         this: ExerciseRequestsRepository,
         input: Parameters<ExerciseRequestsRepository["refreshDraftGenerationLock"]>[0],
       ) {
+        refreshWallMs.push(Date.now());
         refreshLockedAt.push(input.lockedAt);
         const result = await refreshBase.call(this, input);
         const stored = await storage.first<{
@@ -775,6 +777,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         expect(Date.parse(refreshLockedAt[i]!)).toBeGreaterThanOrEqual(
           Date.parse(acquiredAt!),
         );
+        expect(
+          Math.abs(Date.parse(refreshLockedAt[i]!) - refreshWallMs[i]!),
+        ).toBeLessThan(5_000);
       }
       expect(
         Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
