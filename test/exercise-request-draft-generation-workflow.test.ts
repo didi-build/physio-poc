@@ -36,7 +36,6 @@ import {
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
-import { ExerciseRequestsServiceError } from "../src/services/exercise-requests/errors.js";
 
 type FakeExecutionContext = { waitUntil: (_promise: Promise<unknown>) => void };
 
@@ -204,32 +203,37 @@ describe("ExerciseRequestDraftGenerationWorkflow.run", () => {
   });
 
   it("does not retry request_not_found from runChunk", async () => {
-    const workflow = new ExerciseRequestDraftGenerationWorkflow(
-      { waitUntil() {} } as FakeExecutionContext,
-      {} as never,
-    );
-    (workflow as unknown as { runChunk: () => Promise<void> }).runChunk = async () => {
-      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
-    };
-    const step = new RecordingWorkflowStep();
-    await expect(
-      workflow.run(
-        {
-          payload: {
-            requestId: "11111111-1111-4111-8111-111111111111",
-            practitionerId: "22222222-2222-4222-8222-222222222222",
-            attemptId: "33333333-3333-4333-8333-333333333333",
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-wf-not-found"),
+        "nf@ex.com",
+      );
+      mockProductionDeps(storage, fakeExerciseDraftGenerator);
+      const requestId = testOpaqueEntityId("wf-missing-req");
+      const attemptId = crypto.randomUUID();
+      const workflow = new ExerciseRequestDraftGenerationWorkflow(
+        { waitUntil() {} } as FakeExecutionContext,
+        {} as never,
+      );
+      const step = new RecordingWorkflowStep();
+      await expect(
+        workflow.run(
+          {
+            payload: { requestId, practitionerId: practitioner, attemptId },
+            timestamp: new Date(),
+            instanceId: `${requestId}:${attemptId}`,
           },
-          timestamp: new Date(),
-          instanceId:
-            "11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333",
-        },
-        step as never,
-      ),
-    ).rejects.toSatisfy(
-      (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
-    );
-    expect(step.attempts.get("text")).toBe(1);
+          step as never,
+        ),
+      ).rejects.toSatisfy(
+        (err: unknown) => err instanceof Error && err.name === "NonRetryableError",
+      );
+      expect(step.attempts.get("text")).toBe(1);
+    } finally {
+      storage.close();
+    }
   });
 });
 
