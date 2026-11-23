@@ -374,7 +374,7 @@ describe("public link page print stylesheet (DIDI-1195)", () => {
     ).toMatch(/grid-column:\s*2/);
     expect(
       ruleDeclarationsInScope(printMediaScope(css), ".link-page-print-still--start"),
-    ).toMatch(/grid-row:\s*1\s*\/\s*span\s+3/);
+    ).toMatch(/grid-row:\s*1\s*\/\s*-1/);
     expect(ruleDeclarationsInScope(printMediaScope(css), ".link-page-row")).toMatch(
       /break-inside:\s*avoid/,
     );
@@ -419,14 +419,14 @@ describe("public link page print stylesheet (DIDI-1195)", () => {
 
     const failedCell = ruleDeclarationsInScope(print, ".link-page-media-failed");
     expectExactDeclaration(failedCell, "grid-column", "2 / 4");
-    expectExactDeclaration(failedCell, "grid-row", "1 / span 3");
+    expectExactDeclaration(failedCell, "grid-row", "1 / -1");
     expectExactDeclaration(failedCell, "min-height", "8.25rem");
     expectExactDeclaration(failedCell, "border", "1px dashed #cbd5e1");
     expectExactDeclaration(failedCell, "align-items", "center");
     expectExactDeclaration(failedCell, "justify-content", "center");
 
     const endStill = ruleDeclarationsInScope(print, ".link-page-print-still--end");
-    expectExactDeclaration(endStill, "grid-row", "1 / span 3");
+    expectExactDeclaration(endStill, "grid-row", "1 / -1");
   });
 
   it("keeps desktop row grid for viewport layout (N20 desktop)", () => {

@@ -11,6 +11,9 @@ import {
   ProgramPublishService,
   type PublicShareLinkOpenView,
 } from "../src/services/programs/program-publish-service.js";
+import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
+import { buildProgramRowTextSnapshot } from "../src/services/programs/row-resolution.js";
+import { draftVersionNeedsTextRedraft } from "../src/services/exercise-requests/run-exercise-request-draft-generation.js";
 import { publicShareLinkApiPath } from "../src/programs-api-paths.js";
 import {
   ProgramRowsRepository,
@@ -614,6 +617,453 @@ describe("DIDI-1283 ending_position", () => {
       expect(body.rows[0]?.ending_position).toBe(endPinned);
       expect(body.rows[0]?.description).toBe(descriptionPinned);
       expect(body.rows[0]?.ending_position).not.toBe(LAST_MOVE_STEP);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q1: My copy overrides for description and positions reach the public share link", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-q1-mycopy"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      await storage.run(
+        `UPDATE exercise_versions SET description = ?, starting_position = ?, ending_position = ?
+         WHERE id = ?`,
+        [
+          "Library description.",
+          "Library starting position.",
+          "Library ending position.",
+          FIXTURE_VERSION_ID,
+        ],
+      );
+      const library = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      await library.saveToMyExercises(practitionerId, FIXTURE_EXERCISE_ID);
+      const myDesc = "Patient-facing description from my copy.";
+      const myStart = "Patient-facing starting from my copy.";
+      const myEnd = "Patient-facing ending from my copy.";
+      await library.updateMyCopy({
+        practitionerId,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        textOverrides: {
+          description: myDesc,
+          starting_position: myStart,
+          ending_position: myEnd,
+        },
+      });
+      const programId = id("prog-q1-mycopy");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "My copy program",
+      });
+      const builder = new ProgramBuilderService(storage, () => TS);
+      await builder.addExerciseRow(practitionerId, programId, {
+        rowId: id("row-q1-mycopy"),
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+      });
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId,
+          email: "q1@example.com",
+          displayName: "Coach",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        {
+          sql: storage,
+          objects,
+          config: MCP_TEST_CONFIG,
+          mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+          auth,
+        },
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.description).toBe(myDesc);
+      expect(body.rows[0]?.starting_position).toBe(myStart);
+      expect(body.rows[0]?.ending_position).toBe(myEnd);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q1: frozen empty saved ending does not fall back to pinned version on public link", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-q1-empty"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const pinnedEnd = "Pinned ending should not appear.";
+      await storage.run(
+        `UPDATE exercise_versions SET ending_position = ? WHERE id = ?`,
+        [pinnedEnd, FIXTURE_VERSION_ID],
+      );
+      const programId = id("prog-q1-empty");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "Empty ending frozen",
+      });
+      await new ProgramRowsRepository(storage).replaceRow({
+        id: id("row-q1-empty"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: {
+          title: "Heel slide",
+          description: "Desc kept.",
+          starting_position: "Start kept.",
+          ending_position: "",
+        },
+        draftUpdatedAt: TS,
+      });
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId,
+          email: "empty@example.com",
+          displayName: "Coach",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        {
+          sql: storage,
+          objects,
+          config: MCP_TEST_CONFIG,
+          mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+          auth,
+        },
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.ending_position).toBe("");
+      expect(body.rows[0]?.ending_position).not.toBe(pinnedEnd);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q1: buildProgramRowTextSnapshot always carries description, starting_position, and ending_position", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-q1-keys"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      await storage.run(
+        `UPDATE exercise_versions SET description = ?, starting_position = ?, ending_position = ? WHERE id = ?`,
+        ["Lib desc.", "Lib start.", "Lib end.", FIXTURE_VERSION_ID],
+      );
+      const version = await storage.first<{
+        title: string;
+        description: string;
+        starting_position: string;
+        ending_position: string;
+        cue_stretching: string | null;
+        cue_isometric: string | null;
+        cue_concentric: string | null;
+        cue_eccentric: string | null;
+      }>(
+        `SELECT title, description, starting_position, ending_position,
+                cue_stretching, cue_isometric, cue_concentric, cue_eccentric
+         FROM exercise_versions WHERE id = ?`,
+        [FIXTURE_VERSION_ID],
+      );
+      if (!version) {
+        throw new Error("missing version");
+      }
+      const snapshot = buildProgramRowTextSnapshot({
+        version: version as Parameters<
+          typeof buildProgramRowTextSnapshot
+        >[0]["version"],
+        overrides: {},
+        prescriptionType: "stretching",
+      });
+      expect(snapshot).toHaveProperty("description", "Lib desc.");
+      expect(snapshot).toHaveProperty("starting_position", "Lib start.");
+      expect(snapshot).toHaveProperty("ending_position", "Lib end.");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q1: a library version edit after publish does not change sent program patient text", async () => {
+    const storage = await openMigratedDatabase();
+    const objects = new InMemoryObjectStorage();
+    try {
+      const practitionerId = await seedPractitioner(storage, id("pr-q1-after"));
+      await seedApprovedExerciseVersion(storage, practitionerId);
+      const frozen = "Still frozen after library bump.";
+      await storage.run(
+        `UPDATE exercise_versions SET ending_position = ? WHERE id = ?`,
+        [frozen, FIXTURE_VERSION_ID],
+      );
+      const programId = id("prog-q1-after");
+      await new ProgramsRepository(storage).create({
+        id: programId,
+        createdBy: practitionerId,
+        createdAt: TS,
+        name: "After bump",
+      });
+      await new ProgramRowsRepository(storage).replaceRow({
+        id: id("row-q1-after"),
+        programId,
+        position: 0,
+        exerciseId: FIXTURE_EXERCISE_ID,
+        exerciseVersionId: FIXTURE_VERSION_ID,
+        prescriptionType: "stretching",
+        params: { hold_s: 30 },
+        textSnapshot: {
+          title: "Heel slide",
+          description: "D",
+          starting_position: "S",
+          ending_position: frozen,
+        },
+        draftUpdatedAt: TS,
+      });
+      const publish = new ProgramPublishService(storage, WEB_BASE, () => TS);
+      const published = await publish.publishProgram(practitionerId, programId);
+      await storage.run(
+        `UPDATE exercise_versions SET ending_position = ? WHERE id = ?`,
+        ["Library bumped ending must not appear.", FIXTURE_VERSION_ID],
+      );
+      const token = decodeURIComponent(published.share_link.split("/l/")[1]!);
+      const auth = new FakeAuthPort({
+        practitioner: {
+          practitionerId,
+          email: "after@example.com",
+          displayName: "Coach",
+        },
+      });
+      const response = await handleRequest(
+        new Request(`${BASE}${publicShareLinkApiPath(token)}`),
+        {
+          sql: storage,
+          objects,
+          config: MCP_TEST_CONFIG,
+          mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
+          auth,
+        },
+      );
+      const body = (await response.json()) as PublicShareLinkOpenView;
+      expect(body.rows[0]?.ending_position).toBe(frozen);
+      expect(body.rows[0]?.ending_position).not.toBe(
+        "Library bumped ending must not appear.",
+      );
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q3: draftVersionNeedsTextRedraft ignores empty ending_position alone", () => {
+    expect(
+      draftVersionNeedsTextRedraft({
+        description: "Ready description.",
+        starting_position: "Ready start.",
+        steps: "1. Step one",
+      }),
+    ).toBe(false);
+    expect(
+      draftVersionNeedsTextRedraft({
+        description: "",
+        starting_position: "Ready start.",
+        steps: "1. Step one",
+      }),
+    ).toBe(true);
+  });
+
+  it("Q4: stores trimmed ending_position on draft PATCH", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-q4-trim-draft"),
+        "trim@example.com",
+      );
+      const requestId = id("req-q4-trim");
+      const exerciseId = await seedExercise(storage, practitioner, id("ex-q4-trim"));
+      const versionId = id("ver-q4-trim");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          title: "Heel slide",
+        }),
+      );
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
+      await storage.run("UPDATE exercise_requests SET exercise_id = ? WHERE id = ?", [
+        exerciseId,
+        requestId,
+      ]);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const view = await service.updateDraft({
+        practitionerId: practitioner,
+        requestId,
+        patch: { ending_position: "  Trimmed end.  " },
+      });
+      expect(view.draft?.ending_position).toBe("Trimmed end.");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q4: draft PATCH returns 400 for too-long ending without storing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(storage, id("pr-q4-long-draft"));
+      const requestId = id("req-q4-long");
+      const exerciseId = await seedExercise(storage, practitioner, id("ex-q4-long"));
+      const versionId = id("ver-q4-long");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          title: "Heel slide",
+        }),
+      );
+      await storage.run(
+        `UPDATE exercise_versions SET ending_position = ? WHERE id = ?`,
+        ["Kept value.", versionId],
+      );
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
+      await storage.run("UPDATE exercise_requests SET exercise_id = ? WHERE id = ?", [
+        exerciseId,
+        requestId,
+      ]);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const tooLong = "z".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1);
+      await expect(
+        service.updateDraft({
+          practitionerId: practitioner,
+          requestId,
+          patch: { ending_position: tooLong },
+        }),
+      ).rejects.toThrow();
+      const row = await storage.first<{ ending_position: string }>(
+        "SELECT ending_position FROM exercise_versions WHERE id = ?",
+        [versionId],
+      );
+      expect(row?.ending_position).toBe("Kept value.");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q4: draft PATCH returns 400 for patient-details ending without storing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(storage, id("pr-q4-phi-draft"));
+      const requestId = id("req-q4-phi");
+      const exerciseId = await seedExercise(storage, practitioner, id("ex-q4-phi"));
+      const versionId = id("ver-q4-phi");
+      await storage.run(
+        VERSION_INSERT_SQL,
+        versionInsertBindings({
+          id: versionId,
+          exercise_id: exerciseId,
+          title: "Heel slide",
+        }),
+      );
+      await storage.run(
+        `UPDATE exercise_versions SET ending_position = ? WHERE id = ?`,
+        ["Kept value.", versionId],
+      );
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
+      await storage.run("UPDATE exercise_requests SET exercise_id = ? WHERE id = ?", [
+        exerciseId,
+        requestId,
+      ]);
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      await expect(
+        service.updateDraft({
+          practitionerId: practitioner,
+          requestId,
+          patch: { ending_position: `Notes ${FAKE_DOB_SNIPPET}` },
+        }),
+      ).rejects.toThrow();
+      const row = await storage.first<{ ending_position: string }>(
+        "SELECT ending_position FROM exercise_versions WHERE id = ?",
+        [versionId],
+      );
+      expect(row?.ending_position).toBe("Kept value.");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q4: Edit my copy returns 400 for too-long ending without storing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage, id("pr-q4-long-mycopy"));
+      await seedApprovedExerciseVersion(storage, practId);
+      const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyExercises(practId, FIXTURE_EXERCISE_ID);
+      const tooLong = "y".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1);
+      await expect(
+        service.updateMyCopy({
+          practitionerId: practId,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          textOverrides: { ending_position: tooLong },
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const details = await service.getExerciseDetails(practId, FIXTURE_EXERCISE_ID);
+      const field = details.resolved_text.find((f) => f.key === "ending_position");
+      expect(field?.resolved).not.toBe(tooLong);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Q4: Edit my copy returns 400 for patient-details ending without storing", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practId = await seedPractitioner(storage, id("pr-q4-phi-mycopy"));
+      await seedApprovedExerciseVersion(storage, practId);
+      const service = new ExerciseLibraryService(storage, MCP_TEST_CONFIG);
+      await service.saveToMyExercises(practId, FIXTURE_EXERCISE_ID);
+      const bad = `Hold ${FAKE_DOB_SNIPPET}`;
+      await expect(
+        service.updateMyCopy({
+          practitionerId: practId,
+          exerciseId: FIXTURE_EXERCISE_ID,
+          textOverrides: { ending_position: bad },
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+      const details = await service.getExerciseDetails(practId, FIXTURE_EXERCISE_ID);
+      const field = details.resolved_text.find((f) => f.key === "ending_position");
+      expect(field?.resolved).not.toBe(bad);
     } finally {
       storage.close();
     }

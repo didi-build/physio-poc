@@ -9,3 +9,8 @@ export const ENDING_POSITION_PLACEHOLDER =
   "For example: knee bent, heel slid in toward the buttock";
 export const ENDING_POSITION_EMPTY = "Not added yet.";
 export const ADD_ENDING_POSITION = "Add ending position";
+
+/** Accessible name for reset-to-library on a position field (My copy). */
+export function resetPositionFieldAriaLabel(label: string): string {
+  return `Reset ${label} to the library version`;
+}

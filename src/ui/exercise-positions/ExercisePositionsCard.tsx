@@ -9,6 +9,7 @@ import {
   ENDING_POSITION_PLACEHOLDER,
   POSITIONS_HEADING,
   POSITIONS_HELPER,
+  resetPositionFieldAriaLabel,
 } from "../copy/ending-position.js";
 import { CANCEL, SAVE, editFieldLabel } from "../copy/exercise-requests.js";
 import {
@@ -46,10 +47,6 @@ export type ExercisePositionsCardProps = {
 };
 
 type EditingField = "starting" | "ending" | null;
-
-function resetFieldAriaLabel(label: string): string {
-  return `Reset ${label} to the library version`;
-}
 
 function PositionStepBody({
   label,
@@ -121,13 +118,19 @@ function PositionStepBody({
             disabled={saving}
             onClick={() => {
               setSaving(true);
-              void onSave(draft).finally(() => {
-                setSaving(false);
-                onCancel();
-                queueMicrotask(() => {
-                  editButtonRef.current?.focus();
+              void onSave(draft)
+                .then(() => {
+                  onCancel();
+                  setTimeout(() => {
+                    editButtonRef.current?.focus();
+                  }, 0);
+                })
+                .catch(() => {
+                  /* keep editor open with draft text */
+                })
+                .finally(() => {
+                  setSaving(false);
                 });
-              });
             }}
           >
             {SAVE}
@@ -139,7 +142,9 @@ function PositionStepBody({
             onClick={() => {
               setDraft(value);
               onCancel();
-              editButtonRef.current?.focus();
+              setTimeout(() => {
+                editButtonRef.current?.focus();
+              }, 0);
             }}
           >
             {CANCEL}
@@ -166,7 +171,7 @@ function PositionStepBody({
             <button
               type="button"
               className="ex-link-btn"
-              aria-label={resetFieldAriaLabel(label)}
+              aria-label={resetPositionFieldAriaLabel(label)}
               onClick={copyMeta.onReset}
             >
               {RESET}
@@ -236,8 +241,12 @@ export function ExercisePositionsCard({
 
   const startEditable = editable && onSaveStarting;
   const endEditable = editable && onSaveEnding;
-  const [startThumbPresent, setStartThumbPresent] = useState(false);
-  const [endThumbPresent, setEndThumbPresent] = useState(false);
+  const [startThumbPresent, setStartThumbPresent] = useState(() =>
+    Boolean(showThumbnails && startStillSrc),
+  );
+  const [endThumbPresent, setEndThumbPresent] = useState(() =>
+    Boolean(showThumbnails && endStillSrc),
+  );
   const onStartThumbPresence = useCallback((present: boolean) => {
     setStartThumbPresent(present);
   }, []);
