@@ -473,11 +473,10 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once on HTTP 500 then maps to typed request_failed", async () => {
+  it("maps HTTP 500 to typed request_failed without a second in-provider fetch", async () => {
     const echo = JSON.stringify({ error: "Authorization Bearer " + SENTINEL_KEY });
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(new Response(echo, { status: 500 }))
       .mockResolvedValueOnce(new Response(echo, { status: 500 }));
     const generator = createDeepInfraExerciseDraftGenerator({
       apiKey: SENTINEL_KEY,
@@ -513,7 +512,7 @@ describe("DeepInfra exercise draft generator", () => {
           return true;
         },
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       restoreConsoleSpies(spies);
       storage.close();
@@ -655,7 +654,7 @@ describe("DeepInfra exercise draft generator", () => {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_timeout",
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
       storage.close();
@@ -709,7 +708,7 @@ describe("DeepInfra exercise draft generator", () => {
         outcome: "text_failed",
         error: "deepinfra_exercise_draft_timeout",
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
       storage.close();
@@ -752,7 +751,7 @@ describe("DeepInfra exercise draft generator", () => {
           return true;
         },
       );
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }

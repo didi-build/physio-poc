@@ -183,10 +183,16 @@ export class ExerciseRequestDraftGenerationWorkflow extends WorkflowEntrypoint<
       stepName === "start_image" || stepName === "end_image" ? "images" : "text";
     try {
       if (error instanceof DeepInfraExerciseDraftError) {
+        if (phase === "text") {
+          throw new DraftGenerationTerminalFailure({
+            outcome: "text_failed",
+            error: error.code,
+            view: null,
+          });
+        }
         throw new DraftGenerationTerminalFailure({
-          outcome: phase === "text" ? "text_failed" : "images_failed",
-          error: error.code,
-          view: phase === "text" ? null : await loadView(),
+          outcome: "images_failed",
+          view: await loadView(),
         });
       }
       if (error instanceof ImageGenerationError) {

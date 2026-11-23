@@ -68,8 +68,11 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("createWorkerProductionAppDependencies wires draftGenerationWorkflow when binding is set (M49b)", () => {
+  it("createWorkerProductionAppDependencies wires draftGenerationWorkflow when binding is set (M49b)", async () => {
+    const { d1 } = await openWorkerAuthTestDatabase();
     const env = buildWorkerProductionAuthEnv({
+      PHYSIO_DB: d1,
+      PHYSIO_DEEPINFRA_API_KEY: "m49b-wire-key",
       PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION: {
         create: vi.fn(),
         get: vi.fn(),

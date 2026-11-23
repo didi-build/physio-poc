@@ -161,7 +161,12 @@ describe("QA B1: one workflow instance id per attempt", () => {
           displayName: "Coach",
         },
       });
-      const createSpy = vi.fn(async () => ({}));
+      const createSpy = vi.fn<
+        (input: {
+          id: string;
+          params: { requestId: string; practitionerId: string; attemptId: string };
+        }) => Promise<Record<string, never>>
+      >(async () => ({}));
       const base = {
         sql: storage,
         objects: new InMemoryObjectStorage(),
@@ -206,9 +211,7 @@ describe("QA B1: one workflow instance id per attempt", () => {
       const storedAttempt = await repo.getDraftGenerationAttemptId(requestId);
       expect(storedAttempt).toBeTruthy();
       expect(createSpy).toHaveBeenCalledTimes(1);
-      const createInput = createSpy.mock.calls[0]![0] as {
-        params: { attemptId: string };
-      };
+      const createInput = createSpy.mock.calls[0]![0];
       expect(createInput.params.attemptId).toBe(storedAttempt);
     } finally {
       storage.close();
