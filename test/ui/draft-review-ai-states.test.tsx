@@ -1287,6 +1287,57 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     });
   });
 
+  it("N20: persisted generation_failure from GET shows G1 without generate failure outcome", async () => {
+    const failedGeneration = {
+      generation_in_progress: false,
+      first_draft_complete: true,
+      generation_failure: "text" as const,
+      generation_failure_code: "deepinfra_exercise_draft_request_failed",
+    };
+    const generateRequest = vi.fn();
+    renderReview(
+      {
+        request_id: "req-persisted-fail",
+        requested_name: "Heel slide",
+        exercise_note: null,
+        status: "drafting",
+        requested_by: FAKE_UI_PRACTITIONER_ID,
+        requested_by_email: "k@example.com",
+        exercise_id: "ex-persisted",
+        generation: failedGeneration,
+        draft: draftBody(),
+      },
+      {
+        requestsClient: {
+          getRequest: vi.fn().mockResolvedValue({
+            request_id: "req-persisted-fail",
+            requested_name: "Heel slide",
+            exercise_note: null,
+            status: "drafting",
+            requested_by: FAKE_UI_PRACTITIONER_ID,
+            requested_by_email: "k@example.com",
+            exercise_id: "ex-persisted",
+            generation: failedGeneration,
+            draft: draftBody(),
+          }),
+          generateRequest,
+          regenerateDraftText: vi.fn(),
+          updateDraft: vi.fn(),
+          approveRequest: vi.fn(),
+          getInProgressCount: vi.fn(),
+          listInProgress: vi.fn(),
+          listSimilar: vi.fn(),
+          submitRequest: vi.fn(),
+        } as unknown as ExerciseRequestsClient,
+      },
+    );
+    expect(generateRequest).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText(PIN_G1)).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: DRAFT_REGENERATE_TEXT })).toBeTruthy();
+  });
+
   it("U20 moves focus to Try again on G2 image failure", async () => {
     const failedGeneration = {
       generation_in_progress: false,
