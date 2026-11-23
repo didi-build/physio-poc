@@ -63,14 +63,16 @@ export async function generateExerciseRequestDraft(input: {
   const now = input.deps.now();
   const lockedAt = await input.deps.requests.getDraftGenerationLockedAt(requestId);
   if (isLockFresh(lockedAt, now)) {
+    const liveView = await input.loadView(requestId);
     return {
       outcome: "in_progress",
-      view,
+      view: liveView,
       started_elsewhere: true,
     };
   }
 
   const lockHeldAt = now;
+  const attemptId = crypto.randomUUID();
   const staleBefore = new Date(
     Date.parse(now) - DRAFT_GENERATION_LOCK_STALE_MS,
   ).toISOString();
@@ -78,6 +80,7 @@ export async function generateExerciseRequestDraft(input: {
     requestId,
     lockedAt: lockHeldAt,
     staleBefore,
+    attemptId,
   });
   if (!acquired) {
     const busyView = await input.loadView(requestId);
@@ -94,19 +97,18 @@ export async function generateExerciseRequestDraft(input: {
     now,
   });
 
-  const startResult = await input.deps.workflow.start({
-    requestId,
-    practitionerId: input.practitionerId,
-  });
-
-  if (startResult === "already_running") {
-    await input.deps.requests.releaseDraftGenerationLockByRequestId(requestId);
-    const busyView = await input.loadView(requestId);
-    return {
-      outcome: "in_progress",
-      view: busyView,
-      started_elsewhere: true,
-    };
+  try {
+    await input.deps.workflow.start({
+      requestId,
+      practitionerId: input.practitionerId,
+      attemptId,
+    });
+  } catch {
+    await input.deps.requests.releaseDraftGenerationLock(requestId, attemptId);
+    throw new ExerciseRequestsServiceError(
+      "Could not start draft generation workflow",
+      "draft_generation_workflow_start_failed",
+    );
   }
 
   const startedView = await input.loadView(requestId);

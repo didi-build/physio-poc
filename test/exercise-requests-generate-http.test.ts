@@ -420,6 +420,38 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
     }
   });
 
+  it("POST /generate returns 503 draft_generation_workflow_unavailable without a binding", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-gen-no-wf"),
+        "no-wf@example.com",
+      );
+      const { bundle, cookie, requestId } = await createOpenRequest(
+        storage,
+        practitioner,
+        "no-wf@example.com",
+      );
+      const withoutWorkflow = { ...bundle };
+      delete (withoutWorkflow as { draftGenerationWorkflow?: unknown })
+        .draftGenerationWorkflow;
+      const response = await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        withoutWorkflow,
+      );
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "draft_generation_workflow_unavailable",
+      });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("returns in_progress for a concurrent second generate while the lock is held", async () => {
     const storage = await openMigratedDatabase();
     try {
@@ -613,21 +645,25 @@ describe("Exercise request draft generation HTTP (DIDI-1215)", () => {
         requestedName: "Lock holder",
       });
       const heldAt = "2026-11-21T12:00:00.000Z";
-      const newerAt = "2026-11-21T12:05:00.000Z";
+      const attemptHeld = id("attempt-held");
+      const attemptNewer = id("attempt-newer");
       await requests.tryAcquireDraftGenerationLock({
         requestId,
         lockedAt: heldAt,
         staleBefore: "2026-11-21T11:00:00.000Z",
+        attemptId: attemptHeld,
       });
-      await requests.releaseDraftGenerationLock(requestId, "2026-11-21T11:00:00.000Z");
+      await requests.releaseDraftGenerationLock(requestId, id("attempt-wrong"));
       expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(heldAt);
       await storage.run(
-        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
-        [newerAt, requestId],
+        `UPDATE exercise_requests
+         SET draft_generation_locked_at = ?, draft_generation_attempt_id = ?
+         WHERE id = ?`,
+        ["2026-11-21T12:05:00.000Z", attemptNewer, requestId],
       );
-      await requests.releaseDraftGenerationLock(requestId, heldAt);
-      expect(await requests.getDraftGenerationLockedAt(requestId)).toBe(newerAt);
-      await requests.releaseDraftGenerationLock(requestId, newerAt);
+      await requests.releaseDraftGenerationLock(requestId, attemptHeld);
+      expect(await requests.getDraftGenerationLockedAt(requestId)).not.toBeNull();
+      await requests.releaseDraftGenerationLock(requestId, attemptNewer);
       expect(await requests.getDraftGenerationLockedAt(requestId)).toBeNull();
     } finally {
       storage.close();

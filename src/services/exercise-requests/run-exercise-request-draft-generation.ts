@@ -16,15 +16,17 @@ import { ExerciseVersionMediaRepository } from "../../storage/repositories/exerc
 import type { SqlStoragePort } from "../../storage/ports/sql-storage.js";
 import { ImageGenerationError } from "../../storage/ports/image-generation.js";
 import { validateOpaqueEntityId } from "../../domain/opaque-entity-id.js";
-import { mapDraftGenerationFailureToResult } from "./draft-generation-error-mapping.js";
+import { throwDraftGenerationFailure } from "./draft-generation-error-mapping.js";
 import {
   logDraftGenerationLockRefreshed,
   logDraftGenerationLockReleased,
-  logDraftGenerationRunAbandoned,
+  logDraftGenerationRunCanceled,
   logDraftGenerationStepEnded,
   logDraftGenerationStepStarted,
   type DraftGenerationStepName,
 } from "./draft-generation-lock-log.js";
+import { DraftGenerationTerminalFailure } from "./draft-generation-terminal-failure.js";
+import { terminalOutcomeToFailureCode } from "./draft-generation-failure-codes.js";
 
 export type DraftGenerationRunDeps = {
   sql: SqlStoragePort;
@@ -50,21 +52,27 @@ function draftVersionNeedsTextRedraft(draft: {
 
 async function refreshGenerationLock(input: {
   requestId: string;
+  attemptId: string;
   requests: ExerciseRequestsRepository;
   now: string;
-}): Promise<string> {
-  const lockedAt = input.now;
-  await input.requests.refreshDraftGenerationLock({
+}): Promise<void> {
+  const lockedBefore = await input.requests.getDraftGenerationLockedAt(input.requestId);
+  const ok = await input.requests.refreshDraftGenerationLock({
     requestId: input.requestId,
-    lockedAt,
+    lockedAt: input.now,
+    attemptId: input.attemptId,
   });
-  const previous = await input.requests.getDraftGenerationLockedAt(input.requestId);
+  if (!ok) {
+    throw new ExerciseRequestsServiceError(
+      "Draft generation lock was superseded",
+      "draft_generation_in_progress",
+    );
+  }
   logDraftGenerationLockRefreshed({
     requestId: input.requestId,
-    lockedAt: previous ?? lockedAt,
+    lockedAt: lockedBefore ?? input.now,
     now: input.now,
   });
-  return lockedAt;
 }
 
 async function runTimedStep<T>(
@@ -94,9 +102,27 @@ async function runTimedStep<T>(
   }
 }
 
+async function persistTerminalFailure(input: {
+  requests: ExerciseRequestsRepository;
+  requestId: string;
+  attemptId: string;
+  terminal: DraftGenerationTerminalFailure["terminal"];
+}): Promise<void> {
+  const code = terminalOutcomeToFailureCode(
+    input.terminal.outcome,
+    "error" in input.terminal ? input.terminal.error : undefined,
+  );
+  await input.requests.setDraftGenerationFailure({
+    requestId: input.requestId,
+    attemptId: input.attemptId,
+    failureCode: code,
+  });
+}
+
 export type DraftGenerationWorkflowRunInput = {
   practitionerId: string;
   requestId: string;
+  attemptId?: string;
   mediaService: ExerciseMediaService;
   loadView: (requestId: string) => Promise<ExerciseRequestDraftView>;
   deps: DraftGenerationRunDeps;
@@ -125,6 +151,17 @@ export async function runExerciseRequestDraftGeneration(
     );
   }
 
+  const attemptId =
+    input.attemptId ??
+    row.draft_generation_attempt_id ??
+    (await input.deps.requests.getDraftGenerationAttemptId(requestId));
+  if (!attemptId) {
+    throw new ExerciseRequestsServiceError(
+      "Draft generation lock missing attempt",
+      "draft_not_ready",
+    );
+  }
+
   const loadView = () => input.loadView(requestId);
   try {
     let exerciseId = row.exercise_id;
@@ -132,7 +169,7 @@ export async function runExerciseRequestDraftGeneration(
     const now = input.deps.now();
 
     if (!exerciseId) {
-      const textResult = await runTimedStep(requestId, "text", async () => {
+      const textResult = (await runTimedStep(requestId, "text", async () => {
         try {
           const generated = await input.deps.draftGenerator(
             {
@@ -152,21 +189,18 @@ export async function runExerciseRequestDraftGeneration(
           return generated;
         } catch (error) {
           if (error instanceof DeepInfraExerciseDraftError) {
-            return {
-              outcome: "text_failed" as const,
+            throw new DraftGenerationTerminalFailure({
+              outcome: "text_failed",
               error: error.code,
               view: null,
-            };
+            });
           }
           if (error instanceof ExerciseRequestsServiceError) {
             throw error;
           }
-          return mapDraftGenerationFailureToResult(error, "text", requestId, loadView);
+          await throwDraftGenerationFailure(error, "text", requestId, loadView);
         }
-      });
-      if ("outcome" in textResult) {
-        return textResult;
-      }
+      })) as { exerciseId: string; versionId: string };
       exerciseId = textResult.exerciseId;
       versionId = textResult.versionId;
     } else {
@@ -184,7 +218,7 @@ export async function runExerciseRequestDraftGeneration(
           )
         : null;
       if (draft && textRow && draftVersionNeedsTextRedraft(textRow)) {
-        const fillResult = await runTimedStep(requestId, "text", async () => {
+        await runTimedStep(requestId, "text", async () => {
           try {
             await input.deps.draftGenerator(
               {
@@ -203,31 +237,22 @@ export async function runExerciseRequestDraftGeneration(
                 requests: input.deps.requests,
               },
             );
-            return null;
           } catch (error) {
             if (error instanceof DeepInfraExerciseDraftError) {
-              return {
-                outcome: "text_failed" as const,
+              throw new DraftGenerationTerminalFailure({
+                outcome: "text_failed",
                 error: error.code,
                 view: null,
-              };
+              });
             }
-            return mapDraftGenerationFailureToResult(
-              error,
-              "text",
-              requestId,
-              loadView,
-            );
+            await throwDraftGenerationFailure(error, "text", requestId, loadView);
           }
         });
-        if (fillResult) {
-          return fillResult;
-        }
       }
     }
 
     if (input.stopAfterStep === "text") {
-      logDraftGenerationRunAbandoned({ requestId, step: "text" });
+      logDraftGenerationRunCanceled({ requestId, step: "text" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -237,6 +262,7 @@ export async function runExerciseRequestDraftGeneration(
 
     await refreshGenerationLock({
       requestId,
+      attemptId,
       requests: input.deps.requests,
       now: input.deps.now(),
     });
@@ -257,31 +283,30 @@ export async function runExerciseRequestDraftGeneration(
       } catch (error) {
         if (error instanceof ExerciseMediaServiceError) {
           if (error.code === "daily_limit_reached") {
-            const view = await loadView();
-            return { outcome: "daily_limit", view };
+            throw new DraftGenerationTerminalFailure({
+              outcome: "daily_limit",
+              view: await loadView(),
+            });
           }
-          if (error.code === "exercise_media_already_generated") {
-            // complete
-          } else {
-            const view = await loadView();
-            return { outcome: "images_failed", view };
+          if (error.code !== "exercise_media_already_generated") {
+            throw new DraftGenerationTerminalFailure({
+              outcome: "images_failed",
+              view: await loadView(),
+            });
           }
         } else if (error instanceof ImageGenerationError) {
-          const view = await loadView();
-          return { outcome: "images_failed", view };
+          throw new DraftGenerationTerminalFailure({
+            outcome: "images_failed",
+            view: await loadView(),
+          });
         } else {
-          return mapDraftGenerationFailureToResult(
-            error,
-            "images",
-            requestId,
-            loadView,
-          );
+          await throwDraftGenerationFailure(error, "images", requestId, loadView);
         }
       }
     }
 
     if (input.stopAfterStep === "start_image") {
-      logDraftGenerationRunAbandoned({ requestId, step: "start_image" });
+      logDraftGenerationRunCanceled({ requestId, step: "start_image" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -291,6 +316,7 @@ export async function runExerciseRequestDraftGeneration(
 
     await refreshGenerationLock({
       requestId,
+      attemptId,
       requests: input.deps.requests,
       now: input.deps.now(),
     });
@@ -308,31 +334,30 @@ export async function runExerciseRequestDraftGeneration(
       } catch (error) {
         if (error instanceof ExerciseMediaServiceError) {
           if (error.code === "daily_limit_reached") {
-            const view = await loadView();
-            return { outcome: "daily_limit", view };
+            throw new DraftGenerationTerminalFailure({
+              outcome: "daily_limit",
+              view: await loadView(),
+            });
           }
-          if (error.code === "exercise_media_already_generated") {
-            // idempotent
-          } else {
-            const view = await loadView();
-            return { outcome: "images_failed", view };
+          if (error.code !== "exercise_media_already_generated") {
+            throw new DraftGenerationTerminalFailure({
+              outcome: "images_failed",
+              view: await loadView(),
+            });
           }
         } else if (error instanceof ImageGenerationError) {
-          const view = await loadView();
-          return { outcome: "images_failed", view };
+          throw new DraftGenerationTerminalFailure({
+            outcome: "images_failed",
+            view: await loadView(),
+          });
         } else {
-          return mapDraftGenerationFailureToResult(
-            error,
-            "images",
-            requestId,
-            loadView,
-          );
+          await throwDraftGenerationFailure(error, "images", requestId, loadView);
         }
       }
     }
 
     if (input.stopAfterStep === "end_image") {
-      logDraftGenerationRunAbandoned({ requestId, step: "end_image" });
+      logDraftGenerationRunCanceled({ requestId, step: "end_image" });
       return {
         outcome: "in_progress",
         view: await loadView(),
@@ -342,23 +367,57 @@ export async function runExerciseRequestDraftGeneration(
 
     await refreshGenerationLock({
       requestId,
+      attemptId,
       requests: input.deps.requests,
       now: input.deps.now(),
     });
 
     const view = await runTimedStep(requestId, "finalize", loadView);
+    await input.deps.requests.clearDraftGenerationFailureOnSuccess(
+      requestId,
+      attemptId,
+    );
     return { outcome: "complete", view };
   } catch (error) {
+    if (error instanceof DraftGenerationTerminalFailure) {
+      await persistTerminalFailure({
+        requests: input.deps.requests,
+        requestId,
+        attemptId,
+        terminal: error.terminal,
+      });
+      return error.terminal;
+    }
     if (error instanceof ExerciseRequestsServiceError) {
       throw error;
     }
-    return mapDraftGenerationFailureToResult(error, "persist", requestId, loadView);
+    return (await (async () => {
+      try {
+        await throwDraftGenerationFailure(error, "persist", requestId, loadView);
+      } catch (terminal) {
+        if (terminal instanceof DraftGenerationTerminalFailure) {
+          await persistTerminalFailure({
+            requests: input.deps.requests,
+            requestId,
+            attemptId,
+            terminal: terminal.terminal,
+          });
+          return terminal.terminal;
+        }
+        throw terminal;
+      }
+    })()) as GenerateExerciseRequestDraftResult;
   } finally {
     if (input.releaseLockOnFinish !== false) {
       const now = input.deps.now();
       const held = await input.deps.requests.getDraftGenerationLockedAt(requestId);
-      await input.deps.requests.releaseDraftGenerationLockByRequestId(requestId);
-      logDraftGenerationLockReleased({ requestId, lockedAt: held, now });
+      const released = await input.deps.requests.releaseDraftGenerationLock(
+        requestId,
+        attemptId,
+      );
+      if (released) {
+        logDraftGenerationLockReleased({ requestId, lockedAt: held, now });
+      }
     }
   }
 }

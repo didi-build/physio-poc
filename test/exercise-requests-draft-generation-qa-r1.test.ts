@@ -12,9 +12,6 @@ import {
   exerciseRequestRegenerateTextPath,
   exerciseRequestsCollectionPath,
 } from "../src/exercise-requests-api-paths.js";
-import { ExerciseMediaService } from "../src/services/exercise-media/exercise-media-service.js";
-import { PrefixMediaStorage } from "../src/storage/adapters/memory/prefix-media-storage.js";
-import { FakeImageGeneration } from "../src/storage/adapters/memory/fake-image-generation.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
   attachDraftGenerationTestWorkflow,
@@ -241,7 +238,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         "textfail@example.com",
       );
       const generator = createFakeExerciseDraftGenerator({ failText: true });
-      const { requestId, cookie, bundle, workflow, objects } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "textfail@example.com",
@@ -261,24 +258,19 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         view: expect.objectContaining({ request_id: requestId }),
       });
       await drainDraftGeneration(workflow, requestId);
-      const requestService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        draftGenerator: generator,
-      });
-      const mediaService = new ExerciseMediaService(
-        storage,
-        new FakeImageGeneration(),
-        new PrefixMediaStorage(objects),
-      );
-      await expect(
-        requestService.generateRequest({
-          practitionerId: practitioner,
-          requestId,
-          mediaService,
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
         }),
-      ).resolves.toEqual({
-        outcome: "text_failed",
-        error: "deepinfra_exercise_draft_request_failed",
-        view: null,
+        bundle,
+      );
+      expect(viewResponse.status).toBe(200);
+      await expect(viewResponse.json()).resolves.toMatchObject({
+        request_id: requestId,
+        generation: {
+          generation_failure: "text",
+          generation_failure_code: "deepinfra_exercise_draft_request_failed",
+        },
       });
     } finally {
       storage.close();
@@ -294,7 +286,7 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         "imgfail@example.com",
       );
       const failImages = new FailingInitialDraftImageGeneration(true);
-      const { requestId, cookie, bundle, workflow, objects } = await createOpenRequest(
+      const { requestId, cookie, bundle, workflow } = await createOpenRequest(
         storage,
         practitioner,
         "imgfail@example.com",
@@ -315,25 +307,21 @@ describe("Exercise request draft generation QA R1 (B8 HTTP)", () => {
         view: expect.objectContaining({ request_id: requestId }),
       });
       await drainDraftGeneration(workflow, requestId);
-      const requestService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
-        draftGenerator: fakeExerciseDraftGenerator,
-      });
-      const mediaService = new ExerciseMediaService(
-        storage,
-        failImages,
-        new PrefixMediaStorage(objects),
-      );
-      await expect(
-        requestService.generateRequest({
-          practitionerId: practitioner,
-          requestId,
-          mediaService,
+      const viewResponse = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
         }),
-      ).resolves.toEqual({
-        outcome: "images_failed",
-        view: expect.objectContaining({
-          request_id: requestId,
-          generation: expect.objectContaining({ first_draft_complete: false }),
+        bundle,
+      );
+      expect(viewResponse.status).toBe(200);
+      await expect(viewResponse.json()).resolves.toMatchObject({
+        request_id: requestId,
+        generation: {
+          first_draft_complete: false,
+          generation_failure: "images",
+        },
+        draft: expect.objectContaining({
+          title: expect.any(String),
         }),
       });
     } finally {

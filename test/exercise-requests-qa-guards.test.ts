@@ -18,6 +18,7 @@ import {
   MIGRATION_0011_ID,
   MIGRATION_0012_ID,
   MIGRATION_0013_ID,
+  MIGRATION_0014_ID,
 } from "../src/storage/migrations/apply.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -31,6 +32,7 @@ import {
   MIGRATION_0011_SQL,
   MIGRATION_0012_SQL,
   MIGRATION_0013_SQL,
+  MIGRATION_0014_SQL,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedExercise,
@@ -68,6 +70,7 @@ async function openMigratedD1SqlStorage(): Promise<D1SqlStorage> {
   await applyMigration(sql, MIGRATION_0011_ID, MIGRATION_0011_SQL);
   await applyMigration(sql, MIGRATION_0012_ID, MIGRATION_0012_SQL);
   await applyMigration(sql, MIGRATION_0013_ID, MIGRATION_0013_SQL);
+  await applyMigration(sql, MIGRATION_0014_ID, MIGRATION_0014_SQL);
   return sql;
 }
 

@@ -1255,6 +1255,11 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
   });
 
   it("U20 moves focus to Try again on G2 image failure", async () => {
+    const failedGeneration = {
+      generation_in_progress: false,
+      first_draft_complete: false,
+      generation_failure: "images" as const,
+    };
     renderReview(
       {
         request_id: "req-1",
@@ -1264,7 +1269,7 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
         requested_by: FAKE_UI_PRACTITIONER_ID,
         requested_by_email: "k@example.com",
         exercise_id: "ex-1",
-        generation: { generation_in_progress: false, first_draft_complete: false },
+        generation: failedGeneration,
         draft: draftBody(),
       },
       {
@@ -1278,14 +1283,14 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
             requested_by: FAKE_UI_PRACTITIONER_ID,
             requested_by_email: "k@example.com",
             exercise_id: "ex-1",
-            generation: { generation_in_progress: false, first_draft_complete: false },
+            generation: failedGeneration,
             draft: draftBody(),
           },
         },
       },
     );
-    const retry = await screen.findByRole("button", { name: AUTO_SAVE_TRY_AGAIN });
     await waitFor(() => {
+      const retry = screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN });
       expect(document.activeElement).toBe(retry);
     });
   });

@@ -17,6 +17,7 @@ import type { DraftGenerationStepName } from "./draft-generation-lock-log.js";
 import type { ExerciseRequestDraftView } from "./types.js";
 import { fakeExerciseDraftGenerator } from "./fake-draft-generator.js";
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
+import { WORKFLOW_INSTANCE_ALREADY_EXISTS_ID } from "./workflow-instance-already-exists.js";
 
 export type InProcessDraftGenerationWorkflowOptions = {
   stopAfterStep?: DraftGenerationStepName;
@@ -26,47 +27,62 @@ type InProcessContext = {
   deps: AppDependencies;
   loadView: (requestId: string) => Promise<ExerciseRequestDraftView>;
   draftGenerator: ExerciseDraftGenerator;
+  mediaService?: ExerciseMediaService;
 };
 
 /**
- * Local/test runner: one in-flight workflow per request id (mirrors Cloudflare instance id).
+ * Local/test runner: retains finished workflow instance ids like Cloudflare.
  */
 export function createInProcessDraftGenerationWorkflowPort(
   getContext: () => InProcessContext,
   options: InProcessDraftGenerationWorkflowOptions = {},
 ): DraftGenerationWorkflowPort & {
   drain: (requestId?: string) => Promise<void>;
-  inflightRequestIds: () => string[];
+  inflightInstanceIds: () => string[];
+  retainedInstanceIds: () => string[];
 } {
   const inflight = new Map<string, Promise<void>>();
-  const started = new Set<string>();
+  const retainedInstanceIds = new Set<string>();
 
   return {
-    inflightRequestIds: () => [...started],
+    inflightInstanceIds: () => [...inflight.keys()],
+    retainedInstanceIds: () => [...retainedInstanceIds],
     async drain(requestId?: string) {
       const targets = requestId
-        ? [inflight.get(requestId)].filter(Boolean)
+        ? [...inflight.entries()]
+            .filter(([key]) => key.startsWith(`${requestId}:`))
+            .map(([, promise]) => promise)
         : [...inflight.values()];
       await Promise.all(targets);
     },
     async start(input: ExerciseRequestDraftGenerationWorkflowParams) {
-      if (started.has(input.requestId) || inflight.has(input.requestId)) {
-        return "already_running";
+      const instanceId = `${input.requestId}:${input.attemptId}`;
+      if (retainedInstanceIds.has(instanceId) || inflight.has(instanceId)) {
+        throw new Error(
+          `${WORKFLOW_INSTANCE_ALREADY_EXISTS_ID} An instance with this ID already exists`,
+        );
       }
-      started.add(input.requestId);
-      const { deps, loadView, draftGenerator } = getContext();
+      const {
+        deps,
+        loadView,
+        draftGenerator,
+        mediaService: boundMediaService,
+      } = getContext();
       const requests = new ExerciseRequestsRepository(deps.sql);
       const exercises = new ExercisesRepository(deps.sql);
       const versions = new ExerciseVersionsRepository(deps.sql);
       const versionMedia = new ExerciseVersionMediaRepository(deps.sql);
-      const mediaService = new ExerciseMediaService(
-        deps.sql,
-        deps.exerciseMediaImages ?? new FakeImageGeneration(),
-        new PrefixMediaStorage(deps.objects),
-      );
+      const mediaService =
+        boundMediaService ??
+        new ExerciseMediaService(
+          deps.sql,
+          deps.exerciseMediaImages ?? new FakeImageGeneration(),
+          new PrefixMediaStorage(deps.objects),
+        );
       const runPromise = runExerciseRequestDraftGeneration({
         practitionerId: input.practitionerId,
         requestId: input.requestId,
+        attemptId: input.attemptId,
         mediaService,
         loadView,
         deps: {
@@ -86,15 +102,16 @@ export function createInProcessDraftGenerationWorkflowPort(
             JSON.stringify({
               event: "physio_draft_generation_in_process_failed",
               request_id: input.requestId,
+              attempt_id: input.attemptId,
               error_name: error instanceof Error ? error.name : "Error",
             }),
           );
         })
         .finally(() => {
-          inflight.delete(input.requestId);
-          started.delete(input.requestId);
+          inflight.delete(instanceId);
+          retainedInstanceIds.add(instanceId);
         });
-      inflight.set(input.requestId, runPromise);
+      inflight.set(instanceId, runPromise);
       return "started";
     },
   };

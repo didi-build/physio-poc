@@ -18,10 +18,6 @@ import {
   type SubmitResolution,
 } from "../../services/exercise-requests/index.js";
 import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
-import {
-  createInProcessDraftGenerationWorkflowPort,
-  draftGeneratorFromDeps,
-} from "../../services/exercise-requests/in-process-draft-generation-workflow.js";
 import type { DraftGenerationWorkflowPort } from "../../services/exercise-requests/draft-generation-workflow-types.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
@@ -54,16 +50,14 @@ function service(deps: AppDependencies): ExerciseRequestsService {
 
 function resolveDraftGenerationWorkflow(
   deps: AppDependencies,
-  requestService: ExerciseRequestsService,
 ): DraftGenerationWorkflowPort {
-  if (deps.draftGenerationWorkflow) {
-    return deps.draftGenerationWorkflow;
+  if (!deps.draftGenerationWorkflow) {
+    throw new ExerciseRequestsServiceError(
+      "Draft generation workflow is not configured",
+      "draft_generation_workflow_unavailable",
+    );
   }
-  return createInProcessDraftGenerationWorkflowPort(() => ({
-    deps,
-    loadView: (id) => requestService.loadDraftView(id),
-    draftGenerator: draftGeneratorFromDeps(deps),
-  }));
+  return deps.draftGenerationWorkflow;
 }
 
 function errorResponse(error: unknown): Response {
@@ -92,14 +86,18 @@ function errorResponse(error: unknown): Response {
           ? 404
           : error.code === "generation_not_requester"
             ? 403
-            : error.code === "approve_failed" ||
-                error.code === "alias_conflict" ||
-                error.code === "request_already_approved" ||
-                error.code === "submit_failed" ||
-                error.code === "draft_generation_in_progress" ||
-                error.code === "request_not_deletable"
-              ? 409
-              : 400;
+            : error.code === "draft_generation_workflow_unavailable"
+              ? 503
+              : error.code === "draft_generation_workflow_start_failed"
+                ? 502
+                : error.code === "approve_failed" ||
+                    error.code === "alias_conflict" ||
+                    error.code === "request_already_approved" ||
+                    error.code === "submit_failed" ||
+                    error.code === "draft_generation_in_progress" ||
+                    error.code === "request_not_deletable"
+                  ? 409
+                  : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },
@@ -343,7 +341,7 @@ export async function handleExerciseRequestsHttpRequest(
     );
     try {
       const requestService = service(deps);
-      const workflow = resolveDraftGenerationWorkflow(deps, requestService);
+      const workflow = resolveDraftGenerationWorkflow(deps);
       const result = await requestService.generateRequest({
         practitionerId,
         requestId,

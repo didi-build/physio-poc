@@ -14,6 +14,7 @@ import {
   MIGRATION_0011_ID,
   MIGRATION_0012_ID,
   MIGRATION_0013_ID,
+  MIGRATION_0014_ID,
 } from "../../storage/migrations/apply.js";
 import {
   handleFakeGoogleRequest,
@@ -66,6 +67,10 @@ const MIGRATION_0013_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0013_exercise_request_generation_lock.sql"),
   "utf8",
 );
+const MIGRATION_0014_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0014_draft_generation_attempt_and_failure.sql"),
+  "utf8",
+);
 
 const defaultCimdMetadataFetch: ClientMetadataResourceFetch = async () =>
   new Response(null, { status: 404 });
@@ -108,6 +113,7 @@ export async function createNodeAppDependencies(
   await applyMigration(storage, MIGRATION_0011_ID, MIGRATION_0011_SQL);
   await applyMigration(storage, MIGRATION_0012_ID, MIGRATION_0012_SQL);
   await applyMigration(storage, MIGRATION_0013_ID, MIGRATION_0013_SQL);
+  await applyMigration(storage, MIGRATION_0014_ID, MIGRATION_0014_SQL);
   const sqlPort = wrapSqlPort(storage);
   const authBundle = createNodeAuthPort(storage.nativeDatabase(), sqlPort, config, {
     cimdMetadataFetch,

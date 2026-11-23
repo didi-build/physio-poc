@@ -24,7 +24,7 @@ import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-request
 import {
   DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
   DRAFT_GENERATION_LOCK_RELEASED_EVENT,
-  DRAFT_GENERATION_RUN_ABANDONED_EVENT,
+  DRAFT_GENERATION_RUN_CANCELED_EVENT,
   DRAFT_GENERATION_STEP_ENDED_EVENT,
 } from "../src/services/exercise-requests/draft-generation-lock-log.js";
 import { createInProcessDraftGenerationWorkflowPort } from "../src/services/exercise-requests/in-process-draft-generation-workflow.js";
@@ -246,7 +246,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     }
   });
 
-  it("workflow port returns already_running for duplicate start", async () => {
+  it("workflow port rejects duplicate instance id", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitioner = await seedPractitioner(
@@ -284,16 +284,16 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         loadView: (rid) => requestService.loadDraftView(rid),
         draftGenerator: fakeExerciseDraftGenerator,
       }));
+      const attemptId = id("att-dup");
       const first = await direct.start({
         requestId,
         practitionerId: practitioner,
-      });
-      const second = await direct.start({
-        requestId,
-        practitionerId: practitioner,
+        attemptId,
       });
       expect(first).toBe("started");
-      expect(second).toBe("already_running");
+      await expect(
+        direct.start({ requestId, practitionerId: practitioner, attemptId }),
+      ).rejects.toThrow("(instance.already_exists)");
       await direct.drain(requestId);
     } finally {
       storage.close();
@@ -342,7 +342,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         deps,
       );
       expect(first.status).toBe(202);
-      expect(workflow.inflightRequestIds()).toEqual([requestId]);
+      expect(
+        workflow.inflightInstanceIds().some((key) => key.startsWith(`${requestId}:`)),
+      ).toBe(true);
       const second = await handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
@@ -355,7 +357,9 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         outcome: "in_progress",
         started_elsewhere: true,
       });
-      expect(workflow.inflightRequestIds()).toEqual([requestId]);
+      expect(
+        workflow.inflightInstanceIds().some((key) => key.startsWith(`${requestId}:`)),
+      ).toBe(true);
     } finally {
       storage.close();
     }
@@ -393,7 +397,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
           return false;
         }
         const row = JSON.parse(line) as { event: string };
-        return row.event === DRAFT_GENERATION_RUN_ABANDONED_EVENT;
+        return row.event === DRAFT_GENERATION_RUN_CANCELED_EVENT;
       });
       expect(abandonedLogged).toBe(true);
       const staleBefore = new Date(
@@ -600,6 +604,109 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         [practitioner],
       );
       expect(after?.c).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET treats lock age exactly at 180000 ms as not in progress (kills M04)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-m04"),
+        "m04@ex.com",
+      );
+      const { deps, cookie } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const exactlyStale = new Date(
+        Date.now() - DRAFT_GENERATION_LOCK_STALE_MS,
+      ).toISOString();
+      await storage.run(
+        "UPDATE exercise_requests SET draft_generation_locked_at = ? WHERE id = ?",
+        [exactlyStale, requestId],
+      );
+      const getRes = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        deps,
+      );
+      const body = (await getRes.json()) as {
+        generation: { generation_in_progress: boolean };
+      };
+      expect(body.generation.generation_in_progress).toBe(false);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("heartbeat refresh advances locked_at and logs pre-refresh lock_age_ms (kills M11/M12)", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-1289-hb-age"),
+        "hb-age@ex.com",
+      );
+      const { deps, cookie, workflow } = testBundle(
+        storage,
+        practitioner,
+        new FakeImageGeneration(),
+      );
+      const requestId = await createRequest(cookie, deps);
+      const repo = new ExerciseRequestsRepository(deps.sql);
+      const refreshLockedAt: string[] = [];
+      const refreshBase =
+        ExerciseRequestsRepository.prototype.refreshDraftGenerationLock;
+      vi.spyOn(
+        ExerciseRequestsRepository.prototype,
+        "refreshDraftGenerationLock",
+      ).mockImplementation(async function (
+        this: ExerciseRequestsRepository,
+        input: Parameters<ExerciseRequestsRepository["refreshDraftGenerationLock"]>[0],
+      ) {
+        refreshLockedAt.push(input.lockedAt);
+        return refreshBase.call(this, input);
+      });
+      await handleRequest(
+        authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }),
+        deps,
+      );
+      const acquiredAt = await repo.getDraftGenerationLockedAt(requestId);
+      expect(acquiredAt).toBeTruthy();
+      await drainDraftGeneration(workflow, requestId);
+      expect(refreshLockedAt.length).toBeGreaterThan(0);
+      expect(
+        Date.parse(refreshLockedAt[refreshLockedAt.length - 1]!),
+      ).toBeGreaterThanOrEqual(Date.parse(refreshLockedAt[0]!));
+      const lines = logSpy.mock.calls
+        .map((call) => call[0])
+        .filter((line): line is string => typeof line === "string");
+      const refreshed = lines
+        .map(
+          (line) => JSON.parse(line) as { event: string; lock_age_ms: number | null },
+        )
+        .filter((row) => row.event === "physio_draft_generation_lock_refreshed");
+      expect(refreshed.length).toBeGreaterThan(0);
+      expect(refreshed.some((row) => (row.lock_age_ms ?? -1) >= 0)).toBe(true);
+      expect(
+        refreshed.every(
+          (row) => row.event === "physio_draft_generation_lock_refreshed",
+        ),
+      ).toBe(true);
+      const stepStarted = lines.some((line) => {
+        const row = JSON.parse(line) as { event: string };
+        return row.event === "physio_draft_generation_step_started";
+      });
+      expect(stepStarted).toBe(true);
     } finally {
       storage.close();
     }

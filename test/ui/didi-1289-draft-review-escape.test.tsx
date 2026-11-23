@@ -3,7 +3,7 @@
  */
 import "./setup.js";
 import { describe, expect, it } from "vitest";
-import { draftReviewStaleGenerationEscape } from "../../src/ui/exercise-requests/draft-review-generation-visibility.js";
+import { draftReviewGenerationEscape } from "../../src/ui/exercise-requests/draft-review-generation-visibility.js";
 import { DRAFT_GENERATION_UI_ESCAPE_MS } from "../../src/services/exercise-requests/draft-generation-constants.js";
 
 const PIN_ESCAPE_MS = 180_000;
@@ -14,23 +14,46 @@ describe("DIDI-1289 draft review stale generation escape", () => {
   });
 
   it("enables escape before threshold only after 180000 ms", () => {
-    const start = 1_000_000;
+    const lockAt = "2026-11-23T12:00:00.000Z";
+    const beforeMs = Date.parse(lockAt) + PIN_ESCAPE_MS - 1;
+    const atMs = Date.parse(lockAt) + PIN_ESCAPE_MS;
     expect(
-      draftReviewStaleGenerationEscape({
+      draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: true,
-        ownGenerateInFlight: false,
-        waitStartedAt: start,
-        nowMs: start + PIN_ESCAPE_MS - 1,
+        draftGenerationLockedAt: lockAt,
+        nowMs: beforeMs,
       }),
     ).toBe(false);
     expect(
-      draftReviewStaleGenerationEscape({
+      draftReviewGenerationEscape({
         firstDraftComplete: false,
         generationInProgress: true,
-        ownGenerateInFlight: false,
-        waitStartedAt: start,
-        nowMs: start + PIN_ESCAPE_MS,
+        draftGenerationLockedAt: lockAt,
+        nowMs: atMs,
+      }),
+    ).toBe(true);
+  });
+
+  it("enables escape when the lock is stale or absent", () => {
+    expect(
+      draftReviewGenerationEscape({
+        firstDraftComplete: false,
+        generationInProgress: false,
+        draftGenerationLockedAt: null,
+        nowMs: Date.now(),
+      }),
+    ).toBe(true);
+  });
+
+  it("enables escape when generation started elsewhere but is no longer in progress", () => {
+    const lockAt = "2026-11-23T12:00:00.000Z";
+    expect(
+      draftReviewGenerationEscape({
+        firstDraftComplete: false,
+        generationInProgress: false,
+        draftGenerationLockedAt: lockAt,
+        nowMs: Date.parse(lockAt) + 1000,
       }),
     ).toBe(true);
   });

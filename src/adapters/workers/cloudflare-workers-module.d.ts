@@ -5,9 +5,28 @@ declare module "cloudflare:workers" {
     instanceId: string;
   };
 
+  export type WorkflowStepRetryConfig = {
+    limit: number;
+    delay?: string;
+    backoff?: string;
+  };
+
+  export type WorkflowStepConfig = {
+    retries?: WorkflowStepRetryConfig;
+  };
+
   export type WorkflowStep = {
     do<T>(name: string, callback: () => Promise<T>): Promise<T>;
+    do<T>(
+      name: string,
+      config: WorkflowStepConfig,
+      callback: () => Promise<T>,
+    ): Promise<T>;
   };
+
+  export class NonRetryableError extends Error {
+    readonly name = "NonRetryableError";
+  }
 
   export class WorkflowEntrypoint<Env = unknown, T = unknown> {
     protected readonly env: Env;

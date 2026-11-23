@@ -2,7 +2,7 @@
 export type PhysioExerciseRequestDraftGenerationBinding = {
   create(input: {
     id: string;
-    params: { requestId: string; practitionerId: string };
+    params: { requestId: string; practitionerId: string; attemptId: string };
   }): Promise<unknown>;
   get(id: string): Promise<unknown>;
 };

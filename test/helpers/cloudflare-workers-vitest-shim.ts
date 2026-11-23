@@ -8,6 +8,10 @@ export type WorkflowStep = {
   do<T>(name: string, callback: () => Promise<T>): Promise<T>;
 };
 
+export class NonRetryableError extends Error {
+  override readonly name = "NonRetryableError";
+}
+
 export class WorkflowEntrypoint<Env = unknown> {
   protected readonly env: Env;
   protected readonly ctx: { waitUntil(): void };

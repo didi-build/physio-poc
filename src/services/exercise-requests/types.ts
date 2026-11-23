@@ -74,11 +74,18 @@ export type InProgressRequestsResult = {
   in_progress_count: number;
 };
 
+export type DraftGenerationFailurePhase = "text" | "images" | "daily" | null;
+
 export type ExerciseRequestDraftGenerationMeta = {
   /** Fresh lock held by another tab or request. */
   generation_in_progress: boolean;
   /** True when draft text and both draft stills exist. */
   first_draft_complete: boolean;
+  /** ISO timestamp of the active lock, when held (for UI escape timing). */
+  draft_generation_locked_at?: string | null;
+  /** Persisted terminal failure from the latest attempt, when idle. */
+  generation_failure?: DraftGenerationFailurePhase;
+  generation_failure_code?: string | null;
 };
 
 export type GenerateExerciseRequestDraftResult =

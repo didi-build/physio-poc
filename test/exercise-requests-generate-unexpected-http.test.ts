@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { handleRequest } from "../src/http/app.js";
 import { handleExerciseMediaRequest } from "../src/http/routes/exercise-media.js";
-import { exerciseRequestGeneratePath } from "../src/exercise-requests-api-paths.js";
+import {
+  exerciseRequestGeneratePath,
+  exerciseRequestPath,
+} from "../src/exercise-requests-api-paths.js";
 import { DRAFT_GENERATION_FAILED_EVENT } from "../src/services/exercise-requests/draft-generation-failure-log.js";
 import {
   fakeExerciseDraftGenerator,
@@ -183,7 +186,7 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
       const throwingGenerator: ExerciseDraftGenerator = async () => {
         throw new Error("unexpected_text_phase");
       };
-      const { bundle, workflow, cookie, requestService, objects } = testBundle(
+      const { bundle, workflow, cookie } = testBundle(
         storage,
         practitioner,
         "txt@example.com",
@@ -212,32 +215,36 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
       expect(response.status).toBe(202);
       await drainDraftGeneration(workflow, requestId);
 
-      const mediaService = new ExerciseMediaService(
-        storage,
-        new FakeImageGeneration(),
-        new PrefixMediaStorage(objects),
-      );
-      await expect(
-        requestService.generateRequest({
-          practitionerId: practitioner,
-          requestId,
-          mediaService,
-        }),
-      ).resolves.toMatchObject({
-        outcome: "text_failed",
-      });
       const lock = await storage.first<{ draft_generation_locked_at: string | null }>(
         "SELECT draft_generation_locked_at FROM exercise_requests WHERE id = ?",
         [requestId],
       );
       expect(lock?.draft_generation_locked_at).toBeNull();
+      const getView = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      expect(getView.status).toBe(200);
+      await expect(getView.json()).resolves.toMatchObject({
+        generation: {
+          generation_failure: "text",
+          generation_failure_code: "unexpected_generation_failure",
+        },
+      });
       const logLine = logSpy.mock.calls
         .map((c) => String(c[0]))
-        .find((line) => line.includes(DRAFT_GENERATION_FAILED_EVENT));
+        .find((line) => line.includes("physio_draft_generation_failed"));
       expect(logLine).toBeTruthy();
-      const parsed = JSON.parse(logLine!) as { event: string; phase: string };
+      const parsed = JSON.parse(logLine!) as {
+        event: string;
+        phase: string;
+        http_status: number;
+      };
       expect(parsed.event).toBe("physio_draft_generation_failed");
       expect(parsed.phase).toBe("text");
+      expect(parsed.http_status).toBe(502);
     } finally {
       logSpy.mockRestore();
       storage.close();
@@ -289,7 +296,7 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
         requestId,
       ]);
 
-      const { bundle, workflow, cookie, requestService, objects } = testBundle(
+      const { bundle, workflow, cookie } = testBundle(
         storage,
         practitioner,
         "d1@example.com",
@@ -306,28 +313,26 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
       await drainDraftGeneration(workflow, requestId);
       expect(runSpy).toHaveBeenCalled();
 
-      const mediaService = new ExerciseMediaService(
-        storage,
-        new FakeImageGeneration(),
-        new PrefixMediaStorage(objects),
-      );
-      await expect(
-        requestService.generateRequest({
-          practitionerId: practitioner,
-          requestId,
-          mediaService,
-        }),
-      ).resolves.toMatchObject({
-        outcome: "images_failed",
-      });
       const lock = await storage.first<{ draft_generation_locked_at: string | null }>(
         "SELECT draft_generation_locked_at FROM exercise_requests WHERE id = ?",
         [requestId],
       );
       expect(lock?.draft_generation_locked_at).toBeNull();
+      const getView = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
+      );
+      expect(getView.status).toBe(200);
+      await expect(getView.json()).resolves.toMatchObject({
+        generation: {
+          generation_failure: "images",
+        },
+      });
       expect(
         logSpy.mock.calls.some((c) =>
-          String(c[0]).includes(DRAFT_GENERATION_FAILED_EVENT),
+          String(c[0]).includes("physio_draft_generation_failed"),
         ),
       ).toBe(true);
     } finally {
@@ -346,7 +351,7 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
         "img2@example.com",
       );
       const failImages = new FailingInitialDraftImageGeneration(true);
-      const { bundle, workflow, cookie, requestService, objects } = testBundle(
+      const { bundle, workflow, cookie } = testBundle(
         storage,
         practitioner,
         "img2@example.com",
@@ -376,21 +381,20 @@ describe("DIDI-1276 generate unexpected orchestration errors", () => {
       expect(response.status).toBe(202);
       await drainDraftGeneration(workflow, requestId);
 
-      const view = await requestService.loadDraftView(requestId);
-      expect(view.generation.first_draft_complete).toBe(false);
-      expect(view.draft).toBeTruthy();
-
-      const mediaService = new ExerciseMediaService(
-        storage,
-        new FailingInitialDraftImageGeneration(true),
-        new PrefixMediaStorage(objects),
+      const getView = await handleRequest(
+        new Request(`${BASE}${exerciseRequestPath(requestId)}`, {
+          headers: { cookie },
+        }),
+        bundle,
       );
-      const failure = await requestService.generateRequest({
-        practitionerId: practitioner,
-        requestId,
-        mediaService,
-      });
-      expect(failure.outcome).toBe("images_failed");
+      expect(getView.status).toBe(200);
+      const view = (await getView.json()) as {
+        generation: { first_draft_complete: boolean; generation_failure?: string };
+        draft: unknown;
+      };
+      expect(view.generation.first_draft_complete).toBe(false);
+      expect(view.generation.generation_failure).toBe("images");
+      expect(view.draft).toBeTruthy();
     } finally {
       storage.close();
     }

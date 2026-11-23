@@ -26,7 +26,7 @@ import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
 import {
-  draftReviewStaleGenerationEscape,
+  draftReviewGenerationEscape,
   showDraftGenerationElsewhere,
 } from "./draft-review-generation-visibility.js";
 import {
@@ -287,6 +287,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     setDraftNotFoundWithdrawn(false);
     generateStarted.current = false;
   }, [requestId]);
+
+  useEffect(() => {
+    const persisted = view?.generation.generation_failure ?? null;
+    if (persisted) {
+      setGenerationFailure(persisted);
+    }
+  }, [view?.generation.generation_failure]);
 
   useEffect(() => {
     if (draftNotFoundWithdrawn) {
@@ -630,11 +637,14 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     generationInProgress,
     generationFailure,
   });
-  const staleGenerationEscape = draftReviewStaleGenerationEscape({
+  const staleGenerationEscape = draftReviewGenerationEscape({
     firstDraftComplete,
-    generationInProgress,
-    ownGenerateInFlight,
-    waitStartedAt: generationWaitStartedAt.current,
+    generationInProgress: generationInProgress || ownGenerateInFlight,
+    draftGenerationLockedAt:
+      generationMeta.draft_generation_locked_at ??
+      (generationWaitStartedAt.current !== null
+        ? new Date(generationWaitStartedAt.current).toISOString()
+        : null),
     nowMs: generationWaitClock,
   });
   const deleteBlockedByGeneration =
@@ -670,7 +680,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
               {DRAFT_GENERATION_STARTED_ELSEWHERE}
             </p>
           ) : null}
-          {staleGenerationEscape && !showElsewhere ? (
+          {staleGenerationEscape ? (
             <button
               type="button"
               className="ex-secondary-btn"

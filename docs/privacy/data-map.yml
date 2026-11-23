@@ -233,6 +233,12 @@ d1_tables:
       draft_generation_locked_at:
         whose: operational
         notes: concurrency lock for POST generate orchestration
+      draft_generation_attempt_id:
+        whose: operational
+        notes: attempt-scoped workflow lock for draft generation
+      draft_generation_failure_code:
+        whose: operational
+        notes: persisted draft generation failure code for GET view
       created_at:
         whose: operational
       updated_at:
