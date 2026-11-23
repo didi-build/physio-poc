@@ -20,6 +20,7 @@ import {
   createDelayedFakeExerciseDraftGenerator,
   fakeExerciseDraftGenerator,
 } from "../src/services/exercise-requests/fake-draft-generator.js";
+import type { ExerciseDraftGenerator } from "../src/services/exercise-requests/exercise-draft-generator-types.js";
 import { DRAFT_GENERATION_LOCK_STALE_MS } from "../src/services/exercise-requests/draft-generation-lock.js";
 import {
   DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
@@ -163,6 +164,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
     practitioner: string,
     images: ImageGenerationPort,
     stopAfterStep?: "text" | "start_image",
+    draftGenerator: ExerciseDraftGenerator = fakeExerciseDraftGenerator,
   ) {
     const auth = new FakeAuthPort({
       practitioner: {
@@ -177,7 +179,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       config: MCP_TEST_CONFIG,
       auth,
       mcp: createTestPhysioMcpHttpHandler(storage, MCP_TEST_CONFIG),
-      exerciseDraftGenerator: fakeExerciseDraftGenerator,
+      exerciseDraftGenerator: draftGenerator,
       exerciseMediaImages: images,
       extraRouteHandlers: [handleExerciseMediaRequest],
     };
@@ -188,7 +190,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
       new PrefixMediaStorage(objects),
     );
     const requestService = new ExerciseRequestsService(base.sql, base.config, {
-      draftGenerator: fakeExerciseDraftGenerator,
+      draftGenerator,
       initialDraftMediaProgress: (versionId) =>
         mediaService.getInitialDraftMediaProgress(versionId),
     });
@@ -792,6 +794,8 @@ describe("DIDI-1289 off-request-path draft generation", () => {
   });
 
   it("emits step end logs with duration_ms", async () => {
+    const TEXT_STEP_DELAY_MS = 64;
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const storage = await openMigratedDatabase();
     try {
       const practitioner = await seedPractitioner(
@@ -799,29 +803,45 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         id("pr-1289-logs"),
         "e@ex.com",
       );
+      const delayedText = createDelayedFakeExerciseDraftGenerator({
+        delayMs: TEXT_STEP_DELAY_MS,
+      });
       const { deps, cookie, workflow } = testBundle(
         storage,
         practitioner,
         new FakeImageGeneration(),
+        undefined,
+        delayedText,
       );
       const requestId = await createRequest(cookie, deps);
-      await handleRequest(
+      const generatePromise = handleRequest(
         authedJsonRequest(exerciseRequestGeneratePath(requestId), cookie, {
           method: "POST",
           body: JSON.stringify({}),
         }),
         deps,
       );
-      await drainDraftGeneration(workflow, requestId);
+      const drainPromise = drainDraftGeneration(workflow, requestId);
+      await generatePromise;
+      await vi.runAllTimersAsync();
+      await drainPromise;
       const lines = logSpy.mock.calls
         .map((call) => call[0])
         .filter((line): line is string => typeof line === "string");
       const stepEnds = lines
-        .map((line) => JSON.parse(line) as { event: string; duration_ms?: number })
+        .map(
+          (line) =>
+            JSON.parse(line) as {
+              event: string;
+              step?: string;
+              duration_ms?: number;
+            },
+        )
         .filter((row) => row.event === DRAFT_GENERATION_STEP_ENDED_EVENT);
       expect(stepEnds.length).toBeGreaterThan(0);
       expect(stepEnds.every((row) => typeof row.duration_ms === "number")).toBe(true);
-      expect(stepEnds.some((row) => (row.duration_ms ?? -1) >= 0)).toBe(true);
+      const textEnded = stepEnds.find((row) => row.step === "text");
+      expect(textEnded?.duration_ms).toBe(TEXT_STEP_DELAY_MS);
       expect(
         lines.some((line) => {
           const row = JSON.parse(line) as { event: string };
@@ -829,6 +849,7 @@ describe("DIDI-1289 off-request-path draft generation", () => {
         }),
       ).toBe(true);
     } finally {
+      vi.useRealTimers();
       storage.close();
     }
   });
