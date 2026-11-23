@@ -116,8 +116,19 @@ export function createInProcessDraftGenerationWorkflowPort(
           if (error instanceof DraftGenerationTerminalFailure) {
             await persistTerminal(error);
           } else {
-            const row = await requests.findById(input.requestId);
-            const phase = row?.exercise_id ? "images" : "text";
+            let phase: "text" | "images" = "text";
+            try {
+              const row = await requests.findById(input.requestId);
+              phase = row?.exercise_id ? "images" : "text";
+            } catch (lookupError) {
+              if (
+                lookupError instanceof TypeError &&
+                lookupError.message.includes("database connection is not open")
+              ) {
+                return;
+              }
+              throw lookupError;
+            }
             try {
               await throwDraftGenerationFailure(error, phase, input.requestId, () =>
                 loadView(input.requestId),
