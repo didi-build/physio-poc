@@ -45,6 +45,7 @@ import {
 import { handleExerciseMediaRequest } from "../src/http/routes/exercise-media.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
 
 const BASE = "https://physio.test.example";
 const FORM_OPENED = "2026-10-30T10:00:00.000Z";
@@ -506,6 +507,7 @@ describe("DIDI-1290 draft generation follow-ups", () => {
       apiKey: "regen-heartbeat-key",
       fetchImpl,
     });
+    let refreshSpy: ReturnType<typeof vi.spyOn> | undefined;
     const storage = await openMigratedDatabase();
     try {
       const practitioner = await seedPractitioner(
@@ -531,6 +533,11 @@ describe("DIDI-1290 draft generation follow-ups", () => {
       if (created.outcome !== "created") {
         throw new Error("expected created");
       }
+      logSpy.mockClear();
+      refreshSpy = vi.spyOn(
+        ExerciseRequestsRepository.prototype,
+        "refreshDraftGenerationLock",
+      );
       const regenService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         draftGenerator: generator,
       });
@@ -539,10 +546,11 @@ describe("DIDI-1290 draft generation follow-ups", () => {
         requestId: created.request_id,
         note: "heartbeat",
       });
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
       const refreshed = parseJsonLogs(logSpy).filter(
         (row) => row.event === DRAFT_GENERATION_LOCK_REFRESHED_EVENT,
       );
-      expect(refreshed.length).toBeGreaterThanOrEqual(1);
+      expect(refreshed).toHaveLength(1);
       expect(refreshed[0]).toMatchObject({
         event: "physio_draft_generation_lock_refreshed",
       });
@@ -551,6 +559,7 @@ describe("DIDI-1290 draft generation follow-ups", () => {
       ).toBe(true);
       expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
+      refreshSpy?.mockRestore();
       storage.close();
     }
   });
