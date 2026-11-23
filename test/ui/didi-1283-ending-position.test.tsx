@@ -20,6 +20,7 @@ import { ToastProvider } from "../../src/ui/components/Toast.js";
 import type { ComponentProps } from "react";
 import { ExercisePositionsCard } from "../../src/ui/exercise-positions/ExercisePositionsCard.js";
 import { PositionThumbnail } from "../../src/ui/exercise-positions/PositionThumbnail.js";
+import * as PositionThumbnailModule from "../../src/ui/exercise-positions/PositionThumbnail.js";
 import { PublicLinkExerciseRow } from "../../src/ui/link-page/PublicLinkExerciseRow.js";
 import {
   desktopMediaScope,
@@ -573,7 +574,13 @@ describe("DIDI-1283 Edit my copy", () => {
   });
 
   it("keeps thumbnail column on first render when showThumbnails and src are set", () => {
-    render(
+    const thumbSpy = vi
+    .spyOn(PositionThumbnailModule, "PositionThumbnail")
+      .mockImplementation(({ src, show }) =>
+        show && src ? <img src={src} alt="" className="ex-positions-thumb" /> : null,
+      );
+    try {
+      render(
       <ExercisePositionsCard
         startingPosition={START_TEXT}
         endingPosition={END_TEXT}
@@ -582,12 +589,15 @@ describe("DIDI-1283 Edit my copy", () => {
         showThumbnails
         editable={false}
         showHelper={false}
-      />,
-    );
-    const startStep = document.querySelector(".ex-positions-step--start");
-    const endStep = document.querySelector(".ex-positions-step--end");
-    expect(startStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
-    expect(endStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
+        />,
+      );
+      const startStep = document.querySelector(".ex-positions-step--start");
+      const endStep = document.querySelector(".ex-positions-step--end");
+      expect(startStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
+      expect(endStep?.className.includes("ex-positions-step--no-thumb")).toBe(false);
+    } finally {
+      thumbSpy.mockRestore();
+    }
   });
 
   it("G2 My copy keeps positions out of the Text section and supports reset and conflict flows", async () => {
