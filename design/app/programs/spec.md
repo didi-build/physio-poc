@@ -289,11 +289,13 @@ Design: E7, https://designs.magicpath.ai/v1/keen-current-4842 (MagicPath project
 | Topic | Was (variant D, approved Nov 9, 2026, 11:31 AM ET, superseded 12:42 PM ET) | Is (E7, approved Nov 10, 2026, 12:08 and 12:09 AM ET) |
 | -- | -- | -- |
 | Media on screen | Start and End stills with a "Play video" / "Show images" toggle that swapped in the loop in the same frame | One carousel per exercise: slide 1 the loop, slide 2 Start, slide 3 End. No toggle; "Show images" is not used on this page |
-| Order on phone | Title, dose, note, media, toggle | Title, description, carousel, Starting position, Ending position, dose, note (DIDI-1282; positions and description left out when empty; see [ending-position/spec.md](../ending-position/spec.md)) |
+| Order on phone | Title, dose, note, media, toggle | Title, carousel, dose, notes |
 | 1024 px and up | Two equal columns, text left and media right, in the 42rem page | Two columns, text left and carousel right, in a 64rem page |
 | Dose | One line from `formatExerciseParams` | Three lines with the numbers in bold: reps and hold, then sets and rest, then the frequency |
 | Print and PDF | Text left, Start and End stills right; a failed row printed text only; the expiry line printed | Three columns: text, Start, End. A failed row prints "Images didn't load." across columns 2 and 3. The expiry line is not printed |
 | Load failed on screen | Message and "Try again" under the note | Message and "Try again" in place of the carousel |
+
+**Current row order (DIDI-1282).** On phone and in the text column from 1024 px: title, description, carousel, Starting and Ending position (ring/dot markers as in [ending-position/spec.md](../ending-position/spec.md), revision `475494418896523264`), dose, note. Description and each position are left out when empty.
 
 ### Rule
 
@@ -392,7 +394,7 @@ Uses the existing `@media print` block (public-link-page.css :87-103). The heade
 | Element | Print |
 | -- | -- |
 | Row | Grid `grid-template-columns: minmax(0, 1fr) 11rem 11rem`, gap 0.75rem, `break-inside: avoid` |
-| Column 1 | Title (15px, weight 600), description (12px, line height 1.625), Starting and Ending position (labels 12px weight 600, text 12px; [ending-position/spec.md](../ending-position/spec.md)), dose block (13px, the same three lines and bold numbers), note (12px, line height 1.625). Description and Ending position are left out when empty |
+| Column 1 | Title (15px, weight 600), description (12px, line height 1.625), Starting and Ending position with ring/dot markers and labels (12px weight 600, text 12px; [ending-position/spec.md](../ending-position/spec.md)), dose block (13px, the same three lines and bold numbers), note (12px, line height 1.625). Description and Ending position are left out when empty |
 | Columns 2 and 3 | Start and End images, 4:3, `object-fit: cover`, radius 0.75rem, with captions "Start" / "End" (0.75rem, `#64748b`, 0.25rem above) |
 | Load failed | Column 1 as above. Columns 2 and 3 merge into one cell (`grid-column: 2 / 4`) with a dashed slate-300 border and radius 0.75rem, min height equal to the image height (8.25rem), with "Images didn't load." (13px, slate-500) centred. No "Try again" |
 | Not printed | The loop, carousel controls, indicators, chevrons, Pause/Play, and the expiry footer |

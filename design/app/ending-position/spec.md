@@ -123,7 +123,7 @@ Matches the link page rules in [programs/spec.md](../programs/spec.md), "Link pa
 | Row order, below 1024 px | Title (`h2` "{title}, {type}"), **description**, carousel, **Starting position** and **Ending position**, dose block, note. Mockup 11. |
 | Row order, 1024 px and up | The text column holds title, description, positions, dose and note; the carousel spans the right column as today. Mockup 11 desktop. |
 | Description | The pinned version's `description` field (the same field library details shows under the title, `ExerciseDetailsPage.tsx:129-131, :172`). Unlabelled paragraph, 15px, line height 1.625, slate-700, 0.25rem under the title. |
-| Positions | A definition list (`dl`): `dt` "Starting position" and `dt` E1, each followed by its text in a `dd` (15px, slate-700). Plain labels and text only (no Positions card step markers). There is **no** E3 heading, **no** E4 helper and **no** thumbnails, because the carousel already shows Start and End. 0.75rem above the block. |
+| Positions | As in the approved views (revision `475494418896523264`, mockups 11 to 14): a `dl` with `dt` "Starting position" and `dt` E1, each with its text in a `dd` (15px, slate-700), with the same decorative step markers as the practitioner Positions card (open ring for start, filled dot for end, joined by a 2px teal-200 line; `aria-hidden="true"`). The labels and text carry meaning. There is **no** E3 heading, **no** E4 helper and **no** thumbnails, because the carousel already shows Start and End. 0.75rem above the block. |
 | No ending position | The Ending position `dt` and `dd` are left out; Starting position still shows. Patients never see E6 or E7, and never the last-step fallback. Mockup 12. |
 | No description | The paragraph is left out, with no placeholder and no label. Mockup 12. |
 | Source | The description and both position texts come from the pinned exercise version, like the media. |
@@ -134,9 +134,8 @@ Matches "Print and Save as PDF (DIDI-1195)" in programs/spec.md: three columns, 
 
 | Topic | Rule |
 | -- | -- |
-| Column 1 | Title (15px, weight 600), **description** (12px, line height 1.625), **positions** (plain "Starting position" and "Ending position" labels at 12px weight 600, text 12px; no Positions card step markers), dose block (13px), note (12px). Mockups 13 and 13 desktop. |
+| Column 1 | Title (15px, weight 600), **description** (12px, line height 1.625), **positions** (same ring/dot markers and labels as the patient link page, 12px weight 600 for labels, 12px text), dose block (13px), note (12px). Mockups 13 and 13 desktop. |
 | Columns 2 and 3 | Start and End stills with captions, unchanged. |
-| Step markers | The open-ring and filled-dot markers from the practitioner Positions card do **not** print; print shows the label and body text only, same as the patient link page `dl`. |
 | No ending position, no description | Same omissions as the link page. Mockup 14. |
 | Page breaks | `break-inside: avoid` on the row, unchanged. |
 
@@ -173,7 +172,7 @@ Patient-facing text from this spec is only "Starting position" and E1, plus exer
 | Empty state | E6 is plain text; E7 is a native button. After E7, focus moves to the empty textarea. In library details, E7 opens Edit for everyone with focus in the Ending position textarea. |
 | Thumbnails | `alt=""` (decorative); the Images card and carousel already carry "{title}, start position" / "{title}, end position". |
 | Step markers | `aria-hidden="true"`. |
-| Link page and print positions | `dl` with `dt` and `dd`, so screen readers announce each label with its text. |
+| Link page and print positions | `dl` with `dt` and `dd`, so screen readers announce each label with its text. Ring/dot markers match the practitioner card and are decorative (`aria-hidden="true"`). |
 | Description | A plain `p`, read straight after the `h2` title. |
 | Target size | Edit links and E7 have at least a 44 px tap height. |
 
@@ -183,7 +182,7 @@ Patient-facing text from this spec is only "Starting position" and E1, plus exer
 2. Ending position is editable in Edit my copy, like Starting position (`a46e01d7`).
 3. E4 is the only helper, shown only in editable states. r1's separate field helper and the shared line "Only the parts that move change between the start and the end." were merged into E4.
 4. In library details, E7 opens Edit for everyone (a new version for everyone) rather than editing inline.
-5. Patients get no Positions heading, helper or thumbnails, because the carousel and print columns already show the stills.
+5. Patients get no Positions heading, helper or thumbnails; the link page and print keep the ring/dot markers from the approved views (revision `475494418896523264`), because the carousel and print columns already show the stills.
 6. The description sits right after the title and before the carousel, so the patient reads it first (approved on the 1:42 PM revision).
 
 ## Is/was
