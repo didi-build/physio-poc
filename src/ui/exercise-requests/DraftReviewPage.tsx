@@ -661,13 +661,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           />
         ) : viewLoadFailed && viewFailureKind === "error" ? (
           <>
-            <Link
-              to={fillPhysioAppRoutePattern("requests")}
-              className="ex-back-link"
-              data-testid="ex-review-item-load-back"
-            >
-              {DRAFT_ITEM_LOAD_BACK}
-            </Link>
             <div
               className="ex-item-load-banner"
               data-testid="ex-review-item-load-error"
