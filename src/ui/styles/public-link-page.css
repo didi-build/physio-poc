@@ -417,6 +417,12 @@
   .link-page-dose,
   .link-page-row-note {
     grid-column: 1;
+    grid-area: auto;
+  }
+
+  .link-page-row-description--grid,
+  .link-page-positions--grid {
+    grid-area: auto;
   }
 
   .link-page-row-title {
