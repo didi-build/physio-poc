@@ -1,4 +1,4 @@
-# OAuth consent page (ChatGPT connector)
+# OAuth consent page
 
 Area: connector · Feature: oauth-consent (consent page after Google sign-in, invalid-client and expired-request pages, sign-in page wordmark)
 
@@ -6,11 +6,11 @@ Target path: `design/connector/oauth-consent/spec.md`, with mockups in `design/c
 
 ## Purpose
 
-When an AI assistant (ChatGPT first) asks to connect to Didi Physio's `/mcp` server, Kojo signs in with Google and then sees one page that asks him to allow or deny read-only access for that app. The app's name is self-reported and never shown as verified; the return address (redirect host) is the trust signal. If the app can't be identified, or the request is too old, Kojo sees a short page that explains it and offers "Go to Didi Physio". Kojo uses a phone, so every screen is designed at 390 px first.
+When an AI assistant asks to connect to Didi Physio's `/mcp` server, Kojo signs in with Google and then sees one page that asks him to allow or deny access for that app. The app's name is self-reported and never shown as verified; the return address (redirect host) is the trust signal. If the app can't be identified, or the request is too old, Kojo sees a short page that explains it and offers "Go to Didi Physio". Kojo uses a phone, so every screen is designed at 390 px first.
 
 **Matches Product direction: yes.** Checked against the live DIDI-594 description and comments on Oct 31, 2026 (read after the 2:28 to 2:35 AM ET answers): "Connector is read-only in V1", "Sign-in is Google, through Better Auth" and "OAuth consent page for the connector" (quoted under Locked Product direction below).
 
-**v13 (DIDI-594 ca41ca4d):** The Oct 31 read-only consent page in this spec is retired in v1. The only consent page is the write page in `design/connector/claude-connector/spec.md` (strings #21 to #24).
+**v13 (DIDI-594 ca41ca4d):** The Oct 31 consent page in this spec is retired in v1. The only consent page is the write page in `design/connector/claude-connector/spec.md` (strings #21 to #24).
 
 ## Design source (Diadem's pick, Oct 31, 2026, 2:28 AM ET: "Go with C plus A's safety line")
 
@@ -74,7 +74,7 @@ Also applied (not Diadem's Oct 31 words):
 | Screen or state | What it shows |
 | -- | -- |
 | Sign-in (existing, changed) | The current sign-in card with the Didi Physio wordmark added at the top. The button "Sign in with Google" is unchanged. Shown first if Kojo isn't signed in when the app asks to connect. |
-| Consent | Wordmark; "Request from {host}"; heading "Allow read-only access to Didi Physio?"; "The app calls itself" "“{name}”" with a "Self-reported" tag; "It can" list (3 items); "It can't" list (2 items); "Didi Physio never stores or shares patient details."; "Only allow it if you just started connecting from {host}."; buttons "Deny" and "Allow" side by side; "Signed in as {email}"; link "Not you? Sign out". |
+| Consent | Wordmark; "Request from {host}"; heading "Allow access to Didi Physio?"; "The app calls itself" "“{name}”" with a "Self-reported" tag; "It can" list (3 items); "It can't" list (2 items); "Didi Physio never stores or shares patient details."; "Only allow it if you just started connecting from {host}."; buttons "Deny" and "Allow" side by side; "Signed in as {email}"; link "Not you? Sign out". |
 | After Allow | Spinner, heading "Connected", "Taking you back to {host}.", then the browser goes back to the app. |
 | After Deny | Spinner, heading "Not connected", "Nothing was shared. Taking you back to {host}.", then the browser goes back to the app. |
 | Remembered consent | No page. A reconnect with the same app, return address and access goes straight back to the app. |
@@ -90,7 +90,7 @@ Consent page, in screen order:
 | -- | -- | -- |
 | Wordmark | Didi Physio (with the teal "D" tile) | C |
 | Host line | Request from {host} | C |
-| Heading | Allow read-only access to Didi Physio? | C |
+| Heading | Allow access to Didi Physio? | C |
 | Name line | The app calls itself “{name}” | C |
 | Name tag | Self-reported | C |
 | List heading | It can | C |
@@ -150,7 +150,7 @@ Taken from the final option C source (revision 467169139593728000). Accessible n
 
 | Element | Accessible name or role |
 | -- | -- |
-| Consent card | A section named by the heading "Allow read-only access to Didi Physio?" |
+| Consent card | A section named by the heading "Allow access to Didi Physio?" |
 | "It can" and "It can't" | Real lists; the eye and cross icons are hidden from screen readers |
 | Self-reported tag | Visible text, read after the name |
 | Deny, Allow | Buttons named by their visible text |
@@ -200,7 +200,7 @@ Browser tab title: "Connect an app · Didi Physio" (Diadem, 2:53 AM).
 
 > **Connector is read-only in V1 (LOCKED, Oct 29, 2026, 7:26 PM ET).** 7:16 PM ET: "ok v1 connector can be read only , and any "write" use cases will send a link that opens the exact page that he needs to do the action on". 7:26 PM ET: "for v1 we will do read only tools". **Is:** every V1 connector tool is read-only (annotations readOnlyHint true, destructiveHint false, openWorldHint false). Any write use case (build or edit a program, publish, set expiry, close a link, delete) returns a deep link that opens the exact web app page where Kojo does it himself.
 
-> **Sign-in is Google, through Better Auth (LOCKED, Oct 29, 2026, 7:07 PM ET; approved for Linear 7:28 PM ET).** 7:02 PM ET: "For the second part yeah, it should be log in with Google, not a password sign in. That needs to change." 7:07 PM ET: "Okay, I, I, I agree with a better auth. is, it's okay. So that, that works." 7:30 PM ET: "I'm about to head out so please build around sign in." **Is:** the practitioner signs in with Google (Better Auth), and only allowlisted Google accounts (Kojo's) get in. The ChatGPT connector authenticates through the app's own OAuth server (Better Auth), with the same Google sign-in behind it.
+> **Sign-in is Google, through Better Auth (LOCKED, Oct 29, 2026, 7:07 PM ET; approved for Linear 7:28 PM ET).** 7:02 PM ET: "For the second part yeah, it should be log in with Google, not a password sign in. That needs to change." 7:07 PM ET: "Okay, I, I, I agree with a better auth. is, it's okay. So that, that works." 7:30 PM ET: "I'm about to head out so please build around sign in." **Is:** the practitioner signs in with Google (Better Auth), and only allowlisted Google accounts (Kojo's) get in. The connector authenticates through the app's own OAuth server (Better Auth), with the same Google sign-in behind it.
 
 > **OAuth consent page for the connector (LOCKED, Oct 31, 2026, 2:28 to 2:35 AM ET, DIDI-1125).** "Go with C plus A's safety line" / "Show the email with a Not you? Sign out link" / "Remember consent and skip the page on reconnect" / "No staying connected line" / "Add the wordmark to both the consent and sign-in pages" / "Use: Didi Physio never stores or shares patient details." / "Keep the Go to Didi Physio button". **Is:** the consent page uses option C's layout with A's safety line. It shows "Signed in as {email}" with a "Not you? Sign out" link. Consent is remembered per client, redirect and scope. There is no staying-connected line and no revoke in V1. The Didi Physio wordmark goes on both the consent and sign-in pages. The page carries the line "Didi Physio never stores or shares patient details." The invalid and expired states have a "Go to Didi Physio" button. **Was:** no consent page existed.
 
@@ -219,7 +219,7 @@ Every user-facing string, in screen order. `{...}` is a runtime value.
 ### Consent
 - Didi Physio
 - Request from {host}
-- Allow read-only access to Didi Physio?
+- Allow access to Didi Physio?
 - The app calls itself
 - “{name}”
 - Self-reported
@@ -270,3 +270,4 @@ Every user-facing string, in screen order. `{...}` is a runtime value.
 - **Oct 31, 2026**: Diadem's calls, 2:28 to 2:35 AM ET: option C plus A's safety line, email with "Not you? Sign out", remembered consent, no staying-connected line, wordmark on consent and sign-in, patient details line, keep "Go to Didi Physio". https://linear.app/didi-build/issue/DIDI-1125
 - **Oct 31, 2026**: Final revisions in MagicPath: option C 467169139593728000 and sign-in 467169143641223168. Mockups 01 to 07 at 390 px and 1280 px. https://linear.app/didi-build/issue/DIDI-1125
 - **Oct 31, 2026**: Diadem approved the spec (2:50, 2:52, 2:53 AM ET via CTO): consent page as drawn, expired next-step wording, tab title "Connect an app · Didi Physio". CTO sign-out behaviour for DIDI-1126. https://linear.app/didi-build/issue/DIDI-1125
+- **Nov 24, 2026**: DIDI-1250. Removed '(ChatGPT first)' and 'read-only' to match DIDI-594 ca41ca4d and 85cf8fbe; deletions only.
