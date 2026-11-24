@@ -252,7 +252,6 @@ describe("DIDI-1296 public link print text column at wide print width", () => {
       }
     },
   );
-
 });
 
 describe("DIDI-1296 public link screen layout at 1024 px and above", () => {
