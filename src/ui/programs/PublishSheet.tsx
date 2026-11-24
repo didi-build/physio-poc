@@ -190,7 +190,6 @@ export function PublishSheet({
       return;
     }
     setPublishBusy(true);
-    setPublishError(null);
     try {
       if (trimmedName !== (program.name ?? "")) {
         const updated = await client.updateProgramName(program.program_id, trimmedName);
@@ -206,6 +205,7 @@ export function PublishSheet({
             }
           : { expires_in: expiry };
       const result = await client.publishProgram(program.program_id, body);
+      setPublishError(null);
       onPublished({
         program: result.program,
         shareLink: result.share_link,
