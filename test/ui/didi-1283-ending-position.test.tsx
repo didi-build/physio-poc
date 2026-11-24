@@ -29,11 +29,7 @@ import {
   ruleDeclarationsInScope,
 } from "./public-link-print-css-scope.js";
 import { CANCEL, SAVE } from "../../src/ui/copy/exercise-requests.js";
-import {
-  LIBRARY_CHANGED,
-  LIBRARY_NOW,
-  TEXT_SECTION,
-} from "../../src/ui/copy/exercise-library.js";
+import { TEXT_SECTION } from "../../src/ui/copy/exercise-library.js";
 
 /** Pinned E1–E7 and reset accessible name (not imported constants). */
 const PIN_E1 = "Positions";
@@ -46,8 +42,12 @@ const PIN_E6 = "Not added yet.";
 const PIN_E7 = "Add ending position";
 const PIN_ENDING_LABEL = "Ending position";
 const PIN_STARTING_LABEL = "Starting position";
+const PIN_RESET = "Reset";
 const PIN_RESET_START_ARIA = "Reset Starting position to the library version";
 const PIN_RESET_END_ARIA = "Reset Ending position to the library version";
+const PIN_USE_LIBRARY = "Use library version";
+const PIN_KEEP_MINE = "Keep mine";
+const PIN_LIBRARY_NOW_LINE = "Library now: Library start.";
 import { userEvent } from "@testing-library/user-event";
 import "../../src/ui/styles/exercise-library.css";
 import "../../src/ui/styles/public-link-page.css";
@@ -62,7 +62,7 @@ afterEach(() => {
 });
 
 describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
-  it("exposes accessible names and helper in editable mode", () => {
+  it("pins E1–E7 literals and labels with value assertions in editable mode", () => {
     const container = document.createElement("div");
     container.style.width = `${widthPx}px`;
     document.body.appendChild(container);
@@ -80,15 +80,27 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
     );
     const card = screen.getByTestId("exercise-positions-card");
     expect(card.getAttribute("aria-labelledby")).toBeTruthy();
-    const heading = screen.getByRole("heading", { name: PIN_E1 });
-    expect(heading.id).toBe(card.getAttribute("aria-labelledby"));
-    expect(screen.getByText(PIN_E4)).toHaveAttribute("id");
-    expect(screen.getByRole("button", { name: PIN_E2 })).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: PIN_E5,
-      }),
-    ).toBeTruthy();
+    const heading = card.querySelector(".ex-positions-card-heading");
+    expect(heading).not.toBeNull();
+    expect(heading!.textContent).toBe(PIN_E1);
+    expect(heading!.id).toBe(card.getAttribute("aria-labelledby"));
+    const helper = card.querySelector(".ex-positions-helper");
+    expect(helper).not.toBeNull();
+    expect(helper!.textContent).toBe(PIN_E4);
+    expect(helper).toHaveAttribute("id");
+    const editStarting = within(card).queryByRole("button", {
+      name: PIN_E5,
+    });
+    expect(editStarting).not.toBeNull();
+    expect(editStarting!.getAttribute("aria-label")).toBe(PIN_E5);
+    const editEnding = within(card).queryByRole("button", {
+      name: PIN_E2,
+    });
+    expect(editEnding).not.toBeNull();
+    expect(editEnding!.getAttribute("aria-label")).toBe(PIN_E2);
+    const endingLabel = within(card).queryByText(PIN_ENDING_LABEL);
+    expect(endingLabel).not.toBeNull();
+    expect(endingLabel!.textContent).toBe(PIN_ENDING_LABEL);
     document.body.removeChild(container);
   });
 
@@ -106,7 +118,9 @@ describe.each([390, 1280])("DIDI-1283 Positions card at %i px", (widthPx) => {
       />,
       { container },
     );
-    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    const emptyEnding = screen.queryByText(PIN_E6);
+    expect(emptyEnding).not.toBeNull();
+    expect(emptyEnding!.textContent).toBe(PIN_E6);
     expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
     expect(screen.queryByText(LAST_STEP_FALLBACK)).toBeNull();
     document.body.removeChild(container);
@@ -453,9 +467,12 @@ describe("DIDI-1283 Edit my copy", () => {
       />,
     );
     const card = screen.getByTestId("exercise-positions-card");
-    expect(
-      within(card).getByRole("button", { name: PIN_RESET_START_ARIA }),
-    ).toBeTruthy();
+    const resetBtn = within(card).queryByRole("button", {
+      name: PIN_RESET_START_ARIA,
+    });
+    expect(resetBtn).not.toBeNull();
+    expect(resetBtn!.textContent?.trim()).toBe(PIN_RESET);
+    expect(resetBtn!.getAttribute("aria-label")).toBe(PIN_RESET_START_ARIA);
   });
 
   it("links E4 helper to both position textareas with aria-describedby", async () => {
@@ -501,7 +518,9 @@ describe("DIDI-1283 Edit my copy", () => {
         onSaveEnding={async () => {}}
       />,
     );
-    expect(screen.getByRole("button", { name: PIN_E7 })).toBeTruthy();
+    const addEnding = screen.queryByRole("button", { name: PIN_E7 });
+    expect(addEnding).not.toBeNull();
+    expect(addEnding!.textContent?.trim()).toBe(PIN_E7);
   });
 
   it("shows generating read-only empty ending as E6 only (no E7, no Edit)", () => {
@@ -514,7 +533,9 @@ describe("DIDI-1283 Edit my copy", () => {
         showHelper={false}
       />,
     );
-    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    const emptyEnding = screen.queryByText(PIN_E6);
+    expect(emptyEnding).not.toBeNull();
+    expect(emptyEnding!.textContent).toBe(PIN_E6);
     expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
     expect(screen.queryByRole("button", { name: PIN_E2 })).toBeNull();
   });
@@ -566,10 +587,14 @@ describe("DIDI-1283 Edit my copy", () => {
     await waitFor(() => {
       expect(onSaveStarting).toHaveBeenCalledWith("Still typing after fail.");
     });
-    expect(within(card).getByRole("button", { name: SAVE })).toBeTruthy();
-    expect((within(card).getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-      "Still typing after fail.",
-    );
+    const saveBtn = within(card).queryByRole("button", { name: SAVE });
+    expect(saveBtn).not.toBeNull();
+    expect(saveBtn!.textContent?.trim()).toBe(SAVE);
+    const draftField = within(card).queryByRole(
+      "textbox",
+    ) as HTMLTextAreaElement | null;
+    expect(draftField).not.toBeNull();
+    expect(draftField!.value).toBe("Still typing after fail.");
     document.body.removeChild(container);
   });
 
@@ -583,7 +608,9 @@ describe("DIDI-1283 Edit my copy", () => {
         showHelper={false}
       />,
     );
-    expect(screen.getByText(PIN_E6)).toBeTruthy();
+    const emptyEnding = screen.queryByText(PIN_E6);
+    expect(emptyEnding).not.toBeNull();
+    expect(emptyEnding!.textContent).toBe(PIN_E6);
     expect(screen.queryByRole("button", { name: PIN_E7 })).toBeNull();
     expect(screen.queryByRole("button", { name: PIN_E2 })).toBeNull();
   });
@@ -682,8 +709,28 @@ describe("DIDI-1283 Edit my copy", () => {
     ).toBeTruthy();
 
     const card = screen.getByTestId("exercise-positions-card");
-    expect(within(card).getByText(LIBRARY_CHANGED)).toBeTruthy();
-    expect(within(card).getByText(`${LIBRARY_NOW} Library start.`)).toBeTruthy();
+    const conflictBox = within(card).queryByText(PIN_LIBRARY_NOW_LINE);
+    expect(conflictBox).not.toBeNull();
+    expect(conflictBox!.textContent?.trim()).toBe(PIN_LIBRARY_NOW_LINE);
+    expect(conflictBox!.closest(".ex-conflict-box")).not.toBeNull();
+
+    const useLibraryBtn = within(card).queryByRole("button", { name: PIN_USE_LIBRARY });
+    expect(useLibraryBtn).not.toBeNull();
+    expect(useLibraryBtn!.textContent?.trim()).toBe(PIN_USE_LIBRARY);
+    const keepMineBtn = within(card).queryByRole("button", { name: PIN_KEEP_MINE });
+    expect(keepMineBtn).not.toBeNull();
+    expect(keepMineBtn!.textContent?.trim()).toBe(PIN_KEEP_MINE);
+
+    await userEvent.click(useLibraryBtn!);
+    expect(client.updateMyCopy).toHaveBeenCalledWith("ex-g2", {
+      use_library_version: ["starting_position"],
+    });
+
+    await userEvent.click(keepMineBtn!);
+    expect(client.updateMyCopy).toHaveBeenCalledWith("ex-g2", {
+      keep_mine: ["starting_position"],
+    });
+
     await userEvent.click(
       within(card).getByRole("button", {
         name: PIN_RESET_END_ARIA,
