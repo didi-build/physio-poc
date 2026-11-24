@@ -790,15 +790,16 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("B11 void mutant killer: draft review item load Try again shows Trying again while refresh promise is in flight", async () => {
-    const draftView = exerciseRequestDraftReviewFixture();
-    let resolveHang!: (value: typeof draftView) => void;
-    const hang = new Promise<typeof draftView>((resolve) => {
-      resolveHang = resolve;
-    });
+    let rejectHang!: (error: Error) => void;
     const getRequest = vi
       .fn()
       .mockRejectedValueOnce(new Error("network"))
-      .mockImplementation(() => hang);
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
 
     render(
       <MemoryRouter
@@ -832,17 +833,17 @@ describe("DIDI-1082 shared load states behaviour", () => {
       </MemoryRouter>,
     );
 
+    const loadError = await screen.findByTestId("ex-review-item-load-error");
+    const retry = within(loadError).getByRole("button", { name: TRY_AGAIN });
+    await userEvent.click(retry);
+    expect(within(loadError).getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    rejectHang(new Error("fail again"));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+      expect(within(loadError).getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
     });
-    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
-    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
-    resolveHang(draftView);
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: TRYING_AGAIN }),
-      ).not.toBeInTheDocument();
-    });
+    expect(document.activeElement).toBe(
+      within(loadError).getByRole("button", { name: TRY_AGAIN }),
+    );
     expect(getRequest).toHaveBeenCalledTimes(2);
   });
 
