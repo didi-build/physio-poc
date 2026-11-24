@@ -94,11 +94,6 @@ describe("DIDI-1283 public link print fixture matches row markup", () => {
   });
 });
 
-function gridColumnStartsAtOne(gridColumn: string): boolean {
-  const start = gridColumn.split("/")[0]?.trim() ?? "";
-  return start === "1";
-}
-
 describe.each([390, 800])(
   "DIDI-1283 public link print column stack at %i px",
   (widthPx) => {
@@ -115,6 +110,24 @@ describe.each([390, 800])(
       await closeServer();
     });
 
+    it("places title and description in print column 1", async () => {
+      const browser = await chromium.launch();
+      const page = await browser.newPage({ viewport: { width: widthPx, height: 900 } });
+      try {
+        await page.goto(`${baseUrl}/test/fixtures/public-link-print-grid/index.html`, {
+          waitUntil: "networkidle",
+        });
+        await page.emulateMedia({ media: "print" });
+        const layout = await readPrintColumnStack(page);
+        expect(layout).not.toBeNull();
+        expect(layout!.titleGridColumn).toBe("1");
+        expect(layout!.descriptionGridColumn).toBe("1");
+      } finally {
+        await page.close();
+        await browser.close();
+      }
+    });
+
     it("keeps description directly under the title in print layout", async () => {
       const browser = await chromium.launch();
       const page = await browser.newPage({ viewport: { width: widthPx, height: 900 } });
@@ -128,8 +141,6 @@ describe.each([390, 800])(
         expect(layout!.descriptionBelowTitle).toBe(true);
         expect(layout!.descriptionAboveStillBottom).toBe(true);
         expect(layout!.descriptionSameColumn).toBe(true);
-        expect(gridColumnStartsAtOne(layout!.titleGridColumn)).toBe(true);
-        expect(gridColumnStartsAtOne(layout!.descriptionGridColumn)).toBe(true);
         expect(layout!.startStillGridRow).toBe("1 / span 5");
         expect(layout!.endStillGridRow).toBe("1 / span 5");
       } finally {
