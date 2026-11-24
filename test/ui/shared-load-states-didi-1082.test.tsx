@@ -109,6 +109,41 @@ import {
 } from "../../src/ui/shared-load-states/SharedLoadStates.js";
 import { isLoadNotFoundError } from "../../src/ui/shared-load-states/classify-load-error.js";
 import { AUTO_SAVE_NOT_SAVED } from "../../src/ui/copy/programs.js";
+import type { ExerciseRequestDraftView } from "../../src/services/exercise-requests/types.js";
+
+function exerciseRequestDraftReviewFixture(
+  overrides: Partial<ExerciseRequestDraftView> = {},
+): ExerciseRequestDraftView {
+  return {
+    request_id: "req-1",
+    requested_name: "Heel slide",
+    exercise_note: null,
+    status: "drafting",
+    requested_by: FAKE_UI_PRACTITIONER_ID,
+    requested_by_email: "kojo@example.com",
+    exercise_id: "ex-1",
+    generation: { generation_in_progress: false, first_draft_complete: true },
+    draft: {
+      exercise_version_id: "ver-1",
+      version_number: 1,
+      title: "Heel slide",
+      description: "Desc",
+      equipment: "",
+      starting_position: "",
+      ending_position: "",
+      steps: "",
+      common_mistakes: "",
+      regressions: "",
+      progressions: "",
+      precautions: "",
+      cue_stretching: null,
+      cue_isometric: null,
+      cue_concentric: null,
+      cue_eccentric: null,
+    },
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -755,32 +790,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("B11 void mutant killer: draft review item load Try again shows Trying again while refresh promise is in flight", async () => {
-    const draftView = {
-      request_id: "req-1",
-      requested_name: "Heel slide",
-      exercise_note: null,
-      status: "drafting" as const,
-      requested_by: FAKE_UI_PRACTITIONER_ID,
-      requested_by_email: "kojo@example.com",
-      exercise_id: "ex-1",
-      draft: {
-        exercise_version_id: "ver-1",
-        version_number: 1,
-        title: "Heel slide",
-        description: "Desc",
-        equipment: "",
-        starting_position: "",
-        steps: "",
-        common_mistakes: "",
-        regressions: "",
-        progressions: "",
-        precautions: "",
-        cue_stretching: null,
-        cue_isometric: null,
-        cue_concentric: null,
-        cue_eccentric: null,
-      },
-    };
+    const draftView = exerciseRequestDraftReviewFixture();
     let resolveHang!: (value: typeof draftView) => void;
     const hang = new Promise<typeof draftView>((resolve) => {
       resolveHang = resolve;
@@ -1305,32 +1315,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("DraftReview approve retry calls approveRequest API twice on Try again", async () => {
-    const draftView = {
-      request_id: "req-1",
-      requested_name: "Heel slide",
-      exercise_note: null,
-      status: "drafting" as const,
-      requested_by: FAKE_UI_PRACTITIONER_ID,
-      requested_by_email: "kojo@example.com",
-      exercise_id: "ex-1",
-      draft: {
-        exercise_version_id: "ver-1",
-        version_number: 1,
-        title: "Heel slide",
-        description: "Desc",
-        equipment: "",
-        starting_position: "",
-        steps: "",
-        common_mistakes: "",
-        regressions: "",
-        progressions: "",
-        precautions: "",
-        cue_stretching: null,
-        cue_isometric: null,
-        cue_concentric: null,
-        cue_eccentric: null,
-      },
-    };
+    const draftView = exerciseRequestDraftReviewFixture();
     const approveRequest = vi
       .fn()
       .mockRejectedValueOnce(new Error("fail"))
@@ -1543,32 +1528,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("DraftReview daily_limit_reached from media client does not show regenerate failed-save alert", async () => {
-    const draftView = {
-      request_id: "req-1",
-      requested_name: "Heel slide",
-      exercise_note: null,
-      status: "drafting" as const,
-      requested_by: FAKE_UI_PRACTITIONER_ID,
-      requested_by_email: "kojo@example.com",
-      exercise_id: "ex-1",
-      draft: {
-        exercise_version_id: "ver-1",
-        version_number: 1,
-        title: "Heel slide",
-        description: "Desc",
-        equipment: "",
-        starting_position: "",
-        steps: "",
-        common_mistakes: "",
-        regressions: "",
-        progressions: "",
-        precautions: "",
-        cue_stretching: null,
-        cue_isometric: null,
-        cue_concentric: null,
-        cue_eccentric: null,
-      },
-    };
+    const draftView = exerciseRequestDraftReviewFixture();
     const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path =
         typeof input === "string"

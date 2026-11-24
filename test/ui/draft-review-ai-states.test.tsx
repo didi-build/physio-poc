@@ -61,6 +61,7 @@ import { ExerciseRequestsApiProvider } from "../../src/ui/api/exercise-requests-
 import { ExerciseMediaApiProvider } from "../../src/ui/api/exercise-media-context.js";
 import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { FAKE_UI_PRACTITIONER_ID } from "./fake-practitioner-session-fixture.js";
+import { FAILED_REGENERATE_IMAGES } from "../../src/ui/copy/shared-load-states.js";
 import { mockMinWidth1024 } from "./setup.js";
 import type { ExerciseRequestDraftView } from "../../src/services/exercise-requests/types.js";
 
@@ -439,8 +440,8 @@ describe.each([390, 1280])("Draft review AI states at %i px (DIDI-1210)", (width
     await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Regenerate images" }));
-    const alert = await screen.findByRole("alert");
-    expect(within(alert).getByText(PIN_G2)).toBeTruthy();
+    const alert = await screen.findByTestId("request-regenerate-media-failed-save-alert");
+    expect(within(alert).getByText(FAILED_REGENERATE_IMAGES)).toBeTruthy();
   });
 
   it("surfaces regenerate media daily cap with pinned copy", async () => {

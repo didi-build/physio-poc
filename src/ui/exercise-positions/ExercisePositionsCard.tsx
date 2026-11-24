@@ -231,7 +231,7 @@ export function ExercisePositionsCard({
   const headingId = useId();
   const helperId = useId();
   const [editing, setEditing] = useState<EditingField>(null);
-  const endingMissing = endingPosition.trim().length === 0;
+  const endingMissing = (endingPosition ?? "").trim().length === 0;
   const showEndingEmpty = endingMissing && !editable && editing !== "ending";
   const showEndingEmptyEditable = endingMissing && editable && editing !== "ending";
 

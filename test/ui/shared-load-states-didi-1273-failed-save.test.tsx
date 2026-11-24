@@ -156,6 +156,7 @@ const draftReviewView = {
   requested_by: FAKE_UI_PRACTITIONER_ID,
   requested_by_email: "kojo@example.com",
   exercise_id: "ex-1",
+  generation: { generation_in_progress: false, first_draft_complete: true },
   draft: {
     exercise_version_id: "ver-1",
     version_number: 1,
@@ -163,6 +164,7 @@ const draftReviewView = {
     description: "Desc",
     equipment: "",
     starting_position: "",
+    ending_position: "",
     steps: "",
     common_mistakes: "",
     regressions: "",

@@ -326,11 +326,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [requestId]);
 
   useEffect(() => {
-    const persisted = view?.generation.generation_failure ?? null;
+    const persisted = view?.generation?.generation_failure ?? null;
     if (persisted) {
       setGenerationFailure(persisted);
     }
-  }, [view?.generation.generation_failure]);
+  }, [view?.generation?.generation_failure]);
 
   useEffect(() => {
     if (draftNotFoundWithdrawn) {
@@ -598,6 +598,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         (error.detail.status === 429 || error.detail.error === "daily_limit_reached")
       ) {
         await refreshQuota({ force: true });
+        setRegenError(mapRegenMediaError(error));
         return;
       }
       const imageOnlyRegen =
