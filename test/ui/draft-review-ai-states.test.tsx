@@ -440,7 +440,9 @@ describe.each([390, 1280])("Draft review AI states at %i px (DIDI-1210)", (width
     await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "Regenerate images" }));
-    const alert = await screen.findByTestId("request-regenerate-media-failed-save-alert");
+    const alert = await screen.findByTestId(
+      "request-regenerate-media-failed-save-alert",
+    );
     expect(within(alert).getByText(FAILED_REGENERATE_IMAGES)).toBeTruthy();
   });
 
