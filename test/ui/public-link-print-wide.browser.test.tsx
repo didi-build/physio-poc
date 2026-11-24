@@ -138,6 +138,24 @@ describe("DIDI-1296 public link print text column at wide print width", () => {
     await closeServer();
   });
 
+  it.each([390, 800, 1280] as const)(
+    "places title, description, positions, dose and note in print column 1 at %i px",
+    async (widthPx) => {
+      const browser = await chromium.launch();
+      const page = await browser.newPage();
+      try {
+        await openFixture(page, baseUrl, widthPx);
+        await page.emulateMedia({ media: "print" });
+        const columnStarts = await readPrintTextColumnStarts(page);
+        expect(columnStarts).not.toBeNull();
+        expect(columnStarts).toEqual(["1", "1", "1", "1", "1"]);
+      } finally {
+        await page.close();
+        await browser.close();
+      }
+    },
+  );
+
   it("does not stack title, description, positions, dose and note at 1280 px print", async () => {
     const browser = await chromium.launch();
     const page = await browser.newPage();
@@ -235,23 +253,6 @@ describe("DIDI-1296 public link print text column at wide print width", () => {
     },
   );
 
-  it.each([390, 800, 1280] as const)(
-    "places title, description, positions, dose and note in print column 1 at %i px",
-    async (widthPx) => {
-      const browser = await chromium.launch();
-      const page = await browser.newPage();
-      try {
-        await openFixture(page, baseUrl, widthPx);
-        await page.emulateMedia({ media: "print" });
-        const columnStarts = await readPrintTextColumnStarts(page);
-        expect(columnStarts).not.toBeNull();
-        expect(columnStarts).toEqual(["1", "1", "1", "1", "1"]);
-      } finally {
-        await page.close();
-        await browser.close();
-      }
-    },
-  );
 });
 
 describe("DIDI-1296 public link screen layout at 1024 px and above", () => {
