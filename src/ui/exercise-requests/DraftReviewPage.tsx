@@ -70,7 +70,6 @@ import {
 } from "../copy/exercise-requests.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
-  DRAFT_ITEM_LOAD_BACK,
   DRAFT_ITEM_LOAD_HINT,
   DRAFT_ITEM_LOAD_TITLE,
   LOAD_TRYING_AGAIN,
