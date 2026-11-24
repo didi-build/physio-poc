@@ -420,12 +420,6 @@
     grid-column: 1;
   }
 
-  .link-page-row-description--grid,
-  .link-page-positions--grid {
-    grid-area: auto;
-    grid-column: 1;
-  }
-
   .link-page-row-title {
     font-size: 15px;
     font-weight: 600;

@@ -93,6 +93,48 @@ async function readPrintTextColumnStarts(page: Page): Promise<string[] | null> {
   );
 }
 
+type PrintBesideStartStillLayout = {
+  textRights: number[];
+  startStillLeft: number;
+  titleTop: number;
+  startStillTop: number;
+};
+
+async function readPrintBesideStartStillLayout(
+  page: Page,
+): Promise<PrintBesideStartStillLayout | null> {
+  return page.evaluate(
+    (selectors) => {
+      const startStill = document.querySelector(
+        ".link-page-print-still--start",
+      ) as HTMLElement | null;
+      const title = document.querySelector(
+        ".link-page-row-title",
+      ) as HTMLElement | null;
+      if (!startStill || !title) {
+        return null;
+      }
+      const nodes = selectors
+        .map((selector) => document.querySelector(selector))
+        .filter((node): node is HTMLElement => node instanceof HTMLElement);
+      if (nodes.length !== selectors.length) {
+        return null;
+      }
+      const startStillRect = startStill.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
+      return {
+        textRights: nodes.map((node) => node.getBoundingClientRect().right),
+        startStillLeft: startStillRect.left,
+        titleTop: titleRect.top,
+        startStillTop: startStillRect.top,
+      };
+    },
+    [...TEXT_COLUMN_SELECTOR],
+  );
+}
+
+const PRINT_WIDTHS_PX = [390, 800, 1024, 1280] as const;
+
 describe("DIDI-1296 public link print wide fixture matches row markup", () => {
   afterAll(() => {
     cleanup();
@@ -138,7 +180,7 @@ describe("DIDI-1296 public link print text column at wide print width", () => {
     await closeServer();
   });
 
-  it.each([390, 800, 1280] as const)(
+  it.each(PRINT_WIDTHS_PX)(
     "places title, description, positions, dose and note in print column 1 at %i px",
     async (widthPx) => {
       const browser = await chromium.launch();
@@ -149,6 +191,30 @@ describe("DIDI-1296 public link print text column at wide print width", () => {
         const columnStarts = await readPrintTextColumnStarts(page);
         expect(columnStarts).not.toBeNull();
         expect(columnStarts).toEqual(["1", "1", "1", "1", "1"]);
+      } finally {
+        await page.close();
+        await browser.close();
+      }
+    },
+  );
+
+  it.each(PRINT_WIDTHS_PX)(
+    "keeps the text column left of the start still and title aligned in print at %i px",
+    async (widthPx) => {
+      const browser = await chromium.launch();
+      const page = await browser.newPage();
+      try {
+        await openFixture(page, baseUrl, widthPx);
+        await page.emulateMedia({ media: "print" });
+        const beside = await readPrintBesideStartStillLayout(page);
+        expect(beside).not.toBeNull();
+        for (const right of beside!.textRights) {
+          expect(right).toBeLessThanOrEqual(beside!.startStillLeft + 0.5);
+        }
+        expect(beside!.titleTop).toBeCloseTo(beside!.startStillTop, 0);
+        expect(Math.abs(beside!.titleTop - beside!.startStillTop)).toBeLessThanOrEqual(
+          1,
+        );
       } finally {
         await page.close();
         await browser.close();
