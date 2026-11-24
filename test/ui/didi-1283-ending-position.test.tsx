@@ -48,6 +48,7 @@ const PIN_RESET_END_ARIA = "Reset Ending position to the library version";
 const PIN_USE_LIBRARY = "Use library version";
 const PIN_KEEP_MINE = "Keep mine";
 const PIN_LIBRARY_NOW_LINE = "Library now: Library start.";
+const PIN_CONFLICT_TITLE = "The library changed this after you edited it";
 import { userEvent } from "@testing-library/user-event";
 import "../../src/ui/styles/exercise-library.css";
 import "../../src/ui/styles/public-link-page.css";
@@ -709,6 +710,10 @@ describe("DIDI-1283 Edit my copy", () => {
     ).toBeTruthy();
 
     const card = screen.getByTestId("exercise-positions-card");
+    const conflictTitle = within(card).queryByText(PIN_CONFLICT_TITLE);
+    expect(conflictTitle).not.toBeNull();
+    expect(conflictTitle!.textContent?.trim()).toBe(PIN_CONFLICT_TITLE);
+    expect(conflictTitle!.className).toContain("ex-conflict-title");
     const conflictBox = within(card).queryByText(PIN_LIBRARY_NOW_LINE);
     expect(conflictBox).not.toBeNull();
     expect(conflictBox!.textContent?.trim()).toBe(PIN_LIBRARY_NOW_LINE);

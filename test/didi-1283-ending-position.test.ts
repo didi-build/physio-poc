@@ -251,13 +251,23 @@ describe("DIDI-1283 ending_position", () => {
     const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
       draftGenerator: fakeExerciseDraftGenerator,
     });
-    await expect(
-      service.updateDraft({
-        practitionerId: practitioner,
-        requestId,
-        patch: { ending_position: "Knee bent." },
-      }),
-    ).resolves.toBeDefined();
+    const call = service.updateDraft({
+      practitionerId: practitioner,
+      requestId,
+      patch: { ending_position: "Knee bent." },
+    });
+    const outcome = await call.then(
+      (v) => ({ ok: true as const, v }),
+      (e) => ({ ok: false as const, e }),
+    );
+    expect(outcome.ok ? null : String(outcome.e)).toBeNull();
+    const view = outcome.ok ? outcome.v : null;
+    expect(view?.draft?.ending_position).toBe("Knee bent.");
+    const stored = await storage.first<{ ending_position: string }>(
+      "SELECT ending_position FROM exercise_versions WHERE id = ?",
+      [versionId],
+    );
+    expect(stored?.ending_position).toBe("Knee bent.");
     expect(genSpy).not.toHaveBeenCalled();
     genSpy.mockRestore();
   });
@@ -955,12 +965,18 @@ describe("DIDI-1283 ending_position", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         draftGenerator: fakeExerciseDraftGenerator,
       });
-      const view = await service.updateDraft({
+      const call = service.updateDraft({
         practitionerId: practitioner,
         requestId,
         patch: { ending_position: "  Trimmed end.  " },
       });
-      expect(view.draft?.ending_position).toBe("Trimmed end.");
+      const outcome = await call.then(
+        (v) => ({ ok: true as const, v }),
+        (e) => ({ ok: false as const, e }),
+      );
+      expect(outcome.ok ? null : String(outcome.e)).toBeNull();
+      const view = outcome.ok ? outcome.v : null;
+      expect(view?.draft?.ending_position).toBe("Trimmed end.");
     } finally {
       storage.close();
     }

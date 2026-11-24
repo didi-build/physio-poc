@@ -94,7 +94,7 @@ describe("DIDI-1283 public link print fixture matches row markup", () => {
   });
 });
 
-describe.each([390, 1280])(
+describe.each([390, 800])(
   "DIDI-1283 public link print column stack at %i px",
   (widthPx) => {
     let baseUrl = "";
@@ -108,6 +108,24 @@ describe.each([390, 1280])(
 
     afterAll(async () => {
       await closeServer();
+    });
+
+    it("places title and description in print column 1", async () => {
+      const browser = await chromium.launch();
+      const page = await browser.newPage({ viewport: { width: widthPx, height: 900 } });
+      try {
+        await page.goto(`${baseUrl}/test/fixtures/public-link-print-grid/index.html`, {
+          waitUntil: "networkidle",
+        });
+        await page.emulateMedia({ media: "print" });
+        const layout = await readPrintColumnStack(page);
+        expect(layout).not.toBeNull();
+        expect(layout!.titleGridColumn).toBe("1");
+        expect(layout!.descriptionGridColumn).toBe("1");
+      } finally {
+        await page.close();
+        await browser.close();
+      }
     });
 
     it("keeps description directly under the title in print layout", async () => {
