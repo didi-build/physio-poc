@@ -94,7 +94,12 @@ describe("DIDI-1283 public link print fixture matches row markup", () => {
   });
 });
 
-describe.each([390, 1280])(
+function gridColumnStartsAtOne(gridColumn: string): boolean {
+  const start = gridColumn.split("/")[0]?.trim() ?? "";
+  return start === "1";
+}
+
+describe.each([390, 800])(
   "DIDI-1283 public link print column stack at %i px",
   (widthPx) => {
     let baseUrl = "";
@@ -123,6 +128,8 @@ describe.each([390, 1280])(
         expect(layout!.descriptionBelowTitle).toBe(true);
         expect(layout!.descriptionAboveStillBottom).toBe(true);
         expect(layout!.descriptionSameColumn).toBe(true);
+        expect(gridColumnStartsAtOne(layout!.titleGridColumn)).toBe(true);
+        expect(gridColumnStartsAtOne(layout!.descriptionGridColumn)).toBe(true);
         expect(layout!.startStillGridRow).toBe("1 / span 5");
         expect(layout!.endStillGridRow).toBe("1 / span 5");
       } finally {
