@@ -489,6 +489,21 @@ describe("DIDI-1283 Edit my copy", () => {
     document.body.removeChild(container);
   });
 
+  it("shows Add ending position control when ending is empty and editable", () => {
+    render(
+      <ExercisePositionsCard
+        startingPosition={START_TEXT}
+        endingPosition=""
+        showThumbnails={false}
+        editable
+        showHelper={false}
+        onSaveStarting={async () => {}}
+        onSaveEnding={async () => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: PIN_E7 })).toBeTruthy();
+  });
+
   it("shows generating read-only empty ending as E6 only (no E7, no Edit)", () => {
     render(
       <ExercisePositionsCard

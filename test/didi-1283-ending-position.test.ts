@@ -251,11 +251,13 @@ describe("DIDI-1283 ending_position", () => {
     const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
       draftGenerator: fakeExerciseDraftGenerator,
     });
-    await service.updateDraft({
-      practitionerId: practitioner,
-      requestId,
-      patch: { ending_position: "Knee bent." },
-    });
+    await expect(
+      service.updateDraft({
+        practitionerId: practitioner,
+        requestId,
+        patch: { ending_position: "Knee bent." },
+      }),
+    ).resolves.toBeDefined();
     expect(genSpy).not.toHaveBeenCalled();
     genSpy.mockRestore();
   });
