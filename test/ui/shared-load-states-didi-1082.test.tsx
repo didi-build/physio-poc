@@ -836,7 +836,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
     const loadError = await screen.findByTestId("ex-review-item-load-error");
     const retry = within(loadError).getByRole("button", { name: TRY_AGAIN });
     await userEvent.click(retry);
-    expect(within(loadError).getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    expect(
+      within(loadError).getByRole("button", { name: TRYING_AGAIN }),
+    ).toBeDisabled();
     rejectHang(new Error("fail again"));
     await waitFor(() => {
       expect(within(loadError).getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
