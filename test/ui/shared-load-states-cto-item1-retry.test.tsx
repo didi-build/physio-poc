@@ -284,6 +284,7 @@ function builderProgram(): ProgramBuilderView {
     last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
+    type_mismatch_placeholder_count: 0,
   };
 }
 

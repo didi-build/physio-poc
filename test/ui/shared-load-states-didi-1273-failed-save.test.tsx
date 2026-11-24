@@ -251,6 +251,7 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
+    type_mismatch_placeholder_count: 0,
     ...overrides,
   };
 }
@@ -268,6 +269,7 @@ function programsStubs(overrides: Partial<ProgramsClient> = {}): ProgramsClient 
     last_sent_at: null,
     deleted_at: null,
     routine_origin: null,
+    type_mismatch_placeholder_count: 0,
   };
   const program = builderView();
   const shareView: ProgramShareConnectorView = {

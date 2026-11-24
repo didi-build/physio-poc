@@ -94,6 +94,8 @@ export const AUTO_SAVE_SAVED = "Saved";
 export const AUTO_SAVE_NOT_SAVED = "Not saved";
 export const AUTO_SAVE_FAILURE_HELPER = "Your latest changes aren't saved yet.";
 export const AUTO_SAVE_TRY_AGAIN_ARIA = "Try saving again";
+/** Visible retry label (Designer pick DIDI-594 a887af34; matches shared TRY_AGAIN). */
+export const AUTO_SAVE_TRY_AGAIN = "Try again";
 
 export const LEAVE_TITLE = "Leave without saving?";
 export const LEAVE_BODY =

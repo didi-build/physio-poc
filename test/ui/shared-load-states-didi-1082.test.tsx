@@ -1421,6 +1421,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
       last_sent_at: null,
       deleted_at: null,
       routine_origin: null,
+      type_mismatch_placeholder_count: 0,
     };
     const shareView: ProgramShareConnectorView = {
       display_state: "draft_only",
