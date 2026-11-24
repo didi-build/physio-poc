@@ -73,11 +73,11 @@ describe("exercise media QA round 1 (integration and unit)", () => {
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
-          title, description, equipment, starting_position, steps,
+          title, description, equipment, starting_position, ending_position, steps,
           common_mistakes, regressions, progressions, precautions,
           cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
           media_set_id, change_summary, created_at
-        ) VALUES (${Array(22).fill("?").join(", ")})`,
+        ) VALUES (${Array(23).fill("?").join(", ")})`,
         versionInsertBindings({
           id: approvedVersionId,
           exercise_id: exerciseId,
@@ -141,11 +141,11 @@ describe("exercise media QA round 1 (integration and unit)", () => {
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
-          title, description, equipment, starting_position, steps,
+          title, description, equipment, starting_position, ending_position, steps,
           common_mistakes, regressions, progressions, precautions,
           cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
           media_set_id, change_summary, created_at
-        ) VALUES (${Array(22).fill("?").join(", ")})`,
+        ) VALUES (${Array(23).fill("?").join(", ")})`,
         versionInsertBindings({
           id: draftVersionId,
           exercise_id: exerciseId,
@@ -198,11 +198,11 @@ describe("exercise media QA round 1 (integration and unit)", () => {
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
-          title, description, equipment, starting_position, steps,
+          title, description, equipment, starting_position, ending_position, steps,
           common_mistakes, regressions, progressions, precautions,
           cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
           media_set_id, change_summary, created_at
-        ) VALUES (${Array(22).fill("?").join(", ")})`,
+        ) VALUES (${Array(23).fill("?").join(", ")})`,
         versionInsertBindings({
           id: quotaVersionId,
           exercise_id: exerciseId,

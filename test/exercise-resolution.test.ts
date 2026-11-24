@@ -47,6 +47,8 @@ describe("resolveTextField (unit)", () => {
   const version: LibraryVersionText = {
     title: "Library title",
     description: "Library description",
+    starting_position: "",
+    ending_position: "",
     cue_stretching: "Library stretch cue",
     cue_isometric: null,
     cue_concentric: null,

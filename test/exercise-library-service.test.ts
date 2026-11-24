@@ -256,6 +256,8 @@ describe("resolveTextField (unit)", () => {
         {
           title: "Library title",
           description: "",
+          starting_position: "",
+          ending_position: "",
           cue_stretching: null,
           cue_isometric: null,
           cue_concentric: null,

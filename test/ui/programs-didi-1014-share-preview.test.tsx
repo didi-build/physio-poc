@@ -20,6 +20,9 @@ const preview: PublicShareLinkOpenView = {
     {
       position: 0,
       title: "Heel slide",
+      description: "",
+      starting_position: "",
+      ending_position: "",
       prescription_type: "stretching",
       params: { hold_s: 30 },
       note: "Slow and controlled",
@@ -28,6 +31,9 @@ const preview: PublicShareLinkOpenView = {
     {
       position: 1,
       title: "Quad set",
+      description: "",
+      starting_position: "",
+      ending_position: "",
       prescription_type: "isometric",
       params: { hold_s: 10 },
       note: null,

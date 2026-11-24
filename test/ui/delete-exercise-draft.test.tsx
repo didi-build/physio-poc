@@ -228,6 +228,7 @@ describe("Delete exercise-request draft UI (DIDI-1278)", () => {
               description: "d",
               equipment: "e",
               starting_position: "s",
+              ending_position: "",
               steps: "st",
               common_mistakes: "c",
               regressions: "r",

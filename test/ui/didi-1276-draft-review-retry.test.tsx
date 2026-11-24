@@ -53,6 +53,7 @@ function draftWithText() {
       description: "Has text",
       equipment: "",
       starting_position: "Stand",
+      ending_position: "",
       steps: "Step one",
       common_mistakes: "",
       regressions: "",

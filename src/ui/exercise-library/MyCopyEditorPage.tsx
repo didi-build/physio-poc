@@ -11,6 +11,8 @@ import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import { useToast } from "../components/Toast.js";
+import { STARTING_POSITION } from "../copy/exercise-requests.js";
+import { ENDING_POSITION_LABEL } from "../copy/ending-position.js";
 import {
   DESCRIPTION_FIELD,
   KEEP_MINE,
@@ -36,10 +38,21 @@ import {
   ExerciseLibraryBusyState,
   ExerciseLibraryDetailErrorSlot,
 } from "./ExerciseLibraryStates.js";
+import { ExercisePositionsCard } from "../exercise-positions/ExercisePositionsCard.js";
+import type { PositionsCopyFieldMeta } from "../exercise-positions/ExercisePositionsCard.js";
+
+const POSITION_OVERRIDE_KEYS = ["starting_position", "ending_position"] as const;
+
+const TEXT_SECTION_OVERRIDE_KEYS = TEXT_OVERRIDE_KEYS.filter(
+  (key) =>
+    !POSITION_OVERRIDE_KEYS.includes(key as (typeof POSITION_OVERRIDE_KEYS)[number]),
+);
 
 const FIELD_LABELS: Record<TextOverrideKey, string> = {
   title: TITLE_FIELD,
   description: DESCRIPTION_FIELD,
+  starting_position: STARTING_POSITION,
+  ending_position: ENDING_POSITION_LABEL,
   cue_stretching: cueFieldLabel("Stretching"),
   cue_isometric: cueFieldLabel("Isometric"),
   cue_concentric: cueFieldLabel("Concentric"),
@@ -110,6 +123,45 @@ export function MyCopyEditorPage() {
     });
   };
 
+  const savePositionOverride = (
+    key: "starting_position" | "ending_position",
+    value: string,
+  ) => {
+    return client
+      .updateMyCopy(exerciseId, { text_overrides: { [key]: value } })
+      .then(() => refresh({ force: true }));
+  };
+
+  const positionCopyMeta = (
+    key: "starting_position" | "ending_position",
+  ): PositionsCopyFieldMeta | undefined => {
+    const field = details.resolved_text.find((entry) => entry.key === key);
+    if (!field) {
+      return undefined;
+    }
+    return {
+      edited: field.resolved !== field.library_value,
+      libraryUpdated: field.library_updated,
+      libraryValue: field.library_value,
+      onReset: () => {
+        void client
+          .updateMyCopy(exerciseId, { use_library_version: [key] })
+          .then(() => refresh({ force: true }));
+      },
+      onUseLibrary: () => {
+        applyUseLibrary(key);
+      },
+      onKeepMine: () => {
+        applyKeepMine(key);
+      },
+    };
+  };
+
+  const startingField = details.resolved_text.find(
+    (f) => f.key === "starting_position",
+  );
+  const endingField = details.resolved_text.find((f) => f.key === "ending_position");
+
   const onRemove = () => {
     const name = titleField?.resolved ?? details.library.title;
     void client.removeFromMyExercises(exerciseId).then(({ undo }) => {
@@ -139,9 +191,27 @@ export function MyCopyEditorPage() {
       <p className="ex-link-btn">{MY_COPY_LIBRARY_HINT}</p>
       <p className="ex-info-banner">{MY_COPY_PROGRAMS_HINT}</p>
 
+      {startingField || endingField ? (
+        <ExercisePositionsCard
+          startingPosition={
+            startingField?.resolved ?? details.library.starting_position ?? ""
+          }
+          endingPosition={
+            endingField?.resolved ?? details.library.ending_position ?? ""
+          }
+          showThumbnails={false}
+          editable
+          showHelper
+          startingCopyMeta={positionCopyMeta("starting_position")}
+          endingCopyMeta={positionCopyMeta("ending_position")}
+          onSaveStarting={(value) => savePositionOverride("starting_position", value)}
+          onSaveEnding={(value) => savePositionOverride("ending_position", value)}
+        />
+      ) : null}
+
       <div className="ex-detail-panel">
         <h2>{TEXT_SECTION}</h2>
-        {TEXT_OVERRIDE_KEYS.map((key) => {
+        {TEXT_SECTION_OVERRIDE_KEYS.map((key) => {
           const field = details.resolved_text.find((entry) => entry.key === key);
           if (!field) {
             return null;

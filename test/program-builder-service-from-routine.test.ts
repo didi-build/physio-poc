@@ -1901,31 +1901,43 @@ describe("ProgramBuilderService program from routine (DIDI-1019)", () => {
       const textSnapshotA1 = {
         title: "Row A v1",
         description: "Fixture desc A v1",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue A v1",
       };
       const textSnapshotA2 = {
         title: "Row A v2",
         description: "Fixture desc A v2",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue A v2",
       };
       const textSnapshotB1 = {
         title: "Row B v1",
         description: "Fixture desc B v1",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue B v1 isometric",
       };
       const textSnapshotB2 = {
         title: "Row B v2",
         description: "Fixture desc B v2",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue B v2 concentric",
       };
       const textSnapshotC1 = {
         title: "Row C v1",
         description: "Fixture desc C v1",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue C v1",
       };
       const textSnapshotC2 = {
         title: "Row C v2",
         description: "Fixture desc C v2",
+        starting_position: "",
+        ending_position: "",
         cue: "Fixture cue C v2",
       };
       await rvRows.replaceDraftRow({

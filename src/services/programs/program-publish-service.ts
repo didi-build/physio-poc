@@ -41,11 +41,13 @@ import {
   type ShareLinkRecord,
 } from "../../storage/repositories/programs.js";
 import { PractitionersRepository } from "../../storage/repositories/exercise-data.js";
+import { ExerciseLibraryReadRepository } from "../../storage/repositories/exercise-library-read.js";
 import {
   ProgramBuilderService,
   computeShareLinkStatus,
 } from "./program-builder-service.js";
 import { computeProgramPublishChangeLines } from "./program-publish-changes.js";
+import { resolvePatientTextFromProgramSnapshot } from "./row-resolution.js";
 import type { ProgramBuilderView, ShareLinkStatus } from "./types.js";
 import type { GetProgramDisplayState } from "../../mcp-connector/get-program-contract.js";
 import type { PublishedProgramSnapshot } from "../../domain/program-types.js";
@@ -104,6 +106,9 @@ export type ProgramShareConnectorView = {
 export type PublicShareLinkOpenRow = {
   position: number;
   title: string;
+  description: string;
+  starting_position: string;
+  ending_position: string;
   prescription_type: PublishedProgramSnapshot["rows"][number]["prescriptionType"];
   params: PublishedProgramSnapshot["rows"][number]["params"];
   note: string | null;
@@ -170,6 +175,7 @@ export class ProgramPublishService {
   private readonly programs: ProgramsRepository;
   private readonly links: ShareLinksRepository;
   private readonly practitioners: PractitionersRepository;
+  private readonly libraryRead: ExerciseLibraryReadRepository;
   private readonly builder: ProgramBuilderService;
 
   constructor(
@@ -180,6 +186,7 @@ export class ProgramPublishService {
     this.programs = new ProgramsRepository(sql);
     this.links = new ShareLinksRepository(sql);
     this.practitioners = new PractitionersRepository(sql);
+    this.libraryRead = new ExerciseLibraryReadRepository(sql);
     this.builder = new ProgramBuilderService(sql, now);
   }
 
@@ -480,9 +487,24 @@ export class ProgramPublishService {
           trimmed,
           exerciseVersionId,
         );
+        const pinnedVersion =
+          await this.libraryRead.getApprovedVersionById(exerciseVersionId);
+        const patientText = resolvePatientTextFromProgramSnapshot(
+          row.textSnapshot,
+          pinnedVersion
+            ? {
+                description: pinnedVersion.description,
+                starting_position: pinnedVersion.starting_position,
+                ending_position: pinnedVersion.ending_position,
+              }
+            : null,
+        );
         return {
           position: row.position,
           title: row.textSnapshot.title,
+          description: patientText.description,
+          starting_position: patientText.starting_position,
+          ending_position: patientText.ending_position,
           prescription_type: row.prescriptionType,
           params: row.params,
           note: row.note,

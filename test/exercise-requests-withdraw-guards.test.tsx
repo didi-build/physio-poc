@@ -711,6 +711,7 @@ describe("exercise request withdraw guards", () => {
         description: "Body",
         equipment: "",
         starting_position: "Stand",
+        ending_position: "",
         steps: "",
         common_mistakes: "",
         regressions: "",

@@ -25,6 +25,10 @@ import {
   type ExerciseMediaClient,
 } from "../../src/ui/api/exercise-media-client.js";
 import {
+  EDIT_ENDING_POSITION,
+  POSITIONS_HEADING,
+} from "../../src/ui/copy/ending-position.js";
+import {
   AI_DRAFTING,
   APPROVE,
   DAILY_LIMIT_REACHED,
@@ -90,6 +94,7 @@ function draftBody(
     description: "Description copy",
     equipment: "",
     starting_position: "On your back",
+    ending_position: "",
     steps: "",
     common_mistakes: "",
     regressions: "",
@@ -378,6 +383,9 @@ describe.each([390, 1280])("Draft review AI states at %i px (DIDI-1210)", (width
       );
     });
     expect(screen.queryByText(/AI image/i)).toBeNull();
+    expect(screen.getByTestId("exercise-positions-card")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: POSITIONS_HEADING })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: EDIT_ENDING_POSITION })).toBeNull();
   });
 
   it("enables Approve when the first draft is complete and shows the approved banner area", async () => {

@@ -223,6 +223,8 @@ function mapParamValidationError(err: unknown): never {
 function toLibraryVersionText(row: {
   title: string;
   description: string;
+  starting_position: string;
+  ending_position: string;
   cue_stretching: string | null;
   cue_isometric: string | null;
   cue_concentric: string | null;
@@ -231,6 +233,8 @@ function toLibraryVersionText(row: {
   return {
     title: row.title,
     description: row.description,
+    starting_position: row.starting_position,
+    ending_position: row.ending_position,
     cue_stretching: row.cue_stretching,
     cue_isometric: row.cue_isometric,
     cue_concentric: row.cue_concentric,
@@ -427,6 +431,7 @@ export class ExerciseLibraryService {
         description: version.description,
         equipment: version.equipment,
         starting_position: version.starting_position,
+        ending_position: version.ending_position,
         steps: version.steps,
         common_mistakes: version.common_mistakes,
         regressions: version.regressions,

@@ -60,6 +60,7 @@ const draftView = {
     description: "Desc",
     equipment: "",
     starting_position: "Supine",
+    ending_position: "",
     steps: "",
     common_mistakes: "",
     regressions: "",

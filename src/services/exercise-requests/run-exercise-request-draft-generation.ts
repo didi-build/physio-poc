@@ -41,7 +41,7 @@ export type DraftGenerationRunDeps = {
   versionMedia: ExerciseVersionMediaRepository;
 };
 
-function draftVersionNeedsTextRedraft(draft: {
+export function draftVersionNeedsTextRedraft(draft: {
   description: string;
   starting_position: string;
   steps: string;

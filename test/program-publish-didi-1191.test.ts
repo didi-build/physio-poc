@@ -40,7 +40,10 @@ const WEB_BASE = MCP_TEST_CONFIG.webAppBaseUrl;
 const PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 
 const OPEN_ROW_KEYS = [
+  "description",
+  "ending_position",
   "position",
+  "starting_position",
   "title",
   "prescription_type",
   "params",

@@ -62,7 +62,6 @@ import {
   REGENERATE_START_IMAGE,
   REQUESTED_BY,
   REVIEW_BACK,
-  STARTING_POSITION,
   SWIPE_END,
   TOAST_APPROVE_OTHER,
   TOAST_APPROVE_OWN,
@@ -82,6 +81,7 @@ import {
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
 import { DraftTextField } from "./DraftTextField.js";
+import { ExercisePositionsCard } from "../exercise-positions/ExercisePositionsCard.js";
 import { RegenerateMediaSheet, type RegeneratePick } from "./RegenerateMediaSheet.js";
 import { isPatientDetailNoteInvalidInput } from "./patient-detail-note-error.js";
 import { requestedByLabel } from "./requested-by-label.js";
@@ -272,6 +272,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         draftText &&
         (draftText.description.trim().length > 0 ||
           draftText.starting_position.trim().length > 0 ||
+          draftText.ending_position.trim().length > 0 ||
           draftText.steps.trim().length > 0),
       );
       setGenerationFailure(hasDraftText ? "images" : "text");
@@ -889,12 +890,18 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                       multiline
                       onSave={(value) => patchField({ description: value })}
                     />
-                    <h3 className="ex-review-section">{STARTING_POSITION}</h3>
-                    <DraftTextField
-                      label={STARTING_POSITION}
-                      value={draft.starting_position}
-                      multiline
-                      onSave={(value) => patchField({ starting_position: value })}
+                    <ExercisePositionsCard
+                      startingPosition={draft.starting_position}
+                      endingPosition={draft.ending_position}
+                      startStillSrc={startStillUrl}
+                      endStillSrc={endStillUrl}
+                      showThumbnails={Boolean(startStillUrl || endStillUrl)}
+                      editable
+                      showHelper
+                      onSaveStarting={(value) =>
+                        patchField({ starting_position: value })
+                      }
+                      onSaveEnding={(value) => patchField({ ending_position: value })}
                     />
                   </>
                 ) : (
@@ -909,8 +916,17 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
                       </span>
                       {draft.description}
                     </p>
-                    <h3 className="ex-review-section">{STARTING_POSITION}</h3>
-                    <p className="ex-draft-readonly">{draft.starting_position}</p>
+                    <ExercisePositionsCard
+                      startingPosition={draft.starting_position}
+                      endingPosition={draft.ending_position}
+                      startStillSrc={imagesGenerating ? null : (startStillUrl ?? null)}
+                      endStillSrc={imagesGenerating ? null : (endStillUrl ?? null)}
+                      showThumbnails={
+                        !imagesGenerating && Boolean(startStillUrl || endStillUrl)
+                      }
+                      editable={false}
+                      showHelper={false}
+                    />
                   </>
                 )}
                 <p className="ex-review-footnote">{APPROVE_FOOTNOTE_SHARED}</p>

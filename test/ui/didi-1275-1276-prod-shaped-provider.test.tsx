@@ -157,6 +157,7 @@ function installProdFetchStub() {
               description: "Filled",
               equipment: "",
               starting_position: "Stand",
+              ending_position: "",
               steps: "Step",
               common_mistakes: "",
               regressions: "",

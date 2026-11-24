@@ -759,6 +759,7 @@ describe("ExerciseRequestDraftGenerationWorkflow DeepInfra (real generator, fetc
     description: "Gentle knee flexion stretch.",
     equipment: "Mat",
     starting_position: "Supine on mat.",
+    ending_position: "Knee bent with heel slid toward the hip.",
     steps: "1. Bend\n2. Slide heel",
     common_mistakes: "Rushing",
     regressions: "Smaller range",
