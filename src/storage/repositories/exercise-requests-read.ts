@@ -14,6 +14,7 @@ export type InProgressRequestRow = {
   draft_title: string | null;
   created_at: string;
   updated_at: string;
+  draft_generation_locked_at: string | null;
 };
 
 export type SimilarInProgressRow = {
@@ -44,6 +45,7 @@ export type DraftVersionDetailRow = {
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;
@@ -77,7 +79,7 @@ export class ExerciseRequestsReadRepository {
   ): Promise<DraftVersionDetailRow | null> {
     return this.sql.first<DraftVersionDetailRow>(
       `
-      SELECT id, version_number, title, description, equipment, starting_position, steps,
+      SELECT id, version_number, title, description, equipment, starting_position, ending_position, steps,
              common_mistakes, regressions, progressions, precautions,
              cue_stretching, cue_isometric, cue_concentric, cue_eccentric
       FROM exercise_versions
@@ -108,7 +110,8 @@ export class ExerciseRequestsReadRepository {
           LIMIT 1
         ) AS draft_title,
         er.created_at,
-        er.updated_at
+        er.updated_at,
+        er.draft_generation_locked_at
       FROM exercise_requests er
       INNER JOIN practitioners p ON p.id = er.requested_by
       WHERE er.status IN ('open', 'drafting')

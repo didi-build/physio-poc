@@ -1,9 +1,9 @@
-import { HttpResponseError } from "./http-response-error.js";
 import { type ReadRequestOptions, readGetInit } from "./read-request-options.js";
 import type { RegenerationQuota } from "../../services/exercise-media/exercise-media-service.js";
 import type { MediaRegenerationScope } from "../../storage/repositories/exercise-media.js";
 import {
   EXERCISE_MEDIA_REGENERATION_QUOTA_PATH,
+  exerciseMediaDraftStillPath,
   exerciseMediaRegeneratePath,
 } from "../../exercise-media-api-paths.js";
 
@@ -18,16 +18,32 @@ export type ExerciseMediaClientOptions = {
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+export type ExerciseMediaClientError = {
+  status: number;
+  error?: string;
+  message?: string;
+};
+
+export class ExerciseMediaRequestError extends Error {
+  constructor(
+    message: string,
+    readonly detail: ExerciseMediaClientError,
+  ) {
+    super(message);
+    this.name = "ExerciseMediaRequestError";
+  }
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as {
-      message?: string;
       error?: string;
+      message?: string;
     };
-    throw new HttpResponseError(body.message ?? `Request failed (${response.status})`, {
-      code: body.error,
-      status: response.status,
-    });
+    throw new ExerciseMediaRequestError(
+      body.message ?? `Request failed (${response.status})`,
+      { status: response.status, error: body.error, message: body.message },
+    );
   }
   return (await response.json()) as T;
 }
@@ -71,6 +87,31 @@ export class ExerciseMediaClient {
         body: JSON.stringify({ scope: input.scope, note: input.note ?? null }),
       }),
     ).then((response) => readJson(response));
+  }
+
+  draftStillObjectUrl(
+    exerciseVersionId: string,
+    which: "start" | "end",
+    options?: ReadRequestOptions,
+  ): Promise<string | null> {
+    const path = exerciseMediaDraftStillPath(exerciseVersionId, which);
+    return this.fetchFn(path, readGetInit(options)).then(async (response) => {
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          message?: string;
+        };
+        throw new ExerciseMediaRequestError(
+          body.message ?? `Request failed (${response.status})`,
+          { status: response.status, error: body.error, message: body.message },
+        );
+      }
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    });
   }
 }
 

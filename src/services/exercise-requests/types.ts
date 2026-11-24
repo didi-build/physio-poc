@@ -66,12 +66,47 @@ export type InProgressRequestListItem = {
   exercise_id: string | null;
   draft_title: string | null;
   updated_at: string;
+  generation_in_progress: boolean;
 };
 
 export type InProgressRequestsResult = {
   requests: InProgressRequestListItem[];
   in_progress_count: number;
 };
+
+export type DraftGenerationFailurePhase = "text" | "images" | "daily" | null;
+
+export type ExerciseRequestDraftGenerationMeta = {
+  /** Fresh lock held by another tab or request. */
+  generation_in_progress: boolean;
+  /** True when draft text and both draft stills exist. */
+  first_draft_complete: boolean;
+  /** ISO timestamp of the active lock, when held (for UI escape timing). */
+  draft_generation_locked_at?: string | null;
+  /** Persisted terminal failure from the latest attempt, when idle. */
+  generation_failure?: DraftGenerationFailurePhase;
+  generation_failure_code?: string | null;
+};
+
+export type GenerateExerciseRequestDraftResult =
+  | { outcome: "complete"; view: ExerciseRequestDraftView }
+  | {
+      outcome: "in_progress";
+      view: ExerciseRequestDraftView;
+      started_elsewhere: boolean;
+    }
+  | { outcome: "text_failed"; error: string; view: null }
+  | { outcome: "images_failed"; view: ExerciseRequestDraftView }
+  | { outcome: "daily_limit"; view: ExerciseRequestDraftView };
+
+export type RegenerateDraftTextResult =
+  | { outcome: "complete"; view: ExerciseRequestDraftView }
+  | {
+      outcome: "in_progress";
+      view: ExerciseRequestDraftView;
+      started_elsewhere: boolean;
+    }
+  | { outcome: "text_failed"; error: string; view: ExerciseRequestDraftView | null };
 
 export type ExerciseRequestDraftView = {
   request_id: string;
@@ -81,6 +116,7 @@ export type ExerciseRequestDraftView = {
   requested_by: string;
   requested_by_email: string;
   exercise_id: string | null;
+  generation: ExerciseRequestDraftGenerationMeta;
   draft: {
     exercise_version_id: string;
     version_number: number;
@@ -88,6 +124,7 @@ export type ExerciseRequestDraftView = {
     description: string;
     equipment: string;
     starting_position: string;
+    ending_position: string;
     steps: string;
     common_mistakes: string;
     regressions: string;
@@ -98,6 +135,12 @@ export type ExerciseRequestDraftView = {
     cue_concentric: string | null;
     cue_eccentric: string | null;
   } | null;
+};
+
+export type WithdrawExerciseRequestResult = {
+  request_id: string;
+  status: "withdrawn";
+  already_withdrawn: boolean;
 };
 
 export type ApproveExerciseRequestResult = {
@@ -115,6 +158,7 @@ export type DraftFieldPatch = Partial<{
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;

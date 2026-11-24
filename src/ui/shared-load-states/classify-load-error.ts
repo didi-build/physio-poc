@@ -1,3 +1,5 @@
+import { ExerciseMediaRequestError } from "../api/exercise-media-client.js";
+import { ExerciseRequestsRequestError } from "../api/exercise-requests-client.js";
 import { HttpResponseError } from "../api/http-response-error.js";
 
 /** Distinguish missing resource from transport/load failure (spec not-found vs item error). */
@@ -18,6 +20,18 @@ export function isLoadNotFoundError(error: unknown): boolean {
       return true;
     }
     const code = error.code?.toLowerCase() ?? "";
+    if (code.endsWith("_not_found") || code === "not_found") {
+      return true;
+    }
+  }
+  if (
+    error instanceof ExerciseRequestsRequestError ||
+    error instanceof ExerciseMediaRequestError
+  ) {
+    if (error.detail.status === 404) {
+      return true;
+    }
+    const code = error.detail.error?.toLowerCase() ?? "";
     if (code.endsWith("_not_found") || code === "not_found") {
       return true;
     }

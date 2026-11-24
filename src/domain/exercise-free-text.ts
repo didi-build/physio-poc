@@ -51,6 +51,17 @@ export function validateExerciseTemplateText(text: string, fieldLabel: string): 
   return text;
 }
 
+/** Template field that may be saved empty after trim (positions overrides and drafts). */
+export function validateOptionalTrimmedExerciseTemplateText(
+  text: string,
+  fieldLabel: string,
+): string {
+  const trimmed = text.trim();
+  assertMaxLength(trimmed, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT, fieldLabel);
+  assertNoPatientDetails(trimmed, fieldLabel);
+  return trimmed;
+}
+
 export function validateExerciseCue(cue: string, fieldLabel: string): string {
   const trimmed = cue.trim();
   if (trimmed.length < 1) {
@@ -228,6 +239,12 @@ export function validateTextOverrideValue(key: string, value: string): string {
     assertMaxLength(trimmed, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT, "Description");
     assertNoPatientDetails(trimmed, "Description");
     return trimmed;
+  }
+  if (key === "starting_position") {
+    return validateOptionalTrimmedExerciseTemplateText(value, "Starting position");
+  }
+  if (key === "ending_position") {
+    return validateOptionalTrimmedExerciseTemplateText(value, "Ending position");
   }
   throw new FreeTextValidationError(`Unknown text override key: ${key}`);
 }

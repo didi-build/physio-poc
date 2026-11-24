@@ -6,9 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ProgramShareConnectorView } from "../../services/programs/program-publish-service.js";
-import { fillPhysioAppRoutePattern } from "../../app-routes.js";
+import {
+  TYPE_MISMATCH_FIX_ROW_QUERY_PARAM,
+  fillPhysioAppRoutePattern,
+} from "../../app-routes.js";
 import {
   exerciseParamsEqual,
   filterExerciseParamsForPrescriptionType,
@@ -57,6 +60,12 @@ import { DeleteProgramSheetBody } from "./DeleteProgramSheetBody.js";
 import { LeaveWithoutSavingSheet } from "./LeaveWithoutSavingSheet.js";
 import { LibraryUpdatePrompt } from "./LibraryUpdatePrompt.js";
 import { ProgramBuilderRowCard } from "./ProgramBuilderRowCard.js";
+import { TypeMismatchBuilderBanner } from "./TypeMismatchBuilderBanner.js";
+import {
+  TYPE_MISMATCH_UNDO_LINK_FAILURE,
+  typeMismatchLinkedToast,
+} from "../copy/program-type-mismatch.js";
+import { TYPE_LABELS } from "../copy/my-defaults.js";
 import {
   SharedFailedSaveAlert,
   SharedItemBackLink,
@@ -93,6 +102,7 @@ export function ProgramBuilderPage({
   const client = useProgramsApi();
   const navigate = useNavigate();
   const { programCode = "" } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { showToast } = useToast();
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
   const programRef = useRef(program);
@@ -136,6 +146,11 @@ export function ProgramBuilderPage({
   const [redirectToList, setRedirectToList] = useState(false);
   const [shareView, setShareView] = useState<ProgramShareConnectorView | null>(null);
   const [publishOpen, setPublishOpen] = useState(publishSheetOpen);
+  const [fixOpenRowIds, setFixOpenRowIds] = useState<Set<string>>(() => new Set());
+  const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
+  const replaceMismatchRowIdRef = useRef<string | null>(null);
+  const rowElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const fixDeepLinkHandledRef = useRef<string | null>(null);
 
   const saveName = useCallback(async () => {
     const current = programRef.current;
@@ -487,6 +502,11 @@ export function ProgramBuilderPage({
     if (!program) {
       return;
     }
+    const replaceRowId = replaceMismatchRowIdRef.current;
+    const replaceIndex = replaceRowId
+      ? program.rows.findIndex((row) => row.id === replaceRowId)
+      : -1;
+    replaceMismatchRowIdRef.current = null;
     setAddExerciseOpen(false);
     setRowMutationBusy(true);
     const rowId = crypto.randomUUID();
@@ -497,13 +517,149 @@ export function ProgramBuilderPage({
           row_id: rowId,
           exercise_id: exerciseId,
         });
-        applyProgram(result.program);
-        setNoteDrafts(noteDraftsFromProgram(result.program));
+        let nextProgram = result.program;
+        if (replaceRowId) {
+          const removed = await client.deleteRow(program.program_id, replaceRowId);
+          nextProgram = removed.program;
+          if (replaceIndex >= 0) {
+            const ids = nextProgram.rows.map((row) => row.id);
+            const newIndex = ids.indexOf(rowId);
+            if (newIndex >= 0 && newIndex !== replaceIndex) {
+              ids.splice(newIndex, 1);
+              ids.splice(replaceIndex, 0, rowId);
+              const reordered = await client.reorderRows(program.program_id, ids);
+              nextProgram = reordered.program;
+            }
+          }
+        }
+        applyProgram(nextProgram);
+        setNoteDrafts(noteDraftsFromProgram(nextProgram));
       })
       .finally(() => {
         setRowMutationBusy(false);
       });
   };
+
+  const openFixForRow = useCallback(
+    (rowId: string, options?: { highlight?: boolean; focusFix?: boolean }) => {
+      setFixOpenRowIds((prev) => new Set(prev).add(rowId));
+      if (options?.highlight) {
+        setHighlightRowId(rowId);
+        window.setTimeout(() => {
+          setHighlightRowId((current) => (current === rowId ? null : current));
+        }, 2_000);
+      }
+      const element = rowElementsRef.current.get(rowId);
+      if (typeof element?.scrollIntoView === "function") {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (options?.focusFix) {
+        window.requestAnimationFrame(() => {
+          const article = rowElementsRef.current.get(rowId);
+          const fix = article?.querySelector<HTMLButtonElement>(
+            ".pg-row-type-mismatch-fix",
+          );
+          fix?.focus();
+        });
+      }
+    },
+    [],
+  );
+
+  const onShowTypeMismatchBanner = useCallback(() => {
+    const current = programRef.current;
+    if (!current) {
+      return;
+    }
+    const target = current.rows.find(
+      (row) => row.placeholder_state === "type_mismatch",
+    );
+    if (!target) {
+      return;
+    }
+    openFixForRow(target.id, { highlight: true });
+  }, [openFixForRow]);
+
+  const onLinkTypeMismatch = useCallback(
+    (rowId: string, type: PrescriptionType, exerciseTitle: string) => {
+      const current = programRef.current;
+      if (!current) {
+        return;
+      }
+      setRowMutationBusy(true);
+      void autoSave
+        .runSave(`link-type-mismatch:${rowId}`, async () => {
+          const result = await client.linkTypeMismatchPlaceholder(
+            current.program_id,
+            rowId,
+            type,
+            current.draft_updated_at,
+          );
+          applyProgram(result.program);
+          setNoteDrafts(noteDraftsFromProgram(result.program));
+          setFixOpenRowIds((prev) => {
+            const next = new Set(prev);
+            next.delete(rowId);
+            return next;
+          });
+          if (result.undo) {
+            const programId = current.program_id;
+            const runUndoTypeMismatchLink = (): Promise<void> => {
+              const draftAt = programRef.current?.draft_updated_at;
+              if (!draftAt) {
+                showToast({
+                  message: TYPE_MISMATCH_UNDO_LINK_FAILURE,
+                  variant: "alert",
+                  onUndo: runUndoTypeMismatchLink,
+                });
+                return Promise.reject(new Error("missing_draft_updated_at"));
+              }
+              return client
+                .undoTypeMismatchPlaceholderLink(programId, rowId, draftAt)
+                .then((reverted) => {
+                  applyProgram(reverted.program);
+                  setNoteDrafts(noteDraftsFromProgram(reverted.program));
+                })
+                .catch(() => {
+                  showToast({
+                    message: TYPE_MISMATCH_UNDO_LINK_FAILURE,
+                    variant: "alert",
+                    onUndo: runUndoTypeMismatchLink,
+                  });
+                  throw new Error("undo_type_mismatch_failed");
+                });
+            };
+            showToast({
+              message: typeMismatchLinkedToast(exerciseTitle, TYPE_LABELS[type]),
+              onUndo: runUndoTypeMismatchLink,
+            });
+          }
+        })
+        .finally(() => {
+          setRowMutationBusy(false);
+        });
+    },
+    [autoSave, client, showToast],
+  );
+
+  useEffect(() => {
+    if (!program) {
+      return;
+    }
+    const fixRowId = searchParams.get(TYPE_MISMATCH_FIX_ROW_QUERY_PARAM)?.trim();
+    if (!fixRowId || fixDeepLinkHandledRef.current === fixRowId) {
+      return;
+    }
+    const row = program.rows.find((entry) => entry.id === fixRowId);
+    if (!row || row.placeholder_state !== "type_mismatch") {
+      return;
+    }
+    fixDeepLinkHandledRef.current = fixRowId;
+    openFixForRow(fixRowId, { highlight: true, focusFix: true });
+    const next = new URLSearchParams(searchParams);
+    next.delete(TYPE_MISMATCH_FIX_ROW_QUERY_PARAM);
+    setSearchParams(next, { replace: true });
+  }, [openFixForRow, program, searchParams, setSearchParams]);
 
   const reorder = (fromIndex: number, toIndex: number) => {
     if (!program || fromIndex === toIndex) {
@@ -654,6 +810,13 @@ export function ProgramBuilderPage({
         <ProgramBuilderOriginBanner origin={displayProgram.routine_origin} />
       ) : null}
 
+      {displayProgram.type_mismatch_placeholder_count > 0 ? (
+        <TypeMismatchBuilderBanner
+          count={displayProgram.type_mismatch_placeholder_count}
+          onShowMe={onShowTypeMismatchBanner}
+        />
+      ) : null}
+
       <div className="pg-builder-layout">
         <div className="pg-builder-main">
           <div className="pg-builder-status-card pg-builder-status-card--phone">
@@ -739,6 +902,33 @@ export function ProgramBuilderPage({
                   total={displayProgram.rows.length}
                   noteDraft={noteDrafts[row.id] ?? row.note ?? ""}
                   actionsDisabled={rowActionsDisabled}
+                  fixPanelOpen={fixOpenRowIds.has(row.id)}
+                  rowHighlight={highlightRowId === row.id}
+                  rowRef={(element) => {
+                    if (element) {
+                      rowElementsRef.current.set(row.id, element);
+                    } else {
+                      rowElementsRef.current.delete(row.id);
+                    }
+                  }}
+                  onToggleFix={() => {
+                    setFixOpenRowIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(row.id)) {
+                        next.delete(row.id);
+                      } else {
+                        next.add(row.id);
+                      }
+                      return next;
+                    });
+                  }}
+                  onLinkMismatchType={(type) => {
+                    onLinkTypeMismatch(row.id, type, row.text_snapshot.title);
+                  }}
+                  onPickAnotherExercise={() => {
+                    replaceMismatchRowIdRef.current = row.id;
+                    setAddExerciseOpen(true);
+                  }}
                   onMoveUp={() => {
                     reorder(index, index - 1);
                   }}
@@ -1059,6 +1249,7 @@ export function ProgramBuilderPage({
       <AddExerciseSheet
         open={addExerciseOpen}
         onClose={() => {
+          replaceMismatchRowIdRef.current = null;
           setAddExerciseOpen(false);
         }}
         onPickExercise={onAddExercise}
@@ -1182,6 +1373,20 @@ export function ProgramBuilderPage({
             .finally(() => {
               setRowMutationBusy(false);
             });
+        }}
+        onFixTypeMismatch={(rowId) => {
+          setPublishOpen(false);
+          if (publishSheetOpen) {
+            navigate(
+              `${fillPhysioAppRoutePattern("programBuilder", {
+                programCode: displayProgram.code,
+              })}?${TYPE_MISMATCH_FIX_ROW_QUERY_PARAM}=${encodeURIComponent(rowId)}`,
+              { replace: true },
+            );
+            return;
+          }
+          fixDeepLinkHandledRef.current = null;
+          openFixForRow(rowId, { highlight: true, focusFix: true });
         }}
       />
 

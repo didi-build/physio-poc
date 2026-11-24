@@ -6,6 +6,7 @@ import {
   generateOpaqueEntityId,
   validateOpaqueEntityId,
 } from "../../src/domain/opaque-entity-id.js";
+import { ExerciseRequestsRepository } from "../../src/storage/repositories/exercise-data.js";
 import {
   applyMigration,
   MIGRATION_0001_ID,
@@ -17,6 +18,10 @@ import {
   MIGRATION_0009_ID,
   MIGRATION_0011_ID,
   MIGRATION_0012_ID,
+  MIGRATION_0013_ID,
+  MIGRATION_0014_ID,
+  MIGRATION_0015_ID,
+  MIGRATION_0016_ID,
 } from "../../src/storage/migrations/apply.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..", "..");
@@ -56,6 +61,22 @@ export const MIGRATION_0012_SQL = readFileSync(
   join(REPO_ROOT, "migrations/0012_exercise_suggested_body_regions.sql"),
   "utf8",
 );
+export const MIGRATION_0013_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0013_exercise_request_generation_lock.sql"),
+  "utf8",
+);
+export const MIGRATION_0014_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0014_draft_generation_attempt_and_failure.sql"),
+  "utf8",
+);
+export const MIGRATION_0015_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0015_draft_generation_abandon_logged.sql"),
+  "utf8",
+);
+export const MIGRATION_0016_SQL = readFileSync(
+  join(REPO_ROOT, "migrations/0016_exercise_version_ending_position.sql"),
+  "utf8",
+);
 
 /** @deprecated use MIGRATION_0001_SQL */
 export const MIGRATION_SQL = MIGRATION_0001_SQL;
@@ -65,6 +86,13 @@ export const TS = "2026-01-01T00:00:00.000Z";
 export const FIXTURE_PRACTITIONER_ID = "11111111-1111-4111-8111-111111111111";
 export const FIXTURE_EXERCISE_ID = "22222222-2222-4222-8222-222222222222";
 export const FIXTURE_VERSION_ID = "33333333-3333-4333-8333-333333333333";
+
+/** Apply migrations required by VERSION_INSERT_SQL on a DB that already has 0001 exercise schema. */
+export async function applyExerciseVersionEndingPositionMigration(
+  storage: SqlStoragePort,
+): Promise<void> {
+  await applyMigration(storage, MIGRATION_0016_ID, MIGRATION_0016_SQL);
+}
 
 export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   const storage = BetterSqliteStorage.openInMemory();
@@ -77,7 +105,37 @@ export async function openMigratedDatabase(): Promise<BetterSqliteStorage> {
   await applyMigration(storage, MIGRATION_0009_ID, MIGRATION_0009_SQL);
   await applyMigration(storage, MIGRATION_0011_ID, MIGRATION_0011_SQL);
   await applyMigration(storage, MIGRATION_0012_ID, MIGRATION_0012_SQL);
+  await applyMigration(storage, MIGRATION_0013_ID, MIGRATION_0013_SQL);
+  await applyMigration(storage, MIGRATION_0014_ID, MIGRATION_0014_SQL);
+  await applyMigration(storage, MIGRATION_0015_ID, MIGRATION_0015_SQL);
+  await applyMigration(storage, MIGRATION_0016_ID, MIGRATION_0016_SQL);
   return storage;
+}
+
+export async function seedDraftingExerciseRequest(
+  storage: SqlStoragePort,
+  input: {
+    requestId: string;
+    practitionerId: string;
+    requestedName: string;
+    note?: string | null;
+    createdAt?: string;
+  },
+): Promise<string> {
+  const requests = new ExerciseRequestsRepository(storage);
+  const createdAt = input.createdAt ?? TS;
+  await storage.batch([
+    requests.buildInsertBatchStatement({
+      id: input.requestId,
+      requestedName: input.requestedName,
+      note: input.note ?? null,
+      requestedBy: input.practitionerId,
+      status: "drafting",
+      createdAt,
+      updatedAt: createdAt,
+    }),
+  ]);
+  return input.requestId;
 }
 
 export async function seedPractitioner(
@@ -121,6 +179,7 @@ export function versionInsertBindings(
     description: "",
     equipment: "",
     starting_position: "",
+    ending_position: "",
     steps: "",
     common_mistakes: "",
     regressions: "",
@@ -146,6 +205,7 @@ export function versionInsertBindings(
     base.description,
     base.equipment,
     base.starting_position,
+    base.ending_position,
     base.steps,
     base.common_mistakes,
     base.regressions,
@@ -163,11 +223,11 @@ export function versionInsertBindings(
 
 export const VERSION_INSERT_SQL = `INSERT INTO exercise_versions (
   id, exercise_id, version_number, status, approved_by, approved_at,
-  title, description, equipment, starting_position, steps,
+  title, description, equipment, starting_position, ending_position, steps,
   common_mistakes, regressions, progressions, precautions,
   cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
   media_set_id, change_summary, created_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 export async function seedApprovedExerciseVersion(
   storage: SqlStoragePort,

@@ -62,6 +62,7 @@ export type PublishSheetProps = {
   onNotYet: () => void;
   onRemovePlaceholder: (rowId: string) => void;
   onRemoveMissingImagesRow?: (rowId: string) => void;
+  onFixTypeMismatch?: (rowId: string) => void;
 };
 
 export function PublishSheet({
@@ -78,6 +79,7 @@ export function PublishSheet({
   onNotYet,
   onRemovePlaceholder,
   onRemoveMissingImagesRow,
+  onFixTypeMismatch = () => {},
 }: PublishSheetProps) {
   const titleId = useId();
   const nameHelpId = useId();
@@ -302,6 +304,7 @@ export function PublishSheet({
         <div id={placeholders.length > 0 ? placeholderNoticeId : undefined}>
           <PublishPlaceholderNotice
             placeholders={placeholders}
+            programCode={program.code}
             showRepublishLine={
               !isFirstPublish && program.auto_save_status.kind === "unpublished_changes"
             }
@@ -313,6 +316,7 @@ export function PublishSheet({
                 setPlaceholderNoticeCleared(true);
               }
             }}
+            onFixTypeMismatch={onFixTypeMismatch}
           />
         </div>
       ) : null}

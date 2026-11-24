@@ -5,6 +5,9 @@ import { handleExerciseRequestsHttpRequest } from "../src/http/routes/exercise-r
 import {
   exerciseRequestApprovePath,
   exerciseRequestDraftPath,
+  exerciseRequestGeneratePath,
+  exerciseRequestRegenerateTextPath,
+  exerciseRequestWithdrawPath,
   exerciseRequestPath,
   exerciseRequestsCollectionPath,
   exerciseRequestsInProgressCountPath,
@@ -12,6 +15,7 @@ import {
   EXERCISE_REQUESTS_API_BASE,
 } from "../src/exercise-requests-api-paths.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 import { ExerciseLibraryService } from "../src/services/exercise-library/exercise-library-service.js";
 import {
   ExerciseRequestsRepository,
@@ -105,7 +109,33 @@ async function seedDraftingRequestForPractitioner(
   if (created.outcome !== "created") {
     throw new Error("expected created request");
   }
-  return { requestId: created.request_id, exerciseId: created.exercise_id! };
+  const { ExerciseMediaService } =
+    await import("../src/services/exercise-media/exercise-media-service.js");
+  const { FakeImageGeneration } =
+    await import("../src/storage/adapters/memory/fake-image-generation.js");
+  const { PrefixMediaStorage } =
+    await import("../src/storage/adapters/memory/prefix-media-storage.js");
+  const { InMemoryObjectStorage } =
+    await import("../src/storage/adapters/memory/in-memory-object-storage.js");
+  const mediaService = new ExerciseMediaService(
+    storage,
+    new FakeImageGeneration(),
+    new PrefixMediaStorage(new InMemoryObjectStorage()),
+  );
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
+    practitionerId,
+    requestId: created.request_id,
+    mediaService,
+  });
+  expect(generated.outcome).toBe("complete");
+  const row = await storage.first<{ exercise_id: string | null }>(
+    "SELECT exercise_id FROM exercise_requests WHERE id = ?",
+    [created.request_id],
+  );
+  if (!row?.exercise_id) {
+    throw new Error("expected exercise_id after generate");
+  }
+  return { requestId: created.request_id, exerciseId: row.exercise_id };
 }
 
 /** Independent pin: must not reuse `EXERCISE_REQUESTS_HTTP_ROUTE_TABLE` or the helper return value. */
@@ -126,11 +156,23 @@ const PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES = [
     method: "POST",
     path: exerciseRequestApprovePath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
   },
+  {
+    method: "POST",
+    path: exerciseRequestGeneratePath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
+  {
+    method: "POST",
+    path: exerciseRequestRegenerateTextPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
+  {
+    method: "POST",
+    path: exerciseRequestWithdrawPath(EXERCISE_REQUESTS_HTTP_ROUTE_PINNED_ID),
+  },
 ] as const;
 
 describe("Exercise requests HTTP routes (integration)", () => {
-  it("pins the seven exercise request routes as literal method and path pairs", () => {
-    expect(PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES).toHaveLength(7);
+  it("pins the exercise request routes as literal method and path pairs", () => {
+    expect(PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES).toHaveLength(10);
     expect(exerciseRequestsHttpRouteCases()).toEqual([
       ...PINNED_SEVEN_EXERCISE_REQUEST_HTTP_ROUTES,
     ]);

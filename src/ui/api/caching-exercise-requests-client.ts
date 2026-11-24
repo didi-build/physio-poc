@@ -1,4 +1,5 @@
 import type { ExerciseRequestsClient } from "./exercise-requests-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import {
   invalidateAfterExerciseRequestDraftMutation,
   invalidateAfterExerciseRequestMutation,
@@ -22,7 +23,7 @@ function afterDraftEdit<T>(requestId: string, run: () => Promise<T>): Promise<T>
 export function wrapExerciseRequestsClientWithCacheInvalidation(
   inner: ExerciseRequestsClient,
 ): ExerciseRequestsClient {
-  return {
+  const wrapped = {
     listSimilar: (query, options) => inner.listSimilar(query, options),
     listInProgress: (options) => inner.listInProgress(options),
     getInProgressCount: (options) => inner.getInProgressCount(options),
@@ -31,7 +32,14 @@ export function wrapExerciseRequestsClientWithCacheInvalidation(
       afterDraftEdit(requestId, () => inner.updateDraft(requestId, patch)),
     submitRequest: (input) =>
       afterExerciseRequestMutation(() => inner.submitRequest(input)),
+    generateRequest: (requestId) =>
+      afterDraftEdit(requestId, () => inner.generateRequest(requestId)),
+    regenerateDraftText: (requestId, note) =>
+      afterDraftEdit(requestId, () => inner.regenerateDraftText(requestId, note)),
     approveRequest: (requestId) =>
       afterExerciseRequestMutation(() => inner.approveRequest(requestId)),
-  } as ExerciseRequestsClient;
+    withdrawRequest: (requestId) =>
+      afterExerciseRequestMutation(() => inner.withdrawRequest(requestId)),
+  } satisfies CacheWrappedClient<ExerciseRequestsClient>;
+  return wrapped as ExerciseRequestsClient;
 }

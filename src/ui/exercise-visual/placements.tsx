@@ -1,9 +1,6 @@
 import { ExerciseMotion } from "../components/ExerciseMotion.js";
 import { MEDIA_AI_IMAGE_TAG, MEDIA_AI_VIDEO_TAG } from "../copy/exercise-media.js";
-import {
-  exerciseMotionDraftReviewVideoLoopCaption,
-  exerciseMotionLibraryVideoLoopCaption,
-} from "../exercise-motion/timing.js";
+import { exerciseMotionLibraryVideoLoopCaption } from "../exercise-motion/timing.js";
 import {
   exerciseVisualPlaceholders,
   type ExerciseVisualSources,
@@ -28,6 +25,34 @@ export function LibraryDetailExerciseStill({
   return (
     <div className={`ex-media-placeholder ${className}`}>
       <span className="ex-media-tag">{MEDIA_AI_IMAGE_TAG}</span>
+      <span className="ex-media-placeholder-label">{label}</span>
+    </div>
+  );
+}
+
+export type DraftReviewExerciseStillProps = LibraryDetailExerciseStillProps & {
+  src?: string | null;
+  alt?: string;
+};
+
+/** Draft review: still without an on-screen AI image tag (DIDI-1210). */
+export function DraftReviewExerciseStill({
+  label,
+  className = "",
+  src,
+  alt,
+}: DraftReviewExerciseStillProps) {
+  if (src) {
+    return (
+      <img
+        className={`ex-review-still-img ${className}`.trim()}
+        src={src}
+        alt={alt ?? label}
+      />
+    );
+  }
+  return (
+    <div className={`ex-media-placeholder ${className}`}>
       <span className="ex-media-placeholder-label">{label}</span>
     </div>
   );
@@ -86,9 +111,6 @@ export function DraftReviewExerciseVideo({
         alt={alt}
         className={className}
       />
-      <figcaption className="exercise-motion-video-caption">
-        {exerciseMotionDraftReviewVideoLoopCaption()}
-      </figcaption>
     </figure>
   );
 }

@@ -34,6 +34,7 @@ export type WorkerEnv = {
   PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL?: string;
   PHYSIO_DB?: PhysioD1Database;
   PHYSIO_MEDIA?: PhysioR2Bucket;
+  PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION?: import("./cloudflare-workflow-binding.js").PhysioExerciseRequestDraftGenerationBinding;
   ASSETS?: import("./worker-assets-ui-static-port.js").WorkerAssetsBinding;
 };
 
@@ -79,9 +80,11 @@ function workerProductionEnvCacheKey(env: WorkerEnv): string {
     env.GOOGLE_CLIENT_ID ?? "",
     env.GOOGLE_CLIENT_SECRET ?? "",
     env.PHYSIO_ALLOWED_GOOGLE_EMAILS ?? "",
-    env.PHYSIO_DEEPINFRA_API_KEY ?? "",
     env.PHYSIO_DEEPINFRA_EXERCISE_DRAFT_MODEL ?? "",
     workerPhysioDbCacheToken(env.PHYSIO_DB),
+    // Presence only — never the raw key (aaf2fa29). Rotating one non-empty key to
+    // another in the same isolate does not invalidate this cache entry; a secret
+    // rotation deploys new Workers isolates with a fresh cache.
     env.PHYSIO_DEEPINFRA_API_KEY?.trim() ? "deepinfra-key-present" : "",
   ].join("\u001e");
 }

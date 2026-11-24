@@ -100,6 +100,9 @@ d1_tables:
       starting_position:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
+      ending_position:
+        whose: operational
+        notes: patient_detail_risk; validateFreeTextForPatientDetails on write
       steps:
         whose: operational
         notes: patient_detail_risk; validateFreeTextForPatientDetails on write
@@ -230,6 +233,18 @@ d1_tables:
         whose: operational
       exercise_id:
         whose: operational
+      draft_generation_locked_at:
+        whose: operational
+        notes: concurrency lock for POST generate orchestration
+      draft_generation_attempt_id:
+        whose: operational
+        notes: attempt-scoped workflow lock for draft generation
+      draft_generation_failure_code:
+        whose: operational
+        notes: persisted draft generation failure code for GET view
+      draft_generation_abandon_logged_at:
+        whose: operational
+        notes: timestamp when run_abandoned was logged for the current attempt
       created_at:
         whose: operational
       updated_at:

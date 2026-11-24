@@ -1,6 +1,7 @@
 import { categoryToLabel } from "../../domain/exercise-category-labels.js";
 import {
   FreeTextValidationError,
+  validateMediaRegenerationNote,
   validateRequestNote,
   validateRequestedExerciseName,
 } from "../../domain/exercise-free-text.js";
@@ -36,15 +37,38 @@ import {
   fakeExerciseDraftGenerator,
 } from "./fake-draft-generator.js";
 import type { ExerciseDraftGenerator } from "./exercise-draft-generator-types.js";
+import { DeepInfraExerciseDraftError } from "./deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsServiceError } from "./errors.js";
+import { generateExerciseRequestDraft } from "./exercise-request-draft-generation.js";
+import type { DraftGenerationWorkflowPort } from "./draft-generation-workflow-types.js";
+import {
+  DRAFT_GENERATION_LOCK_STALE_MS,
+  isLockFresh,
+} from "./draft-generation-lock.js";
+import { underDraftGenerationLock } from "./exercise-request-generation-lock.js";
+import { failureCodeToPhase } from "./draft-generation-failure-codes.js";
+import {
+  logDraftGenerationLockRefreshed,
+  logDraftGenerationRunCanceled,
+} from "./draft-generation-lock-log.js";
+import { maybeLogDraftGenerationRunAbandoned } from "./maybe-log-draft-generation-run-abandoned.js";
+import { logRequestWithdrawn } from "./request-withdrawn-log.js";
+import type {
+  ExerciseMediaService,
+  InitialDraftMediaProgress,
+} from "../exercise-media/exercise-media-service.js";
+import { ExerciseVersionMediaRepository } from "../../storage/repositories/exercise-media.js";
 import type {
   ApproveExerciseRequestResult,
   DraftFieldPatch,
   ExerciseRequestDraftView,
+  GenerateExerciseRequestDraftResult,
+  RegenerateDraftTextResult,
   InProgressRequestsResult,
   SimilarExercisesResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
+  WithdrawExerciseRequestResult,
 } from "./types.js";
 
 const SIMILAR_LIBRARY_LIMIT = 10;
@@ -164,6 +188,9 @@ export class ExerciseRequestsService {
   private readonly practitionerExercises: PractitionerExercisesRepository;
   private readonly draftGenerator: ExerciseDraftGenerator;
   private readonly now: () => string;
+  private readonly initialDraftMediaProgress: (
+    exerciseVersionId: string,
+  ) => Promise<InitialDraftMediaProgress>;
 
   constructor(
     private readonly sql: SqlStoragePort,
@@ -171,6 +198,9 @@ export class ExerciseRequestsService {
     options?: {
       now?: () => string;
       draftGenerator?: ExerciseDraftGenerator;
+      initialDraftMediaProgress?: (
+        exerciseVersionId: string,
+      ) => Promise<InitialDraftMediaProgress>;
     },
   ) {
     this.requests = new ExerciseRequestsRepository(sql);
@@ -182,6 +212,16 @@ export class ExerciseRequestsService {
     this.practitionerExercises = new PractitionerExercisesRepository(sql);
     this.now = options?.now ?? (() => new Date().toISOString());
     this.draftGenerator = options?.draftGenerator ?? fakeExerciseDraftGenerator;
+    this.initialDraftMediaProgress =
+      options?.initialDraftMediaProgress ??
+      (async (exerciseVersionId) => {
+        const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+        const mediaRow = await versionMedia.findVersion(exerciseVersionId);
+        if (!mediaRow?.media_set_id) {
+          return "none";
+        }
+        return "complete";
+      });
   }
 
   async listSimilar(input: {
@@ -306,25 +346,18 @@ export class ExerciseRequestsService {
       const requestId = generateOpaqueEntityId();
       const timestamp = this.now();
       try {
-        await this.draftGenerator(
-          {
-            sql: this.sql,
-            requestId,
+        await this.sql.batch([
+          this.requests.buildInsertBatchStatement({
+            id: requestId,
             requestedName,
-            exerciseNote,
+            note: exerciseNote,
             requestedBy: input.practitionerId,
-            now: timestamp,
-          },
-          {
-            exercises: this.exercises,
-            versions: this.versions,
-            requests: this.requests,
-          },
-        );
+            status: "drafting",
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }),
+        ]);
       } catch (error) {
-        if (error instanceof ExerciseRequestsServiceError) {
-          throw error;
-        }
         if (error instanceof SqlBatchGuardError) {
           throw new ExerciseRequestsServiceError("Submit failed", "submit_failed", {
             cause: error,
@@ -333,12 +366,11 @@ export class ExerciseRequestsService {
         throw error;
       }
 
-      const updated = await this.requests.findById(requestId);
       return {
         outcome: "created",
         request_id: requestId,
-        status: (updated?.status ?? "drafting") as "open" | "drafting",
-        exercise_id: updated?.exercise_id ?? null,
+        status: "drafting",
+        exercise_id: null,
       };
     }
 
@@ -351,6 +383,7 @@ export class ExerciseRequestsService {
     await this.requirePractitioner(input.practitionerId);
     const rows = await this.requestsRead.listInProgress();
     const count = await this.requests.countInProgress();
+    const nowIso = this.now();
     return {
       in_progress_count: count,
       requests: rows.map((row) => ({
@@ -363,6 +396,7 @@ export class ExerciseRequestsService {
         exercise_id: row.exercise_id,
         draft_title: row.draft_title,
         updated_at: row.updated_at,
+        generation_in_progress: isLockFresh(row.draft_generation_locked_at, nowIso),
       })),
     };
   }
@@ -378,12 +412,190 @@ export class ExerciseRequestsService {
   }): Promise<ExerciseRequestDraftView> {
     await this.requirePractitioner(input.practitionerId);
     const requestId = parseOpaqueId(input.requestId, "request_id");
+    const row = await this.requests.findById(requestId);
+    const nowIso = this.now();
+    const lockedAt = row?.draft_generation_locked_at ?? null;
+    if (
+      lockedAt &&
+      !isLockFresh(lockedAt, nowIso) &&
+      row?.draft_generation_attempt_id
+    ) {
+      await maybeLogDraftGenerationRunAbandoned({
+        requests: this.requests,
+        requestId,
+        attemptId: row.draft_generation_attempt_id,
+        lockedAt,
+        now: nowIso,
+      });
+    }
+    return this.buildDraftView(requestId);
+  }
+
+  async regenerateDraftText(input: {
+    practitionerId: string;
+    requestId: string;
+    note?: string | null;
+  }): Promise<RegenerateDraftTextResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const requestId = parseOpaqueId(input.requestId, "request_id");
+    const row = await this.requests.findById(requestId);
+    if (!row || row.status !== "drafting" || !row.exercise_id) {
+      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    }
+    if (row.requested_by !== input.practitionerId) {
+      throw new ExerciseRequestsServiceError(
+        "Only the requester can run draft generation",
+        "generation_not_requester",
+      );
+    }
+    const draft = await this.versions.findDraftForExercise(row.exercise_id);
+    if (!draft) {
+      throw new ExerciseRequestsServiceError("Draft not ready", "draft_not_ready");
+    }
+    let regenerationNote: string | null;
+    try {
+      regenerationNote = validateMediaRegenerationNote(input.note);
+    } catch (err) {
+      mapFreeTextError(err);
+    }
+    const now = this.now();
+    const locked = await underDraftGenerationLock({
+      requestId,
+      now,
+      requests: this.requests,
+      loadView: () => this.buildDraftView(requestId),
+      run: async (lock) => {
+        try {
+          await this.draftGenerator(
+            {
+              sql: this.sql,
+              requestId,
+              requestedName: row.requested_name,
+              exerciseNote: row.note,
+              regenerationNote,
+              requestedBy: row.requested_by,
+              now,
+              existingExerciseId: row.exercise_id!,
+              existingVersionId: draft.id,
+              providerAttempts: 2,
+              refreshLockAfterProviderAttempt: async () => {
+                const refreshNow = this.now();
+                const lockedBefore =
+                  await this.requests.getDraftGenerationLockedAt(requestId);
+                const refreshed = await this.requests.refreshDraftGenerationLock({
+                  requestId,
+                  lockedAt: refreshNow,
+                  attemptId: lock.attemptId,
+                });
+                if (!refreshed) {
+                  throw new ExerciseRequestsServiceError(
+                    "Draft generation lock was superseded",
+                    "draft_generation_in_progress",
+                  );
+                }
+                logDraftGenerationLockRefreshed({
+                  requestId,
+                  lockedAt: lockedBefore ?? lock.lockedAt,
+                  now: refreshNow,
+                });
+              },
+            },
+            {
+              exercises: this.exercises,
+              versions: this.versions,
+              requests: this.requests,
+            },
+          );
+        } catch (error) {
+          if (error instanceof DeepInfraExerciseDraftError) {
+            return {
+              outcome: "text_failed" as const,
+              error: error.code,
+              view: null,
+            };
+          }
+          if (
+            error instanceof ExerciseRequestsServiceError &&
+            error.code === "draft_generation_in_progress"
+          ) {
+            return {
+              outcome: "in_progress" as const,
+              view: await this.buildDraftView(requestId),
+              started_elsewhere: true,
+            };
+          }
+          throw error;
+        }
+        const view = await this.buildDraftView(requestId);
+        return { outcome: "complete" as const, view };
+      },
+    });
+    if (locked.kind === "in_progress") {
+      return {
+        outcome: "in_progress",
+        view: locked.view,
+        started_elsewhere: locked.started_elsewhere,
+      };
+    }
+    return locked.result;
+  }
+
+  async generateRequest(input: {
+    practitionerId: string;
+    requestId: string;
+    mediaService: ExerciseMediaService;
+    workflow?: DraftGenerationWorkflowPort;
+  }): Promise<GenerateExerciseRequestDraftResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const requestId = parseOpaqueId(input.requestId, "request_id");
+    const versionMedia = new ExerciseVersionMediaRepository(this.sql);
+    const loadView = (id: string) => this.loadDraftView(id);
+    const runDeps = {
+      sql: this.sql,
+      draftGenerator: this.draftGenerator,
+      now: this.now,
+      requests: this.requests,
+      exercises: this.exercises,
+      versions: this.versions,
+      versionMedia,
+    };
+    if (!input.workflow) {
+      throw new ExerciseRequestsServiceError(
+        "Draft generation workflow is not configured",
+        "draft_generation_workflow_unavailable",
+      );
+    }
+    return generateExerciseRequestDraft({
+      practitionerId: input.practitionerId,
+      requestId,
+      mediaService: input.mediaService,
+      loadView,
+      deps: {
+        ...runDeps,
+        workflow: input.workflow,
+      },
+    });
+  }
+
+  async loadDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
+    return this.buildDraftView(parseOpaqueId(requestId, "request_id"));
+  }
+
+  private async buildDraftView(requestId: string): Promise<ExerciseRequestDraftView> {
     const row = await this.requestsRead.findInProgressRequestById(requestId);
     if (!row) {
       throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
     }
 
+    const lockRow = await this.requests.findById(requestId);
+    const nowIso = this.now();
+    const generationInProgress = isLockFresh(
+      lockRow?.draft_generation_locked_at ?? null,
+      nowIso,
+    );
+
     let draft: ExerciseRequestDraftView["draft"] = null;
+    let firstDraftComplete = false;
     if (row.exercise_id) {
       const versionRow = await this.requestsRead.findDraftVersionDetailForExercise(
         row.exercise_id,
@@ -396,6 +608,7 @@ export class ExerciseRequestsService {
           description: versionRow.description,
           equipment: versionRow.equipment,
           starting_position: versionRow.starting_position,
+          ending_position: versionRow.ending_position,
           steps: versionRow.steps,
           common_mistakes: versionRow.common_mistakes,
           regressions: versionRow.regressions,
@@ -406,6 +619,8 @@ export class ExerciseRequestsService {
           cue_concentric: versionRow.cue_concentric,
           cue_eccentric: versionRow.cue_eccentric,
         };
+        const mediaProgress = await this.initialDraftMediaProgress(versionRow.id);
+        firstDraftComplete = mediaProgress === "complete";
       }
     }
 
@@ -418,6 +633,15 @@ export class ExerciseRequestsService {
       requested_by_email:
         (await this.practitioners.findById(row.requested_by))?.email ?? "",
       exercise_id: row.exercise_id,
+      generation: {
+        generation_in_progress: generationInProgress,
+        first_draft_complete: firstDraftComplete,
+        draft_generation_locked_at: lockRow?.draft_generation_locked_at ?? null,
+        generation_failure: failureCodeToPhase(
+          lockRow?.draft_generation_failure_code ?? null,
+        ),
+        generation_failure_code: lockRow?.draft_generation_failure_code ?? null,
+      },
       draft,
     };
   }
@@ -445,6 +669,7 @@ export class ExerciseRequestsService {
           description: input.patch.description,
           equipment: input.patch.equipment,
           startingPosition: input.patch.starting_position,
+          endingPosition: input.patch.ending_position,
           steps: input.patch.steps,
           commonMistakes: input.patch.common_mistakes,
           regressions: input.patch.regressions,
@@ -550,6 +775,80 @@ export class ExerciseRequestsService {
       approved_at: approvedAt,
       skipped_count: skippedCount,
     };
+  }
+
+  async withdrawRequest(input: {
+    practitionerId: string;
+    requestId: string;
+  }): Promise<WithdrawExerciseRequestResult> {
+    await this.requirePractitioner(input.practitionerId);
+    const requestId = parseOpaqueId(input.requestId, "request_id");
+    const nowIso = this.now();
+    const staleBefore = new Date(
+      Date.parse(nowIso) - DRAFT_GENERATION_LOCK_STALE_MS,
+    ).toISOString();
+
+    const rowBeforeWithdraw = await this.requests.findById(requestId);
+
+    const wrote = await this.requests.tryWithdrawToWithdrawn({
+      id: requestId,
+      updatedAt: nowIso,
+      lockStaleBefore: staleBefore,
+    });
+    if (wrote) {
+      if (rowBeforeWithdraw) {
+        logRequestWithdrawn({
+          requestId,
+          practitionerId: input.practitionerId,
+          requesterPractitionerId: rowBeforeWithdraw.requested_by,
+          previousStatus: rowBeforeWithdraw.status,
+        });
+        if (
+          rowBeforeWithdraw.draft_generation_attempt_id &&
+          rowBeforeWithdraw.draft_generation_locked_at
+        ) {
+          logDraftGenerationRunCanceled({
+            requestId,
+            attemptId: rowBeforeWithdraw.draft_generation_attempt_id,
+            lockedAt: rowBeforeWithdraw.draft_generation_locked_at,
+            now: nowIso,
+          });
+        }
+      }
+      return {
+        request_id: requestId,
+        status: "withdrawn",
+        already_withdrawn: false,
+      };
+    }
+
+    const row = await this.requests.findById(requestId);
+    if (!row) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
+    if (row.status === "withdrawn") {
+      return {
+        request_id: requestId,
+        status: "withdrawn",
+        already_withdrawn: true,
+      };
+    }
+    if (row.status === "approved") {
+      throw new ExerciseRequestsServiceError(
+        "Request not deletable",
+        "request_not_deletable",
+      );
+    }
+    if (isLockFresh(row.draft_generation_locked_at, nowIso)) {
+      throw new ExerciseRequestsServiceError(
+        "Draft generation is in progress",
+        "draft_generation_in_progress",
+      );
+    }
+    throw new ExerciseRequestsServiceError(
+      "Request not deletable",
+      "request_not_deletable",
+    );
   }
 
   private async requirePractitioner(practitionerId: string): Promise<void> {

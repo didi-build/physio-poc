@@ -43,7 +43,22 @@ export type DeepInfraExerciseDraftGeneratorConfig = {
   responseMaxBytes?: number;
 };
 
-const MAX_AI_ATTEMPTS = 2;
+function maxProviderAttempts(input: ExerciseDraftGeneratorInput): number {
+  return input.providerAttempts === 2 ? 2 : 1;
+}
+
+function isTransientProviderDeepInfraError(
+  error: DeepInfraExerciseDraftError,
+): boolean {
+  return (
+    error.code === "deepinfra_exercise_draft_timeout" ||
+    error.code === "deepinfra_exercise_draft_network_error" ||
+    (error.code === "deepinfra_exercise_draft_request_failed" &&
+      (error.httpStatus === undefined ||
+        error.httpStatus >= 500 ||
+        error.httpStatus === 429))
+  );
+}
 
 function buildUserPrompt(input: ExerciseDraftGeneratorInput): string {
   const lines = [`Exercise name: ${input.requestedName}`];
@@ -146,15 +161,6 @@ async function buildPersistBatchStatements(input: {
       exerciseId,
       versionId,
       statements: [
-        deps.requests.buildInsertBatchStatement({
-          id: genIn.requestId,
-          requestedName: genIn.requestedName,
-          note: genIn.exerciseNote,
-          requestedBy: genIn.requestedBy,
-          status: "open",
-          createdAt: genIn.now,
-          updatedAt: genIn.now,
-        }),
         deps.exercises.buildInsertBatchStatement({
           id: exerciseId,
           category,
@@ -168,6 +174,7 @@ async function buildPersistBatchStatements(input: {
           description: draftDescription(payload),
           equipment: payload.equipment,
           startingPosition: payload.starting_position,
+          endingPosition: payload.ending_position,
           steps: payload.steps,
           commonMistakes: payload.common_mistakes,
           regressions: payload.regressions,
@@ -210,6 +217,98 @@ export function createDeepInfraExerciseDraftGenerator(
   });
 
   return async (input, deps) => {
+    const requestRow = await deps.requests.findById(input.requestId);
+    if (!requestRow) {
+      throw new ExerciseRequestsServiceError("Request not found", "request_not_found");
+    }
+    if (input.existingExerciseId && input.existingVersionId) {
+      const completionRequest: DeepInfraChatCompletionRequest = {
+        model: modelId,
+        messages: [
+          { role: "system", content: EXERCISE_DRAFT_SYSTEM_PROMPT },
+          { role: "user", content: buildUserPrompt(input) },
+        ],
+        response_format: openAiJsonSchemaResponseFormat(),
+      };
+      const attempts = maxProviderAttempts(input);
+      let lastFailure: DeepInfraExerciseDraftError | null = null;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (attempt > 0 && input.refreshLockAfterProviderAttempt) {
+          await input.refreshLockAfterProviderAttempt();
+        }
+        try {
+          const completion = await client.complete(completionRequest);
+          let parsedJson: unknown;
+          try {
+            parsedJson = JSON.parse(completion.contentJson);
+          } catch {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          const validated = parseAndValidateExerciseDraftAiPayload(parsedJson);
+          if (!validated || !cueShapeValid(validated)) {
+            lastFailure = deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+            continue;
+          }
+          await deps.versions.updateDraftFields(input.existingVersionId, {
+            title: validated.title,
+            description: draftDescription(validated),
+            equipment: validated.equipment,
+            startingPosition: validated.starting_position,
+            endingPosition: validated.ending_position,
+            steps: validated.steps,
+            commonMistakes: validated.common_mistakes,
+            regressions: validated.regressions,
+            progressions: validated.progressions,
+            precautions: validated.precautions,
+            cueStretching: validated.cue_stretching,
+            cueIsometric: validated.cue_isometric,
+            cueConcentric: validated.cue_concentric,
+            cueEccentric: validated.cue_eccentric,
+          });
+          return {
+            exerciseId: input.existingExerciseId,
+            versionId: input.existingVersionId,
+          };
+        } catch (error) {
+          if (error instanceof FreeTextValidationError) {
+            throw deepInfraExerciseDraftError(
+              "deepinfra_exercise_draft_response_invalid",
+            );
+          }
+          if (error instanceof DeepInfraExerciseDraftError) {
+            if (isTransientProviderDeepInfraError(error)) {
+              if (attempt + 1 < attempts) {
+                lastFailure = error;
+                continue;
+              }
+              throw error;
+            }
+            if (
+              error.code === "deepinfra_exercise_draft_request_failed" &&
+              error.httpStatus !== undefined &&
+              isNonRetryableDeepInfraHttpStatus(error.httpStatus)
+            ) {
+              throw error;
+            }
+            if (attempt + 1 < attempts) {
+              lastFailure = error;
+              continue;
+            }
+            throw error;
+          }
+          throw error;
+        }
+      }
+      throw (
+        lastFailure ??
+        deepInfraExerciseDraftError("deepinfra_exercise_draft_response_invalid")
+      );
+    }
     const completionRequest: DeepInfraChatCompletionRequest = {
       model: modelId,
       messages: [
@@ -221,7 +320,8 @@ export function createDeepInfraExerciseDraftGenerator(
 
     let lastFailure: DeepInfraExerciseDraftError | null = null;
 
-    for (let attempt = 0; attempt < MAX_AI_ATTEMPTS; attempt += 1) {
+    const attempts = maxProviderAttempts(input);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
         const completion = await client.complete(completionRequest);
         let parsedJson: unknown;
@@ -282,7 +382,16 @@ export function createDeepInfraExerciseDraftGenerator(
         return { exerciseId: prepared.exerciseId, versionId: prepared.versionId };
       } catch (error) {
         if (error instanceof DeepInfraExerciseDraftError) {
-          lastFailure = error;
+          if (
+            error.code === "deepinfra_exercise_draft_timeout" ||
+            error.code === "deepinfra_exercise_draft_network_error" ||
+            (error.code === "deepinfra_exercise_draft_request_failed" &&
+              (error.httpStatus === undefined ||
+                error.httpStatus >= 500 ||
+                error.httpStatus === 429))
+          ) {
+            throw error;
+          }
           if (
             error.code === "deepinfra_exercise_draft_request_failed" &&
             error.httpStatus !== undefined &&
@@ -290,6 +399,7 @@ export function createDeepInfraExerciseDraftGenerator(
           ) {
             throw error;
           }
+          lastFailure = error;
           continue;
         }
         throw error;

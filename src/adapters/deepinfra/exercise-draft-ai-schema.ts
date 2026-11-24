@@ -17,6 +17,7 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     "description",
     "equipment",
     "starting_position",
+    "ending_position",
     "steps",
     "common_mistakes",
     "regressions",
@@ -43,6 +44,10 @@ export const EXERCISE_DRAFT_AI_JSON_SCHEMA = {
     description: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
     equipment: { type: "string", maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT },
     starting_position: {
+      type: "string",
+      maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
+    },
+    ending_position: {
       type: "string",
       maxLength: MAX_LENGTH_EXERCISE_TEMPLATE_TEXT,
     },
@@ -81,6 +86,7 @@ export type ExerciseDraftAiPayload = {
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;
@@ -130,6 +136,7 @@ export function parseAndValidateExerciseDraftAiPayload(
     !isBoundedString(record.description, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.equipment, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.starting_position, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
+    !isBoundedString(record.ending_position, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.steps, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.common_mistakes, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||
     !isBoundedString(record.regressions, MAX_LENGTH_EXERCISE_TEMPLATE_TEXT) ||

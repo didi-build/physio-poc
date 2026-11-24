@@ -23,6 +23,8 @@ import {
 
 export const DAILY_MEDIA_REGENERATION_CAP = 5;
 
+export type InitialDraftMediaProgress = "none" | "start_only" | "complete";
+
 export type RegenerationQuota = {
   limit: number;
   used: number;
@@ -120,73 +122,221 @@ export class ExerciseMediaService {
     };
   }
 
+  private initialDraftMediaSetId(version: {
+    status: string;
+    media_set_id: string | null;
+    pending_media_set_id: string | null;
+  }): string | null {
+    if (version.status === "approved") {
+      return version.pending_media_set_id;
+    }
+    return version.media_set_id;
+  }
+
+  async getInitialDraftMediaProgress(
+    exerciseVersionId: string,
+  ): Promise<InitialDraftMediaProgress> {
+    const version = await this.versions.findVersion(exerciseVersionId);
+    if (!version) {
+      return "none";
+    }
+    const setId = this.initialDraftMediaSetId(version);
+    if (!setId) {
+      return "none";
+    }
+    const row = await this.mediaSets.findById(setId);
+    if (!row) {
+      return "none";
+    }
+    const endImage = await this.media.getImage(row.end_object_key, "draft");
+    if (endImage) {
+      return "complete";
+    }
+    const startImage = await this.media.getImage(row.start_object_key, "draft");
+    if (startImage) {
+      return "start_only";
+    }
+    return "none";
+  }
+
+  async generateInitialStartImageForVersion(input: {
+    practitionerId: string;
+    exerciseVersionId: string;
+    regenerationNote?: string | null;
+  }): Promise<void> {
+    const regenerationNote = parseRegenerationNote(input.regenerationNote);
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
+    const progress = await this.getInitialDraftMediaProgress(version.id);
+    if (progress !== "none") {
+      return;
+    }
+    const promptContext = this.promptContextFromVersion(version, regenerationNote);
+    const generated = await this.images.generateStartImage(
+      buildStartImagePrompt(promptContext),
+      { regenerationNote },
+    );
+    const mediaSetId = this.createId();
+    const keys = mediaObjectKeys(mediaSetId);
+    const createdAt = this.clock().toISOString();
+    await this.media.putImage(
+      keys.startObjectKey,
+      generated.bytes,
+      generated.contentType,
+      "draft",
+    );
+    await this.mediaSets.insert({
+      id: mediaSetId,
+      startObjectKey: keys.startObjectKey,
+      endObjectKey: keys.endObjectKey,
+      startProviderUrl: null,
+      visibility: "draft",
+      createdAt,
+    });
+    if (version.status === "approved") {
+      await this.versions.updatePendingDraft(version.id, {
+        pendingMediaSetId: mediaSetId,
+        pendingMediaRequestedBy: input.practitionerId,
+      });
+    } else {
+      await this.versions.updateMediaSetId(version.id, mediaSetId);
+    }
+  }
+
+  async generateInitialEndImageForVersion(input: {
+    practitionerId: string;
+    exerciseVersionId: string;
+    regenerationNote?: string | null;
+    countTowardDailyQuota?: boolean;
+  }): Promise<ExerciseMediaSetView> {
+    const regenerationNote = parseRegenerationNote(input.regenerationNote);
+    const countTowardDailyQuota = input.countTowardDailyQuota !== false;
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
+    const progress = await this.getInitialDraftMediaProgress(version.id);
+    const draftSetId = this.initialDraftMediaSetId(version);
+    if (progress === "complete") {
+      const row = await this.mediaSets.findById(draftSetId!);
+      if (!row) {
+        throw new ExerciseMediaServiceError(
+          "Media set not found",
+          "media_set_not_found",
+        );
+      }
+      return {
+        mediaSetId: row.id,
+        startObjectKey: row.start_object_key,
+        endObjectKey: row.end_object_key,
+        visibility: "draft",
+      };
+    }
+    if (progress === "none") {
+      throw new ExerciseMediaServiceError(
+        "Start image must exist before end image",
+        "start_reference_unavailable",
+      );
+    }
+    const row = await this.mediaSets.findById(draftSetId!);
+    if (!row) {
+      throw new ExerciseMediaServiceError("Media set not found", "media_set_not_found");
+    }
+    const startReference = await this.media.getImage(row.start_object_key, "draft");
+    if (!startReference) {
+      throw new ExerciseMediaServiceError(
+        "Start reference image is not available for end generation",
+        "start_reference_unavailable",
+      );
+    }
+    const promptContext = this.promptContextFromVersion(version, regenerationNote);
+    const generated = await this.images.generateEndImage(
+      buildEndImagePrompt(promptContext),
+      {
+        regenerationNote,
+        startReferenceImage: {
+          bytes: startReference.body,
+          contentType: startReference.contentType,
+        },
+      },
+    );
+    await this.media.putImage(
+      row.end_object_key,
+      generated.bytes,
+      generated.contentType,
+      "draft",
+    );
+    if (countTowardDailyQuota) {
+      const nowIso = this.clock().toISOString();
+      await this.regenerations.insert({
+        id: this.createId(),
+        practitionerId: input.practitionerId,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        scope: "both",
+        hadNote: regenerationNote !== null,
+        createdAt: nowIso,
+      });
+    }
+    return {
+      mediaSetId: row.id,
+      startObjectKey: row.start_object_key,
+      endObjectKey: row.end_object_key,
+      visibility: "draft",
+    };
+  }
+
   async generateInitialMediaForVersion(input: {
     practitionerId: string;
     exerciseVersionId: string;
     regenerationNote?: string | null;
+    /** First draft orchestration sets false so the initial stills skip the 5-a-day counter. */
+    countTowardDailyQuota?: boolean;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
-    const quota = await this.getRegenerationQuota(input.practitionerId);
-    if (quota.limitReached) {
-      throw new ExerciseMediaServiceError(
-        "Daily media regeneration limit reached",
-        "daily_limit_reached",
-      );
+    const countTowardDailyQuota = input.countTowardDailyQuota !== false;
+    if (countTowardDailyQuota) {
+      const quota = await this.getRegenerationQuota(input.practitionerId);
+      if (quota.limitReached) {
+        throw new ExerciseMediaServiceError(
+          "Daily media regeneration limit reached",
+          "daily_limit_reached",
+        );
+      }
     }
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
       input.practitionerId,
     );
     if (version.media_set_id) {
-      const existing = await this.mediaSets.findById(version.media_set_id);
-      if (existing) {
+      const live = await this.mediaSets.findById(version.media_set_id);
+      if (live?.visibility === "public") {
         throw new ExerciseMediaServiceError(
           "Exercise media already generated for this version",
           "exercise_media_already_generated",
         );
       }
     }
-    if (version.pending_media_set_id) {
-      const pending = await this.mediaSets.findById(version.pending_media_set_id);
-      if (pending) {
-        throw new ExerciseMediaServiceError(
-          "Exercise media already generated for this version",
-          "exercise_media_already_generated",
-        );
-      }
+    const mediaProgress = await this.getInitialDraftMediaProgress(version.id);
+    if (mediaProgress === "complete") {
+      throw new ExerciseMediaServiceError(
+        "Exercise media already generated for this version",
+        "exercise_media_already_generated",
+      );
     }
-    const promptContext = this.promptContextFromVersion(version, regenerationNote);
-    const generated = await this.images.generateStartAndEndImages({
-      startPrompt: buildStartImagePrompt(promptContext),
-      endPrompt: buildEndImagePrompt(promptContext),
+    await this.generateInitialStartImageForVersion({
+      practitionerId: input.practitionerId,
+      exerciseVersionId: input.exerciseVersionId,
       regenerationNote,
     });
-    const media =
-      version.status === "approved"
-        ? await this.persistApprovedPendingMediaSet({
-            version,
-            practitionerId: input.practitionerId,
-            start: generated.start,
-            end: generated.end,
-          })
-        : await this.persistMediaSet({
-            version,
-            visibility: "draft",
-            start: generated.start,
-            end: generated.end,
-            updateVersion: true,
-          });
-    const nowIso = this.clock().toISOString();
-    await this.regenerations.insert({
-      id: this.createId(),
+    return this.generateInitialEndImageForVersion({
       practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: "both",
-      hadNote: regenerationNote !== null,
-      createdAt: nowIso,
+      exerciseVersionId: input.exerciseVersionId,
+      regenerationNote,
+      countTowardDailyQuota,
     });
-    return media;
   }
 
   async regenerateMedia(input: {
@@ -302,16 +452,6 @@ export class ExerciseMediaService {
     }
 
     const nowIso = this.clock().toISOString();
-    await this.regenerations.insert({
-      id: this.createId(),
-      practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: input.scope,
-      hadNote: regenerationNote !== null,
-      createdAt: nowIso,
-    });
-    const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
 
     if (version.status === "draft") {
       const media = await this.persistMediaSet({
@@ -325,6 +465,16 @@ export class ExerciseMediaService {
         end: { bytes: endImage.body, contentType: endImage.contentType },
         updateVersion: true,
       });
+      await this.regenerations.insert({
+        id: this.createId(),
+        practitionerId: input.practitionerId,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        scope: input.scope,
+        hadNote: regenerationNote !== null,
+        createdAt: nowIso,
+      });
+      const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
       return { outcome: "draft_updated", media, quota: updatedQuota };
     }
 
@@ -338,8 +488,42 @@ export class ExerciseMediaService {
       },
       end: { bytes: endImage.body, contentType: endImage.contentType },
     });
+    await this.regenerations.insert({
+      id: this.createId(),
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: input.scope,
+      hadNote: regenerationNote !== null,
+      createdAt: nowIso,
+    });
+    const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
 
     return { outcome: "pending_draft_updated", media, quota: updatedQuota };
+  }
+
+  async getDraftStillImage(input: {
+    practitionerId: string;
+    exerciseVersionId: string;
+    which: "start" | "end";
+  }): Promise<{ body: Uint8Array; contentType: string } | null> {
+    const version = await this.requireVersionForPractitioner(
+      input.exerciseVersionId,
+      input.practitionerId,
+    );
+    if (!version.media_set_id) {
+      return null;
+    }
+    const row = await this.mediaSets.findById(version.media_set_id);
+    if (!row || row.visibility !== "draft") {
+      return null;
+    }
+    const key = input.which === "start" ? row.start_object_key : row.end_object_key;
+    const image = await this.media.getImage(key, "draft");
+    if (!image) {
+      return null;
+    }
+    return { body: image.body, contentType: image.contentType };
   }
 
   async promoteDraftMediaOnApproval(
@@ -443,12 +627,14 @@ export class ExerciseMediaService {
       title: string;
       starting_position: string;
       steps: string;
+      ending_position?: string;
     },
     regenerationNote?: string | null,
   ): ExerciseMediaPromptContext {
     return {
       title: version.title,
       startingPosition: version.starting_position,
+      endingPosition: version.ending_position,
       steps: version.steps,
       regenerationNote,
     };

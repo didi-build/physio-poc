@@ -99,6 +99,7 @@ const LIST_ITEM: ProgramListItem = {
   draft_updated_at: "2026-10-24T12:00:00.000Z",
   auto_save_status: { kind: "not_published_yet" },
   library_updates_to_review: 0,
+  type_mismatch_placeholder_count: 0,
   share_link_status: "none",
   last_sent_at: null,
   deleted_at: null,
@@ -116,6 +117,7 @@ function builderView(overrides: Partial<ProgramBuilderView> = {}): ProgramBuilde
     draft_saved_at: "2026-10-24T12:00:00.000Z",
     exercise_count: 1,
     library_updates_to_review: 0,
+    type_mismatch_placeholder_count: 0,
     rows: [BUILDER_ROW],
     open_share_link: false,
     share_link_status: "none",
@@ -579,6 +581,7 @@ describe("Programs UI (integration, jsdom)", () => {
           programsClient={stubProgramsClient({
             listPrograms: vi.fn().mockResolvedValue({
               items: [{ ...LIST_ITEM, library_updates_to_review: 2 }],
+              type_mismatch_placeholder_count: 0,
               matched_code: null,
             }),
           })}
@@ -596,6 +599,7 @@ describe("Programs UI (integration, jsdom)", () => {
           programsClient={stubProgramsClient({
             listPrograms: vi.fn().mockResolvedValue({
               items: [{ ...LIST_ITEM, library_updates_to_review: 1 }],
+              type_mismatch_placeholder_count: 0,
               matched_code: null,
             }),
           })}

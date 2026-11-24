@@ -29,6 +29,7 @@ export type LatestApprovedVersionRow = {
   description: string;
   equipment: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   common_mistakes: string;
   regressions: string;
@@ -316,6 +317,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,
@@ -340,6 +342,58 @@ export class ExerciseLibraryReadRepository {
     );
   }
 
+  async getLatestApprovedByExerciseIds(
+    exerciseIds: readonly string[],
+  ): Promise<Map<string, LatestApprovedVersionRow>> {
+    const unique = [...new Set(exerciseIds)].filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    );
+    const map = new Map<string, LatestApprovedVersionRow>();
+    if (unique.length === 0) {
+      return map;
+    }
+    const placeholders = unique.map(() => "?").join(", ");
+    const rows = await this.sql.all<LatestApprovedVersionRow>(
+      `
+      SELECT
+        ev.id,
+        ev.exercise_id,
+        ev.version_number,
+        ev.title,
+        ev.description,
+        ev.equipment,
+        ev.starting_position,
+        ev.ending_position,
+        ev.steps,
+        ev.common_mistakes,
+        ev.regressions,
+        ev.progressions,
+        ev.precautions,
+        ev.cue_stretching,
+        ev.cue_isometric,
+        ev.cue_concentric,
+        ev.cue_eccentric,
+        ev.approved_at,
+        ev.created_at,
+        ev.change_summary,
+        ev.media_set_id,
+        e.category,
+        e.created_by
+      FROM exercise_versions ev
+      ${LATEST_APPROVED_JOIN}
+        AND ev.exercise_id IN (${placeholders})
+      `,
+      unique as unknown as import("../ports/sql-storage.js").SqlBindings,
+    );
+    for (const row of rows) {
+      const existing = map.get(row.exercise_id);
+      if (!existing || row.version_number > existing.version_number) {
+        map.set(row.exercise_id, row);
+      }
+    }
+    return map;
+  }
+
   async getApprovedVersionById(
     versionId: string,
   ): Promise<LatestApprovedVersionRow | null> {
@@ -353,6 +407,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,
@@ -391,6 +446,7 @@ export class ExerciseLibraryReadRepository {
         ev.description,
         ev.equipment,
         ev.starting_position,
+        ev.ending_position,
         ev.steps,
         ev.common_mistakes,
         ev.regressions,

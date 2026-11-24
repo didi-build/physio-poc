@@ -25,7 +25,7 @@ Diadem approved this revision on Oct 25, 2026, 7:22 PM ET ("v12 is approved"), i
 | Requested | "It isn't in the library or in drafts yet." then AI drafting, "View request" |
 | Conflict on save | Only when someone else submitted something similar while this practitioner was filling in the form: page "Someone submitted something similar" with "Use this", "Merge my changes", "Submit anyway", "Back to edit" |
 | Requests and drafts | Only in-progress requests and drafts from every practitioner (nothing published). "Requested by" each one; "Review draft" |
-| Draft review | Sections with AI fields, images and video, per-field edit, regenerate with a note (counts against the daily cap), Approve |
+| Draft review | Sections with AI fields, a Positions card for Starting and Ending position ([ending-position/spec.md](../ending-position/spec.md)), images and video, per-field edit, regenerate with a note (counts against the daily cap), Approve |
 | Approved | The exercise leaves Requests and drafts, joins the shared library as version 1, and goes straight into the requester's My exercises as new |
 
 ## Key copy
@@ -316,6 +316,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+- **Nov 21, 2026**: DIDI-1277. Deleting a draft from draft review and Requests and drafts (soft delete as `withdrawn`, blocked only while a generation is actually running) lives in [delete-exercise-draft/spec.md](../delete-exercise-draft/spec.md). https://linear.app/didi-build/issue/DIDI-1277
 - **Nov 21, 2026**: DIDI-1210. First-draft generating, in progress elsewhere, failure, daily limit, and Regenerate text behaviour for draft review live in [draft-review-ai-states/spec.md](../draft-review-ai-states/spec.md). https://linear.app/didi-build/issue/DIDI-1210
 - **Oct 23, 2026**: First concept: search, no result, request, draft review directions A, B and C; direction A kept. https://linear.app/didi-build/issue/DIDI-809
 - **Oct 24, 2026**: Any practitioner can see and approve a request; requested by and approved by. https://linear.app/didi-build/issue/DIDI-809, https://linear.app/didi-build/issue/DIDI-827
@@ -326,3 +327,4 @@ Every user-facing string in the parts of the approved source that render this fe
 - **Nov 10, 2026**: DIDI-1200 C2 approved by Diadem (2:09 PM ET). The request card shows on every All exercises empty state, not only on a search with no match, as a single container. Exercise is editable: prefilled from the search, empty with no search. Not on My exercises. No new strings. https://linear.app/didi-build/issue/DIDI-1200
 - **Nov 18, 2026**: DIDI-1253 body region picker r4 (A+B chips, multi-region). https://linear.app/didi-build/issue/DIDI-1253
 - **Nov 19, 2026**: DIDI-1256 body region picker: add on edit, r8 AI pending chips. https://linear.app/didi-build/issue/DIDI-1256
+- **Nov 23, 2026**: DIDI-1282. The fixed text template adds ending position right after starting position (DIDI-594 `5a6fd98b`); UI in [ending-position/spec.md](../ending-position/spec.md). https://linear.app/didi-build/issue/DIDI-1282

@@ -32,6 +32,7 @@ import {
   MIGRATION_0003_SQL,
   MIGRATION_0005_SQL,
   MIGRATION_0007_SQL,
+  applyExerciseVersionEndingPositionMigration,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedPractitioner,
@@ -58,6 +59,7 @@ async function applyRoutineMigrations(storage: SqlStoragePort): Promise<void> {
   await applyMigration(storage, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(storage, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   await applyMigration(storage, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+  await applyExerciseVersionEndingPositionMigration(storage);
 }
 
 async function ensureBatchGuardTable(storage: SqlStoragePort): Promise<void> {

@@ -191,6 +191,7 @@ describe("DIDI-1008: AI draft version insert status (unit)", () => {
         description: "Gentle knee flexion stretch.",
         equipment: "Mat",
         startingPosition: "Supine.",
+        endingPosition: "Heel near buttock.",
         steps: "Slide heel.",
         commonMistakes: "Rushing",
         regressions: "Smaller range",

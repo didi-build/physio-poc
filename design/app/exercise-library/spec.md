@@ -44,7 +44,7 @@ Account identity wiring belongs to DIDI-1172. "Kojo" and "Signed in as Kojo, phy
 | No exact match | "No exact match for ..." with "Similar in the library and drafts" (library matches: Use this; drafts: View draft) and the request card underneath, Exercise prefilled from the search. With no similar results, the message sits inside the request card (see "DIDI-1200: Request card on All exercises empty states") |
 | All exercises empty | No search and 0 exercises, or no search and the filters match nothing: the request card with an empty Exercise field (DIDI-1200) |
 | My exercises empty | Unchanged, no request card: the message, "Try All exercises, or request it there." and "Search all exercises" (DIDI-1200; which message is DIDI-1057) |
-| Exercise details | Images and video, steps, cues per type, version, "Edit for everyone", "Edit my copy", "History (N)", "Report duplicate or merge", "Regenerate" with the daily count left |
+| Exercise details | Images and video, Positions card (Starting and Ending position with still thumbnails, see [ending-position/spec.md](../ending-position/spec.md)), steps, cues per type, version, "Edit for everyone", "Edit my copy", "History (N)", "Report duplicate or merge", "Regenerate" with the daily count left |
 | Edit for everyone | Shared entry editor. Saving makes version N+1 for every practitioner; optional "What did you change?" note; "Changed" badges |
 | Version history | Every version with who, date, summary and changes; "Restore this version" with a confirm; restoring saves as a new version; merges are permanent |
 | My copy | Private per-field edits on top of the library entry. When the library changes a field you edited: "Library updated" with "Use library version" / "Keep mine". "Remove from My exercises" with Undo |
@@ -548,6 +548,7 @@ Every user-facing string in the parts of the approved source that render this fe
 
 ## Changes
 
+* Nov 23, 2026: DIDI-1282 Ending position: Positions card on details, Edit for everyone and Edit my copy; Ending position in version history. See [ending-position/spec.md](../ending-position/spec.md). https://linear.app/didi-build/issue/DIDI-1282
 * Nov 19, 2026: DIDI-1256 body region picker: add on edit, r8 AI pending chips. https://linear.app/didi-build/issue/DIDI-1256
 * Nov 18, 2026: DIDI-1253 body region picker r4 (A+B chips, multi-region, hint N4). https://linear.app/didi-build/issue/DIDI-1253
 

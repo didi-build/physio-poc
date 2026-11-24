@@ -463,12 +463,12 @@ describe("RoutinesLibraryService (integration, SQLite)", () => {
       await storage.run(
         `INSERT INTO exercise_versions (
           id, exercise_id, version_number, status, approved_by, approved_at,
-          title, description, equipment, starting_position, steps,
+          title, description, equipment, starting_position, ending_position, steps,
           common_mistakes, regressions, progressions, precautions,
           cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
           media_set_id, change_summary, created_at
         ) SELECT ?, ?, 1, 'approved', ?, ?, 'Second move', description, equipment,
-          starting_position, steps, common_mistakes, regressions, progressions, precautions,
+          starting_position, ending_position, steps, common_mistakes, regressions, progressions, precautions,
           cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
           media_set_id, change_summary, created_at
         FROM exercise_versions WHERE id = ? LIMIT 1`,

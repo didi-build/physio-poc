@@ -10,6 +10,9 @@ import type {
 } from "../../services/exercise-library/types.js";
 import type { DraftInProgressSummary } from "../../services/exercise-requests/types.js";
 import { useExerciseRequestsApi } from "../api/exercise-requests-context.js";
+import { ExerciseRequestsRequestError } from "../api/exercise-requests-client.js";
+import { DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS } from "../copy/draft-review-ai-states.js";
+import { isPatientDetailNoteInvalidInput } from "../exercise-requests/patient-detail-note-error.js";
 import { useExerciseRequestsRefresh } from "../api/exercise-requests-refresh-context.js";
 import {
   useCurrentPractitionerIdentity,
@@ -164,12 +167,15 @@ export function ExerciseLibraryPage({
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [filters, setFilters] = useState<LibraryFilters>(DEFAULT_FILTERS);
   const [reqNote, setReqNote] = useState("");
+  const [reqNotePatientError, setReqNotePatientError] = useState<string | null>(null);
+  const reqNoteRef = useRef<HTMLInputElement>(null);
   const [reqExerciseName, setReqExerciseName] = useState(() =>
     (searchParams.get("q") ?? "").trim(),
   );
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [submitRequestFailed, setSubmitRequestFailed] = useState(false);
   const [submittedRequestName, setSubmittedRequestName] = useState<string | null>(null);
+  const [submittedRequestId, setSubmittedRequestId] = useState<string | null>(null);
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
   const location = useLocation();
 
@@ -266,6 +272,7 @@ export function ExerciseLibraryPage({
     if (q.trim()) {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setSubmittedRequestId(null);
       setReqExerciseName(q.trim());
     } else {
       setReqExerciseName("");
@@ -338,6 +345,7 @@ export function ExerciseLibraryPage({
     if (tab === "all") {
       formOpenedAtRef.current = new Date().toISOString();
       setSubmittedRequestName(null);
+      setSubmittedRequestId(null);
       setReqExerciseName(value.trim());
       if (value.trim()) {
         setSearchParams({ q: value.trim() });
@@ -347,12 +355,26 @@ export function ExerciseLibraryPage({
     }
   };
 
+  useEffect(() => {
+    if (reqNotePatientError) {
+      reqNoteRef.current?.focus();
+    }
+  }, [reqNotePatientError]);
+
+  const onReqNoteChange = (value: string) => {
+    setReqNote(value);
+    if (reqNotePatientError) {
+      setReqNotePatientError(null);
+    }
+  };
+
   const submitRequest = async () => {
     const requestedName = reqExerciseName.trim();
     if (!requestedName || submittingRequest) {
       return;
     }
     setSubmittingRequest(true);
+    setReqNotePatientError(null);
     try {
       const result = await requestsClient.submitRequest({
         requested_name: requestedName,
@@ -373,12 +395,20 @@ export function ExerciseLibraryPage({
       if (result.outcome === "created") {
         setSubmitRequestFailed(false);
         setSubmittedRequestName(requestedName);
+        setSubmittedRequestId(result.request_id);
         onRequestsChanged?.();
         void refreshInProgressCount();
       }
-    } catch {
-      setSubmitRequestFailed(true);
-      throw new Error("submit_request_failed");
+    } catch (error) {
+      if (
+        error instanceof ExerciseRequestsRequestError &&
+        isPatientDetailNoteInvalidInput(error.detail)
+      ) {
+        setReqNotePatientError(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
+      } else {
+        setSubmitRequestFailed(true);
+        throw new Error("submit_request_failed");
+      }
     } finally {
       setSubmittingRequest(false);
     }
@@ -662,7 +692,13 @@ export function ExerciseLibraryPage({
                 <RequestSubmittedPanel
                   exerciseName={submittedRequestName}
                   onViewRequest={() => {
-                    navigate(fillPhysioAppRoutePattern("requests"));
+                    if (submittedRequestId) {
+                      navigate(
+                        fillPhysioAppRoutePattern("requestReview", {
+                          requestId: submittedRequestId,
+                        }),
+                      );
+                    }
                   }}
                 />
               ) : (
@@ -683,11 +719,13 @@ export function ExerciseLibraryPage({
                     }
                     leadLine={showLeadInCard ? NOT_IN_LIBRARY_YET : undefined}
                     note={reqNote}
-                    onNoteChange={setReqNote}
+                    onNoteChange={onReqNoteChange}
                     onSubmit={() => {
                       void submitRequest().catch(() => {});
                     }}
                     submitting={submittingRequest}
+                    notePatientDetailError={reqNotePatientError}
+                    noteInputRef={reqNoteRef}
                   />
                 </>
               )

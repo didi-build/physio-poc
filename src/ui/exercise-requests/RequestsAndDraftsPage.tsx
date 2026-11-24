@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { InProgressRequestListItem } from "../../services/exercise-requests/types.js";
@@ -31,6 +31,10 @@ import {
   USUALLY_READY,
 } from "../copy/exercise-requests.js";
 import { requestedByLabel } from "./requested-by-label.js";
+import { DeleteDraftButton } from "./DeleteDraftButton.js";
+import { useToast } from "../components/Toast.js";
+import { DELETE_DRAFT_TOAST_SUCCESS } from "../copy/delete-exercise-draft.js";
+import { focusAfterRequestsListDelete } from "./requests-list-delete-focus.js";
 
 function reviewButtonLabel(
   item: InProgressRequestListItem,
@@ -44,11 +48,24 @@ function reviewButtonLabel(
 }
 
 function canReview(item: InProgressRequestListItem): boolean {
-  return item.status === "drafting" && item.exercise_id !== null;
+  return item.status === "drafting";
+}
+
+function listRowTag(item: InProgressRequestListItem): string {
+  if (item.status === "open") {
+    return AI_DRAFTING;
+  }
+  if (item.status === "drafting" && item.exercise_id === null) {
+    return AI_DRAFTING;
+  }
+  return DRAFT_NOT_APPROVED;
 }
 
 export function RequestsAndDraftsPage() {
   const client = useExerciseRequestsApi();
+  const { showToast } = useToast();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const currentPractitioner = useCurrentPractitionerIdentity();
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionState = usePractitionerSession();
@@ -106,7 +123,12 @@ export function RequestsAndDraftsPage() {
       aria-labelledby="ex-requests-heading"
       aria-busy={sessionBusy ? true : undefined}
     >
-      <h1 id="ex-requests-heading" className="ex-page-title">
+      <h1
+        id="ex-requests-heading"
+        className="ex-page-title"
+        ref={headingRef}
+        tabIndex={-1}
+      >
         {REQUESTS_HEADING}
       </h1>
       <p className="ex-page-intro">{REQUESTS_INTRO}</p>
@@ -128,9 +150,11 @@ export function RequestsAndDraftsPage() {
       ) : null}
 
       {showListContent && requests.length > 0 ? (
-        <ul className="ex-requests-list">
+        <ul className="ex-requests-list" ref={listRef}>
           {requests.map((item) => {
             const title = item.draft_title ?? item.requested_name;
+            const rowStatusLabel = listRowTag(item);
+            const generationInProgress = item.generation_in_progress;
             const by = requestedByLabel({
               requestedBy: item.requested_by,
               requestedByEmail: item.requested_by_email,
@@ -139,15 +163,25 @@ export function RequestsAndDraftsPage() {
               sessionIdentityReady: currentPractitioner.sessionIdentityReady,
             });
             return (
-              <li key={item.request_id} className="ex-requests-row">
+              <li
+                key={item.request_id}
+                className="ex-requests-row"
+                data-testid="ex-requests-row-focus"
+                tabIndex={-1}
+                aria-label={`${title}, ${rowStatusLabel}`}
+              >
                 <div className="ex-requests-row-body">
                   <h2 className="ex-requests-row-title">{title}</h2>
                   <div className="ex-requests-row-tags">
-                    {item.status === "open" ? (
-                      <span className="ex-tag ex-tag--drafting">{AI_DRAFTING}</span>
-                    ) : (
-                      <span className="ex-tag ex-tag--draft">{DRAFT_NOT_APPROVED}</span>
-                    )}
+                    <span
+                      className={
+                        listRowTag(item) === AI_DRAFTING
+                          ? "ex-tag ex-tag--drafting"
+                          : "ex-tag ex-tag--draft"
+                      }
+                    >
+                      {listRowTag(item)}
+                    </span>
                   </div>
                   {by.length > 0 ? (
                     <p className="ex-requests-row-meta">
@@ -158,22 +192,49 @@ export function RequestsAndDraftsPage() {
                     <p className="ex-requests-row-note">{item.exercise_note}</p>
                   ) : null}
                 </div>
-                {canReview(item) ? (
-                  <Link
-                    to={fillPhysioAppRoutePattern("requestReview", {
-                      requestId: item.request_id,
-                    })}
-                    className="ex-primary-btn ex-requests-review-link"
-                  >
-                    {reviewButtonLabel(
-                      item,
-                      currentPractitioner.practitionerId,
-                      currentPractitioner.sessionIdentityReady,
-                    )}
-                  </Link>
-                ) : (
-                  <p className="ex-requests-wait">{USUALLY_READY}</p>
-                )}
+                <div className="ex-requests-row-actions">
+                  {canReview(item) ? (
+                    <Link
+                      to={fillPhysioAppRoutePattern("requestReview", {
+                        requestId: item.request_id,
+                      })}
+                      className="ex-primary-btn ex-requests-review-link"
+                      data-testid={`ex-requests-review-${item.request_id}`}
+                    >
+                      {reviewButtonLabel(
+                        item,
+                        currentPractitioner.practitionerId,
+                        currentPractitioner.sessionIdentityReady,
+                      )}
+                    </Link>
+                  ) : (
+                    <p className="ex-requests-wait">{USUALLY_READY}</p>
+                  )}
+                  <DeleteDraftButton
+                    listRow
+                    requestId={item.request_id}
+                    title={title}
+                    generationInProgress={generationInProgress}
+                    onGenerationBlocked={() => {
+                      void refresh({ force: true });
+                    }}
+                    onSuccess={() => {
+                      const deletedIndex = requests.findIndex(
+                        (r) => r.request_id === item.request_id,
+                      );
+                      showToast({ message: DELETE_DRAFT_TOAST_SUCCESS });
+                      void refresh({ force: true }).then(() => {
+                        requestAnimationFrame(() => {
+                          focusAfterRequestsListDelete({
+                            listRoot: listRef.current,
+                            heading: headingRef.current,
+                            deletedIndex,
+                          });
+                        });
+                      });
+                    }}
+                  />
+                </div>
               </li>
             );
           })}

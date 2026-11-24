@@ -14,6 +14,8 @@ const noopExecutionContext: WorkerExecutionContext = {
   passThroughOnException() {},
 };
 
+export { ExerciseRequestDraftGenerationWorkflow } from "../adapters/workers/exercise-request-draft-generation-workflow.js";
+
 /** Cloudflare Workers entry. Production auth loads via createWorkerAppDependencies when env + D1 are valid. */
 export default {
   async fetch(

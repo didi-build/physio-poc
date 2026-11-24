@@ -1,6 +1,7 @@
 import type { TextOverrideKey } from "../../domain/exercise-text-overrides.js";
 import type { ExerciseMutationUndo } from "../../services/exercise-library/types.js";
 import type { ExerciseLibraryClient } from "./exercise-library-client.js";
+import type { CacheWrappedClient } from "./caching-client-types.js";
 import { invalidateAfterExerciseLibraryMutation } from "./navigation-read-cache-invalidation.js";
 
 function withExerciseInvalidation<T>(
@@ -17,7 +18,7 @@ function withExerciseInvalidation<T>(
 export function wrapExerciseLibraryClientWithCacheInvalidation(
   inner: ExerciseLibraryClient,
 ): ExerciseLibraryClient {
-  return {
+  const wrapped = {
     searchApproved: (params, options) => inner.searchApproved(params, options),
     listMyExercises: (params, options) => inner.listMyExercises(params, options),
     getExerciseDetails: (exerciseId, options) =>
@@ -41,5 +42,6 @@ export function wrapExerciseLibraryClientWithCacheInvalidation(
       },
     ) =>
       withExerciseInvalidation(exerciseId, () => inner.updateMyCopy(exerciseId, body)),
-  } as ExerciseLibraryClient;
+  } satisfies CacheWrappedClient<ExerciseLibraryClient>;
+  return wrapped as ExerciseLibraryClient;
 }

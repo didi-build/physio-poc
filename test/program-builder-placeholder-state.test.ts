@@ -1,0 +1,201 @@
+import { describe, expect, it } from "vitest";
+import {
+  ProgramBuilderService,
+  linkApprovedPlaceholders,
+} from "../src/services/programs/program-builder-service.js";
+import { ExerciseRequestsRepository } from "../src/storage/repositories/exercise-data.js";
+import {
+  FIXTURE_EXERCISE_ID,
+  FIXTURE_VERSION_ID,
+  openMigratedDatabase,
+  seedApprovedExerciseVersion,
+  seedPractitioner,
+  TS,
+} from "./helpers/exercise-sqlite-fixture.js";
+import { id } from "./helpers/opaque-test-ids.js";
+
+async function seedOpenExerciseRequest(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  practitionerId: string,
+  requestId: string,
+  requestedName: string,
+): Promise<void> {
+  const requests = new ExerciseRequestsRepository(storage);
+  await requests.insert({
+    id: requestId,
+    requestedName,
+    requestedBy: practitionerId,
+    status: "open",
+    createdAt: TS,
+    updatedAt: TS,
+  });
+}
+
+async function markExerciseRequestApproved(
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  requestId: string,
+  exerciseId: string,
+): Promise<void> {
+  await storage.run(
+    `UPDATE exercise_requests SET status = 'approved', exercise_id = ?, updated_at = ? WHERE id = ?`,
+    [exerciseId, TS, requestId],
+  );
+}
+
+describe("getProgram placeholder_state (DIDI-1106)", () => {
+  it("derivates awaiting_approval, type_mismatch, request_closed, linked rows, and per-request isolation", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(storage, id("ph-a"), "a@example.com");
+      const ownerB = await seedPractitioner(storage, id("ph-b"), "b@example.com");
+      await seedApprovedExerciseVersion(storage, ownerB);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [ownerB, TS, FIXTURE_VERSION_ID],
+      );
+
+      const requestOpen = id("req-open");
+      const requestApproved = id("req-approved");
+      const requestWithdrawn = id("req-withdrawn");
+      await seedOpenExerciseRequest(storage, ownerA, requestOpen, "Open draft");
+      await seedOpenExerciseRequest(storage, ownerA, requestApproved, "Approved draft");
+      await seedOpenExerciseRequest(
+        storage,
+        ownerA,
+        requestWithdrawn,
+        "Withdrawn draft",
+      );
+
+      const service = new ProgramBuilderService(storage);
+      const programId = id("prog-ph-state");
+      await service.createProgram(ownerA, { programId });
+
+      const rowAwaiting = id("row-await");
+      const rowMismatch = id("row-mismatch");
+      const rowClosed = id("row-closed");
+      const rowLinked = id("row-linked");
+      const rowOtherRequest = id("row-other-req");
+
+      await service.addPlaceholderRow(ownerA, programId, {
+        rowId: rowAwaiting,
+        exerciseRequestId: requestOpen,
+        prescriptionType: "stretching",
+      });
+      await service.addPlaceholderRow(ownerA, programId, {
+        rowId: rowMismatch,
+        exerciseRequestId: requestApproved,
+        prescriptionType: "isometric",
+      });
+      await service.addPlaceholderRow(ownerA, programId, {
+        rowId: rowClosed,
+        exerciseRequestId: requestWithdrawn,
+        prescriptionType: "stretching",
+      });
+      await service.addPlaceholderRow(ownerA, programId, {
+        rowId: rowLinked,
+        exerciseRequestId: requestApproved,
+        prescriptionType: "stretching",
+      });
+      const requestOther = id("req-other");
+      await seedOpenExerciseRequest(storage, ownerB, requestOther, "Other owner");
+      await storage.run(
+        `INSERT INTO program_rows (
+          id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+          prescription_type, params_json, text_snapshot_json, note
+        ) VALUES (?, ?, ?, NULL, NULL, ?, 'stretching', '{}', ?, NULL)`,
+        [
+          rowOtherRequest,
+          programId,
+          4,
+          requestOther,
+          JSON.stringify({ title: "Other owner" }),
+        ],
+      );
+
+      await storage.run(
+        `UPDATE exercise_requests SET status = 'withdrawn', updated_at = ? WHERE id = ?`,
+        [TS, requestWithdrawn],
+      );
+      await markExerciseRequestApproved(storage, requestApproved, FIXTURE_EXERCISE_ID);
+      await linkApprovedPlaceholders(storage, requestApproved, FIXTURE_VERSION_ID);
+
+      const view = await service.getProgram(ownerA, programId);
+      const byId = new Map(view.rows.map((row) => [row.id, row]));
+
+      expect(byId.get(rowAwaiting)?.placeholder_state).toBe("awaiting_approval");
+      expect(byId.get(rowMismatch)?.placeholder_state).toBe("type_mismatch");
+      expect(byId.get(rowMismatch)?.type_mismatch_approved_category).toBe("stretching");
+      expect(byId.get(rowClosed)?.placeholder_state).toBe("request_closed");
+      expect(byId.get(rowLinked)?.kind).toBe("exercise");
+      expect(byId.get(rowLinked)?.placeholder_state).toBeUndefined();
+      expect(byId.get(rowOtherRequest)?.placeholder_state).toBe("awaiting_approval");
+      expect(byId.get(rowOtherRequest)?.text_snapshot.title).toBe("Other owner");
+      expect(view.type_mismatch_placeholder_count).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("attaches practitioner B request on B program and keeps A rows isolated on link", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const ownerA = await seedPractitioner(storage, id("ph-b5-a"), "b5a@example.com");
+      const ownerB = await seedPractitioner(storage, id("ph-b5-b"), "b5b@example.com");
+      await seedApprovedExerciseVersion(storage, ownerB);
+      await storage.run(
+        `UPDATE exercise_versions SET status = 'approved', approved_by = ?, approved_at = ? WHERE id = ?`,
+        [ownerB, TS, FIXTURE_VERSION_ID],
+      );
+      const requestB = id("req-b5-b");
+      await seedOpenExerciseRequest(storage, ownerB, requestB, "B owner draft");
+      const service = new ProgramBuilderService(storage);
+      const programB = id("prog-b5-b");
+      const rowB = id("row-b5-b");
+      await service.createProgram(ownerB, { programId: programB });
+      await service.addPlaceholderRow(ownerB, programB, {
+        rowId: rowB,
+        exerciseRequestId: requestB,
+        prescriptionType: "stretching",
+      });
+      await markExerciseRequestApproved(storage, requestB, FIXTURE_EXERCISE_ID);
+      const viewB = await service.getProgram(ownerB, programB);
+      expect(viewB.rows[0]?.placeholder_state).toBe("type_mismatch");
+      expect(viewB.type_mismatch_placeholder_count).toBe(1);
+
+      const requestA = id("req-b5-a");
+      await seedOpenExerciseRequest(storage, ownerA, requestA, "A draft");
+      const programA = id("prog-b5-a");
+      const rowA = id("row-b5-a");
+      await service.createProgram(ownerA, { programId: programA });
+      await service.addPlaceholderRow(ownerA, programA, {
+        rowId: rowA,
+        exerciseRequestId: requestA,
+        prescriptionType: "stretching",
+      });
+      const rowForeign = id("row-b5-foreign");
+      await storage.run(
+        `INSERT INTO program_rows (
+          id, program_id, position, exercise_id, exercise_version_id, exercise_request_id,
+          prescription_type, params_json, text_snapshot_json, note
+        ) VALUES (?, ?, 1, NULL, NULL, ?, 'isometric', '{}', ?, NULL)`,
+        [rowForeign, programA, requestB, JSON.stringify({ title: "B owner draft" })],
+      );
+      const viewA = await service.getProgram(ownerA, programA);
+      expect(viewA.type_mismatch_placeholder_count).toBe(1);
+      expect(viewA.rows.find((row) => row.id === rowForeign)?.placeholder_state).toBe(
+        "type_mismatch",
+      );
+      await expect(
+        service.linkTypeMismatchPlaceholderRow(
+          ownerA,
+          programA,
+          rowForeign,
+          "stretching",
+          viewA.draft_updated_at,
+        ),
+      ).rejects.toMatchObject({ code: "exercise_request_not_found" });
+    } finally {
+      storage.close();
+    }
+  });
+});

@@ -13,7 +13,6 @@ import {
 import { readHttpResponseTextWithByteCap } from "../src/adapters/deepinfra/deepinfra-chat-completion-client.js";
 import { resolveExerciseDraftGenerator } from "../src/adapters/deepinfra/resolve-exercise-draft-generator.js";
 import { fakeExerciseDraftGenerator } from "../src/services/exercise-requests/fake-draft-generator.js";
-import { DeepInfraExerciseDraftError } from "../src/services/exercise-requests/deepinfra-exercise-draft-error.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
 import {
   ExerciseAliasesRepository,
@@ -28,10 +27,17 @@ import {
 } from "./helpers/console-log-leak-assertions.js";
 import {
   openMigratedDatabase,
+  seedDraftingExerciseRequest,
   seedExercise,
   seedPractitioner,
 } from "./helpers/exercise-sqlite-fixture.js";
+import type { ExerciseDraftGenerator } from "../src/services/exercise-requests/exercise-draft-generator-types.js";
 import { MCP_TEST_CONFIG } from "./mcp-server-test-utils.js";
+import {
+  submitRequestWithGeneratedDraft,
+  testExerciseMediaService,
+} from "./helpers/exercise-requests-generate-fixture.js";
+import { serviceGenerateRequestWithDrain } from "./helpers/test-draft-generation-workflow-port.js";
 import { MAX_LENGTH_EXERCISE_TEMPLATE_TEXT } from "../src/mcp-connector/text-limits.js";
 import { id } from "./helpers/opaque-test-ids.js";
 import { stubThisSensitiveGlobalFetch } from "./helpers/this-sensitive-global-fetch.js";
@@ -48,6 +54,7 @@ const VALID_STRETCH_DRAFT = {
   description: "Gentle knee flexion stretch.",
   equipment: "Mat",
   starting_position: "Supine on mat.",
+  ending_position: "Knee bent with heel slid toward the hip.",
   steps: "1. Bend knee\n2. Slide heel",
   common_mistakes: "Rushing",
   regressions: "Smaller range",
@@ -72,6 +79,66 @@ function requestBodyFromCall(init?: RequestInit): Record<string, unknown> {
   return JSON.parse(String(init?.body)) as Record<string, unknown>;
 }
 
+async function expectGenerateTextFailure(
+  service: ExerciseRequestsService,
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  input: Parameters<ExerciseRequestsService["submitRequest"]>[0],
+  expectedCode: string,
+  draftGenerator: ExerciseDraftGenerator,
+): Promise<string> {
+  const created = await service.submitRequest(input);
+  expect(created.outcome).toBe("created");
+  if (created.outcome !== "created") {
+    throw new Error("expected created request");
+  }
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
+    practitionerId: input.practitionerId,
+    requestId: created.request_id,
+    mediaService: testExerciseMediaService(storage),
+    draftGenerator,
+  });
+  expect(generated).toMatchObject({ outcome: "text_failed", error: expectedCode });
+  return created.request_id;
+}
+
+async function expectGenerateRejects(
+  service: ExerciseRequestsService,
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  input: Parameters<ExerciseRequestsService["submitRequest"]>[0],
+  draftGenerator: ExerciseDraftGenerator,
+  matcher: (
+    result: Awaited<ReturnType<ExerciseRequestsService["generateRequest"]>>,
+  ) => boolean,
+): Promise<void> {
+  const created = await service.submitRequest(input);
+  expect(created.outcome).toBe("created");
+  if (created.outcome !== "created") {
+    throw new Error("expected created request");
+  }
+  const generated = await serviceGenerateRequestWithDrain(service, storage, {
+    practitionerId: input.practitionerId,
+    requestId: created.request_id,
+    mediaService: testExerciseMediaService(storage),
+    draftGenerator,
+  });
+  expect(matcher(generated)).toBe(true);
+}
+
+async function runGenerator(
+  generator: ExerciseDraftGenerator,
+  storage: Awaited<ReturnType<typeof openMigratedDatabase>>,
+  input: Parameters<ExerciseDraftGenerator>[0],
+  deps: Parameters<ExerciseDraftGenerator>[1],
+): Promise<ReturnType<ExerciseDraftGenerator>> {
+  await seedDraftingExerciseRequest(storage, {
+    requestId: input.requestId,
+    practitionerId: input.requestedBy,
+    requestedName: input.requestedName,
+    note: input.exerciseNote,
+  });
+  return generator(input, deps);
+}
+
 describe("DeepInfra exercise draft generator", () => {
   it("pins the chat completions URL and request body literals (name and note only in user message)", async () => {
     const fetchImpl = vi.fn(async () => envelope(JSON.stringify(VALID_STRETCH_DRAFT)));
@@ -89,7 +156,9 @@ describe("DeepInfra exercise draft generator", () => {
     try {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-deep-prompt"),
@@ -145,34 +214,58 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      const created = await service.submitRequest({
-        practitionerId: practitioner,
-        requestedName: "Heel slide",
-        exerciseNote: null,
-        formOpenedAt: FORM_OPENED,
-      });
+      const created = await submitRequestWithGeneratedDraft(
+        service,
+        storage,
+        {
+          practitionerId: practitioner,
+          requestedName: "Heel slide",
+          exerciseNote: null,
+          formOpenedAt: FORM_OPENED,
+        },
+        { draftGenerator: generator },
+      );
       expect(created.outcome).toBe("created");
       if (created.outcome !== "created") {
         throw new Error("expected created outcome");
       }
+      const requestRow = await storage.first<{ exercise_id: string }>(
+        "SELECT exercise_id FROM exercise_requests WHERE id = ?",
+        [created.request_id],
+      );
+      if (!requestRow?.exercise_id) {
+        throw new Error("expected exercise_id after generate");
+      }
+      const exerciseId = requestRow.exercise_id;
       const version = await storage.first<{ status: string; title: string }>(
         "SELECT status, title FROM exercise_versions WHERE exercise_id = ?",
-        [created.exercise_id],
+        [exerciseId],
       );
       expect(version?.status).toBe("draft");
       expect(version?.title).toBe("Heel slide");
       const description = await storage.first<{ description: string }>(
         "SELECT description FROM exercise_versions WHERE exercise_id = ?",
-        [created.exercise_id],
+        [exerciseId],
       );
       expect(description?.description).toBe("Gentle knee flexion stretch.");
       expect(description?.description).not.toContain("Default sets and reps");
+      const positions = await storage.first<{
+        starting_position: string;
+        ending_position: string;
+      }>(
+        "SELECT starting_position, ending_position FROM exercise_versions WHERE exercise_id = ?",
+        [exerciseId],
+      );
+      expect(positions?.starting_position).toBe("Supine on mat.");
+      expect(positions?.ending_position).toBe(
+        "Knee bent with heel slid toward the hip.",
+      );
     } finally {
       storage.close();
     }
   });
 
-  it("retries once on invalid JSON then fails without storing a draft", async () => {
+  it("fails on invalid JSON after one provider call without storing a draft", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(envelope("not-json{{{"))
@@ -192,19 +285,27 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateTextFailure(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Bad json move",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        "deepinfra_exercise_draft_response_invalid",
+        generator,
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const count = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Bad json move"],
       );
-      expect(count?.count).toBe(0);
+      expect(count?.count).toBe(1);
+      const exercises = await storage.first<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM exercises",
+      );
+      expect(exercises?.count).toBe(0);
     } finally {
       storage.close();
     }
@@ -230,7 +331,9 @@ describe("DeepInfra exercise draft generator", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-email-alias"),
@@ -238,6 +341,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -251,6 +355,57 @@ describe("DeepInfra exercise draft generator", () => {
         "SELECT COUNT(*) AS count FROM exercise_aliases WHERE alias LIKE '%@%'",
       );
       expect(aliasRows?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("Regenerate text permanent 503 makes exactly 2 fetches (R5)", async () => {
+    const fetchImpl = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-regen-503"),
+        "regen503@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: fakeExerciseDraftGenerator,
+      });
+      const created = await submitRequestWithGeneratedDraft(
+        service,
+        storage,
+        {
+          practitionerId: practitioner,
+          requestedName: "Regen 503",
+          exerciseNote: null,
+          formOpenedAt: FORM_OPENED,
+        },
+        { draftGenerator: fakeExerciseDraftGenerator },
+      );
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created");
+      }
+      const regenService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      const result = await regenService.regenerateDraftText({
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        note: "please retry",
+      });
+      expect(result).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_request_failed",
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
     } finally {
       storage.close();
     }
@@ -281,7 +436,9 @@ describe("DeepInfra exercise draft generator", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-alias-clash"),
@@ -289,6 +446,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -303,7 +461,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once when repository validation fails after a schema-valid payload", async () => {
+  it("fails after one provider call when repository validation fails after a schema-valid payload", async () => {
     const tooLong = "x".repeat(MAX_LENGTH_EXERCISE_TEMPLATE_TEXT + 1);
     const overLimit = { ...VALID_STRETCH_DRAFT, description: tooLong };
     const fetchImpl = vi
@@ -325,20 +483,24 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateTextFailure(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Domain validation fail",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        "deepinfra_exercise_draft_response_invalid",
+        generator,
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
   });
 
-  it("retries once on schema miss then fails cleanly", async () => {
+  it("fails after one provider call on schema miss", async () => {
     const invalid = { ...VALID_STRETCH_DRAFT, cue_stretching: null };
     const fetchImpl = vi
       .fn()
@@ -359,24 +521,27 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateTextFailure(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Schema miss",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        "deepinfra_exercise_draft_response_invalid",
+        generator,
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
   });
 
-  it("retries once on HTTP 500 then maps to typed request_failed", async () => {
+  it("maps HTTP 500 to typed request_failed without a second in-provider fetch", async () => {
     const echo = JSON.stringify({ error: "Authorization Bearer " + SENTINEL_KEY });
     const fetchImpl = vi
       .fn()
-      .mockResolvedValueOnce(new Response(echo, { status: 500 }))
       .mockResolvedValueOnce(new Response(echo, { status: 500 }));
     const generator = createDeepInfraExerciseDraftGenerator({
       apiKey: SENTINEL_KEY,
@@ -394,21 +559,25 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateRejects(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Http fail",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toSatisfy((err) => {
-        expect(err).toBeInstanceOf(DeepInfraExerciseDraftError);
-        expectThrownErrorLeakFree(err, { apiKey: SENTINEL_KEY, jsonBody: echo });
-        return (
-          (err as DeepInfraExerciseDraftError).code ===
-          "deepinfra_exercise_draft_request_failed"
-        );
-      });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        generator,
+        (result) => {
+          expect(result.outcome).toBe("text_failed");
+          if (result.outcome !== "text_failed") {
+            return false;
+          }
+          expect(result.error).toBe("deepinfra_exercise_draft_request_failed");
+          return true;
+        },
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       restoreConsoleSpies(spies);
       storage.close();
@@ -434,16 +603,23 @@ describe("DeepInfra exercise draft generator", () => {
           now: () => AFTER_FORM,
           draftGenerator: generator,
         });
-        await expect(
-          service.submitRequest({
+        await expectGenerateRejects(
+          service,
+          storage,
+          {
             practitionerId: practitioner,
             requestedName: `No retry ${status}`,
             formOpenedAt: FORM_OPENED,
-          }),
-        ).rejects.toMatchObject({
-          code: "deepinfra_exercise_draft_request_failed",
-          httpStatus: status,
-        });
+          },
+          generator,
+          (result) => {
+            expect(result).toMatchObject({
+              outcome: "text_failed",
+              error: "deepinfra_exercise_draft_request_failed",
+            });
+            return true;
+          },
+        );
         expect(fetchImpl).toHaveBeenCalledTimes(1);
       } finally {
         storage.close();
@@ -468,16 +644,23 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateRejects(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Auth fail",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({
-        code: "deepinfra_exercise_draft_request_failed",
-        httpStatus: 401,
-      });
+        },
+        generator,
+        (result) => {
+          expect(result).toMatchObject({
+            outcome: "text_failed",
+            error: "deepinfra_exercise_draft_request_failed",
+          });
+          return true;
+        },
+      );
       expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
@@ -485,9 +668,12 @@ describe("DeepInfra exercise draft generator", () => {
   });
 
   it("maps timeout to typed failure without raw AbortError", async () => {
+    vi.useFakeTimers();
+    let abortSignal: AbortSignal | undefined;
     const fetchImpl = vi.fn(
       async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
         new Promise((_resolve, reject) => {
+          abortSignal = init?.signal ?? undefined;
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted", "AbortError"));
           });
@@ -509,19 +695,87 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
-          practitionerId: practitioner,
-          requestedName: "Timeout",
-          formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toSatisfy((err: unknown) => {
-        expect(err).toMatchObject({ code: "deepinfra_exercise_draft_timeout" });
-        expect((err as Error).cause).toBeUndefined();
-        return true;
+      const created = await service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Timeout",
+        formOpenedAt: FORM_OPENED,
       });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+      const inflight = serviceGenerateRequestWithDrain(service, storage, {
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        mediaService: testExerciseMediaService(storage),
+        draftGenerator: generator,
+      });
+      inflight.catch(() => {});
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(abortSignal?.aborted).toBe(true);
+      const generated = await inflight;
+      expect(generated).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_timeout",
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
+      vi.useRealTimers();
+      storage.close();
+    }
+  });
+
+  it("maps generate timeout to text_failed without raw AbortError", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted", "AbortError"));
+          });
+        }),
+    );
+    const generator = createDeepInfraExerciseDraftGenerator({
+      apiKey: SENTINEL_KEY,
+      fetchImpl,
+      timeoutMs: 25,
+    });
+    const storage = await openMigratedDatabase();
+    try {
+      const practitioner = await seedPractitioner(
+        storage,
+        id("pr-timeout-generate"),
+        "tg@example.com",
+      );
+      const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
+        now: () => AFTER_FORM,
+        draftGenerator: generator,
+      });
+      const created = await service.submitRequest({
+        practitionerId: practitioner,
+        requestedName: "Timeout generate",
+        formOpenedAt: FORM_OPENED,
+      });
+      expect(created.outcome).toBe("created");
+      if (created.outcome !== "created") {
+        throw new Error("expected created request");
+      }
+      const inflight = serviceGenerateRequestWithDrain(service, storage, {
+        practitionerId: practitioner,
+        requestId: created.request_id,
+        mediaService: testExerciseMediaService(storage),
+        draftGenerator: generator,
+      });
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(25);
+      expect(await inflight).toMatchObject({
+        outcome: "text_failed",
+        error: "deepinfra_exercise_draft_timeout",
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
       storage.close();
     }
   });
@@ -545,18 +799,24 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateRejects(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Network",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toSatisfy((err: unknown) => {
-        expect(err).toMatchObject({ code: "deepinfra_exercise_draft_network_error" });
-        expect((err as Error).cause).toBeUndefined();
-        return true;
-      });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        generator,
+        (result) => {
+          expect(result).toMatchObject({
+            outcome: "text_failed",
+            error: "deepinfra_exercise_draft_network_error",
+          });
+          return true;
+        },
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
     } finally {
       storage.close();
     }
@@ -578,7 +838,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-model-override"),
@@ -618,7 +880,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-trim-key"),
@@ -642,7 +906,7 @@ describe("DeepInfra exercise draft generator", () => {
     }
   });
 
-  it("retries once without persisting when template text includes patient details", async () => {
+  it("fails after one provider call without persisting when template text includes patient details", async () => {
     const draftWithTemplatePii = {
       ...VALID_STRETCH_DRAFT,
       steps: "Jane Smith DOB 1990-01-02 — slide heel",
@@ -666,19 +930,23 @@ describe("DeepInfra exercise draft generator", () => {
         now: () => AFTER_FORM,
         draftGenerator: generator,
       });
-      await expect(
-        service.submitRequest({
+      await expectGenerateTextFailure(
+        service,
+        storage,
+        {
           practitionerId: practitioner,
           requestedName: "Template PII",
           formOpenedAt: FORM_OPENED,
-        }),
-      ).rejects.toMatchObject({ code: "deepinfra_exercise_draft_response_invalid" });
-      expect(fetchImpl).toHaveBeenCalledTimes(2);
+        },
+        "deepinfra_exercise_draft_response_invalid",
+        generator,
+      );
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
       const requestCount = await storage.first<{ count: number }>(
         "SELECT COUNT(*) AS count FROM exercise_requests WHERE requested_name = ?",
         ["Template PII"],
       );
-      expect(requestCount?.count).toBe(0);
+      expect(requestCount?.count).toBe(1);
     } finally {
       storage.close();
     }
@@ -708,7 +976,9 @@ describe("DeepInfra exercise draft generator", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-cl"),
@@ -767,7 +1037,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      const result = await generator(
+      const result = await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-norm-suggest"),
@@ -815,7 +1087,9 @@ describe("DeepInfra exercise draft generator", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-pii-region"),
@@ -823,6 +1097,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -858,7 +1133,9 @@ describe("DeepInfra exercise draft generator", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-empty-alias"),
@@ -866,6 +1143,7 @@ describe("DeepInfra exercise draft generator", () => {
             exerciseNote: null,
             requestedBy: practitioner,
             now: AFTER_FORM,
+            providerAttempts: 2,
           },
           {
             exercises: new ExercisesRepository(storage),
@@ -902,7 +1180,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      const result = await generator(
+      const result = await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-suggest"),
@@ -972,7 +1252,12 @@ describe("DeepInfra exercise draft generator", () => {
         versions,
         requests,
       };
-      const resultPromise = generator(generatorInput, generatorRepos);
+      const resultPromise = runGenerator(
+        generator,
+        storage,
+        generatorInput,
+        generatorRepos,
+      );
       await expect(resultPromise).resolves.toMatchObject({
         exerciseId: expect.any(String),
       });
@@ -1012,7 +1297,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-regen"),
@@ -1099,7 +1386,9 @@ describe("DeepInfra exercise draft generator", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-worker-fetch"),
@@ -1139,7 +1428,9 @@ describe("DeepInfra API key redaction on failures", () => {
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-bad-envelope"),
@@ -1182,7 +1473,9 @@ describe("DeepInfra API key redaction on failures", () => {
       const { ExercisesRepository } =
         await import("../src/storage/repositories/exercise-data.js");
       await expect(
-        generator(
+        runGenerator(
+          generator,
+          storage,
           {
             sql: storage,
             requestId: id("req-redact"),
@@ -1238,7 +1531,9 @@ describe("DeepInfra request metadata guards", () => {
       );
       const requests = new ExerciseRequestsRepository(storage);
       const versions = new ExerciseVersionsRepository(storage);
-      await generator(
+      await runGenerator(
+        generator,
+        storage,
         {
           sql: storage,
           requestId: id("req-meta"),

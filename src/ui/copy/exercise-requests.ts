@@ -56,7 +56,6 @@ export const STARTING_POSITION = "Starting position";
 export const IMAGES = "Images";
 export const CHOOSE_IMAGE = "Choose image";
 export const SWIPE_END = "Swipe to see the end position.";
-export const AI_VIDEO_LOOP = "AI video, 6s loop";
 export const GENERATING = "Generating";
 export const REGENERATE_START_IMAGE = "Regenerate start image";
 export const REGENERATE_END_IMAGE = "Regenerate end image";
@@ -68,18 +67,13 @@ export const REGENERATE_CHOOSE_HINT =
 export const REGENERATE_THIS_IMAGE = "Regenerate this image";
 export const REGENERATE_EVERYTHING = "Regenerate everything";
 export const REGENERATE_IMAGES = "Regenerate images";
-export const REGENERATE_VIDEO = "Regenerate video";
 export const WHAT_TO_REGENERATE = "What to regenerate";
 export const REGEN_NOTE_LABEL = "Note for the AI";
 export const REGEN_NOTE_OPTIONAL = "(optional)";
 export const REGEN_NOTE_PLACEHOLDER =
   "For example: show forearm support, not straight arm";
 export const REGEN_UNDO_HINT = "You can undo afterwards. The previous version is kept.";
-export const REGEN_SCOPE_ALL_LABEL = "Text, images and video";
 export const REGEN_SCOPE_IMAGES_LABEL = "Images only";
-export const REGEN_SCOPE_IMAGES_HINT = "Start and end images. Text and video stay.";
-export const REGEN_SCOPE_VIDEO_LABEL = "The 6s loop";
-export const REGEN_SCOPE_VIDEO_HINT = "Text and images stay.";
 export const SAVE = "Save";
 export const CANCEL = "Cancel";
 export function editFieldLabel(label: string): string {

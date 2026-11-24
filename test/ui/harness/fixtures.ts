@@ -16,8 +16,30 @@ import {
   programsClientFor1025Harness,
   type Programs1025HarnessScenario,
 } from "./programs-didi-1025-fixtures.js";
+import {
+  PROGRAMS_1106_FIXTURE_ROUTES,
+  programsClientFor1106Harness,
+} from "./programs-didi-1106-fixtures.js";
 import type { RoutinesClient } from "../../../src/ui/api/routines-client.js";
 import type { RequestConflictLocationState } from "../../../src/ui/exercise-requests/RequestConflictPage.js";
+
+function draftReviewDraftingView() {
+  return {
+    request_id: "req-layout-drafting",
+    requested_name: "Heel slide",
+    exercise_note: null,
+    status: "drafting" as const,
+    requested_by: DEV_PRACTITIONER_ID,
+    requested_by_email: "kojo@example.com",
+    exercise_id: null,
+    generation: {
+      generation_in_progress: true,
+      first_draft_complete: false,
+      draft_generation_locked_at: new Date().toISOString(),
+    },
+    draft: null,
+  };
+}
 
 const draftView = {
   request_id: "req-layout-1",
@@ -27,6 +49,10 @@ const draftView = {
   requested_by: DEV_PRACTITIONER_ID,
   requested_by_email: "kojo@example.com",
   exercise_id: "ex-layout-1",
+  generation: {
+    generation_in_progress: false,
+    first_draft_complete: true,
+  },
   draft: {
     exercise_version_id: "ver-layout-1",
     version_number: 1,
@@ -34,6 +60,7 @@ const draftView = {
     description: "Desc",
     equipment: "",
     starting_position: "Supine",
+    ending_position: "",
     steps: "",
     common_mistakes: "",
     regressions: "",
@@ -100,6 +127,7 @@ const programsListItem = {
   draft_updated_at: "2026-10-24T12:00:00.000Z",
   auto_save_status: { kind: "not_published_yet" as const },
   library_updates_to_review: 0,
+  type_mismatch_placeholder_count: 0,
   share_link_status: "none" as const,
   last_sent_at: "2026-10-24T12:00:00.000Z",
   deleted_at: null,
@@ -146,6 +174,7 @@ export type HarnessFixtureId =
   | "conflict"
   | "requests-list"
   | "draft-review"
+  | "draft-review-drafting"
   | "exercises-mine"
   | "routines-all"
   | "routines-all-populated"
@@ -165,6 +194,8 @@ export type HarnessFixtureId =
   | "programs-1014-builder-sticky"
   | "programs-1014-share-open"
   | "programs-1014-share-closed"
+  | "programs-1106-type-mismatch"
+  | "programs-1106-publish-type-mismatch"
   | "programs-1025-builder-from-routine"
   | "programs-1025-publish-from-routine"
   | "programs-1025-list-filters"
@@ -232,6 +263,7 @@ export function harnessFixture(
       limitReached: false,
     }),
     regenerateDraftMedia: async () => undefined,
+    draftStillObjectUrl: async () => null,
   } as unknown as ExerciseMediaClient;
 
   switch (id) {
@@ -318,6 +350,33 @@ export function harnessFixture(
         requests: {
           getInProgressCount,
           listInProgress,
+        } as unknown as ExerciseRequestsClient,
+        media,
+        routines: baseRoutinesClient(),
+      };
+    case "draft-review-drafting":
+      return {
+        initialEntries: ["/requests/req-layout-drafting"],
+        library: baseLibraryClient(),
+        requests: {
+          getRequest: async () => draftReviewDraftingView(),
+          generateRequest: async () => {
+            const view = draftReviewDraftingView();
+            return {
+              outcome: "in_progress" as const,
+              view,
+              started_elsewhere: false,
+            };
+          },
+          updateDraft: async () => draftReviewDraftingView(),
+          approveRequest: async () => {
+            throw new Error("not ready");
+          },
+          getInProgressCount: async () => ({ in_progress_count: 0 }),
+          listInProgress: async () => ({
+            requests: [],
+            in_progress_count: 0,
+          }),
         } as unknown as ExerciseRequestsClient,
         media,
         routines: baseRoutinesClient(),
@@ -768,6 +827,9 @@ export function harnessFixture(
         media,
         routines: baseRoutinesClient(),
       };
+    case "programs-1106-type-mismatch":
+    case "programs-1106-publish-type-mismatch":
+      return programs1106HarnessFixture(id);
     case "programs-1014-publish-first":
     case "programs-1014-publish-name-required":
     case "programs-1014-publish-republish":
@@ -1081,6 +1143,25 @@ function programs1025HarnessFixture(
   };
 }
 
+function programs1106HarnessFixture(
+  id: "programs-1106-type-mismatch" | "programs-1106-publish-type-mismatch",
+): HarnessFixture {
+  const route = PROGRAMS_1106_FIXTURE_ROUTES[id];
+  return {
+    initialEntries: [route.initialEntry],
+    library: baseLibraryClient(),
+    requests: {
+      getInProgressCount: async () => ({ in_progress_count: 0 }),
+      listInProgress: async () => ({
+        requests: [],
+        in_progress_count: 0,
+      }),
+    } as unknown as ExerciseRequestsClient,
+    media: {} as ExerciseMediaClient,
+    routines: baseRoutinesClient(),
+  };
+}
+
 function programs1014HarnessFixture(
   id:
     | "programs-1014-publish-first"
@@ -1125,6 +1206,13 @@ export function programsClientForHarness(fixtureId?: HarnessFixtureId): Programs
         fixtureId as keyof typeof PROGRAMS_1014_FIXTURE_ROUTES
       ].scenario;
     return programsClientFor1014Harness(scenario);
+  }
+  if (fixtureId && fixtureId in PROGRAMS_1106_FIXTURE_ROUTES) {
+    const scenario =
+      PROGRAMS_1106_FIXTURE_ROUTES[
+        fixtureId as keyof typeof PROGRAMS_1106_FIXTURE_ROUTES
+      ].scenario;
+    return programsClientFor1106Harness(scenario);
   }
   if (fixtureId === "programs-no-match") {
     return {

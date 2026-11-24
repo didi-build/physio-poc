@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
 import {
   ExerciseRequestsRepository,
   ExerciseVersionsRepository,
@@ -36,7 +37,7 @@ describe("Exercise request approve batch (integration)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Batch link move",
         formOpenedAt: FORM_OPENED,
@@ -119,7 +120,7 @@ describe("Exercise request approve batch (integration)", () => {
       const service = new ExerciseRequestsService(tracking, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Single batch move",
         formOpenedAt: FORM_OPENED,
@@ -167,7 +168,7 @@ describe("Exercise request approve batch (integration)", () => {
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Batch rollback move",
         formOpenedAt: FORM_OPENED,

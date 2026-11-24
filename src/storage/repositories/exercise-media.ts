@@ -122,6 +122,7 @@ export type ExerciseVersionMediaRow = {
   title: string;
   description: string;
   starting_position: string;
+  ending_position: string;
   steps: string;
   media_set_id: string | null;
   pending_media_set_id: string | null;
@@ -136,7 +137,7 @@ export class ExerciseVersionMediaRepository {
   async findVersion(id: string): Promise<ExerciseVersionMediaRow | null> {
     return this.sql.first<ExerciseVersionMediaRow>(
       `SELECT id, exercise_id, version_number, status, approved_by, approved_at,
-              title, description, starting_position, steps, media_set_id, pending_media_set_id,
+              title, description, starting_position, ending_position, steps, media_set_id, pending_media_set_id,
               pending_media_requested_by, change_summary, created_at
        FROM exercise_versions WHERE id = ? LIMIT 1`,
       [id],
@@ -148,7 +149,7 @@ export class ExerciseVersionMediaRepository {
   ): Promise<(ExerciseVersionMediaRow & { exercise_created_by: string }) | null> {
     return this.sql.first<ExerciseVersionMediaRow & { exercise_created_by: string }>(
       `SELECT ev.id, ev.exercise_id, ev.version_number, ev.status, ev.approved_by, ev.approved_at,
-              ev.title, ev.description, ev.starting_position, ev.steps, ev.media_set_id,
+              ev.title, ev.description, ev.starting_position, ev.ending_position, ev.steps, ev.media_set_id,
               ev.pending_media_set_id, ev.pending_media_requested_by, ev.change_summary,
               ev.created_at, e.created_by AS exercise_created_by
        FROM exercise_versions ev

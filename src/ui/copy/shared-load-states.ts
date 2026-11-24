@@ -145,3 +145,10 @@ export function notFoundHelper(item: LoadItemToken): string {
       return NOT_FOUND_HELPER_ROUTINE;
   }
 }
+
+/** Draft review item-load copy (withdraw-guards / delete-draft tests). */
+export const DRAFT_ITEM_LOAD_BACK = BACK_TO_REQUESTS_AND_DRAFTS;
+export const DRAFT_ITEM_LOAD_TITLE = itemLoadErrorPrimary("draft");
+export const DRAFT_ITEM_LOAD_HINT = LIST_LOAD_ERROR_SECONDARY;
+export const LOAD_TRY_AGAIN = TRY_AGAIN;
+export const LOAD_TRYING_AGAIN = TRYING_AGAIN;

@@ -8,6 +8,9 @@ import {
   exerciseRequestsInProgressPath,
   EXERCISE_REQUESTS_API_BASE,
 } from "../../exercise-requests-api-paths.js";
+import { ExerciseMediaService } from "../../services/exercise-media/index.js";
+import { FakeImageGeneration } from "../../storage/adapters/memory/fake-image-generation.js";
+import { PrefixMediaStorage } from "../../storage/adapters/memory/prefix-media-storage.js";
 import {
   ExerciseRequestsService,
   ExerciseRequestsServiceError,
@@ -15,6 +18,7 @@ import {
   type SubmitResolution,
 } from "../../services/exercise-requests/index.js";
 import { DeepInfraExerciseDraftError } from "../../services/exercise-requests/deepinfra-exercise-draft-error.js";
+import type { DraftGenerationWorkflowPort } from "../../services/exercise-requests/draft-generation-workflow-types.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
 
@@ -27,10 +31,33 @@ const SUBMIT_RESOLUTIONS = new Set<SubmitResolution>([
   "submit_anyway",
 ]);
 
+function mediaService(deps: AppDependencies): ExerciseMediaService {
+  return new ExerciseMediaService(
+    deps.sql,
+    deps.exerciseMediaImages ?? new FakeImageGeneration(),
+    new PrefixMediaStorage(deps.objects),
+  );
+}
+
 function service(deps: AppDependencies): ExerciseRequestsService {
+  const media = mediaService(deps);
   return new ExerciseRequestsService(deps.sql, deps.config, {
     draftGenerator: deps.exerciseDraftGenerator,
+    initialDraftMediaProgress: (versionId) =>
+      media.getInitialDraftMediaProgress(versionId),
   });
+}
+
+function resolveDraftGenerationWorkflow(
+  deps: AppDependencies,
+): DraftGenerationWorkflowPort {
+  if (!deps.draftGenerationWorkflow) {
+    throw new ExerciseRequestsServiceError(
+      "Draft generation workflow is not configured",
+      "draft_generation_workflow_unavailable",
+    );
+  }
+  return deps.draftGenerationWorkflow;
 }
 
 function errorResponse(error: unknown): Response {
@@ -57,12 +84,20 @@ function errorResponse(error: unknown): Response {
             error.code === "draft_not_ready" ||
             error.code === "merge_target_not_ready"
           ? 404
-          : error.code === "approve_failed" ||
-              error.code === "alias_conflict" ||
-              error.code === "request_already_approved" ||
-              error.code === "submit_failed"
-            ? 409
-            : 400;
+          : error.code === "generation_not_requester"
+            ? 403
+            : error.code === "draft_generation_workflow_unavailable"
+              ? 503
+              : error.code === "draft_generation_workflow_start_failed"
+                ? 502
+                : error.code === "approve_failed" ||
+                    error.code === "alias_conflict" ||
+                    error.code === "request_already_approved" ||
+                    error.code === "submit_failed" ||
+                    error.code === "draft_generation_in_progress" ||
+                    error.code === "request_not_deletable"
+                  ? 409
+                  : 400;
     return Response.json(
       { error: error.code, message: error.message },
       { status, headers: JSON_HEADERS },
@@ -242,6 +277,115 @@ export async function handleExerciseRequestsHttpRequest(
         practitionerId,
         requestId,
         patch: body as DraftFieldPatch,
+      });
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const regenTextMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/regenerate-text$`,
+  ).exec(path);
+  if (regenTextMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(regenTextMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    try {
+      const result = await service(deps).regenerateDraftText({
+        practitionerId,
+        requestId,
+        note:
+          typeof body.note === "string" || body.note === null
+            ? (body.note as string | null)
+            : undefined,
+      });
+      if (result.outcome === "complete") {
+        return Response.json(result, { headers: JSON_HEADERS });
+      }
+      if (result.outcome === "in_progress") {
+        return Response.json(result, { status: 202, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "text_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const generateMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/generate$`,
+  ).exec(path);
+  if (generateMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(generateMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    const mediaService = new ExerciseMediaService(
+      deps.sql,
+      deps.exerciseMediaImages ?? new FakeImageGeneration(),
+      new PrefixMediaStorage(deps.objects),
+    );
+    try {
+      const requestService = service(deps);
+      const workflow = resolveDraftGenerationWorkflow(deps);
+      const result = await requestService.generateRequest({
+        practitionerId,
+        requestId,
+        mediaService,
+        workflow,
+      });
+      if (result.outcome === "complete") {
+        return Response.json(result, { headers: JSON_HEADERS });
+      }
+      if (result.outcome === "in_progress") {
+        return Response.json(result, { status: 202, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "text_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "images_failed") {
+        return Response.json(result, { status: 502, headers: JSON_HEADERS });
+      }
+      if (result.outcome === "daily_limit") {
+        return Response.json(result, { status: 429, headers: JSON_HEADERS });
+      }
+      return Response.json(result, { headers: JSON_HEADERS });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const withdrawMatch = new RegExp(
+    `^${EXERCISE_REQUESTS_API_BASE.replace(/\//g, "\\/")}/([^/]+)/withdraw$`,
+  ).exec(path);
+  if (withdrawMatch && request.method === "POST") {
+    const requestId = decodeURIComponent(withdrawMatch[1]!);
+    const body = await readJsonObjectBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    const bodyRejected = rejectBodyPractitionerId(body);
+    if (bodyRejected) {
+      return bodyRejected;
+    }
+    try {
+      const result = await service(deps).withdrawRequest({
+        practitionerId,
+        requestId,
       });
       return Response.json(result, { headers: JSON_HEADERS });
     } catch (error) {

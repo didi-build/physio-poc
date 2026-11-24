@@ -328,6 +328,7 @@ describe("Programs /new?from_routine_id deep link (DIDI-1199)", () => {
             draft_saved_at: TS,
             exercise_count: 1,
             library_updates_to_review: 0,
+            type_mismatch_placeholder_count: 0,
             rows: [],
             open_share_link: false,
             share_link_status: "none",

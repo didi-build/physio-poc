@@ -12,7 +12,10 @@ import {
   openWorkerAuthTestDatabase,
   seedPractitioner,
 } from "./helpers/worker-auth-d1-fixture.js";
-import { seedPractitioner as seedExercisePractitioner } from "./helpers/exercise-sqlite-fixture.js";
+import {
+  seedDraftingExerciseRequest,
+  seedPractitioner as seedExercisePractitioner,
+} from "./helpers/exercise-sqlite-fixture.js";
 import { buildWorkerProductionAuthEnv } from "./helpers/worker-production-auth-test-utils.js";
 import { DEEPINFRA_OPENAI_CHAT_COMPLETIONS_URL } from "../src/adapters/deepinfra/exercise-draft-ai-config.js";
 import {
@@ -38,6 +41,7 @@ const VALID_STRETCH_DRAFT = {
   description: "Gentle knee flexion stretch.",
   equipment: "Mat",
   starting_position: "Supine on mat.",
+  ending_position: "Knee bent with heel slid toward the hip.",
   steps: "1. Bend knee\n2. Slide heel",
   common_mistakes: "Rushing",
   regressions: "Smaller range",
@@ -65,6 +69,21 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("createWorkerProductionAppDependencies wires draftGenerationWorkflow when binding is set (M49b)", async () => {
+    const { d1 } = await openWorkerAuthTestDatabase();
+    const env = buildWorkerProductionAuthEnv({
+      PHYSIO_DB: d1,
+      PHYSIO_DEEPINFRA_API_KEY: "m49b-wire-key",
+      PHYSIO_EXERCISE_REQUEST_DRAFT_GENERATION: {
+        create: vi.fn(),
+        get: vi.fn(),
+      },
+    } as never);
+    const deps = createWorkerProductionAppDependencies(env);
+    expect(deps.draftGenerationWorkflow).toBeDefined();
+    expect(typeof deps.draftGenerationWorkflow?.start).toBe("function");
+  });
+
   it("createWorkerProductionAppDependencies uses the real DeepInfra generator and global fetch", async () => {
     const globalFetch = stubThisSensitiveGlobalFetch(() =>
       envelope(JSON.stringify(VALID_STRETCH_DRAFT)),
@@ -86,11 +105,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
       const versions = new ExerciseVersionsRepository(storage);
       const draftGenerator = deps.exerciseDraftGenerator;
       expect(draftGenerator).toBeDefined();
+      const requestId = id("req-worker-wire");
+      await seedDraftingExerciseRequest(storage, {
+        requestId,
+        practitionerId: practitioner,
+        requestedName: "Heel slide",
+      });
       await expect(
         draftGenerator!(
           {
             sql: storage,
-            requestId: id("req-worker-wire"),
+            requestId,
             requestedName: "Heel slide",
             exerciseNote: null,
             requestedBy: practitioner,
@@ -146,11 +171,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     const versions = new ExerciseVersionsRepository(deps.sql);
     const draftGenerator = deps.exerciseDraftGenerator;
     expect(draftGenerator).toBeDefined();
+    const requestId = id("req-node-wire");
+    await seedDraftingExerciseRequest(deps.sql, {
+      requestId,
+      practitionerId: practitioner,
+      requestedName: "Heel slide",
+    });
     await expect(
       draftGenerator!(
         {
           sql: deps.sql,
-          requestId: id("req-node-wire"),
+          requestId,
           requestedName: "Heel slide",
           exerciseNote: null,
           requestedBy: practitioner,
@@ -211,11 +242,17 @@ describe("DeepInfra exercise draft production wiring (DIDI-1008 QA R2)", () => {
     );
     const requests = new ExerciseRequestsRepository(deps.sql);
     const versions = new ExerciseVersionsRepository(deps.sql);
+    const requestId = id("req-node-model");
+    await seedDraftingExerciseRequest(deps.sql, {
+      requestId,
+      practitionerId: practitioner,
+      requestedName: "Heel slide",
+    });
     await expect(
       deps.exerciseDraftGenerator!(
         {
           sql: deps.sql,
-          requestId: id("req-node-model"),
+          requestId,
           requestedName: "Heel slide",
           exerciseNote: null,
           requestedBy: practitioner,

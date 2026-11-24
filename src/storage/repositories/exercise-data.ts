@@ -13,6 +13,7 @@ import {
   validateExerciseAlias,
   validateExerciseCue,
   validateExerciseTemplateText,
+  validateOptionalTrimmedExerciseTemplateText,
   validateExerciseTitle,
   validateRequestNote,
   validateRequestedExerciseName,
@@ -218,6 +219,7 @@ export type ExerciseVersionInsert = {
   description?: string;
   equipment?: string;
   startingPosition?: string;
+  endingPosition?: string;
   steps?: string;
   commonMistakes?: string;
   regressions?: string;
@@ -269,6 +271,7 @@ export class ExerciseVersionsRepository {
       description: string;
       equipment: string;
       startingPosition: string;
+      endingPosition: string;
       steps: string;
       commonMistakes: string;
       regressions: string;
@@ -297,7 +300,19 @@ export class ExerciseVersionsRepository {
     if (patch.startingPosition !== undefined) {
       sets.push("starting_position = ?");
       bindings.push(
-        validateExerciseTemplateText(patch.startingPosition, "Starting position"),
+        validateOptionalTrimmedExerciseTemplateText(
+          patch.startingPosition,
+          "Starting position",
+        ),
+      );
+    }
+    if (patch.endingPosition !== undefined) {
+      sets.push("ending_position = ?");
+      bindings.push(
+        validateOptionalTrimmedExerciseTemplateText(
+          patch.endingPosition,
+          "Ending position",
+        ),
       );
     }
     if (patch.steps !== undefined) {
@@ -417,6 +432,10 @@ export class ExerciseVersionsRepository {
       input.startingPosition ?? "",
       "Starting position",
     );
+    const endingPosition = validateExerciseTemplateText(
+      input.endingPosition ?? "",
+      "Ending position",
+    );
     const steps = validateExerciseTemplateText(input.steps ?? "", "Steps");
     const commonMistakes = validateExerciseTemplateText(
       input.commonMistakes ?? "",
@@ -455,11 +474,11 @@ export class ExerciseVersionsRepository {
     await this.sql.run(
       `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         exerciseId,
@@ -471,6 +490,7 @@ export class ExerciseVersionsRepository {
         description,
         equipment,
         startingPosition,
+        endingPosition,
         steps,
         commonMistakes,
         regressions,
@@ -494,6 +514,7 @@ export class ExerciseVersionsRepository {
     description: string;
     equipment: string;
     startingPosition: string;
+    endingPosition: string;
     steps: string;
     commonMistakes: string;
     regressions: string;
@@ -513,6 +534,10 @@ export class ExerciseVersionsRepository {
     const startingPosition = validateExerciseTemplateText(
       input.startingPosition,
       "Starting position",
+    );
+    const endingPosition = validateExerciseTemplateText(
+      input.endingPosition,
+      "Ending position",
     );
     const steps = validateExerciseTemplateText(input.steps, "Steps");
     const commonMistakes = validateExerciseTemplateText(
@@ -545,11 +570,11 @@ export class ExerciseVersionsRepository {
     return {
       sql: `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)`,
       /* didi-1008: AI full-draft insert — status must remain 'draft' (not minimal-draft path) */
       bindings: [
         id,
@@ -558,6 +583,7 @@ export class ExerciseVersionsRepository {
         description,
         equipment,
         startingPosition,
+        endingPosition,
         steps,
         commonMistakes,
         regressions,
@@ -585,11 +611,11 @@ export class ExerciseVersionsRepository {
     return {
       sql: `INSERT INTO exercise_versions (
         id, exercise_id, version_number, status, approved_by, approved_at,
-        title, description, equipment, starting_position, steps,
+        title, description, equipment, starting_position, ending_position, steps,
         common_mistakes, regressions, progressions, precautions,
         cue_stretching, cue_isometric, cue_concentric, cue_eccentric,
         media_set_id, change_summary, created_at
-      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, '', '', '', '', '', '', '', '', NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
+      ) VALUES (?, ?, 1, 'draft', NULL, NULL, ?, '', '', '', '', '', '', '', '', '', NULL, NULL, NULL, NULL, NULL, NULL, ?)`,
       bindings: [id, exerciseId, title, input.createdAt],
       minRowsAffected: 1,
     };
@@ -689,12 +715,199 @@ export class ExerciseRequestsRepository {
     exercise_id: string | null;
     created_at: string;
     updated_at: string;
+    draft_generation_locked_at: string | null;
+    draft_generation_attempt_id: string | null;
+    draft_generation_failure_code: string | null;
   } | null> {
     const id = validateOpaqueEntityId(requestId, "Exercise request id");
     return this.sql.first(
-      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at,
+              draft_generation_locked_at, draft_generation_attempt_id, draft_generation_failure_code
        FROM exercise_requests WHERE id = ? LIMIT 1`,
       [id],
+    );
+  }
+
+  async findManyByIds(requestIds: readonly string[]): Promise<
+    Map<
+      string,
+      {
+        id: string;
+        requested_name: string;
+        note: string | null;
+        requested_by: string;
+        status: ExerciseRequestStatus;
+        exercise_id: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    >
+  > {
+    const unique = [...new Set(requestIds)];
+    const map = new Map<
+      string,
+      {
+        id: string;
+        requested_name: string;
+        note: string | null;
+        requested_by: string;
+        status: ExerciseRequestStatus;
+        exercise_id: string | null;
+        created_at: string;
+        updated_at: string;
+      }
+    >();
+    if (unique.length === 0) {
+      return map;
+    }
+    const placeholders = unique.map(() => "?").join(", ");
+    const rows = await this.sql.all<{
+      id: string;
+      requested_name: string;
+      note: string | null;
+      requested_by: string;
+      status: ExerciseRequestStatus;
+      exercise_id: string | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, requested_name, note, requested_by, status, exercise_id, created_at, updated_at
+       FROM exercise_requests WHERE id IN (${placeholders})`,
+      unique as unknown as import("../../storage/ports/sql-storage.js").SqlBindings,
+    );
+    for (const row of rows) {
+      map.set(row.id, row);
+    }
+    return map;
+  }
+
+  async getDraftGenerationLockedAt(requestId: string): Promise<string | null> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const row = await this.sql.first<{ draft_generation_locked_at: string | null }>(
+      `SELECT draft_generation_locked_at FROM exercise_requests WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return row?.draft_generation_locked_at ?? null;
+  }
+
+  async getDraftGenerationAttemptId(requestId: string): Promise<string | null> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const row = await this.sql.first<{ draft_generation_attempt_id: string | null }>(
+      `SELECT draft_generation_attempt_id FROM exercise_requests WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    return row?.draft_generation_attempt_id ?? null;
+  }
+
+  async tryAcquireDraftGenerationLock(input: {
+    requestId: string;
+    lockedAt: string;
+    staleBefore: string;
+    attemptId: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?,
+           draft_generation_attempt_id = ?,
+           draft_generation_failure_code = NULL,
+           draft_generation_abandon_logged_at = NULL
+       WHERE id = ?
+         AND (draft_generation_locked_at IS NULL OR draft_generation_locked_at <= ?)`,
+      [input.lockedAt, attemptId, requestId, input.staleBefore],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async releaseDraftGenerationLock(
+    requestId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const attempt = validateOpaqueEntityId(attemptId, "draft_generation_attempt_id");
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = NULL, draft_generation_attempt_id = NULL
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [id, attempt],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async refreshDraftGenerationLock(input: {
+    requestId: string;
+    lockedAt: string;
+    attemptId: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_locked_at = ?
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [input.lockedAt, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async setDraftGenerationFailure(input: {
+    requestId: string;
+    attemptId: string;
+    failureCode: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_failure_code = ?
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [input.failureCode, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async markDraftGenerationAbandonLoggedIfUnlogged(input: {
+    requestId: string;
+    attemptId: string;
+    loggedAt: string;
+  }): Promise<boolean> {
+    const requestId = validateOpaqueEntityId(input.requestId, "Exercise request id");
+    const attemptId = validateOpaqueEntityId(
+      input.attemptId,
+      "draft_generation_attempt_id",
+    );
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_abandon_logged_at = ?
+       WHERE id = ?
+         AND draft_generation_attempt_id = ?
+         AND draft_generation_abandon_logged_at IS NULL`,
+      [input.loggedAt, requestId, attemptId],
+    );
+    return result.rowsAffected > 0;
+  }
+
+  async clearDraftGenerationFailureOnSuccess(
+    requestId: string,
+    attemptId: string,
+  ): Promise<void> {
+    const id = validateOpaqueEntityId(requestId, "Exercise request id");
+    const attempt = validateOpaqueEntityId(attemptId, "draft_generation_attempt_id");
+    await this.sql.run(
+      `UPDATE exercise_requests
+       SET draft_generation_failure_code = NULL
+       WHERE id = ? AND draft_generation_attempt_id = ?`,
+      [id, attempt],
     );
   }
 
@@ -879,5 +1092,25 @@ export class ExerciseRequestsRepository {
        WHERE status IN ('open', 'drafting')`,
     );
     return row?.count ?? 0;
+  }
+
+  async tryWithdrawToWithdrawn(input: {
+    id: string;
+    updatedAt: string;
+    lockStaleBefore: string;
+  }): Promise<boolean> {
+    const id = validateOpaqueEntityId(input.id, "Exercise request id");
+    const result = await this.sql.run(
+      `UPDATE exercise_requests
+       SET status = 'withdrawn', updated_at = ?
+       WHERE id = ?
+         AND status IN ('open', 'drafting')
+         AND (
+           draft_generation_locked_at IS NULL
+           OR draft_generation_locked_at < ?
+         )`,
+      [input.updatedAt, id, input.lockStaleBefore],
+    );
+    return result.rowsAffected > 0;
   }
 }

@@ -3,8 +3,10 @@ export {
   ExerciseRequestsServiceError,
 } from "./exercise-requests-service.js";
 export {
+  createFakeExerciseDraftGenerator,
   fakeExerciseDraftGenerator,
   type ExerciseDraftGenerator,
+  type FakeExerciseDraftGeneratorOptions,
 } from "./fake-draft-generator.js";
 export {
   DeepInfraExerciseDraftError,
@@ -14,8 +16,10 @@ export type {
   ApproveExerciseRequestResult,
   DraftFieldPatch,
   ExerciseRequestDraftView,
+  GenerateExerciseRequestDraftResult,
   InProgressRequestsResult,
   SimilarExercisesResult,
   SubmitExerciseRequestResult,
   SubmitResolution,
+  WithdrawExerciseRequestResult,
 } from "./types.js";

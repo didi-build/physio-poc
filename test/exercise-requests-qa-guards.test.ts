@@ -3,6 +3,7 @@ import { D1SqlStorage } from "../src/adapters/workers/d1-sql-storage.js";
 import { handleRequest } from "../src/http/app.js";
 import { FakeAuthPort } from "../src/auth/fake-auth-port.js";
 import { ExerciseRequestsService } from "../src/services/exercise-requests/exercise-requests-service.js";
+import { submitRequestWithGeneratedDraft } from "./helpers/exercise-requests-generate-fixture.js";
 import { ProgramBuilderService } from "../src/services/programs/program-builder-service.js";
 import type { SqlStoragePort } from "../src/storage/ports/sql-storage.js";
 import {
@@ -12,6 +13,14 @@ import {
   MIGRATION_0003_ID,
   MIGRATION_0005_ID,
   MIGRATION_0007_ID,
+  MIGRATION_0008_ID,
+  MIGRATION_0009_ID,
+  MIGRATION_0011_ID,
+  MIGRATION_0012_ID,
+  MIGRATION_0013_ID,
+  MIGRATION_0014_ID,
+  MIGRATION_0015_ID,
+  MIGRATION_0016_ID,
 } from "../src/storage/migrations/apply.js";
 import { InMemoryObjectStorage } from "../src/storage/adapters/memory/in-memory-object-storage.js";
 import {
@@ -20,6 +29,14 @@ import {
   MIGRATION_0003_SQL,
   MIGRATION_0005_SQL,
   MIGRATION_0007_SQL,
+  MIGRATION_0008_SQL,
+  MIGRATION_0009_SQL,
+  MIGRATION_0011_SQL,
+  MIGRATION_0012_SQL,
+  MIGRATION_0013_SQL,
+  MIGRATION_0014_SQL,
+  MIGRATION_0015_SQL,
+  MIGRATION_0016_SQL,
   openMigratedDatabase,
   seedApprovedExerciseVersion,
   seedExercise,
@@ -52,6 +69,14 @@ async function openMigratedD1SqlStorage(): Promise<D1SqlStorage> {
   await applyMigration(sql, MIGRATION_0003_ID, MIGRATION_0003_SQL);
   await applyMigration(sql, MIGRATION_0005_ID, MIGRATION_0005_SQL);
   await applyMigration(sql, MIGRATION_0007_ID, MIGRATION_0007_SQL);
+  await applyMigration(sql, MIGRATION_0008_ID, MIGRATION_0008_SQL);
+  await applyMigration(sql, MIGRATION_0009_ID, MIGRATION_0009_SQL);
+  await applyMigration(sql, MIGRATION_0011_ID, MIGRATION_0011_SQL);
+  await applyMigration(sql, MIGRATION_0012_ID, MIGRATION_0012_SQL);
+  await applyMigration(sql, MIGRATION_0013_ID, MIGRATION_0013_SQL);
+  await applyMigration(sql, MIGRATION_0014_ID, MIGRATION_0014_SQL);
+  await applyMigration(sql, MIGRATION_0015_ID, MIGRATION_0015_SQL);
+  await applyMigration(sql, MIGRATION_0016_ID, MIGRATION_0016_SQL);
   return sql;
 }
 
@@ -94,18 +119,25 @@ async function seedDraftingRequestWithPlaceholder(
   const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
     now: () => AFTER_FORM,
   });
-  const created = await service.submitRequest({
+  const created = await submitRequestWithGeneratedDraft(service, storage, {
     practitionerId: requester,
     requestedName,
     formOpenedAt: FORM_OPENED,
   });
   expect(created.outcome).toBe("created");
-  if (created.outcome !== "created" || !created.exercise_id) {
+  if (created.outcome !== "created") {
     throw new Error("expected created drafting request");
+  }
+  const requestRow = await storage.first<{ exercise_id: string }>(
+    "SELECT exercise_id FROM exercise_requests WHERE id = ? LIMIT 1",
+    [created.request_id],
+  );
+  if (!requestRow?.exercise_id) {
+    throw new Error("expected exercise after generate");
   }
   const version = await storage.first<{ id: string }>(
     `SELECT id FROM exercise_versions WHERE exercise_id = ? AND status = 'draft' LIMIT 1`,
-    [created.exercise_id],
+    [requestRow.exercise_id],
   );
   if (!version) {
     throw new Error("expected draft version");
@@ -123,7 +155,7 @@ async function seedDraftingRequestWithPlaceholder(
   });
   return {
     requestId: created.request_id,
-    exerciseId: created.exercise_id,
+    exerciseId: requestRow.exercise_id,
     versionId: version.id,
     programRowId,
   };
@@ -409,7 +441,7 @@ describe("Exercise request updateDraft race guards (BetterSqliteStorage)", () =>
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "Q12 refresh race",
         formOpenedAt: FORM_OPENED,
@@ -473,7 +505,7 @@ describe("Exercise request updateDraft race guards (BetterSqliteStorage)", () =>
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "X6 refresh ignore",
         formOpenedAt: FORM_OPENED,
@@ -537,7 +569,7 @@ describe("Exercise request updateDraft race guards (BetterSqliteStorage)", () =>
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "X7 fields race",
         formOpenedAt: FORM_OPENED,
@@ -608,7 +640,7 @@ describe("Exercise request updateDraft race guards (BetterSqliteStorage)", () =>
       const service = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const created = await service.submitRequest({
+      const created = await submitRequestWithGeneratedDraft(service, storage, {
         practitionerId: requester,
         requestedName: "X8 fields result",
         formOpenedAt: FORM_OPENED,
@@ -691,7 +723,7 @@ describe.each(NODE_AND_D1)(
         const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
           now: () => AFTER_FORM,
         });
-        const target = await ownerService.submitRequest({
+        const target = await submitRequestWithGeneratedDraft(ownerService, storage, {
           practitionerId: owner,
           requestedName: "Target move",
           exerciseNote: "baseline note",
@@ -750,7 +782,7 @@ describe.each(NODE_AND_D1)(
         const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
           now: () => AFTER_FORM,
         });
-        const target = await ownerService.submitRequest({
+        const target = await submitRequestWithGeneratedDraft(ownerService, storage, {
           practitionerId: owner,
           requestedName: "Primary title",
           formOpenedAt: BEFORE_FORM,
@@ -826,7 +858,7 @@ describe("Exercise request merge alias HTTP", () => {
       const ownerService = new ExerciseRequestsService(storage, MCP_TEST_CONFIG, {
         now: () => AFTER_FORM,
       });
-      const target = await ownerService.submitRequest({
+      const target = await submitRequestWithGeneratedDraft(ownerService, storage, {
         practitionerId: owner,
         requestedName: "HTTP merge target",
         exerciseNote: "keep me",

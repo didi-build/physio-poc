@@ -71,6 +71,7 @@ import {
 import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { myCopyStatusLine } from "./my-copy-status.js";
 import { parseSteps } from "./library-filters.js";
+import { ExercisePositionsCard } from "../exercise-positions/ExercisePositionsCard.js";
 
 const TYPE_LABELS: Record<string, string> = {
   stretching: "Stretching",
@@ -270,6 +271,14 @@ export function ExerciseDetailsPage() {
           loopCaptionSuffix={loopCaptionSuffix}
         />
       </div>
+
+      <ExercisePositionsCard
+        startingPosition={details.library.starting_position ?? ""}
+        endingPosition={details.library.ending_position ?? ""}
+        showThumbnails={false}
+        editable={false}
+        showHelper={false}
+      />
 
       <div className="ex-detail-panel">
         <h2>{HOW_TO_DO_IT}</h2>
