@@ -416,6 +416,7 @@
   .link-page-positions,
   .link-page-dose,
   .link-page-row-note {
+    grid-area: auto;
     grid-column: 1;
   }
 
