@@ -9,6 +9,7 @@ import {
   prescriptionTypesForCategory,
   type PrescriptionType,
 } from "../../domain/exercise-types.js";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   ADJUST,
   DOSE_ADJUST_TOGGLE_DONE,
@@ -25,7 +26,10 @@ import {
   ROW_NOTES_PLACEHOLDER,
   duplicateRowAriaLabel,
   libraryVersionAvailableRowBadge,
+  moveProgramRowDownAria,
+  moveProgramRowUpAria,
   removeRowAriaLabel,
+  reorderRowAriaLabel,
   rowNotesSrOnlyLabel,
   versionOfRowLabel,
 } from "../copy/programs.js";
@@ -57,8 +61,16 @@ export type ProgramBuilderRowCardProps = {
   index: number;
   total: number;
   noteDraft: string;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
+  onReorderStep?: (delta: -1 | 1) => void;
+  reorderBusy?: boolean;
+  dragCompact?: boolean;
+  dragLifted?: boolean;
+  dropLineBefore?: boolean;
+  onGripPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onGripPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onGripPointerUp?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onGripPointerCancel?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  gripRef?: (element: HTMLButtonElement | null) => void;
   onDuplicate: () => void;
   onRemove: () => void;
   onNoteChange: (note: string) => void;
@@ -240,8 +252,16 @@ export function ProgramBuilderRowCard({
   index,
   total,
   noteDraft,
-  onMoveUp,
-  onMoveDown,
+  onReorderStep,
+  reorderBusy = false,
+  dragCompact = false,
+  dragLifted = false,
+  dropLineBefore = false,
+  onGripPointerDown,
+  onGripPointerMove,
+  onGripPointerUp,
+  onGripPointerCancel,
+  gripRef,
   onDuplicate,
   onRemove,
   onNoteChange,
@@ -301,303 +321,372 @@ export function ProgramBuilderRowCard({
     return TYPE_STRETCH_HINT;
   }
 
+  const showRowDetails = !dragCompact || dragLifted;
+  const compactPeer = dragCompact && !dragLifted;
+
   return (
-    <article
-      ref={rowRef}
-      className={`pg-row ${rowStripeClass(row)}${
-        rowHighlight ? " pg-row--highlight" : ""
-      }`}
-      aria-labelledby={titleId}
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (actionsDisabled) {
-          return;
-        }
-        if (event.key === "ArrowUp" && index > 0) {
-          event.preventDefault();
-          onMoveUp();
-        }
-        if (event.key === "ArrowDown" && index < total - 1) {
-          event.preventDefault();
-          onMoveDown();
-        }
-      }}
-    >
-      <div className="pg-row-header">
-        <span className="pg-row-grip" aria-hidden>
-          <RowGripIcon />
-        </span>
-        <div className="pg-row-title-block">
-          <h3 id={titleId} className="pg-row-title">
-            {title}
-          </h3>
-          {isTypeMismatch ? (
-            <p className="pg-row-meta-line">
-              <span className="pg-row-badge pg-row-badge--mismatch">
-                <MismatchBadgeAlertIcon />
-                {TYPE_MISMATCH_DIDNT_LINK_BADGE}
-              </span>
-            </p>
-          ) : isPendingPlaceholder ? (
-            <p className="pg-row-meta-line">
-              <span className="pg-row-badge pg-row-badge--amber">
-                {PENDING_REVIEW_BADGE}
-              </span>
-            </p>
-          ) : (
-            <p
-              className={`pg-row-meta-line pg-row-cat-line ${
-                kind === "stretch"
-                  ? "pg-row-cat-line--stretch"
-                  : "pg-row-cat-line--strength"
+    <>
+      {dropLineBefore ? (
+        <div className="pg-row-drop-line" aria-hidden data-testid="pg-row-drop-line" />
+      ) : null}
+      <article
+        ref={rowRef}
+        data-pg-row-id={row.id}
+        className={`pg-row ${rowStripeClass(row)}${
+          rowHighlight ? " pg-row--highlight" : ""
+        }${dragLifted ? " pg-row--drag-lifted" : ""}${
+          compactPeer ? " pg-row--drag-compact" : ""
+        }`}
+        aria-labelledby={titleId}
+      >
+        <div className="pg-row-header">
+          <div className="pg-row-grip-wrap">
+            <button
+              type="button"
+              ref={gripRef}
+              className={`pg-row-grip-btn${
+                dragLifted ? " pg-row-grip-btn--lifted" : ""
               }`}
+              aria-label={reorderRowAriaLabel(title, index + 1)}
+              onPointerDown={onGripPointerDown}
+              onPointerMove={onGripPointerMove}
+              onPointerUp={onGripPointerUp}
+              onPointerCancel={onGripPointerCancel}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  return;
+                }
+                if (reorderBusy || actionsDisabled) {
+                  return;
+                }
+                if (!event.shiftKey) {
+                  return;
+                }
+                if (event.key === "ArrowUp" && index > 0) {
+                  event.preventDefault();
+                  onReorderStep?.(-1);
+                }
+                if (event.key === "ArrowDown" && index < total - 1) {
+                  event.preventDefault();
+                  onReorderStep?.(1);
+                }
+              }}
             >
-              {kind === "stretch" ? <StretchCategoryIcon /> : <StrengthCategoryIcon />}
-              <span className="pg-row-cat-label">
-                {TYPE_LABELS[row.prescription_type]}
-              </span>
-            </p>
-          )}
-          {row.library_update !== null ? (
-            <p className="pg-row-meta-line">
-              <span className="pg-row-badge pg-row-badge--teal">
-                {libraryVersionAvailableRowBadge(
-                  row.library_update.latest_version_number,
+              <RowGripIcon />
+            </button>
+            {index > 0 ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="sr-only"
+                aria-label={moveProgramRowUpAria(title)}
+                disabled={reorderBusy || actionsDisabled}
+                onClick={() => {
+                  onReorderStep?.(-1);
+                }}
+              >
+                {moveProgramRowUpAria(title)}
+              </button>
+            ) : null}
+            {index < total - 1 ? (
+              <button
+                type="button"
+                tabIndex={-1}
+                className="sr-only"
+                aria-label={moveProgramRowDownAria(title)}
+                disabled={reorderBusy || actionsDisabled}
+                onClick={() => {
+                  onReorderStep?.(1);
+                }}
+              >
+                {moveProgramRowDownAria(title)}
+              </button>
+            ) : null}
+          </div>
+          <div className="pg-row-title-block">
+            <h3 id={titleId} className="pg-row-title">
+              {title}
+            </h3>
+            {isTypeMismatch ? (
+              <p className="pg-row-meta-line">
+                <span className="pg-row-badge pg-row-badge--mismatch">
+                  <MismatchBadgeAlertIcon />
+                  {TYPE_MISMATCH_DIDNT_LINK_BADGE}
+                </span>
+              </p>
+            ) : isPendingPlaceholder ? (
+              <p className="pg-row-meta-line">
+                <span className="pg-row-badge pg-row-badge--amber">
+                  {PENDING_REVIEW_BADGE}
+                </span>
+              </p>
+            ) : (
+              <p
+                className={`pg-row-meta-line pg-row-cat-line ${
+                  kind === "stretch"
+                    ? "pg-row-cat-line--stretch"
+                    : "pg-row-cat-line--strength"
+                }`}
+              >
+                {kind === "stretch" ? (
+                  <StretchCategoryIcon />
+                ) : (
+                  <StrengthCategoryIcon />
                 )}
-              </span>
-            </p>
+                <span className="pg-row-cat-label">
+                  {TYPE_LABELS[row.prescription_type]}
+                </span>
+              </p>
+            )}
+            {row.library_update !== null ? (
+              <p className="pg-row-meta-line">
+                <span className="pg-row-badge pg-row-badge--teal">
+                  {libraryVersionAvailableRowBadge(
+                    row.library_update.latest_version_number,
+                  )}
+                </span>
+              </p>
+            ) : null}
+          </div>
+          {showRowDetails ? (
+            <div className="pg-row-header-actions">
+              <button
+                type="button"
+                className="pg-row-header-icon-btn"
+                title={DUPLICATE_CONTROL_TITLE}
+                aria-label={duplicateRowAriaLabel(title)}
+                disabled={actionsDisabled || row.kind === "placeholder"}
+                onClick={onDuplicate}
+              >
+                <RowCopyIcon />
+              </button>
+              <button
+                type="button"
+                className="pg-row-header-icon-btn"
+                aria-label={removeRowAriaLabel(title)}
+                disabled={actionsDisabled}
+                onClick={onRemove}
+              >
+                <RowTrashIcon />
+              </button>
+            </div>
           ) : null}
         </div>
-        <div className="pg-row-header-actions">
-          <button
-            type="button"
-            className="pg-row-header-icon-btn"
-            title={DUPLICATE_CONTROL_TITLE}
-            aria-label={duplicateRowAriaLabel(title)}
-            disabled={actionsDisabled || row.kind === "placeholder"}
-            onClick={onDuplicate}
-          >
-            <RowCopyIcon />
-          </button>
-          <button
-            type="button"
-            className="pg-row-header-icon-btn"
-            aria-label={removeRowAriaLabel(title)}
-            disabled={actionsDisabled}
-            onClick={onRemove}
-          >
-            <RowTrashIcon />
-          </button>
-        </div>
-      </div>
-      {isPendingPlaceholder ? (
-        <p className="pg-row-placeholder-note pg-row-placeholder-note--below-header">
-          {PLACEHOLDER_ROW_NOTE}
-        </p>
-      ) : null}
-      {isTypeMismatch ? (
-        <div className="pg-row-type-mismatch-body">
-          <p className="pg-row-type-mismatch-line">
-            {typeMismatchRowTypeLine(TYPE_LABELS[row.prescription_type])}
-          </p>
-          <p id={reasonId} className="pg-row-type-mismatch-reason">
-            {mismatchReason}
-          </p>
-          <button
-            type="button"
-            className="pg-row-type-mismatch-fix"
-            aria-expanded={fixPanelOpen}
-            aria-controls={fixPanelId}
-            aria-describedby={reasonId}
-            disabled={actionsDisabled}
-            onClick={() => {
-              onToggleFix?.();
-            }}
-          >
-            {TYPE_MISMATCH_FIX}
-          </button>
-          <div
-            id={fixPanelId}
-            className={`pg-row-type-mismatch-panel${
-              fixPanelOpen ? "" : " pg-row-type-mismatch-panel--collapsed"
-            }`}
-            hidden={!fixPanelOpen}
-          >
-            {fixTypeOptions.map((type) => (
-              <button
-                key={type}
-                type="button"
-                className="pg-row-type-mismatch-choice"
-                aria-label={typeMismatchLinkTypeAriaLabel(title, TYPE_LABELS[type])}
-                disabled={actionsDisabled}
-                onClick={() => {
-                  onLinkMismatchType?.(type);
-                }}
-              >
-                <span className="pg-row-type-mismatch-choice-label">
-                  {TYPE_LABELS[type]}
-                </span>
-                <span className="pg-row-type-mismatch-choice-hint">
-                  {hintForFixType(type)}
-                </span>
-              </button>
-            ))}
-            <button
-              type="button"
-              className="pg-row-type-mismatch-pick"
-              disabled={actionsDisabled}
-              onClick={() => {
-                onPickAnotherExercise?.();
-              }}
-            >
-              {TYPE_MISMATCH_PICK_ANOTHER_EXERCISE}
-            </button>
-          </div>
-        </div>
-      ) : null}
-      <>
-        {!isTypeMismatch && row.prescription_type !== "stretching" ? (
-          <div
-            className="pg-row-type-segmented"
-            role="radiogroup"
-            aria-label={versionOfRowLabel(title)}
-          >
-            {STRENGTH_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                role="radio"
-                aria-checked={row.prescription_type === type}
-                className={
-                  row.prescription_type === type
-                    ? "pg-row-type-segment pg-row-type-segment--active"
-                    : "pg-row-type-segment"
-                }
-                disabled={actionsDisabled}
-                onClick={() => {
-                  onTypeChange(type);
-                }}
-              >
-                {TYPE_LABELS[type]}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className={doseBoxClass}>
-          <div className="pg-row-dose-head">
-            <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
-            <button
-              type="button"
-              className="pg-row-dose-adjust"
-              aria-expanded={doseEditorOpen}
-              aria-label={adjustLabel}
-              disabled={actionsDisabled}
-              onClick={() => {
-                if (!doseEditorOpen) {
-                  onDoseAdjustOpen();
-                } else {
-                  onDoseAdjustClose();
-                }
-              }}
-            >
-              {!doseEditorOpen ? (
-                <>
-                  <RowSlidersIcon />
-                  {ADJUST}
-                </>
-              ) : (
-                DOSE_ADJUST_TOGGLE_DONE
-              )}
-            </button>
-          </div>
-          <div className="pg-row-dose-meta">
-            {doseEdited ? (
-              <>
-                <span className="pg-row-dose-badge">{DOSE_EDITED_BADGE}</span>
-                <span className="pg-row-dose-scope">
-                  {DOSE_CHANGED_FOR_THIS_ROW_ONLY}
-                </span>
+        {showRowDetails ? (
+          <>
+            {isPendingPlaceholder ? (
+              <p className="pg-row-placeholder-note pg-row-placeholder-note--below-header">
+                {PLACEHOLDER_ROW_NOTE}
+              </p>
+            ) : null}
+            {isTypeMismatch ? (
+              <div className="pg-row-type-mismatch-body">
+                <p className="pg-row-type-mismatch-line">
+                  {typeMismatchRowTypeLine(TYPE_LABELS[row.prescription_type])}
+                </p>
+                <p id={reasonId} className="pg-row-type-mismatch-reason">
+                  {mismatchReason}
+                </p>
                 <button
                   type="button"
-                  className="pg-row-dose-reset"
+                  className="pg-row-type-mismatch-fix"
+                  aria-expanded={fixPanelOpen}
+                  aria-controls={fixPanelId}
+                  aria-describedby={reasonId}
                   disabled={actionsDisabled}
                   onClick={() => {
-                    onDoseDraftDiscard();
-                    onParamsReset();
+                    onToggleFix?.();
                   }}
                 >
-                  <RowUndoIcon />
-                  {RESET_TO_DEFAULT}
+                  {TYPE_MISMATCH_FIX}
                 </button>
-              </>
-            ) : (
-              <span
-                className={
-                  sourceForNote === "global_defaults"
-                    ? "pg-row-dose-source pg-row-dose-source--global"
-                    : "pg-row-dose-source"
-                }
+                <div
+                  id={fixPanelId}
+                  className={`pg-row-type-mismatch-panel${
+                    fixPanelOpen ? "" : " pg-row-type-mismatch-panel--collapsed"
+                  }`}
+                  hidden={!fixPanelOpen}
+                >
+                  {fixTypeOptions.map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className="pg-row-type-mismatch-choice"
+                      aria-label={typeMismatchLinkTypeAriaLabel(
+                        title,
+                        TYPE_LABELS[type],
+                      )}
+                      disabled={actionsDisabled}
+                      onClick={() => {
+                        onLinkMismatchType?.(type);
+                      }}
+                    >
+                      <span className="pg-row-type-mismatch-choice-label">
+                        {TYPE_LABELS[type]}
+                      </span>
+                      <span className="pg-row-type-mismatch-choice-hint">
+                        {hintForFixType(type)}
+                      </span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="pg-row-type-mismatch-pick"
+                    disabled={actionsDisabled}
+                    onClick={() => {
+                      onPickAnotherExercise?.();
+                    }}
+                  >
+                    {TYPE_MISMATCH_PICK_ANOTHER_EXERCISE}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {!isTypeMismatch && row.prescription_type !== "stretching" ? (
+              <div
+                className="pg-row-type-segmented"
+                role="radiogroup"
+                aria-label={versionOfRowLabel(title)}
               >
-                <span className="pg-row-dose-source-dot" aria-hidden />
-                {programRowSourceNoteLabel(sourceForNote)}
-              </span>
-            )}
-          </div>
-          {doseEdited ? (
-            <p className="pg-row-dose-default-line">
-              {programRowSourceNoteLabel(row.resolved_params_source)}:{" "}
-              {formatExerciseParams(row.resolved_params)}
-            </p>
-          ) : null}
-        </div>
-        {doseEditorOpen ? (
-          <div className="pg-row-dose-editor-wrap">
-            <ProgramRowParamEditor
-              rowId={row.id}
-              type={row.prescription_type}
-              params={doseDraft ?? row.params}
-              onChange={(next) => {
-                onDoseDraftChange(next);
-              }}
-              onClose={() => {
-                onDoseAdjustClose();
-              }}
-            />
-          </div>
+                {STRENGTH_TYPES.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    role="radio"
+                    aria-checked={row.prescription_type === type}
+                    className={
+                      row.prescription_type === type
+                        ? "pg-row-type-segment pg-row-type-segment--active"
+                        : "pg-row-type-segment"
+                    }
+                    disabled={actionsDisabled}
+                    onClick={() => {
+                      onTypeChange(type);
+                    }}
+                  >
+                    {TYPE_LABELS[type]}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className={doseBoxClass}>
+              <div className="pg-row-dose-head">
+                <p className="pg-row-dose-text">{formatExerciseParams(row.params)}</p>
+                <button
+                  type="button"
+                  className="pg-row-dose-adjust"
+                  aria-expanded={doseEditorOpen}
+                  aria-label={adjustLabel}
+                  disabled={actionsDisabled}
+                  onClick={() => {
+                    if (!doseEditorOpen) {
+                      onDoseAdjustOpen();
+                    } else {
+                      onDoseAdjustClose();
+                    }
+                  }}
+                >
+                  {!doseEditorOpen ? (
+                    <>
+                      <RowSlidersIcon />
+                      {ADJUST}
+                    </>
+                  ) : (
+                    DOSE_ADJUST_TOGGLE_DONE
+                  )}
+                </button>
+              </div>
+              <div className="pg-row-dose-meta">
+                {doseEdited ? (
+                  <>
+                    <span className="pg-row-dose-badge">{DOSE_EDITED_BADGE}</span>
+                    <span className="pg-row-dose-scope">
+                      {DOSE_CHANGED_FOR_THIS_ROW_ONLY}
+                    </span>
+                    <button
+                      type="button"
+                      className="pg-row-dose-reset"
+                      disabled={actionsDisabled}
+                      onClick={() => {
+                        onDoseDraftDiscard();
+                        onParamsReset();
+                      }}
+                    >
+                      <RowUndoIcon />
+                      {RESET_TO_DEFAULT}
+                    </button>
+                  </>
+                ) : (
+                  <span
+                    className={
+                      sourceForNote === "global_defaults"
+                        ? "pg-row-dose-source pg-row-dose-source--global"
+                        : "pg-row-dose-source"
+                    }
+                  >
+                    <span className="pg-row-dose-source-dot" aria-hidden />
+                    {programRowSourceNoteLabel(sourceForNote)}
+                  </span>
+                )}
+              </div>
+              {doseEdited ? (
+                <p className="pg-row-dose-default-line">
+                  {programRowSourceNoteLabel(row.resolved_params_source)}:{" "}
+                  {formatExerciseParams(row.resolved_params)}
+                </p>
+              ) : null}
+            </div>
+            {doseEditorOpen ? (
+              <div className="pg-row-dose-editor-wrap">
+                <ProgramRowParamEditor
+                  rowId={row.id}
+                  type={row.prescription_type}
+                  params={doseDraft ?? row.params}
+                  onChange={(next) => {
+                    onDoseDraftChange(next);
+                  }}
+                  onClose={() => {
+                    onDoseAdjustClose();
+                  }}
+                />
+              </div>
+            ) : null}
+            {row.kind === "exercise" && versionOptions.length > 0 ? (
+              <ProgramRowVersionPicker
+                rowName={title}
+                selectedVersionNumber={selectedVersionNumber}
+                versionOptions={versionOptions}
+                onSelectVersion={(versionNumber) => {
+                  if (actionsDisabled) {
+                    return;
+                  }
+                  if (
+                    exerciseVersionIdForNumber(row, versionNumber) ===
+                    row.exercise_version_id
+                  ) {
+                    return;
+                  }
+                  onSelectVersion(versionNumber);
+                }}
+              />
+            ) : null}
+            <label className="pg-row-notes">
+              <span className="sr-only">{rowNotesSrOnlyLabel(title)}</span>
+              <input
+                type="text"
+                className="pg-row-notes-input"
+                placeholder={ROW_NOTES_PLACEHOLDER}
+                aria-label={rowNotesSrOnlyLabel(title)}
+                value={noteDraft}
+                onChange={(event) => {
+                  onNoteChange(event.target.value);
+                }}
+              />
+            </label>
+          </>
         ) : null}
-        {row.kind === "exercise" && versionOptions.length > 0 ? (
-          <ProgramRowVersionPicker
-            rowName={title}
-            selectedVersionNumber={selectedVersionNumber}
-            versionOptions={versionOptions}
-            onSelectVersion={(versionNumber) => {
-              if (actionsDisabled) {
-                return;
-              }
-              if (
-                exerciseVersionIdForNumber(row, versionNumber) ===
-                row.exercise_version_id
-              ) {
-                return;
-              }
-              onSelectVersion(versionNumber);
-            }}
-          />
-        ) : null}
-      </>
-      <label className="pg-row-notes">
-        <span className="sr-only">{rowNotesSrOnlyLabel(title)}</span>
-        <input
-          type="text"
-          className="pg-row-notes-input"
-          placeholder={ROW_NOTES_PLACEHOLDER}
-          aria-label={rowNotesSrOnlyLabel(title)}
-          value={noteDraft}
-          onChange={(event) => {
-            onNoteChange(event.target.value);
-          }}
-        />
-      </label>
-    </article>
+      </article>
+    </>
   );
 }

@@ -338,6 +338,33 @@ export function reorderRowAriaLabel(rowName: string, position: number): string {
   return `Reorder ${rowName}, position ${position}. Press and hold, then drag. Or hold Shift and use the arrow keys.`;
 }
 
+/** design/app/programs/spec.md Builder reorder (DIDI-1152) dragging status line. */
+export function builderReorderDraggingStatus(
+  rowName: string,
+  position: number,
+): string {
+  return `Moving ${rowName}. Release to drop it in place ${position}.`;
+}
+
+/** design/app/programs/spec.md Builder reorder (DIDI-1152) read-out after any move. */
+export function builderReorderMovedAnnouncement(
+  rowName: string,
+  position: number,
+  total: number,
+): string {
+  return `${rowName} moved to position ${position} of ${total}`;
+}
+
+/** design/app/programs/spec.md Builder reorder (DIDI-1152) screen reader only action. */
+export function moveProgramRowUpAria(rowName: string): string {
+  return `Move ${rowName} up`;
+}
+
+/** design/app/programs/spec.md Builder reorder (DIDI-1152) screen reader only action. */
+export function moveProgramRowDownAria(rowName: string): string {
+  return `Move ${rowName} down`;
+}
+
 export function duplicateRowAriaLabel(rowName: string): string {
   return `Duplicate ${rowName}`;
 }

@@ -75,8 +75,6 @@ describe("DIDI-1106 type-mismatch UI", () => {
         index={0}
         total={1}
         noteDraft=""
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
         onDuplicate={() => {}}
         onRemove={() => {}}
         onNoteChange={() => {}}
@@ -115,8 +113,6 @@ describe("DIDI-1106 type-mismatch UI", () => {
         index={0}
         total={1}
         noteDraft=""
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
         onDuplicate={() => {}}
         onRemove={() => {}}
         onNoteChange={() => {}}
@@ -154,8 +150,6 @@ describe("DIDI-1106 type-mismatch UI", () => {
         index={0}
         total={1}
         noteDraft=""
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
         onDuplicate={() => {}}
         onRemove={() => {}}
         onNoteChange={() => {}}
@@ -298,8 +292,6 @@ describe("DIDI-1106 type-mismatch UI", () => {
         index={0}
         total={1}
         noteDraft=""
-        onMoveUp={() => {}}
-        onMoveDown={() => {}}
         onDuplicate={() => {}}
         onRemove={() => {}}
         onNoteChange={() => {}}

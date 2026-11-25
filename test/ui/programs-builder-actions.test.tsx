@@ -200,8 +200,11 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    alphaCard.focus();
-    await userEvent.keyboard("{ArrowDown}");
+    const grip = within(alphaCard).getByRole("button", {
+      name: "Reorder Alpha move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.",
+    });
+    await userEvent.click(grip);
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });
@@ -231,8 +234,11 @@ describe("Programs builder row actions (integration, jsdom)", () => {
       }),
     );
     const betaCard = await screen.findByRole("article", { name: /Beta move/i });
-    betaCard.focus();
-    await userEvent.keyboard("{ArrowUp}");
+    const grip = within(betaCard).getByRole("button", {
+      name: "Reorder Beta move, position 2. Press and hold, then drag. Or hold Shift and use the arrow keys.",
+    });
+    await userEvent.click(grip);
+    await userEvent.keyboard("{Shift>}{ArrowUp}{/Shift}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledWith("prog-1", ["row-b", "row-a"]);
     });

@@ -190,8 +190,11 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    alphaCard.focus();
-    await userEvent.keyboard("{ArrowDown}");
+    const grip = within(alphaCard).getByRole("button", {
+      name: "Reorder Alpha move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.",
+    });
+    await userEvent.click(grip);
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
     await waitFor(() => {
       expect(reorderRows).toHaveBeenCalledTimes(1);
     });
@@ -551,7 +554,13 @@ describe("Programs builder dev verification", () => {
     expect(
       within(rowCard).getByRole("combobox", { name: "Version" }),
     ).toBeInTheDocument();
-    expect(rowCard.querySelector(".pg-row-grip svg")).toBeTruthy();
+    expect(
+      within(rowCard)
+        .getByRole("button", {
+          name: "Reorder Alpha move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.",
+        })
+        .querySelector("svg"),
+    ).toBeTruthy();
     expect(
       within(rowCard)
         .getByRole("button", { name: "Duplicate Alpha move" })
@@ -775,8 +784,11 @@ describe("Programs builder dev verification", () => {
       </MemoryRouter>,
     );
     const alphaCard = await screen.findByRole("article", { name: /Alpha move/i });
-    alphaCard.focus();
-    await userEvent.keyboard("{ArrowDown}");
+    const grip = within(alphaCard).getByRole("button", {
+      name: "Reorder Alpha move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.",
+    });
+    await userEvent.click(grip);
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
     await waitFor(() => expect(reorderRows).toHaveBeenCalled());
     const nameField = screen.getByRole("textbox", { name: "Program name" });
     await userEvent.type(nameField, "Knee program A");
