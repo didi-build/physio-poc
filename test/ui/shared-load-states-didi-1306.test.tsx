@@ -25,9 +25,11 @@ import type { ExerciseRequestDraftView } from "../../src/services/exercise-reque
 import { PublishSheet } from "../../src/ui/programs/PublishSheet.js";
 import { PUBLISH_NOW, PUBLISH_SHEET_TITLE } from "../../src/ui/copy/program-publish.js";
 import {
+  BACK_TO_REQUESTS_AND_DRAFTS,
   REFRESH_FAILURE_PRIMARY,
   TRY_AGAIN,
   TRYING_AGAIN,
+  itemLoadErrorPrimary,
 } from "../../src/ui/copy/shared-load-states.js";
 import { didi1273FailedSaveMessage } from "../../src/ui/shared-load-states/failed-save.js";
 import { REGENERATE, REGENERATE_IMAGES } from "../../src/ui/copy/exercise-requests.js";
@@ -44,6 +46,22 @@ import { Route, Routes } from "react-router-dom";
 
 const PIN_G2 = "The AI couldn't make the images. The text is kept.";
 const PIN_REGENERATE_FAILED = "Couldn't regenerate the images. Try again.";
+const PIN_INITIAL_DRAFT_LOAD_ERROR = itemLoadErrorPrimary("draft");
+
+function assertLine768RefreshBannerNotShell666(
+  alertRoot: HTMLElement,
+  pageTitle: string,
+) {
+  expect(alertRoot).toHaveAttribute("role", "alert");
+  expect(within(alertRoot).getByText(REFRESH_FAILURE_PRIMARY)).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { level: 1, name: pageTitle }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: BACK_TO_REQUESTS_AND_DRAFTS }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(PIN_INITIAL_DRAFT_LOAD_ERROR)).not.toBeInTheDocument();
+}
 
 afterEach(() => {
   cleanup();
@@ -309,7 +327,7 @@ describe("DIDI-1306 surviving mutants", () => {
     );
   }
 
-  it("B10b3: refresh-failure Try again on review content refetches the draft", async () => {
+  it("B10b3: post-edit refresh failure shows line-768 banner (role=alert) and Try again refetches", async () => {
     const view = completeDraftView();
     const updatedView: ExerciseRequestDraftView = {
       ...view,
@@ -374,6 +392,7 @@ describe("DIDI-1306 surviving mutants", () => {
     const banner = await screen.findByText(REFRESH_FAILURE_PRIMARY);
     const alertRoot = banner.closest("[role='alert']");
     expect(alertRoot).toBeTruthy();
+    assertLine768RefreshBannerNotShell666(alertRoot as HTMLElement, "Heel slide");
     await userEvent.click(
       within(alertRoot as HTMLElement).getByRole("button", { name: TRY_AGAIN }),
     );
@@ -384,7 +403,7 @@ describe("DIDI-1306 surviving mutants", () => {
     expect(screen.getByText("Updated description")).toBeInTheDocument();
   });
 
-  it("B10b2: refresh-failure Try again while drafting shell is up refetches the draft", async () => {
+  it("B10b2: polling refresh failure shows line-768 banner (role=alert) and Try again refetches", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const view = draftingInProgressView();
     let pollRefreshCalls = 0;
@@ -436,6 +455,10 @@ describe("DIDI-1306 surviving mutants", () => {
     const banner = await screen.findByText(REFRESH_FAILURE_PRIMARY);
     const alertRoot = banner.closest("[role='alert']");
     expect(alertRoot).toBeTruthy();
+    assertLine768RefreshBannerNotShell666(
+      alertRoot as HTMLElement,
+      view.requested_name,
+    );
     const callsBeforeRetry = getRequest.mock.calls.length;
     await userEvent.click(
       within(alertRoot as HTMLElement).getByRole("button", { name: TRY_AGAIN }),
