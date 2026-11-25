@@ -195,6 +195,7 @@ export async function handleExerciseMediaRequest(
       if (response) {
         return withServeCacheControl(response);
       }
+      console.error("request_failed", error);
       return serveJson({ error: "internal_error" }, 500);
     }
   }

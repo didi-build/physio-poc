@@ -174,7 +174,7 @@ describe("exercise media serve DIDI-1155 (Cache-Control and errors)", () => {
     }
   });
 
-  it("returns 500 with Cache-Control no-store when media serve throws unexpectedly", async () => {
+  it("returns 500 with Cache-Control no-store when media serve throws unexpectedly (direct handler)", async () => {
     const storage = await openMigratedDatabase();
     try {
       const practitionerId = await seedPractitioner(storage);
@@ -187,10 +187,12 @@ describe("exercise media serve DIDI-1155 (Cache-Control and errors)", () => {
         email: "coach@example.com",
         displayName: "Coach",
       });
+      const boom = new Error("storage blew up");
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       vi.spyOn(
         ExerciseMediaService.prototype,
         "getMediaForServing",
-      ).mockRejectedValueOnce(new Error("storage blew up"));
+      ).mockRejectedValueOnce(boom);
       const response = await handleExerciseMediaRequest(
         new Request(
           `http://127.0.0.1/api/exercise-versions/${versionId}/media?access=public`,
@@ -205,6 +207,7 @@ describe("exercise media serve DIDI-1155 (Cache-Control and errors)", () => {
           },
         },
       );
+      expect(errorSpy).toHaveBeenCalledWith("request_failed", boom);
       expect(response?.status).toBe(500);
       expect(response?.headers.get("cache-control")).toBe(CACHE_NO_STORE);
       await expect(response?.json()).resolves.toEqual({ error: "internal_error" });
