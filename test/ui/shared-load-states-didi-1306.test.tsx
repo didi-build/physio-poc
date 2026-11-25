@@ -45,7 +45,6 @@ import { ToastProvider } from "../../src/ui/components/Toast.js";
 import { Route, Routes } from "react-router-dom";
 
 const PIN_G2 = "The AI couldn't make the images. The text is kept.";
-const PIN_REGENERATE_FAILED = "Couldn't regenerate the images. Try again.";
 const PIN_INITIAL_DRAFT_LOAD_ERROR = itemLoadErrorPrimary("draft");
 
 function assertLine768RefreshBannerNotShell666(
@@ -296,13 +295,21 @@ describe("DIDI-1306 surviving mutants", () => {
     await userEvent.click(
       within(dialog).getByRole("button", { name: REGENERATE_IMAGES }),
     );
+    const regenerateDraftMedia = mediaClient.regenerateDraftMedia as ReturnType<
+      typeof vi.fn
+    >;
     await waitFor(() => {
-      expect(
-        screen.getByTestId("request-regenerate-media-failed-save-alert"),
-      ).toBeInTheDocument();
+      expect(regenerateDraftMedia).toHaveBeenCalledTimes(1);
     });
-    expect(screen.getByText(PIN_REGENERATE_FAILED)).toBeInTheDocument();
-    expect(screen.queryByText(PIN_G2)).not.toBeInTheDocument();
+    const failedSaveAlert = screen.queryByTestId(
+      "request-regenerate-media-failed-save-alert",
+    );
+    expect(failedSaveAlert).not.toBeNull();
+    expect(failedSaveAlert).toHaveTextContent(
+      "Couldn't regenerate the images. Try again.",
+    );
+    const g2Copy = screen.queryByText(PIN_G2);
+    expect(g2Copy).toBeNull();
   });
 
   function renderDraftReview(
