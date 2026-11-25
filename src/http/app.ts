@@ -74,6 +74,8 @@ export type AppDependencies = {
   extraRouteHandlers?: AppRouteHandler[];
   /** Image generation port for exercise media routes (production Worker; optional Node dev override). */
   exerciseMediaImages?: ImageGenerationPort;
+  /** Dev/test only; pins UTC day window for exercise media quota (DIDI-1081 HTTP tests). */
+  exerciseMediaClock?: () => Date;
   /** Exercise request draft generator (DeepInfra in production when configured). */
   exerciseDraftGenerator?: ExerciseDraftGenerator;
   /** Cloudflare Workflow binding in production; in-process runner when unset (tests). */

@@ -210,9 +210,12 @@ export class ExerciseMediaService {
     exerciseVersionId: string;
     regenerationNote?: string | null;
     countTowardDailyQuota?: boolean;
+    /** When the caller already consumed today's slot (orchestrated initial media). */
+    dailyQuotaAlreadyConsumed?: boolean;
   }): Promise<ExerciseMediaSetView> {
     const regenerationNote = parseRegenerationNote(input.regenerationNote);
     const countTowardDailyQuota = input.countTowardDailyQuota !== false;
+    const dailyQuotaAlreadyConsumed = input.dailyQuotaAlreadyConsumed === true;
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
       input.practitionerId,
@@ -252,33 +255,38 @@ export class ExerciseMediaService {
       );
     }
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
-    const generated = await this.images.generateEndImage(
-      buildEndImagePrompt(promptContext),
-      {
-        regenerationNote,
-        startReferenceImage: {
-          bytes: startReference.body,
-          contentType: startReference.contentType,
-        },
-      },
-    );
-    await this.media.putImage(
-      row.end_object_key,
-      generated.bytes,
-      generated.contentType,
-      "draft",
-    );
-    if (countTowardDailyQuota) {
-      const nowIso = this.clock().toISOString();
-      await this.regenerations.insert({
-        id: this.createId(),
+    let consumedRegenerationId: string | null = null;
+    if (countTowardDailyQuota && !dailyQuotaAlreadyConsumed) {
+      consumedRegenerationId = await this.consumeDailyRegenerationSlot({
         practitionerId: input.practitionerId,
         exerciseId: version.exercise_id,
         exerciseVersionId: version.id,
         scope: "both",
         hadNote: regenerationNote !== null,
-        createdAt: nowIso,
       });
+    }
+    try {
+      const generated = await this.images.generateEndImage(
+        buildEndImagePrompt(promptContext),
+        {
+          regenerationNote,
+          startReferenceImage: {
+            bytes: startReference.body,
+            contentType: startReference.contentType,
+          },
+        },
+      );
+      await this.media.putImage(
+        row.end_object_key,
+        generated.bytes,
+        generated.contentType,
+        "draft",
+      );
+    } catch (error) {
+      if (consumedRegenerationId !== null) {
+        await this.refundDailyRegenerationSlot(consumedRegenerationId);
+      }
+      throw error;
     }
     return {
       mediaSetId: row.id,
@@ -300,10 +308,7 @@ export class ExerciseMediaService {
     if (countTowardDailyQuota) {
       const quota = await this.getRegenerationQuota(input.practitionerId);
       if (quota.limitReached) {
-        throw new ExerciseMediaServiceError(
-          "Daily media regeneration limit reached",
-          "daily_limit_reached",
-        );
+        throw this.dailyLimitReachedError();
       }
     }
     const version = await this.requireVersionForPractitioner(
@@ -326,17 +331,35 @@ export class ExerciseMediaService {
         "exercise_media_already_generated",
       );
     }
-    await this.generateInitialStartImageForVersion({
-      practitionerId: input.practitionerId,
-      exerciseVersionId: input.exerciseVersionId,
-      regenerationNote,
-    });
-    return this.generateInitialEndImageForVersion({
-      practitionerId: input.practitionerId,
-      exerciseVersionId: input.exerciseVersionId,
-      regenerationNote,
-      countTowardDailyQuota,
-    });
+    let consumedRegenerationId: string | null = null;
+    if (countTowardDailyQuota) {
+      consumedRegenerationId = await this.consumeDailyRegenerationSlot({
+        practitionerId: input.practitionerId,
+        exerciseId: version.exercise_id,
+        exerciseVersionId: version.id,
+        scope: "both",
+        hadNote: regenerationNote !== null,
+      });
+    }
+    try {
+      await this.generateInitialStartImageForVersion({
+        practitionerId: input.practitionerId,
+        exerciseVersionId: input.exerciseVersionId,
+        regenerationNote,
+      });
+      return await this.generateInitialEndImageForVersion({
+        practitionerId: input.practitionerId,
+        exerciseVersionId: input.exerciseVersionId,
+        regenerationNote,
+        countTowardDailyQuota,
+        dailyQuotaAlreadyConsumed: countTowardDailyQuota,
+      });
+    } catch (error) {
+      if (consumedRegenerationId !== null) {
+        await this.refundDailyRegenerationSlot(consumedRegenerationId);
+      }
+      throw error;
+    }
   }
 
   async regenerateMedia(input: {
@@ -364,14 +387,6 @@ export class ExerciseMediaService {
     }
 
     const regenerationNote = parseRegenerationNote(input.note);
-
-    const quota = await this.getRegenerationQuota(input.practitionerId);
-    if (quota.limitReached) {
-      throw new ExerciseMediaServiceError(
-        "Daily media regeneration limit reached",
-        "daily_limit_reached",
-      );
-    }
 
     const version = await this.requireVersionForPractitioner(
       input.exerciseVersionId,
@@ -414,92 +429,85 @@ export class ExerciseMediaService {
     }
     const imageOptions = { regenerationNote };
 
-    if (input.scope === "start" || input.scope === "both") {
-      const generated = await this.images.generateStartImage(
-        buildStartImagePrompt(promptContext),
-        imageOptions,
-      );
-      startImage = { body: generated.bytes, contentType: generated.contentType };
-    }
-    if (input.scope === "end" || input.scope === "both") {
-      const startReferenceImage =
-        startImage !== null
-          ? { bytes: startImage.body, contentType: startImage.contentType }
-          : undefined;
-      if (!startReferenceImage) {
-        throw new ExerciseMediaServiceError(
-          "Start reference image is not available for end regeneration",
-          "start_reference_unavailable",
+    const consumedRegenerationId = await this.consumeDailyRegenerationSlot({
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: input.scope,
+      hadNote: regenerationNote !== null,
+    });
+
+    try {
+      if (input.scope === "start" || input.scope === "both") {
+        const generated = await this.images.generateStartImage(
+          buildStartImagePrompt(promptContext),
+          imageOptions,
         );
+        startImage = { body: generated.bytes, contentType: generated.contentType };
       }
-      const generated = await this.images.generateEndImage(
-        buildEndImagePrompt(promptContext),
-        {
-          ...imageOptions,
-          startReferenceImage,
-        },
-      );
-      endImage = { body: generated.bytes, contentType: generated.contentType };
-    }
-    if (!startImage || !endImage) {
-      const pair = await this.images.generateStartAndEndImages({
-        startPrompt: buildStartImagePrompt(promptContext),
-        endPrompt: buildEndImagePrompt(promptContext),
-        regenerationNote,
-      });
-      startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
-      endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
-    }
+      if (input.scope === "end" || input.scope === "both") {
+        const startReferenceImage =
+          startImage !== null
+            ? { bytes: startImage.body, contentType: startImage.contentType }
+            : undefined;
+        if (!startReferenceImage) {
+          throw new ExerciseMediaServiceError(
+            "Start reference image is not available for end regeneration",
+            "start_reference_unavailable",
+          );
+        }
+        const generated = await this.images.generateEndImage(
+          buildEndImagePrompt(promptContext),
+          {
+            ...imageOptions,
+            startReferenceImage,
+          },
+        );
+        endImage = { body: generated.bytes, contentType: generated.contentType };
+      }
+      if (!startImage || !endImage) {
+        const pair = await this.images.generateStartAndEndImages({
+          startPrompt: buildStartImagePrompt(promptContext),
+          endPrompt: buildEndImagePrompt(promptContext),
+          regenerationNote,
+        });
+        startImage = { body: pair.start.bytes, contentType: pair.start.contentType };
+        endImage = { body: pair.end.bytes, contentType: pair.end.contentType };
+      }
 
-    const nowIso = this.clock().toISOString();
+      if (version.status === "draft") {
+        const media = await this.persistMediaSet({
+          version,
+          visibility: "draft",
+          start: {
+            bytes: startImage.body,
+            contentType: startImage.contentType,
+            startProviderUrl,
+          },
+          end: { bytes: endImage.body, contentType: endImage.contentType },
+          updateVersion: true,
+        });
+        const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
+        return { outcome: "draft_updated", media, quota: updatedQuota };
+      }
 
-    if (version.status === "draft") {
-      const media = await this.persistMediaSet({
+      const media = await this.persistApprovedPendingMediaSet({
         version,
-        visibility: "draft",
+        practitionerId: input.practitionerId,
         start: {
           bytes: startImage.body,
           contentType: startImage.contentType,
           startProviderUrl,
         },
         end: { bytes: endImage.body, contentType: endImage.contentType },
-        updateVersion: true,
-      });
-      await this.regenerations.insert({
-        id: this.createId(),
-        practitionerId: input.practitionerId,
-        exerciseId: version.exercise_id,
-        exerciseVersionId: version.id,
-        scope: input.scope,
-        hadNote: regenerationNote !== null,
-        createdAt: nowIso,
       });
       const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
-      return { outcome: "draft_updated", media, quota: updatedQuota };
+
+      return { outcome: "pending_draft_updated", media, quota: updatedQuota };
+    } catch (error) {
+      await this.refundDailyRegenerationSlot(consumedRegenerationId);
+      throw error;
     }
-
-    const media = await this.persistApprovedPendingMediaSet({
-      version,
-      practitionerId: input.practitionerId,
-      start: {
-        bytes: startImage.body,
-        contentType: startImage.contentType,
-        startProviderUrl,
-      },
-      end: { bytes: endImage.body, contentType: endImage.contentType },
-    });
-    await this.regenerations.insert({
-      id: this.createId(),
-      practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: input.scope,
-      hadNote: regenerationNote !== null,
-      createdAt: nowIso,
-    });
-    const updatedQuota = await this.getRegenerationQuota(input.practitionerId);
-
-    return { outcome: "pending_draft_updated", media, quota: updatedQuota };
   }
 
   async getDraftStillImage(input: {
@@ -779,5 +787,49 @@ export class ExerciseMediaService {
       "Exercise version not found",
       "version_not_found",
     );
+  }
+
+  private utcDayBoundsForNow(): { start: string; end: string } {
+    return utcDayBounds(this.clock());
+  }
+
+  private dailyLimitReachedError(): ExerciseMediaServiceError {
+    return new ExerciseMediaServiceError(
+      "Daily media regeneration limit reached",
+      "daily_limit_reached",
+    );
+  }
+
+  private async consumeDailyRegenerationSlot(input: {
+    practitionerId: string;
+    exerciseId: string;
+    exerciseVersionId: string;
+    scope: MediaRegenerationScope;
+    hadNote: boolean;
+  }): Promise<string> {
+    const bounds = this.utcDayBoundsForNow();
+    const regenerationId = this.createId();
+    const consumed = await this.regenerations.tryInsertUnderDailyCap(
+      {
+        id: regenerationId,
+        practitionerId: input.practitionerId,
+        exerciseId: input.exerciseId,
+        exerciseVersionId: input.exerciseVersionId,
+        scope: input.scope,
+        hadNote: input.hadNote,
+        createdAt: this.clock().toISOString(),
+      },
+      bounds.start,
+      bounds.end,
+      DAILY_MEDIA_REGENERATION_CAP,
+    );
+    if (!consumed) {
+      throw this.dailyLimitReachedError();
+    }
+    return regenerationId;
+  }
+
+  private async refundDailyRegenerationSlot(regenerationId: string): Promise<void> {
+    await this.regenerations.deleteById(regenerationId);
   }
 }
