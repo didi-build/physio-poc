@@ -837,7 +837,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
       </MemoryRouter>,
     );
 
-    const loadError = await screen.findByTestId("exercise-request-detail-error-slot");
+    const loadError = await screen.findByTestId("ex-review-item-load-error");
     const retry = within(loadError).getByRole("button", { name: TRY_AGAIN });
     await userEvent.click(retry);
     expect(

@@ -454,11 +454,9 @@ describe("exercise request withdraw guards", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(
-        screen.getByTestId("exercise-request-detail-error-slot"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("ex-review-item-load-error")).toBeInTheDocument();
     });
-    expect(screen.getByTestId("exercise-request-detail-error-slot")).toHaveAttribute(
+    expect(screen.getByTestId("ex-review-item-load-error")).toHaveAttribute(
       "role",
       "alert",
     );

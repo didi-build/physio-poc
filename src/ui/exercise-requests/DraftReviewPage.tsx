@@ -302,14 +302,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [requestId]);
 
   useEffect(() => {
-    if (!view) {
-      return;
-    }
-    const persisted = view.generation.generation_failure;
+    const persisted = view?.generation.generation_failure ?? null;
     if (persisted) {
       setGenerationFailure(persisted);
     }
-  }, [view]);
+  }, [view?.generation.generation_failure]);
 
   useEffect(() => {
     if (draftNotFoundWithdrawn) {
@@ -658,6 +655,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
             loadFailed={viewLoadFailed}
             hasContent={hasCachedView}
             onTryAgain={() => refreshView({ force: true })}
+            testId="ex-review-item-load-error"
           />
         ) : (
           <>

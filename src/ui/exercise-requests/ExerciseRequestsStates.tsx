@@ -33,27 +33,24 @@ export function ExerciseRequestItemLoadBanner({
   loadFailed,
   hasContent,
   onTryAgain,
+  testId = "exercise-request-detail-error-slot",
 }: {
   loadFailed: boolean;
   hasContent: boolean;
   onTryAgain: RetryHandler;
+  testId?: string;
 }) {
   if (!loadFailed) {
     return null;
   }
   if (sharedRefreshFailed(hasContent, loadFailed)) {
-    return (
-      <SharedRefreshFailureBanner
-        onTryAgain={onTryAgain}
-        testId="exercise-request-detail-error-slot"
-      />
-    );
+    return <SharedRefreshFailureBanner onTryAgain={onTryAgain} testId={testId} />;
   }
   return (
     <SharedItemLoadErrorBanner
       item={itemTokenForSurface("requests")}
       onTryAgain={onTryAgain}
-      testId="exercise-request-detail-error-slot"
+      testId={testId}
     />
   );
 }
