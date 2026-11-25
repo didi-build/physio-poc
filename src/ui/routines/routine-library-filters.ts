@@ -1,4 +1,5 @@
 import type { RoutineSearchSort } from "../../services/routines/types.js";
+import type { BodyRegionListItem } from "../../services/routines/types.js";
 import {
   ALL_CONDITIONS,
   ALL_REGIONS,
@@ -6,6 +7,7 @@ import {
   SORT_MOST_USED,
   SORT_NEWEST,
 } from "../copy/routines.js";
+import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 
 export type RoutinesTab = "mine" | "all";
 
@@ -21,15 +23,22 @@ export const DEFAULT_ROUTINE_FILTERS: RoutineLibraryFilters = {
   sort: "most_used",
 };
 
-export const ROUTINE_BODY_REGION_PILLS = [
-  { label: ALL_REGIONS, value: null as string | null },
-  { label: "Knee", value: "knee" },
-  { label: "Hip", value: "hip" },
-  { label: "Ankle", value: "ankle" },
-  { label: "Shoulder", value: "shoulder" },
-  { label: "Lower back", value: "lower back" },
-  { label: "Neck", value: "neck" },
-] as const;
+export type RoutineBodyRegionFilterPill = {
+  label: string;
+  value: string | null;
+};
+
+export function buildRoutineBodyRegionFilterPills(
+  regions: readonly BodyRegionListItem[],
+): RoutineBodyRegionFilterPill[] {
+  return [
+    { label: ALL_REGIONS, value: null },
+    ...regions.map((region) => ({
+      label: capitalizeBodyRegionLabel(region.label),
+      value: region.label,
+    })),
+  ];
+}
 
 export function routineFiltersToApiParams(filters: RoutineLibraryFilters): {
   body_region?: string;
@@ -64,12 +73,13 @@ export function routineFilterSummary(
   filters: RoutineLibraryFilters,
   conditionsAvailable: boolean,
   conditionLabels: ReadonlyMap<string, string>,
+  bodyRegionPills: readonly RoutineBodyRegionFilterPill[],
 ): string {
   const regionLabel =
     filters.bodyRegion === null
       ? ALL_REGIONS
-      : (ROUTINE_BODY_REGION_PILLS.find((pill) => pill.value === filters.bodyRegion)
-          ?.label ?? filters.bodyRegion);
+      : (bodyRegionPills.find((pill) => pill.value === filters.bodyRegion)?.label ??
+        capitalizeBodyRegionLabel(filters.bodyRegion));
   const conditionLabel =
     !conditionsAvailable || filters.conditionId === null
       ? ALL_CONDITIONS
