@@ -137,13 +137,13 @@ async function seedPractitionerAtCapMinusOne(
 }
 
 function createService(storage: SqlStoragePort): ExerciseMediaService {
-  let tick = 0;
+  let idSeq = 0;
   return new ExerciseMediaService(
     storage,
     new FakeImageGeneration(),
     new PrefixMediaStorage(new InMemoryObjectStorage()),
-    () => new Date(`2026-10-30T12:00:${String(tick++).padStart(2, "0")}.000Z`),
-    () => testOpaqueEntityId(`parallel-media-${tick}`),
+    () => new Date("2026-10-30T12:00:00.000Z"),
+    () => testOpaqueEntityId(`parallel-media-${++idSeq}`),
   );
 }
 
@@ -193,6 +193,14 @@ describe.each(STORAGE_CASES)(
           expect(error.code).toBe(DAILY_LIMIT_CODE);
           expect(error.message).toBe(DAILY_LIMIT_MESSAGE);
         }
+
+        const scopeRow = await storage.first<{ scope: string }>(
+          `SELECT scope FROM media_regenerations
+           WHERE practitioner_id = ? AND created_at >= ?
+           ORDER BY created_at DESC LIMIT 1`,
+          [practitionerId, CAP_DAY_ISO],
+        );
+        expect(scopeRow?.scope).toBe("start");
 
         const countRow = await storage.first<{ count: number }>(
           `SELECT COUNT(*) AS count FROM media_regenerations

@@ -399,13 +399,6 @@ export class ExerciseMediaService {
     ) {
       throw this.versionNotFoundError();
     }
-    const consumedRegenerationId = await this.consumeDailyRegenerationSlot({
-      practitionerId: input.practitionerId,
-      exerciseId: version.exercise_id,
-      exerciseVersionId: version.id,
-      scope: input.scope,
-      hadNote: regenerationNote !== null,
-    });
     const promptContext = this.promptContextFromVersion(version, regenerationNote);
     const liveSet = version.media_set_id
       ? await this.mediaSets.findById(version.media_set_id)
@@ -435,6 +428,14 @@ export class ExerciseMediaService {
       startProviderUrl = null;
     }
     const imageOptions = { regenerationNote };
+
+    const consumedRegenerationId = await this.consumeDailyRegenerationSlot({
+      practitionerId: input.practitionerId,
+      exerciseId: version.exercise_id,
+      exerciseVersionId: version.id,
+      scope: input.scope,
+      hadNote: regenerationNote !== null,
+    });
 
     try {
       if (input.scope === "start" || input.scope === "both") {
