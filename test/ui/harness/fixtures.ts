@@ -211,9 +211,15 @@ const HARNESS_BODY_REGIONS = [
   { id: "br-knee", label: "knee" },
 ] as const;
 
-function baseRoutinesClient(): RoutinesClient {
+function harnessRoutinesClient(partial: object): RoutinesClient {
   return {
     listMeBodyRegions: async () => [...HARNESS_BODY_REGIONS],
+    ...partial,
+  } as unknown as RoutinesClient;
+}
+
+function baseRoutinesClient(): RoutinesClient {
+  return harnessRoutinesClient({
     searchCommunity: async () => ({
       routines: [],
       next_cursor: null,
@@ -229,7 +235,7 @@ function baseRoutinesClient(): RoutinesClient {
       conditions_available: false,
       condition_options: [],
     }),
-  } as unknown as RoutinesClient;
+  });
 }
 
 export type HarnessFixture = {
@@ -460,7 +466,7 @@ export function harnessFixture(
           }),
         } as unknown as ExerciseRequestsClient,
         media,
-        routines: {
+        routines: harnessRoutinesClient({
           searchCommunity: async () => ({
             routines: [
               {
@@ -501,7 +507,7 @@ export function harnessFixture(
             conditions_available: false,
             condition_options: [],
           }),
-        } as unknown as RoutinesClient,
+        }),
       };
     case "routines-my-flag":
       return {

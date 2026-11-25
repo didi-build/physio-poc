@@ -30,6 +30,7 @@ import {
   allRoutinesIntro,
 } from "../../src/ui/copy/routines.js";
 import { mockMinWidth1024 } from "./setup.js";
+import { stubListMeBodyRegionsResolved } from "./routines-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -74,7 +75,7 @@ function stubRequestsClient(): ExerciseRequestsClient {
 
 function stubRoutinesClient(): RoutinesClient {
   return {
-    listMeBodyRegions: vi.fn().mockResolvedValue([{ id: "br-knee", label: "knee" }]),
+    listMeBodyRegions: stubListMeBodyRegionsResolved(),
     searchCommunity: vi.fn().mockResolvedValue({
       routines: [],
       next_cursor: null,

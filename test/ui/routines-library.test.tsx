@@ -38,6 +38,7 @@ import {
   useVersionN,
 } from "../../src/ui/copy/routines.js";
 import { TOAST_UNDO } from "../../src/ui/copy/nav.js";
+import { withRoutinesPageBodyRegionsStub } from "./routines-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -108,7 +109,7 @@ function renderRoutines(client: RoutinesClient, path = "/routines") {
         exerciseLibraryClient={stubLibraryClient()}
         exerciseRequestsClient={stubRequestsClient()}
         programsClient={stubProgramsClient()}
-        routinesClient={client}
+        routinesClient={withRoutinesPageBodyRegionsStub(client)}
       />
     </MemoryRouter>,
   );

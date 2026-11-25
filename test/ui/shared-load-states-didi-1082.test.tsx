@@ -1119,10 +1119,17 @@ describe("DIDI-1082 shared load states behaviour", () => {
         <PhysioApp
           exerciseLibraryClient={stubLibraryListClient()}
           exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={withExerciseLibraryBodyRegions({
-            searchCommunity: hangFn,
-            listMyRoutines: vi.fn(),
-          } as unknown as RoutinesClient)}
+          routinesClient={
+            {
+              listMeBodyRegions: vi.fn().mockResolvedValue([
+                { id: "br-ankle", label: "ankle" },
+                { id: "br-hip", label: "hip" },
+                { id: "br-knee", label: "knee" },
+              ]),
+              searchCommunity: hangFn,
+              listMyRoutines: vi.fn(),
+            } as unknown as RoutinesClient
+          }
         />
       ),
     },
