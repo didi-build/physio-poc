@@ -839,6 +839,7 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       toJSON: () => ({}),
     });
     const scrollBy = vi.spyOn(window, "scrollBy");
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
     const rafCallbacks: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
       rafCallbacks.push(cb);
@@ -858,6 +859,7 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       cb?.(0);
     });
     const callsAfterEdge = scrollBy.mock.calls.length;
+    cancelFrame.mockClear();
     fireEvent.pointerMove(grip, {
       pointerId: 1,
       pointerType: "mouse",
@@ -865,12 +867,14 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       clientY: 200,
       isPrimary: true,
     });
+    expect(cancelFrame).toHaveBeenCalled();
     await act(async () => {
       const cb = rafCallbacks.shift();
       cb?.(0);
     });
     expect(scrollBy.mock.calls.length).toBe(callsAfterEdge);
     scrollBy.mockRestore();
+    cancelFrame.mockRestore();
   });
 
   it("stops auto-scroll on drop, Escape, and pointercancel", async () => {
