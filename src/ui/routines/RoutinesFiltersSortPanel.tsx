@@ -14,10 +14,11 @@ import {
   SORT_MOST_USED,
   SORT_NEWEST,
 } from "../copy/routines.js";
+import type { BodyRegionListItem } from "../../services/routines/types.js";
 import {
+  buildRoutineBodyRegionFilterPills,
   countRoutineActiveFilters,
   DEFAULT_ROUTINE_FILTERS,
-  ROUTINE_BODY_REGION_PILLS,
   routineFilterSummary,
   type RoutineLibraryFilters,
 } from "./routine-library-filters.js";
@@ -38,6 +39,7 @@ export type RoutinesFiltersSortPanelProps = {
   onChange: (next: RoutineLibraryFilters) => void;
   conditionsAvailable: boolean;
   conditionOptions: readonly ConditionOption[];
+  bodyRegionOptions: readonly BodyRegionListItem[];
 };
 
 export function RoutinesFiltersSortPanel({
@@ -45,12 +47,17 @@ export function RoutinesFiltersSortPanel({
   onChange,
   conditionsAvailable,
   conditionOptions,
+  bodyRegionOptions,
 }: RoutinesFiltersSortPanelProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const conditionLabels = useMemo(
     () => new Map(conditionOptions.map((opt) => [opt.condition_id, opt.label])),
     [conditionOptions],
+  );
+  const bodyRegionPills = useMemo(
+    () => buildRoutineBodyRegionFilterPills(bodyRegionOptions),
+    [bodyRegionOptions],
   );
   const active = countRoutineActiveFilters(filters, conditionsAvailable);
 
@@ -75,7 +82,12 @@ export function RoutinesFiltersSortPanel({
         </span>
         {!open ? (
           <span className="ex-filters-summary">
-            {routineFilterSummary(filters, conditionsAvailable, conditionLabels)}
+            {routineFilterSummary(
+              filters,
+              conditionsAvailable,
+              conditionLabels,
+              bodyRegionPills,
+            )}
           </span>
         ) : null}
       </button>
@@ -130,9 +142,9 @@ export function RoutinesFiltersSortPanel({
               role="group"
               aria-labelledby={`${panelId}-region`}
             >
-              {ROUTINE_BODY_REGION_PILLS.map((pill) => (
+              {bodyRegionPills.map((pill) => (
                 <button
-                  key={pill.label}
+                  key={pill.value ?? "all-regions"}
                   type="button"
                   className={`ex-pill${filters.bodyRegion === pill.value ? " ex-pill--active" : ""}`}
                   aria-pressed={filters.bodyRegion === pill.value}
