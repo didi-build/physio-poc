@@ -225,10 +225,18 @@ export function PublishSheet({
           return;
         }
         const message = publishApiUserMessage(error);
-        setPublishError(message ?? didi1273FailedSaveMessage("program_publish"));
+        const resolved = message ?? didi1273FailedSaveMessage("program_publish");
+        setPublishError(resolved);
+        if (
+          resolved !== PROGRAM_PUBLISH_NAME_REQUIRED &&
+          resolved !== PUBLISH_BLOCKED_BY_PLACEHOLDERS_MESSAGE
+        ) {
+          throw error;
+        }
         return;
       }
       setPublishError(didi1273FailedSaveMessage("program_publish"));
+      throw error;
     } finally {
       setPublishBusy(false);
     }
@@ -280,7 +288,7 @@ export function PublishSheet({
             disabled={publishDisabled}
             aria-describedby={publishDescribedBy}
             onClick={() => {
-              void runPublish();
+              void runPublish().catch(() => {});
             }}
           >
             {PUBLISH_NOW}

@@ -70,12 +70,6 @@ import {
 } from "../copy/exercise-requests.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
-  DRAFT_ITEM_LOAD_HINT,
-  DRAFT_ITEM_LOAD_TITLE,
-  LOAD_TRYING_AGAIN,
-  LOAD_TRY_AGAIN,
-} from "../copy/shared-load-states.js";
-import {
   DraftReviewExerciseStill,
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
@@ -151,10 +145,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
   const requestsBackRef = useRef<HTMLAnchorElement>(null);
-  const detailTryAgainRef = useRef<HTMLButtonElement>(null);
-  const detailRetryFocusAfterRef = useRef(false);
   const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
-  const [detailRetrying, setDetailRetrying] = useState(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -227,20 +218,6 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     !draftNotFoundWithdrawn &&
     view !== null &&
     (!viewLoadFailed || refreshViewFailed);
-
-  useEffect(() => {
-    if (
-      !detailRetrying &&
-      detailRetryFocusAfterRef.current &&
-      (viewLoadFailed || !view)
-    ) {
-      detailRetryFocusAfterRef.current = false;
-      detailTryAgainRef.current?.focus();
-    }
-    if (!detailRetrying && view && !viewLoadFailed) {
-      detailRetryFocusAfterRef.current = false;
-    }
-  }, [detailRetrying, view, viewLoadFailed]);
 
   const isRequester =
     currentPractitioner.sessionIdentityReady &&
@@ -325,11 +302,14 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   }, [requestId]);
 
   useEffect(() => {
-    const persisted = view?.generation?.generation_failure ?? null;
+    if (!view) {
+      return;
+    }
+    const persisted = view.generation.generation_failure;
     if (persisted) {
       setGenerationFailure(persisted);
     }
-  }, [view?.generation?.generation_failure]);
+  }, [view]);
 
   useEffect(() => {
     if (draftNotFoundWithdrawn) {
@@ -514,6 +494,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     return DRAFT_AI_IMAGE_FAILURE;
   };
 
+  const isAiImageGenerationMediaError = (error: ExerciseMediaRequestError): boolean => {
+    const code = error.detail.error?.toLowerCase() ?? "";
+    return (
+      code.startsWith("image_generation_") && code !== "image_generation_network_failed"
+    );
+  };
+
   const runRegenerate = async () => {
     if (!view?.draft?.exercise_version_id) {
       return;
@@ -603,11 +590,18 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       const imageOnlyRegen =
         regenMode !== "general" || (regenPick !== "text" && regenPick !== "all");
       if (imageOnlyRegen) {
-        setRegenFailedSave({
-          message: didi1273FailedSaveMessage("exercise_regenerate_media"),
-          onTryAgain: () => runRegenerate(),
-          testId: "request-regenerate-media-failed-save-alert",
-        });
+        if (
+          error instanceof ExerciseMediaRequestError &&
+          isAiImageGenerationMediaError(error)
+        ) {
+          setRegenError(mapRegenMediaError(error));
+        } else {
+          setRegenFailedSave({
+            message: didi1273FailedSaveMessage("exercise_regenerate_media"),
+            onTryAgain: () => runRegenerate(),
+            testId: "request-regenerate-media-failed-save-alert",
+          });
+        }
         return;
       }
       if (error instanceof ExerciseMediaRequestError) {
@@ -660,31 +654,11 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
             testId="exercise-request-detail-error-slot"
           />
         ) : viewLoadFailed && viewFailureKind === "error" ? (
-          <>
-            <div
-              className="ex-item-load-banner"
-              data-testid="ex-review-item-load-error"
-              role="alert"
-            >
-              <p>{DRAFT_ITEM_LOAD_TITLE}</p>
-              <p>{DRAFT_ITEM_LOAD_HINT}</p>
-              <button
-                ref={detailTryAgainRef}
-                type="button"
-                className="ex-secondary-btn"
-                disabled={detailRetrying}
-                onClick={() => {
-                  setDetailRetrying(true);
-                  detailRetryFocusAfterRef.current = true;
-                  void refreshView({ force: true }).finally(() => {
-                    setDetailRetrying(false);
-                  });
-                }}
-              >
-                {detailRetrying ? LOAD_TRYING_AGAIN : LOAD_TRY_AGAIN}
-              </button>
-            </div>
-          </>
+          <ExerciseRequestItemLoadBanner
+            loadFailed={viewLoadFailed}
+            hasContent={hasCachedView}
+            onTryAgain={() => refreshView({ force: true })}
+          />
         ) : (
           <>
             {pageLoading ? <ExerciseRequestItemBusyState /> : null}

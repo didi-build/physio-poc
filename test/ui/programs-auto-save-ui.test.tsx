@@ -163,7 +163,9 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
     await userEvent.click(
       screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
     );
-    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    const tryingButton = screen.getByRole("button", { name: TRYING_AGAIN });
+    expect(tryingButton).toBeDisabled();
+    expect(tryingButton).toHaveTextContent(TRYING_AGAIN);
     reject();
     await waitFor(() => {
       expect(

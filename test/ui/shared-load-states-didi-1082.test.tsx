@@ -658,7 +658,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
-    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    const tryingButton = screen.getByRole("button", { name: TRYING_AGAIN });
+    expect(tryingButton).toBeDisabled();
+    expect(tryingButton).toHaveTextContent(TRYING_AGAIN);
     resolve();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
@@ -748,7 +750,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
-    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    const tryingButton = screen.getByRole("button", { name: TRYING_AGAIN });
+    expect(tryingButton).toBeDisabled();
+    expect(tryingButton).toHaveTextContent(TRYING_AGAIN);
     resolve();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
@@ -833,7 +837,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
       </MemoryRouter>,
     );
 
-    const loadError = await screen.findByTestId("ex-review-item-load-error");
+    const loadError = await screen.findByTestId("exercise-request-detail-error-slot");
     const retry = within(loadError).getByRole("button", { name: TRY_AGAIN });
     await userEvent.click(retry);
     expect(
@@ -1370,10 +1374,16 @@ describe("DIDI-1082 shared load states behaviour", () => {
   });
 
   it("PublishSheet runPublish retry calls publishProgram again after network error", async () => {
+    let rejectHang!: (error: Error) => void;
     const publishProgram = vi
       .fn()
       .mockRejectedValueOnce(new Error("network"))
-      .mockResolvedValueOnce({ published_at: "2026-01-01T00:00:00.000Z" });
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            rejectHang = reject;
+          }),
+      );
     const program: ProgramBuilderView = {
       program_id: "p1",
       code: "PRG-7K3Q",
@@ -1458,10 +1468,18 @@ describe("DIDI-1082 shared load states behaviour", () => {
         screen.getByTestId("program-publish-failed-save-alert"),
       ).toBeInTheDocument();
     });
+    const failedSaveAlert = screen.getByTestId("program-publish-failed-save-alert");
     await userEvent.click(within(dialog).getByRole("button", { name: TRY_AGAIN }));
+    expect(failedSaveAlert).toBeInTheDocument();
+    const tryingButton = within(dialog).getByRole("button", { name: TRYING_AGAIN });
+    expect(tryingButton).toBeDisabled();
+    expect(tryingButton).toHaveTextContent(TRYING_AGAIN);
+    rejectHang(new Error("network again"));
     await waitFor(() => {
-      expect(publishProgram).toHaveBeenCalledTimes(2);
+      expect(within(dialog).getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
     });
+    expect(document.activeElement).toBe(failedSaveAlert);
+    expect(publishProgram).toHaveBeenCalledTimes(2);
   });
 
   it("MyDefaults type-default Try again success clears failed-save alert", async () => {
