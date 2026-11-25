@@ -91,32 +91,55 @@ function renderExerciseLibraryApp(
   );
 }
 
-function captureNextUnhandledRejection(): Promise<unknown> {
-  return new Promise((resolve) => {
-    const onProcessRejection = (reason: unknown) => {
-      process.off("unhandledRejection", onProcessRejection);
-      resolve(reason);
-    };
-    process.on("unhandledRejection", onProcessRejection);
-    const onWindowRejection = (event: PromiseRejectionEvent) => {
-      event.preventDefault();
-      window.removeEventListener("unhandledrejection", onWindowRejection);
-      process.off("unhandledRejection", onProcessRejection);
-      resolve(event.reason);
-    };
-    window.addEventListener("unhandledrejection", onWindowRejection);
+function captureNextUnhandledRejection(): {
+  promise: Promise<unknown>;
+  dispose: () => void;
+} {
+  let settled = false;
+  let resolvePromise: (reason: unknown) => void;
+  const promise = new Promise<unknown>((resolve) => {
+    resolvePromise = resolve;
   });
+
+  const onProcessRejection = (reason: unknown) => {
+    if (settled) return;
+    settled = true;
+    dispose();
+    resolvePromise(reason);
+  };
+  const onWindowRejection = (event: PromiseRejectionEvent) => {
+    if (settled) return;
+    settled = true;
+    event.preventDefault();
+    dispose();
+    resolvePromise(event.reason);
+  };
+
+  function dispose() {
+    process.off("unhandledRejection", onProcessRejection);
+    window.removeEventListener("unhandledrejection", onWindowRejection);
+  }
+
+  process.on("unhandledRejection", onProcessRejection);
+  window.addEventListener("unhandledrejection", onWindowRejection);
+
+  return { promise, dispose };
 }
 
 async function expectNoStrayUnhandledRejection(windowMs: number): Promise<void> {
-  await expect(
-    Promise.race([
-      captureNextUnhandledRejection().then(() => "leaked" as const),
-      new Promise<"ok">((resolve) => {
-        setTimeout(() => resolve("ok"), windowMs);
-      }),
-    ]),
-  ).resolves.toBe("ok");
+  const { promise, dispose } = captureNextUnhandledRejection();
+  try {
+    await expect(
+      Promise.race([
+        promise.then(() => "leaked" as const),
+        new Promise<"ok">((resolve) => {
+          setTimeout(() => resolve("ok"), windowMs);
+        }),
+      ]),
+    ).resolves.toBe("ok");
+  } finally {
+    dispose();
+  }
 }
 
 function stubRequestsClient(): ExerciseRequestsClient {
@@ -227,7 +250,8 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
   });
 
   it("when listMeBodyRegions fails, shows only All regions, search still runs, and rejection is handled", async () => {
-    const strayRejection = captureNextUnhandledRejection();
+    const { promise: strayRejection, dispose: disposeStrayCapture } =
+      captureNextUnhandledRejection();
 
     const listMeBodyRegions = vi.fn().mockRejectedValue(new Error("fetch failed"));
     const searchApproved = vi.fn().mockResolvedValue({
@@ -238,44 +262,48 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
     });
     const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
-    renderExerciseLibraryApp(
-      fillPhysioAppRoutePattern("exerciseSearch"),
-      routinesClient,
-      {
-        exerciseLibraryClient: emptyExerciseLibraryClient({ searchApproved }),
-      },
-    );
+    try {
+      renderExerciseLibraryApp(
+        fillPhysioAppRoutePattern("exerciseSearch"),
+        routinesClient,
+        {
+          exerciseLibraryClient: emptyExerciseLibraryClient({ searchApproved }),
+        },
+      );
 
-    await waitFor(() => {
-      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
-    });
-    await waitFor(() => {
-      expect(searchApproved).toHaveBeenCalled();
-    });
+      await waitFor(() => {
+        expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(searchApproved).toHaveBeenCalled();
+      });
 
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: "Exercise library" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /Filters & sort/i }),
-      ).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(
+          screen.queryByRole("heading", { name: "Exercise library" }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: /Filters & sort/i }),
+        ).toBeInTheDocument();
+      });
 
-    await new Promise((resolve) => setImmediate(resolve));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await expectNoStrayUnhandledRejection(200);
-    await expect(
-      Promise.race([
-        strayRejection,
-        new Promise<"none">((resolve) => {
-          setTimeout(() => resolve("none"), 50);
-        }),
-      ]),
-    ).resolves.toBe("none");
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await expectNoStrayUnhandledRejection(200);
+      await expect(
+        Promise.race([
+          strayRejection,
+          new Promise<"none">((resolve) => {
+            setTimeout(() => resolve("none"), 50);
+          }),
+        ]),
+      ).resolves.toBe("none");
 
-    const labels = await openFiltersAndReadRegionPillLabels();
-    expect(labels).toEqual(["All regions"]);
+      const labels = await openFiltersAndReadRegionPillLabels();
+      expect(labels).toEqual(["All regions"]);
+    } finally {
+      disposeStrayCapture();
+    }
   });
 
   it("when listMeBodyRegions returns a non-array, shows only All regions", async () => {
