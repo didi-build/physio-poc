@@ -25,6 +25,7 @@ import {
   createTestPhysioMcpHttpHandler,
 } from "./mcp-server-test-utils.js";
 import { testOpaqueEntityId } from "./helpers/opaque-test-ids.js";
+import { httpResponseFingerprint } from "./helpers/http-response-fingerprint.js";
 
 const BASE = "https://physio.test.example";
 const MISSING_VERSION_ID = testOpaqueEntityId("media-missing-version");
@@ -39,32 +40,6 @@ type HttpSnapshot = { status: number; body: unknown };
 
 async function responseSnapshot(response: Response): Promise<HttpSnapshot> {
   return { status: response.status, body: await response.json() };
-}
-
-type HttpResponseFingerprint = {
-  status: number;
-  headerLines: string[];
-  body: string;
-};
-
-async function httpResponseFingerprint(
-  response: Response,
-): Promise<HttpResponseFingerprint> {
-  const headerLines: string[] = [];
-  response.headers.forEach((value, name) => {
-    headerLines.push(`${name.toLowerCase()}: ${value}`);
-  });
-  if (typeof response.headers.getSetCookie === "function") {
-    for (const cookie of response.headers.getSetCookie()) {
-      headerLines.push(`set-cookie: ${cookie}`);
-    }
-  }
-  headerLines.sort();
-  return {
-    status: response.status,
-    headerLines,
-    body: await response.text(),
-  };
 }
 
 function publicServeRequest(url: string, cookie: string): Request {
@@ -176,7 +151,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const missing = await responseSnapshot(
+      const missing = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=internal`,
@@ -185,7 +160,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
           deps,
         ),
       );
-      const foreign = await responseSnapshot(
+      const foreign = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${draftVersionId}/media?access=internal`,
@@ -195,7 +170,7 @@ describe("Exercise media cross-practitioner draft access (integration)", () => {
         ),
       );
       expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
-      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
       expect(foreign).toEqual(missing);
     } finally {
       storage.close();
@@ -604,7 +579,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const missing = await responseSnapshot(
+      const missing = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=internal`,
@@ -613,7 +588,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
           deps,
         ),
       );
-      const foreign = await responseSnapshot(
+      const foreign = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
@@ -623,7 +598,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         ),
       );
       expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
-      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
       expect(foreign).toEqual(missing);
     } finally {
       storage.close();
@@ -649,8 +624,41 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         deps,
       );
       expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
       const body = (await response.json()) as { mediaSetId?: string };
       expect(body.mediaSetId).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("GET public serve (U4): unknown signed-in practitioner reads approved public media with Cache-Control no-store", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const unknownId = testOpaqueEntityId("media-unknown-approved-reader");
+      const { approvedVersionId } =
+        await seedPractitionerBApprovedWithPublicMedia(storage);
+      const deps = exerciseMediaTestDeps(storage, {
+        practitionerId: unknownId,
+        email: "unknown@example.com",
+        displayName: "Unknown",
+      });
+      const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
+      const response = await handleRequest(
+        new Request(
+          `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=public`,
+          { headers: { cookie } },
+        ),
+        deps,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      const body = (await response.json()) as {
+        mediaSetId?: string;
+        visibility?: string;
+      };
+      expect(body.mediaSetId).toBeTruthy();
+      expect(body.visibility).toBe("public");
     } finally {
       storage.close();
     }
@@ -736,7 +744,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         displayName: "A",
       });
       const cookie = (deps.auth as FakeAuthPort).createSessionCookieHeader();
-      const missing = await responseSnapshot(
+      const missing = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${MISSING_VERSION_ID}/media?access=internal`,
@@ -745,7 +753,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
           deps,
         ),
       );
-      const foreign = await responseSnapshot(
+      const foreign = await httpResponseFingerprint(
         await handleRequest(
           new Request(
             `${BASE}/api/exercise-versions/${approvedVersionId}/media?access=internal`,
@@ -755,7 +763,7 @@ describe("Exercise media cross-practitioner approved access (integration)", () =
         ),
       );
       expect(missing.status).toBe(VERSION_NOT_FOUND_STATUS);
-      expect(missing.body).toEqual(VERSION_NOT_FOUND_BODY);
+      expect(JSON.parse(missing.body)).toEqual(VERSION_NOT_FOUND_BODY);
       expect(foreign).toEqual(missing);
     } finally {
       storage.close();
@@ -945,6 +953,7 @@ describe("Exercise media practitioner auth (integration)", () => {
         {},
       );
       expect(response?.status).toBe(401);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
       await expect(response?.json()).resolves.toEqual({ error: "unauthorized" });
     } finally {
       storage.close();
