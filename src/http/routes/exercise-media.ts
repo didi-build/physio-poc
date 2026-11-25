@@ -79,6 +79,7 @@ function mediaService(deps: AppDependencies): ExerciseMediaService {
     deps.sql,
     deps.exerciseMediaImages ?? new FakeImageGeneration(),
     new PrefixMediaStorage(deps.objects),
+    deps.exerciseMediaClock,
   );
 }
 

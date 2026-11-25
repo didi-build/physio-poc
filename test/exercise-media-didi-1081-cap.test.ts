@@ -26,10 +26,16 @@ import { id } from "./helpers/opaque-test-ids.js";
 
 const DAILY_LIMIT_MESSAGE = "Daily media regeneration limit reached";
 const DAILY_LIMIT_CODE = "daily_limit_reached";
+const DAILY_LIMIT_AT_CAP_HTTP_BODY = {
+  error: "daily_limit_reached",
+  message: "Daily media regeneration limit reached",
+} as const;
 const VERSION_NOT_FOUND_BODY = {
   error: "version_not_found",
   message: "Exercise version not found",
 } as const;
+const HTTP_CAP_TEST_INSTANT = new Date("2026-11-25T15:00:00.000Z");
+const HTTP_CAP_SEED_CREATED_AT = "2026-11-25T12:00:00.000Z";
 
 class ThrowingGetImageMediaStorage extends PrefixMediaStorage {
   constructor(objects: InMemoryObjectStorage) {
@@ -575,7 +581,7 @@ function mediaRegenRequest(deps: AppDependencies, versionId: string): Request {
 }
 
 describe("DIDI-1081 version not found before cap at HTTP boundary", () => {
-  it("returns the same 404 body for unknown and foreign version ids at the daily cap", async () => {
+  it("returns 429 for owned version at cap and identical 404 for unknown and foreign ids", async () => {
     const storage = await openMigratedDatabase();
     try {
       const subjectVersionId = id("ver-404-subject-1081");
@@ -607,19 +613,36 @@ describe("DIDI-1081 version not found before cap at HTTP boundary", () => {
           title: "Foreign",
         }),
       );
+      const clock = () => HTTP_CAP_TEST_INSTANT;
+      const bootstrap = createService(storage, { clock });
+      await bootstrap.generateInitialMediaForVersion({
+        practitionerId: subject.practitionerId,
+        exerciseVersionId: subjectVersionId,
+        countTowardDailyQuota: false,
+      });
       await insertRegenerationRows(storage, {
         practitionerId: subject.practitionerId,
         exerciseId: subject.exerciseId,
         versionId: subjectVersionId,
         count: DAILY_MEDIA_REGENERATION_CAP,
-        createdAt: "2026-10-30T12:00:00.000Z",
+        createdAt: HTTP_CAP_SEED_CREATED_AT,
         idPrefix: "at-cap",
       });
-      const deps = exerciseMediaTestDeps(storage, {
-        practitionerId: subject.practitionerId,
-        email: "coach@example.com",
-        displayName: "Coach",
-      });
+      const deps = exerciseMediaTestDeps(
+        storage,
+        {
+          practitionerId: subject.practitionerId,
+          email: "coach@example.com",
+          displayName: "Coach",
+        },
+        { exerciseMediaClock: clock },
+      );
+      const ownedResponse = await handleRequest(
+        mediaRegenRequest(deps, subjectVersionId),
+        deps,
+      );
+      expect(ownedResponse.status).toBe(429);
+      await expect(ownedResponse.json()).resolves.toEqual(DAILY_LIMIT_AT_CAP_HTTP_BODY);
       const foreignResponse = await handleRequest(
         mediaRegenRequest(deps, foreignVersionId),
         deps,
@@ -632,7 +655,14 @@ describe("DIDI-1081 version not found before cap at HTTP boundary", () => {
       expect(unknownResponse.status).toBe(404);
       await expect(foreignResponse.json()).resolves.toEqual(VERSION_NOT_FOUND_BODY);
       await expect(unknownResponse.json()).resolves.toEqual(VERSION_NOT_FOUND_BODY);
-      expect(await regenRowCount(storage, subject.practitionerId)).toBe(5);
+      expect(
+        await regenRowCountInUtcWindow(
+          storage,
+          subject.practitionerId,
+          "2026-11-25T00:00:00.000Z",
+          "2026-11-26T00:00:00.000Z",
+        ),
+      ).toBe(DAILY_MEDIA_REGENERATION_CAP);
     } finally {
       storage.close();
     }
