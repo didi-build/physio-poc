@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import type {
   CommunityRoutineSummary,
   MyRoutineSavedItem,
@@ -13,9 +13,13 @@ import {
   NEW_PROGRAM_ROUTINE_PICKER_TITLE,
 } from "../copy/programs.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryListErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  RoutinesListBusyState,
+  RoutinesListLoadBanner,
+} from "../routines/RoutinesStates.js";
 
 export type PickRoutineForProgramSheetProps = {
   open: boolean;
@@ -98,58 +102,64 @@ export function PickRoutineForProgramSheet({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
-
   useEffect(() => {
     if (deepLinkRead === "failed" && selectedId === deepLinkRoutineId) {
       setSelectedId(null);
     }
   }, [deepLinkRead, deepLinkRoutineId, selectedId]);
 
-  useEffect(() => {
+  const loadPickableRoutines = useCallback(async () => {
     if (!open) {
       return;
     }
     setLoading(true);
-    setLoadFailed(false);
     setSelectedId(preselectedRoutineId ?? null);
-    void Promise.all([client.searchCommunity({ limit: 50 }), client.listMyRoutines({})])
-      .then(async ([community, mine]) => {
-        const byId = new Map<string, PickableRoutine>();
-        for (const item of community.routines) {
-          byId.set(item.routine_id, mapCommunity(item));
-        }
-        for (const item of mine.saved) {
-          byId.set(item.routine_id, mapSaved(item));
-        }
-        if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
-          try {
-            const details = await client.getRoutineDetails(preselectedRoutineId);
-            const mapped = mapDetailsToPickable(preselectedRoutineId, details);
-            if (mapped) {
-              byId.set(preselectedRoutineId, mapped);
-            }
-          } catch {
-            /* deep-link validation or list error handled on ProgramsNewPage */
+    try {
+      const [community, mine] = await Promise.all([
+        client.searchCommunity({ limit: 50 }),
+        client.listMyRoutines({}),
+      ]);
+      const byId = new Map<string, PickableRoutine>();
+      for (const item of community.routines) {
+        byId.set(item.routine_id, mapCommunity(item));
+      }
+      for (const item of mine.saved) {
+        byId.set(item.routine_id, mapSaved(item));
+      }
+      if (preselectedRoutineId && !byId.has(preselectedRoutineId)) {
+        try {
+          const details = await client.getRoutineDetails(preselectedRoutineId);
+          const mapped = mapDetailsToPickable(preselectedRoutineId, details);
+          if (mapped) {
+            byId.set(preselectedRoutineId, mapped);
           }
+        } catch {
+          /* deep-link validation or list error handled on ProgramsNewPage */
         }
-        const loaded = [...byId.values()];
-        setRoutines(loaded);
-        if (
-          preselectedRoutineId &&
-          loaded.some((item) => item.routine_id === preselectedRoutineId)
-        ) {
-          setSelectedId(preselectedRoutineId);
-        }
-      })
-      .catch(() => {
-        setLoadFailed(true);
-        setRoutines([]);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+      }
+      const loaded = [...byId.values()];
+      setLoadFailed(false);
+      setRoutines(loaded);
+      if (
+        preselectedRoutineId &&
+        loaded.some((item) => item.routine_id === preselectedRoutineId)
+      ) {
+        setSelectedId(preselectedRoutineId);
+      }
+    } catch {
+      setLoadFailed(true);
+      setRoutines([]);
+    } finally {
+      setLoading(false);
+    }
   }, [client, open, preselectedRoutineId]);
 
+  useEffect(() => {
+    void loadPickableRoutines();
+  }, [loadPickableRoutines]);
+
+  const hasCachedRoutines = routines.length > 0;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedRoutines, loadFailed);
   const selected = routines.find((item) => item.routine_id === selectedId) ?? null;
   const createBlocked = deepLinkBlocksCreate(
     selectedId,
@@ -184,9 +194,16 @@ export function PickRoutineForProgramSheet({
         </div>
       }
     >
-      {loading ? <ExerciseLibraryBusyState /> : null}
-      {loadFailed ? <ExerciseLibraryListErrorSlot /> : null}
-      {!loading && !loadFailed ? (
+      {loading && !initialListLoadFailed ? <RoutinesListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="routines-list-busy-skeleton" />
+      ) : null}
+      <RoutinesListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedRoutines}
+        onTryAgain={loadPickableRoutines}
+      />
+      {!loading && (!loadFailed || hasCachedRoutines) ? (
         <ul className="pg-routine-pick-list" aria-busy={busy ? true : undefined}>
           {routines.map((routine) => (
             <li key={routine.routine_id}>

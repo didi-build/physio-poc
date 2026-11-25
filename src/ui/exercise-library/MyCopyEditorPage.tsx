@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
@@ -18,7 +19,6 @@ import {
   KEEP_MINE,
   LIBRARY_CHANGED,
   LIBRARY_NOW,
-  BACK_LIBRARY,
   MY_COPY,
   MY_COPY_EDITOR_INTRO,
   MY_COPY_LIBRARY_HINT,
@@ -35,9 +35,20 @@ import {
 } from "../copy/exercise-library.js";
 import { TOAST_UNDO } from "../copy/nav.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
+  ExerciseLibraryDetailLoadBanner,
+  ExerciseLibraryItemBusyState,
 } from "./ExerciseLibraryStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  mappedFailedSaveMessage,
+  type MappedFailedSaveAction,
+} from "../shared-load-states/failed-save.js";
 import { ExercisePositionsCard } from "../exercise-positions/ExercisePositionsCard.js";
 import type { PositionsCopyFieldMeta } from "../exercise-positions/ExercisePositionsCard.js";
 
@@ -64,6 +75,10 @@ export function MyCopyEditorPage() {
   const client = useExerciseLibraryApi();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [failedSave, setFailedSave] = useState<{
+    action: MappedFailedSaveAction;
+    key?: TextOverrideKey;
+  } | null>(null);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const cacheKey =
@@ -74,6 +89,7 @@ export function MyCopyEditorPage() {
     data: details,
     loading: cacheLoading,
     loadFailed,
+    failureKind,
     refresh,
   } = useSessionCachedRead<ExerciseDetailsResult>({
     cacheKey,
@@ -83,7 +99,11 @@ export function MyCopyEditorPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const showEditorContent = !loading && !loadFailed && details !== null;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showEditorContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && details !== null;
   const pageTitle = details
     ? (details.resolved_text.find((field) => field.key === "title")?.resolved ??
       details.library.title ??
@@ -97,31 +117,64 @@ export function MyCopyEditorPage() {
         aria-labelledby="ex-mycopy-heading"
         aria-busy={loading ? true : undefined}
       >
-        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
-          {BACK_LIBRARY}
-        </Link>
-        <h1 id="ex-mycopy-heading" className="ex-page-title">
-          {pageTitle}
-        </h1>
-        {loading ? <ExerciseLibraryBusyState /> : null}
-        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+        <SharedItemBackLink
+          surface="exercises"
+          href={fillPhysioAppRoutePattern("exercises")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="exercise"
+            surface="exercises"
+            backHref={fillPhysioAppRoutePattern("exercises")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 id="ex-mycopy-heading" className="ex-page-title">
+                {pageTitle}
+              </h1>
+            ) : null}
+            {loading ? <ExerciseLibraryItemBusyState /> : null}
+            <ExerciseLibraryDetailLoadBanner
+              loadFailed={loadFailed && failureKind === "error"}
+              hasContent={hasCachedContent}
+              onTryAgain={() => refresh({ force: true })}
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <SharedItemSkeletonPlaceholders testId="exercise-library-mycopy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
 
   const titleField = details.resolved_text.find((field) => field.key === "title");
 
-  const applyUseLibrary = (key: TextOverrideKey) => {
-    void client.updateMyCopy(exerciseId, { use_library_version: [key] }).then(() => {
-      void refresh({ force: true });
-    });
-  };
+  const applyUseLibrary = (key: TextOverrideKey) =>
+    client
+      .updateMyCopy(exerciseId, { use_library_version: [key] })
+      .then(() => {
+        setFailedSave(null);
+        void refresh({ force: true });
+      })
+      .catch(() => {
+        setFailedSave({ action: { kind: "switch_library_version" }, key });
+        throw new Error("switch_library_failed");
+      });
 
-  const applyKeepMine = (key: TextOverrideKey) => {
-    void client.updateMyCopy(exerciseId, { keep_mine: [key] }).then(() => {
-      void refresh({ force: true });
-    });
-  };
+  const applyKeepMine = (key: TextOverrideKey) =>
+    client
+      .updateMyCopy(exerciseId, { keep_mine: [key] })
+      .then(() => {
+        setFailedSave(null);
+        void refresh({ force: true });
+      })
+      .catch(() => {
+        setFailedSave({ action: { kind: "keep_your_version" }, key });
+        throw new Error("keep_mine_failed");
+      });
 
   const savePositionOverride = (
     key: "starting_position" | "ending_position",
@@ -164,15 +217,24 @@ export function MyCopyEditorPage() {
 
   const onRemove = () => {
     const name = titleField?.resolved ?? details.library.title;
-    void client.removeFromMyExercises(exerciseId).then(({ undo }) => {
-      showToast({
-        message: toastRemovedFromMy(name),
-        onUndo: () => {
-          void client.applyUndo(exerciseId, undo);
-        },
+    return client
+      .removeFromMyExercises(exerciseId)
+      .then(({ undo }) => {
+        setFailedSave(null);
+        showToast({
+          message: toastRemovedFromMy(name),
+          onUndo: () => {
+            void client.applyUndo(exerciseId, undo);
+          },
+        });
+        navigate(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId }));
+      })
+      .catch(() => {
+        setFailedSave({
+          action: { kind: "delete_or_remove", item: "exercise" },
+        });
+        throw new Error("remove_failed");
       });
-      navigate(fillPhysioAppRoutePattern("exerciseDetail", { exerciseId }));
-    });
   };
 
   return (
@@ -191,6 +253,24 @@ export function MyCopyEditorPage() {
       <p className="ex-link-btn">{MY_COPY_LIBRARY_HINT}</p>
       <p className="ex-info-banner">{MY_COPY_PROGRAMS_HINT}</p>
 
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage(failedSave.action)}
+          onTryAgain={() => {
+            if (failedSave.action.kind === "delete_or_remove") {
+              return onRemove();
+            }
+            if (failedSave.action.kind === "switch_library_version" && failedSave.key) {
+              return applyUseLibrary(failedSave.key);
+            }
+            if (failedSave.action.kind === "keep_your_version" && failedSave.key) {
+              return applyKeepMine(failedSave.key);
+            }
+            return undefined;
+          }}
+          testId="exercise-mycopy-failed-save-alert"
+        />
+      ) : null}
       {startingField || endingField ? (
         <ExercisePositionsCard
           startingPosition={
@@ -243,7 +323,7 @@ export function MyCopyEditorPage() {
                       type="button"
                       className="ex-primary-btn"
                       onClick={() => {
-                        applyUseLibrary(key);
+                        void applyUseLibrary(key).catch(() => {});
                       }}
                     >
                       {USE_LIBRARY_VERSION}
@@ -252,7 +332,7 @@ export function MyCopyEditorPage() {
                       type="button"
                       className="ex-secondary-btn"
                       onClick={() => {
-                        applyKeepMine(key);
+                        void applyKeepMine(key).catch(() => {});
                       }}
                     >
                       {KEEP_MINE}
@@ -274,7 +354,13 @@ export function MyCopyEditorPage() {
       >
         {SEE_LIBRARY_DETAILS}
       </button>
-      <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+      <button
+        type="button"
+        className="ex-link-btn ex-danger"
+        onClick={() => {
+          void onRemove().catch(() => {});
+        }}
+      >
         {REMOVE_FROM_MY}
       </button>
       <span className="sr-only">{TOAST_UNDO}</span>

@@ -15,6 +15,7 @@ export type UseProgramAutoSaveResult = {
   markSaved: () => void;
   tryAgain: () => void;
   failureAlertShown: boolean;
+  lastFailedSaveKey: string | null;
   publishAllowed: boolean;
   scheduleDebouncedSave: (key: string, task: () => Promise<void>) => void;
   runSave: (key: string, task: () => Promise<void>) => Promise<void>;
@@ -34,6 +35,7 @@ export function useProgramAutoSave({
   const [state, setState] = useState<AutoSaveUiState>("saved");
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false);
   const [failureAlertShown, setFailureAlertShown] = useState(false);
+  const [lastFailedSaveKey, setLastFailedSaveKey] = useState<string | null>(null);
   const pendingKeysRef = useRef<Set<string>>(new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const inFlightRef = useRef(0);
@@ -246,12 +248,17 @@ export function useProgramAutoSave({
           resetRetryBackoff();
           if (failedSavesRef.current.size === 0) {
             setFailureAlertShown(false);
+            setLastFailedSaveKey(null);
             clearRetryTimer();
           } else if (activeRef.current) {
+            const nextFailedKey = failedSavesRef.current.keys().next().value as
+              string | undefined;
+            setLastFailedSaveKey(nextFailedKey ?? null);
             scheduleFailedRetries();
           }
         } else if (failedSavesRef.current.size === 0) {
           setFailureAlertShown(false);
+          setLastFailedSaveKey(null);
         }
       } catch {
         if (activeRef.current && allowRetryOnFailure) {
@@ -259,6 +266,7 @@ export function useProgramAutoSave({
             failedSavesRef.current.set(key, taskToRun);
           }
           setFailureAlertShown(true);
+          setLastFailedSaveKey(key);
           scheduleFailedRetries();
         }
       } finally {
@@ -386,6 +394,7 @@ export function useProgramAutoSave({
     markSaved,
     tryAgain,
     failureAlertShown,
+    lastFailedSaveKey,
     publishAllowed,
     scheduleDebouncedSave,
     runSave,

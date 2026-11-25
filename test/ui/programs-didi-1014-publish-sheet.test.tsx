@@ -3,7 +3,7 @@
  */
 import "./setup.js";
 import { useState } from "react";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +19,13 @@ import {
 import { SHARE_LINK_EXPIRES_IN } from "../../src/mcp-connector/share-link-expiry.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
-import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
+import {
+  ProgramsApiError,
+  type ProgramsClient,
+} from "../../src/ui/api/programs-client.js";
+import { PROGRAM_PUBLISH_NAME_REQUIRED } from "../../src/ui/copy/program-publish.js";
+import { TRY_AGAIN } from "../../src/ui/copy/shared-load-states.js";
+import { didi1273FailedSaveMessage } from "../../src/ui/shared-load-states/failed-save.js";
 
 afterEach(() => {
   cleanup();
@@ -296,5 +302,81 @@ describe("Publish sheet (DIDI-1014)", () => {
     expect(dateInput).toHaveAttribute("aria-invalid", "true");
     await userEvent.click(publishButton);
     expect(publishProgram).not.toHaveBeenCalled();
+  });
+
+  it("shows a validation alert without Try again when publish is rejected for missing name", async () => {
+    const publishProgram = vi
+      .fn()
+      .mockRejectedValue(new ProgramsApiError("name_required", "name_required"));
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={{ ...program, name: "Knee rehab" }}
+          shareView={shareView}
+          client={
+            {
+              publishProgram,
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    await userEvent.click(within(dialog).getByRole("button", { name: PUBLISH_NOW }));
+    await waitFor(() => {
+      const alert = within(dialog).getByTestId("program-publish-validation-alert");
+      expect(alert).toHaveAttribute("role", "alert");
+      expect(alert).toHaveTextContent(PROGRAM_PUBLISH_NAME_REQUIRED);
+    });
+    expect(within(dialog).queryByRole("button", { name: TRY_AGAIN })).toBeNull();
+    expect(
+      within(dialog).queryByTestId("program-publish-failed-save-alert"),
+    ).toBeNull();
+  });
+
+  it("shows network publish failed-save alert with Try again after a non-validation error", async () => {
+    const publishProgram = vi.fn().mockRejectedValue(new Error("network"));
+    render(
+      <MemoryRouter>
+        <PublishSheet
+          open
+          program={{ ...program, name: "Knee rehab" }}
+          shareView={shareView}
+          client={
+            {
+              publishProgram,
+              updateProgramName: vi.fn(),
+            } as unknown as ProgramsClient
+          }
+          nameDraft="Knee rehab"
+          showNameField={false}
+          onNameChange={() => {}}
+          onProgramUpdated={() => {}}
+          onClose={() => {}}
+          onPublished={() => {}}
+          onNotYet={() => {}}
+          onRemovePlaceholder={() => {}}
+        />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole("dialog", { name: PUBLISH_SHEET_TITLE });
+    await userEvent.click(within(dialog).getByRole("button", { name: PUBLISH_NOW }));
+    await waitFor(() => {
+      const alert = within(dialog).getByTestId("program-publish-failed-save-alert");
+      expect(alert).toHaveAttribute("role", "alert");
+      expect(alert).toHaveTextContent(didi1273FailedSaveMessage("program_publish"));
+    });
+    expect(within(dialog).getByRole("button", { name: TRY_AGAIN })).toBeInTheDocument();
+    expect(within(dialog).queryByTestId("program-publish-validation-alert")).toBeNull();
   });
 });

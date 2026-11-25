@@ -2,15 +2,18 @@
  * @vitest-environment jsdom
  */
 import "./setup.js";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  AUTO_SAVE_FAILURE_ALERT,
+  AUTO_SAVE_FAILURE_HELPER,
   AUTO_SAVE_NOT_SAVED,
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
   NOT_PUBLISHED_YET,
 } from "../../src/ui/copy/programs.js";
+import { TRY_AGAIN, TRYING_AGAIN } from "../../src/ui/copy/shared-load-states.js";
 import { AutoSaveStatus } from "../../src/ui/programs/AutoSaveStatus.js";
 import { BuilderPublishCard } from "../../src/ui/programs/BuilderPublishCard.js";
 import { LeaveWithoutSavingSheet } from "../../src/ui/programs/LeaveWithoutSavingSheet.js";
@@ -22,19 +25,38 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
 
   it("renders saving and saved copy", () => {
     const { rerender } = render(
-      <AutoSaveStatus state="saving" failureAlertShown={false} onTryAgain={() => {}} />,
+      <AutoSaveStatus
+        state="saving"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={() => {}}
+      />,
     );
     expect(screen.getByText(AUTO_SAVE_SAVING)).toBeInTheDocument();
     rerender(
-      <AutoSaveStatus state="saved" failureAlertShown={false} onTryAgain={() => {}} />,
+      <AutoSaveStatus
+        state="saved"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={() => {}}
+      />,
     );
     expect(screen.getByText(AUTO_SAVE_SAVED)).toBeInTheDocument();
   });
 
   it("renders failure alert copy once", () => {
-    render(<AutoSaveStatus state="failed" failureAlertShown onTryAgain={vi.fn()} />);
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={vi.fn()}
+      />,
+    );
     expect(screen.getByText(AUTO_SAVE_NOT_SAVED)).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent(AUTO_SAVE_FAILURE_ALERT);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't save the program. Try again.",
+    );
   });
 
   it("renders leave warning dialog", () => {
@@ -56,6 +78,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
           shareLinkStatus="open"
           saveUiState="saved"
           failureAlertShown={false}
+          failureMessage="Couldn't save the program. Try again."
           publishAllowed={false}
           primaryLabel="Share link"
           pendingChanges={false}
@@ -85,6 +108,7 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
         shareLinkStatus="none"
         saveUiState="failed"
         failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
         publishAllowed={false}
         primaryLabel="Publish"
         pendingChanges={false}
@@ -98,8 +122,67 @@ describe("Programs auto-save UI (unit, jsdom)", () => {
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 
+  it("pins AUTO_SAVE_FAILURE_HELPER and retries without a duplicate failed-save alert on the card", async () => {
+    expect(AUTO_SAVE_FAILURE_HELPER).toBe("Your latest changes aren't saved yet.");
+    const onTryAgain = vi.fn();
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown={false}
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={onTryAgain}
+      />,
+    );
+    expect(screen.getByText(AUTO_SAVE_FAILURE_HELPER)).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("programs-autosave-failed-save-alert"),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    );
+    expect(onTryAgain).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(TRY_AGAIN)).toBeInTheDocument();
+  });
+
+  it("uses Trying again... as the accessible name while autosave retry is in flight", async () => {
+    let reject!: () => void;
+    const onTryAgain = vi.fn(
+      () =>
+        new Promise<void>((_resolve, rej) => {
+          reject = rej;
+        }),
+    );
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={onTryAgain}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+    );
+    const tryingButton = screen.getByRole("button", { name: TRYING_AGAIN });
+    expect(tryingButton).toBeDisabled();
+    expect(tryingButton).toHaveTextContent(TRYING_AGAIN);
+    reject();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: AUTO_SAVE_TRY_AGAIN_ARIA }),
+      ).toBeEnabled();
+    });
+  });
+
   it("shows exactly one failure alert on the phone status autosave block", () => {
-    render(<AutoSaveStatus state="failed" failureAlertShown onTryAgain={vi.fn()} />);
+    render(
+      <AutoSaveStatus
+        state="failed"
+        failureAlertShown
+        failureMessage="Couldn't save the program. Try again."
+        onTryAgain={vi.fn()}
+      />,
+    );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 });

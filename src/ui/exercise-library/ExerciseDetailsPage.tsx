@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { fillPhysioAppRoutePattern } from "../../app-routes.js";
 import type { ExerciseDetailsResult } from "../../services/exercise-library/types.js";
@@ -57,9 +58,17 @@ import {
   LibraryDetailExerciseVideo,
 } from "../exercise-visual/index.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
+  ExerciseLibraryDetailLoadBanner,
+  ExerciseLibraryItemBusyState,
 } from "./ExerciseLibraryStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedItemSkeletonPlaceholders,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { mappedFailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { myCopyStatusLine } from "./my-copy-status.js";
 import { parseSteps } from "./library-filters.js";
 import { ExercisePositionsCard } from "../exercise-positions/ExercisePositionsCard.js";
@@ -76,6 +85,8 @@ export function ExerciseDetailsPage() {
   const client = useExerciseLibraryApi();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const [removeFailed, setRemoveFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const cacheKey =
@@ -86,6 +97,7 @@ export function ExerciseDetailsPage() {
     data: details,
     loading: cacheLoading,
     loadFailed,
+    failureKind,
     refresh,
   } = useSessionCachedRead<ExerciseDetailsResult>({
     cacheKey,
@@ -95,11 +107,13 @@ export function ExerciseDetailsPage() {
   });
 
   const loading = !sessionReady || cacheLoading;
-  const load = () => {
-    void refresh({ force: true });
-  };
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
-  const showDetailContent = !loading && !loadFailed && details !== null;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showDetailContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && details !== null;
   const pageTitle = details
     ? (details.resolved_text.find((field) => field.key === "title")?.resolved ??
       details.library.title)
@@ -112,14 +126,35 @@ export function ExerciseDetailsPage() {
         aria-labelledby="ex-detail-heading"
         aria-busy={loading ? true : undefined}
       >
-        <Link to={fillPhysioAppRoutePattern("exercises")} className="ex-back-link">
-          {BACK_LIBRARY}
-        </Link>
-        <h1 id="ex-detail-heading" className="ex-page-title">
-          {pageTitle}
-        </h1>
-        {loading ? <ExerciseLibraryBusyState /> : null}
-        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+        <SharedItemBackLink
+          surface="exercises"
+          href={fillPhysioAppRoutePattern("exercises")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="exercise"
+            surface="exercises"
+            backHref={fillPhysioAppRoutePattern("exercises")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 id="ex-detail-heading" className="ex-page-title">
+                {pageTitle}
+              </h1>
+            ) : null}
+            {loading ? <ExerciseLibraryItemBusyState /> : null}
+            <ExerciseLibraryDetailLoadBanner
+              loadFailed={loadFailed && failureKind === "error"}
+              hasContent={hasCachedContent}
+              onTryAgain={() => refresh({ force: true })}
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <SharedItemSkeletonPlaceholders testId="exercise-library-detail-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
@@ -135,29 +170,41 @@ export function ExerciseDetailsPage() {
   const loopCaptionSuffix =
     details.category === "Strengthening" ? MEDIA_LOOP_CAPTION_STRENGTH_SUFFIX : "";
 
-  const onSave = () => {
-    void client.saveToMyExercises(exerciseId).then(({ undo }) => {
-      showToast({
-        message: TOAST_SAVED_MY,
-        onUndo: () => {
-          void client.applyUndo(exerciseId, undo).then(load);
-        },
+  const onSave = () =>
+    client
+      .saveToMyExercises(exerciseId)
+      .then(({ undo }) => {
+        setSaveFailed(false);
+        showToast({
+          message: TOAST_SAVED_MY,
+          onUndo: () => {
+            void client.applyUndo(exerciseId, undo).then(load);
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setSaveFailed(true);
+        throw new Error("save_failed");
       });
-      load();
-    });
-  };
 
-  const onRemove = () => {
-    void client.removeFromMyExercises(exerciseId).then(({ undo }) => {
-      showToast({
-        message: toastRemovedFromMy(title),
-        onUndo: () => {
-          void client.applyUndo(exerciseId, undo).then(load);
-        },
+  const onRemove = () =>
+    client
+      .removeFromMyExercises(exerciseId)
+      .then(({ undo }) => {
+        setRemoveFailed(false);
+        showToast({
+          message: toastRemovedFromMy(title),
+          onUndo: () => {
+            void client.applyUndo(exerciseId, undo).then(load);
+          },
+        });
+        load();
+      })
+      .catch(() => {
+        setRemoveFailed(true);
+        throw new Error("remove_failed");
       });
-      load();
-    });
-  };
 
   return (
     <section className="ex-page ex-details" aria-labelledby="ex-detail-heading">
@@ -168,6 +215,26 @@ export function ExerciseDetailsPage() {
       <h1 id="ex-detail-heading" className="ex-page-title">
         {title}
       </h1>
+      {saveFailed ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage({
+            kind: "save_or_edit",
+            item: "exercise",
+          })}
+          onTryAgain={onSave}
+          testId="exercise-detail-save-failed-save-alert"
+        />
+      ) : null}
+      {removeFailed ? (
+        <SharedFailedSaveAlert
+          message={mappedFailedSaveMessage({
+            kind: "delete_or_remove",
+            item: "exercise",
+          })}
+          onTryAgain={onRemove}
+          testId="exercise-detail-remove-failed-save-alert"
+        />
+      ) : null}
       <p className="ex-detail-desc">{description}</p>
 
       <div className="ex-detail-panel">
@@ -315,14 +382,26 @@ export function ExerciseDetailsPage() {
             >
               {EDIT_MY_COPY}
             </button>
-            <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+            <button
+              type="button"
+              className="ex-link-btn ex-danger"
+              onClick={() => {
+                void onRemove().catch(() => {});
+              }}
+            >
               {REMOVE}
             </button>
           </>
         ) : (
           <>
             <p>{SAVE_TO_EDIT}</p>
-            <button type="button" className="ex-primary-btn" onClick={onSave}>
+            <button
+              type="button"
+              className="ex-primary-btn"
+              onClick={() => {
+                void onSave().catch(() => {});
+              }}
+            >
               {ADD_TO_MY}
             </button>
           </>

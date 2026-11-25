@@ -17,6 +17,11 @@ import {
   NEW_PROGRAM_FROM_SCRATCH,
   NEW_PROGRAM_SHEET_TITLE,
 } from "../../src/ui/copy/programs.js";
+import {
+  TRYING_AGAIN,
+  TRY_AGAIN,
+  failedSaveItem,
+} from "../../src/ui/copy/shared-load-states.js";
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 
 afterEach(() => {
@@ -121,7 +126,7 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(screen.getByText(NEW_PROGRAM_FROM_SCRATCH)).toBeInTheDocument();
   });
 
-  it("keeps the sheet open and shows the empty error slot when create fails (C1, C2)", async () => {
+  it("keeps the sheet open and shows create failed-save alert when create fails (C1, C2)", async () => {
     const createProgram = vi.fn().mockRejectedValue(new Error("fail"));
     render(
       <MemoryRouter initialEntries={["/programs/new"]}>
@@ -139,7 +144,38 @@ describe("Programs new page (integration, jsdom)", () => {
     expect(
       screen.getByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE }),
     ).toBeInTheDocument();
-    expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+    const alert = screen.getByTestId("program-create-failed-save-alert");
+    expect(alert).toHaveAttribute("role", "alert");
+    expect(alert).toHaveTextContent(failedSaveItem("program"));
+    expect(failedSaveItem("program")).toBe("Couldn't save the program. Try again.");
+  });
+
+  it("retries createProgram when Try again is pressed after create fails (C2b)", async () => {
+    const createProgram = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("fail"))
+      .mockRejectedValueOnce(new Error("fail again"));
+    render(
+      <MemoryRouter initialEntries={["/programs/new"]}>
+        <PhysioApp
+          exerciseLibraryClient={stubLibraryClient()}
+          programsClient={stubProgramsClient({ createProgram })}
+        />
+      </MemoryRouter>,
+    );
+    const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
+    await userEvent.click(scratchOptionButton(sheet));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
+    });
+    expect(createProgram).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    await waitFor(() => {
+      expect(createProgram).toHaveBeenCalledTimes(2);
+    });
+    expect(scratchOptionButton(sheet)).toBeInTheDocument();
   });
 
   it("does not show the error slot when create succeeds (C3)", async () => {
@@ -155,16 +191,20 @@ describe("Programs new page (integration, jsdom)", () => {
         />
       </MemoryRouter>,
     );
-    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-create-failed-save-alert"),
+    ).not.toBeInTheDocument();
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
       expect(screen.getByRole("textbox", { name: "Program name" })).toBeInTheDocument();
     });
-    expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("program-create-failed-save-alert"),
+    ).not.toBeInTheDocument();
   });
 
-  it("clears the error slot at the start of each retry attempt (C4)", async () => {
+  it("keeps create failed-save alert mounted with Trying again during retry (spec L39)", async () => {
     let rejectSecond: ((reason: Error) => void) | undefined;
     const createProgram = vi
       .fn()
@@ -186,16 +226,20 @@ describe("Programs new page (integration, jsdom)", () => {
     const sheet = await screen.findByRole("dialog", { name: NEW_PROGRAM_SHEET_TITLE });
     await userEvent.click(scratchOptionButton(sheet));
     await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("program-create-failed-save-alert"),
+      ).toBeInTheDocument();
     });
-    await userEvent.click(scratchOptionButton(sheet));
-    await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).not.toBeInTheDocument();
-    });
+    await userEvent.click(screen.getByRole("button", { name: TRY_AGAIN }));
+    expect(screen.getByRole("button", { name: TRYING_AGAIN })).toBeDisabled();
+    expect(screen.getByTestId("program-create-failed-save-alert")).toBeInTheDocument();
     rejectSecond?.(new Error("fail again"));
     await waitFor(() => {
-      expect(document.querySelector(".pg-error-slot")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: TRY_AGAIN })).toBeEnabled();
     });
+    expect(document.activeElement).toBe(
+      screen.getByTestId("program-create-failed-save-alert"),
+    );
     expect(createProgram).toHaveBeenCalledTimes(2);
   });
 });

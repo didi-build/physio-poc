@@ -17,7 +17,6 @@ import { expectReadCacheSignal } from "./navigation-cache-read-expect.js";
 import {
   AUTO_SAVE_SAVED,
   AUTO_SAVE_SAVING,
-  AUTO_SAVE_TRY_AGAIN_ARIA,
   CARD_NO_EXERCISES_YET,
   CLEAR_SEARCH,
   DELETE_PROGRAM_SHEET_TITLE,
@@ -29,6 +28,7 @@ import {
   RECENTLY_DELETED_EMPTY,
   RESTORE,
   AUTO_SAVE_NOT_SAVED,
+  AUTO_SAVE_TRY_AGAIN_ARIA,
   deletedProgramToast,
   libraryUpdatesToReviewFlag,
   listCountLabel,
@@ -335,8 +335,8 @@ describe("Programs UI (integration, jsdom)", () => {
     await screen.findByText(listCountLabel(2)!);
   });
 
-  it("redirects to list when by-code lookup fails", async () => {
-    const getProgramByCode = vi.fn().mockRejectedValue(new Error("not found"));
+  it("shows builder item error when by-code lookup fails", async () => {
+    const getProgramByCode = vi.fn().mockRejectedValue(new Error("network"));
     render(
       <MemoryRouter initialEntries={["/programs/PRG-TEST"]}>
         <PhysioApp
@@ -348,9 +348,7 @@ describe("Programs UI (integration, jsdom)", () => {
       </MemoryRouter>,
     );
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: PROGRAMS_PAGE_TITLE, level: 1 }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("programs-builder-error-slot")).toBeInTheDocument();
     });
     expect(getProgramByCode).toHaveBeenCalledWith("PRG-TEST", expectReadCacheSignal);
     expect(

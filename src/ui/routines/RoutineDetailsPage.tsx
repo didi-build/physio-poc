@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { PublishValidationIssue } from "../../services/routines/types.js";
 import { RoutinesAuthoringError } from "../api/routines-client.js";
@@ -72,10 +72,18 @@ import {
 } from "../programs/program-from-routine.js";
 import { ROUTINE_DETAIL_HEADING } from "../copy/routines.js";
 import {
-  ExerciseLibraryBusyState,
-  ExerciseLibraryDetailErrorSlot,
-  ExerciseLibraryErrorSlot,
-} from "../exercise-library/ExerciseLibraryStates.js";
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  SharedItemSkeletonPlaceholders,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  didi1273FailedSaveMessage,
+  mappedFailedSaveMessage,
+  type MappedFailedSaveAction,
+} from "../shared-load-states/failed-save.js";
+import { RoutinesItemBusyState, RoutinesItemLoadBanner } from "./RoutinesStates.js";
 import { formatListDate } from "../exercise-library/library-filters.js";
 import { capitalizeBodyRegionLabel } from "./body-region-display.js";
 import { RoutinePublishSheet } from "./RoutinePublishSheet.js";
@@ -121,7 +129,11 @@ export function RoutineDetailsPage() {
   const practitioner = useCurrentPractitionerIdentity();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [mutationFailed, setMutationFailed] = useState(false);
+  const [failedSaveAlert, setFailedSaveAlert] = useState<{
+    message: string;
+    onTryAgain: () => void;
+    testId: string;
+  } | null>(null);
   const [routineProgramBusy, setRoutineProgramBusy] = useState(false);
   const [source, setSource] = useState<SourceView>("community");
   const [draftPublishOpen, setDraftPublishOpen] = useState(false);
@@ -142,8 +154,9 @@ export function RoutineDetailsPage() {
       : null;
   const {
     data: details,
-    loading,
+    loading: cacheLoading,
     loadFailed,
+    failureKind,
     refresh,
   } = useSessionCachedRead<RoutineDetailsResult>({
     cacheKey,
@@ -158,11 +171,14 @@ export function RoutineDetailsPage() {
     }
   }, [details?.my_copy]);
 
-  const load = () => {
-    void refresh({ force: true });
-  };
+  const load = useCallback(() => refresh({ force: true }), [refresh]);
 
-  const showDetailContent = !loading && !loadFailed && details !== null;
+  const loading = !sessionReady || cacheLoading;
+  const hasCachedContent = details !== null;
+  const refreshLoadFailed = sharedRefreshFailed(hasCachedContent, loadFailed);
+  const showNotFound = !loading && loadFailed && failureKind === "not_found";
+  const showDetailContent =
+    !loading && !showNotFound && (!loadFailed || refreshLoadFailed) && details !== null;
   const name = details?.is_draft
     ? (details.draft.name ?? ROUTINE_DETAIL_HEADING)
     : (details?.community.name ?? ROUTINE_DETAIL_HEADING);
@@ -179,14 +195,6 @@ export function RoutineDetailsPage() {
     [details, source],
   );
 
-  if (sessionState.status === "error") {
-    return (
-      <section className="ex-page rt-detail" aria-labelledby="rt-detail-heading">
-        <ExerciseLibraryDetailErrorSlot />
-      </section>
-    );
-  }
-
   if (!showDetailContent) {
     return (
       <section
@@ -194,35 +202,72 @@ export function RoutineDetailsPage() {
         aria-labelledby="rt-detail-heading"
         aria-busy={loading ? true : undefined}
       >
-        <Link to={fillPhysioAppRoutePattern("routines")} className="ex-back-link">
-          {BACK_ROUTINES}
-        </Link>
-        <h1 id="rt-detail-heading" className="ex-page-title">
-          {name}
-        </h1>
-        {loading ? <ExerciseLibraryBusyState /> : null}
-        {loadFailed ? <ExerciseLibraryDetailErrorSlot /> : null}
+        <SharedItemBackLink
+          surface="routines"
+          href={fillPhysioAppRoutePattern("routines")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="routine"
+            surface="routines"
+            backHref={fillPhysioAppRoutePattern("routines")}
+            testId="exercise-library-detail-error-slot"
+          />
+        ) : (
+          <>
+            {!showNotFound && !loading ? (
+              <h1 id="rt-detail-heading" className="ex-page-title">
+                {name}
+              </h1>
+            ) : null}
+            {loading ? (
+              <RoutinesItemBusyState testId="exercise-library-busy-skeleton" />
+            ) : null}
+            <RoutinesItemLoadBanner
+              loadFailed={
+                (loadFailed && failureKind === "error") ||
+                sessionState.status === "error"
+              }
+              hasContent={hasCachedContent}
+              onTryAgain={load}
+              testId="exercise-library-detail-error-slot"
+            />
+            {loadFailed && !hasCachedContent && !loading ? (
+              <SharedItemSkeletonPlaceholders testId="exercise-library-busy-skeleton" />
+            ) : null}
+          </>
+        )}
       </section>
     );
   }
 
   if (details.is_draft) {
     const draftName = details.draft.name?.trim() || name;
-    const onDiscardDraft = () => {
-      void client.discardRoutineDraft(routineId).then(({ undo }) => {
-        const discardedName = details.draft.name ?? "";
-        showToast({
-          message: toastDiscardedDraft(discardedName),
-          onUndo: () => {
-            void client.undoRoutineDraftDiscard(routineId, undo).then(() => {
-              navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
-              load();
-            });
-          },
+    const onDiscardDraft = () =>
+      client
+        .discardRoutineDraft(routineId)
+        .then(({ undo }) => {
+          setFailedSaveAlert(null);
+          const discardedName = details.draft.name ?? "";
+          showToast({
+            message: toastDiscardedDraft(discardedName),
+            onUndo: () => {
+              void client.undoRoutineDraftDiscard(routineId, undo).then(() => {
+                navigate(fillPhysioAppRoutePattern("routineDetail", { routineId }));
+                load();
+              });
+            },
+          });
+          navigate(fillPhysioAppRoutePattern("routines"), { replace: true });
+        })
+        .catch(() => {
+          setFailedSaveAlert({
+            message: didi1273FailedSaveMessage("routine_discard_draft"),
+            onTryAgain: onDiscardDraft,
+            testId: "routine-draft-discard-failed-save-alert",
+          });
+          throw new Error("routine_discard_draft_failed");
         });
-        navigate(fillPhysioAppRoutePattern("routines"), { replace: true });
-      });
-    };
     const onDraftPublish = () => {
       setDraftValidation(null);
       setDraftServerMissingImagesBlock(false);
@@ -231,11 +276,12 @@ export function RoutineDetailsPage() {
     };
     const confirmDraftPublish = () => {
       setDraftPublishBusy(true);
-      void client
+      return client
         .publishRoutineDraft(routineId, {
           name: details.draft.name ?? undefined,
         })
         .then(() => {
+          setFailedSaveAlert(null);
           setDraftPublishOpen(false);
           showToast({ message: toastPublishedVersion1(draftName) });
           load();
@@ -261,6 +307,12 @@ export function RoutineDetailsPage() {
             return;
           }
           setDraftPublishOpen(false);
+          setFailedSaveAlert({
+            message: didi1273FailedSaveMessage("routine_publish"),
+            onTryAgain: confirmDraftPublish,
+            testId: "routine-draft-publish-failed-save-alert",
+          });
+          throw new Error("routine_draft_publish_failed");
         })
         .finally(() => {
           setDraftPublishBusy(false);
@@ -302,6 +354,13 @@ export function RoutineDetailsPage() {
         <h1 id="rt-detail-heading" className="ex-page-title">
           {draftName}
         </h1>
+        {failedSaveAlert ? (
+          <SharedFailedSaveAlert
+            message={failedSaveAlert.message}
+            onTryAgain={failedSaveAlert.onTryAgain}
+            testId={failedSaveAlert.testId}
+          />
+        ) : null}
         <p className="rt-draft-detail-note">{DRAFT_DETAIL_SAVED_NOTE}</p>
         {details.who_its_for ? <p>{details.who_its_for}</p> : null}
         {draftValidation ? (
@@ -349,7 +408,9 @@ export function RoutineDetailsPage() {
           type="button"
           className="ex-link-btn ex-danger"
           data-testid="rt-discard-draft"
-          onClick={onDiscardDraft}
+          onClick={() => {
+            void onDiscardDraft().catch(() => {});
+          }}
         >
           {DISCARD_DRAFT}
         </button>
@@ -365,7 +426,9 @@ export function RoutineDetailsPage() {
           onClose={() => {
             setDraftPublishOpen(false);
           }}
-          onPublish={confirmDraftPublish}
+          onPublish={() => {
+            void confirmDraftPublish().catch(() => {});
+          }}
           onNotYet={() => {
             setDraftPublishOpen(false);
             showToast({ message: KEPT_AS_DRAFT });
@@ -385,84 +448,104 @@ export function RoutineDetailsPage() {
     : 0;
   const yourChangePositions = new Set(personalChanges?.your_change_positions ?? []);
 
-  const onSave = () => {
-    setMutationFailed(false);
-    void client
+  const setMappedFailedSave = (
+    action: MappedFailedSaveAction,
+    retry: () => void,
+    testId = "routine-detail-mutation-error-slot",
+  ) => {
+    setFailedSaveAlert({
+      message: mappedFailedSaveMessage(action),
+      onTryAgain: retry,
+      testId,
+    });
+  };
+
+  const onSave = () =>
+    client
       .saveToMyRoutines(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastSavedToMy(community.name),
           onUndo: () => {
-            setMutationFailed(false);
             void client
               .applyUndo(routineId, undo)
               .then(load)
               .catch(() => {
-                setMutationFailed(true);
+                setMappedFailedSave({ kind: "save_or_edit", item: "routine" }, onSave);
               });
           },
         });
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setMappedFailedSave({ kind: "save_or_edit", item: "routine" }, onSave);
+        throw new Error("routine_save_failed");
       });
-  };
 
-  const onRemove = () => {
-    setMutationFailed(false);
-    void client
+  const onRemove = () =>
+    client
       .removeFromMyRoutines(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastRemovedFromMy(community.name),
           onUndo: () => {
-            setMutationFailed(false);
             void client
               .applyUndo(routineId, undo)
               .then(load)
               .catch(() => {
-                setMutationFailed(true);
+                setMappedFailedSave(
+                  { kind: "delete_or_remove", item: "routine" },
+                  onRemove,
+                );
               });
           },
         });
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setMappedFailedSave({ kind: "delete_or_remove", item: "routine" }, onRemove);
+        throw new Error("routine_remove_failed");
       });
-  };
 
-  const onAdopt = () => {
-    setMutationFailed(false);
-    void client
+  const onAdopt = () =>
+    client
       .adoptCommunityVersion(routineId)
       .then(({ undo, adopted_version }) => {
+        setFailedSaveAlert(null);
         showToast({
           message: toastAdoptedVersion(adopted_version),
           onUndo: () => {
-            setMutationFailed(false);
             void client
               .applyUndo(routineId, undo)
               .then(load)
               .catch(() => {
-                setMutationFailed(true);
+                setFailedSaveAlert({
+                  message: didi1273FailedSaveMessage("routine_adopt_version"),
+                  onTryAgain: onAdopt,
+                  testId: "routine-adopt-version-failed-save-alert",
+                });
               });
           },
         });
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setFailedSaveAlert({
+          message: didi1273FailedSaveMessage("routine_adopt_version"),
+          onTryAgain: onAdopt,
+          testId: "routine-adopt-version-failed-save-alert",
+        });
+        throw new Error("adopt_failed");
       });
-  };
 
   const startProgramFromRoutine = (openPublishSheet: boolean) => {
     if (!details) {
       return;
     }
     const apiSource = resolveRoutineProgramSource(saved, source);
-    setMutationFailed(false);
+    setFailedSaveAlert(null);
     setRoutineProgramBusy(true);
     void createProgramFromRoutineAtApi(programsClient, {
       routineId,
@@ -481,47 +564,58 @@ export function RoutineDetailsPage() {
         );
       })
       .catch(() => {
-        setMutationFailed(true);
+        /* create-program failure is not a DIDI-1273 failed-save action */
       })
       .finally(() => {
         setRoutineProgramBusy(false);
       });
   };
 
-  const onKeep = () => {
-    setMutationFailed(false);
-    void client
+  const onKeep = () =>
+    client
       .keepMyCopyVersion(routineId)
       .then(({ undo }) => {
+        setFailedSaveAlert(null);
         const version = myCopy?.source_version_number ?? community.version_number;
         showToast({
           message: toastKeptCopy(version),
           onUndo: () => {
-            setMutationFailed(false);
             void client
               .applyUndo(routineId, undo)
               .then(load)
               .catch(() => {
-                setMutationFailed(true);
+                setMappedFailedSave({ kind: "keep_your_version" }, onKeep);
               });
           },
         });
         load();
       })
       .catch(() => {
-        setMutationFailed(true);
+        setMappedFailedSave({ kind: "keep_your_version" }, onKeep);
+        throw new Error("routine_keep_failed");
       });
-  };
 
   const detailMoreActions = (
     <div className="rt-detail-more">
       {!saved ? (
-        <button type="button" className="ex-secondary-btn" onClick={onSave}>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          onClick={() => {
+            void onSave().catch(() => {});
+          }}
+        >
           {SAVE_TO_MY_ROUTINES}
         </button>
       ) : null}
       {saved && behind && !flagged && myCopy ? (
-        <button type="button" className="ex-secondary-btn" onClick={onAdopt}>
+        <button
+          type="button"
+          className="ex-secondary-btn"
+          onClick={() => {
+            void onAdopt().catch(() => {});
+          }}
+        >
           {UPDATE_MY_COPY} {community.version_number}
         </button>
       ) : null}
@@ -557,7 +651,13 @@ export function RoutineDetailsPage() {
         {VERSION_HISTORY}
       </button>
       {saved ? (
-        <button type="button" className="ex-link-btn ex-danger" onClick={onRemove}>
+        <button
+          type="button"
+          className="ex-link-btn ex-danger"
+          onClick={() => {
+            void onRemove().catch(() => {});
+          }}
+        >
           {REMOVE_FROM_MY}
         </button>
       ) : null}
@@ -619,10 +719,11 @@ export function RoutineDetailsPage() {
         {community.name}
       </h1>
 
-      {mutationFailed ? (
-        <ExerciseLibraryErrorSlot
-          message={undefined}
-          testId="routine-detail-mutation-error-slot"
+      {failedSaveAlert ? (
+        <SharedFailedSaveAlert
+          message={failedSaveAlert.message}
+          onTryAgain={failedSaveAlert.onTryAgain}
+          testId={failedSaveAlert.testId}
         />
       ) : null}
 
@@ -681,10 +782,22 @@ export function RoutineDetailsPage() {
               </p>
             ) : null}
             <div className="rt-update-actions">
-              <button type="button" className="ex-primary-btn" onClick={onAdopt}>
+              <button
+                type="button"
+                className="ex-primary-btn"
+                onClick={() => {
+                  void onAdopt().catch(() => {});
+                }}
+              >
                 {useVersionN(community.version_number)}
               </button>
-              <button type="button" className="ex-secondary-btn" onClick={onKeep}>
+              <button
+                type="button"
+                className="ex-secondary-btn"
+                onClick={() => {
+                  void onKeep().catch(() => {});
+                }}
+              >
                 {KEEP_MINE}
               </button>
             </div>

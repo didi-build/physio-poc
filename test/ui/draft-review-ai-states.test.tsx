@@ -1485,6 +1485,77 @@ describe("Draft review QA R3 UI (U5–U27)", () => {
     expect(screen.queryByText(GENERATING)).toBeNull();
   });
 
+  it("does not restore G1 text failure after Regenerate text when refreshed view is stale", async () => {
+    const persistedTextFailure = {
+      generation_in_progress: false,
+      first_draft_complete: true,
+      generation_failure: "text" as const,
+    };
+    const initialView: ExerciseRequestDraftView = {
+      request_id: "req-1",
+      requested_name: "Heel slide",
+      exercise_note: null,
+      status: "drafting",
+      requested_by: FAKE_UI_PRACTITIONER_ID,
+      requested_by_email: "k@example.com",
+      exercise_id: "ex-1",
+      generation: persistedTextFailure,
+      draft: draftBody(),
+    };
+    const regeneratedDraft = draftBody("Regenerated title");
+    const staleAfterRefresh: ExerciseRequestDraftView = {
+      ...initialView,
+      draft: regeneratedDraft,
+      generation: { ...persistedTextFailure },
+    };
+    let getRequestCalls = 0;
+    const requestsClient = {
+      getRequest: vi.fn().mockImplementation(async () => {
+        getRequestCalls += 1;
+        return getRequestCalls === 1 ? initialView : staleAfterRefresh;
+      }),
+      generateRequest: vi.fn(),
+      regenerateDraftText: vi.fn().mockResolvedValue({
+        outcome: "complete",
+        view: staleAfterRefresh,
+      }),
+      updateDraft: vi.fn(),
+      approveRequest: vi.fn(),
+      getInProgressCount: vi.fn(),
+      listInProgress: vi.fn(),
+      listSimilar: vi.fn(),
+      submitRequest: vi.fn(),
+    } as unknown as ExerciseRequestsClient;
+    renderReview(initialView, { requestsClient });
+    expect(await screen.findByText(PIN_G1)).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: REGENERATE })).not.toBeDisabled();
+    });
+    await userEvent.click(screen.getByRole("button", { name: REGENERATE }));
+    const dialog = await screen.findByRole("dialog");
+    const textOnlyLabel = within(dialog)
+      .getByText(PIN_G4)
+      .closest("label") as HTMLLabelElement;
+    await userEvent.click(textOnlyLabel);
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: DRAFT_REGENERATE_TEXT }),
+    );
+    await waitFor(() => {
+      expect(requestsClient.regenerateDraftText).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    await waitFor(() => {
+      expect(getRequestCalls).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Regenerated title" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(PIN_G1)).toBeNull();
+    expect(screen.queryByText(DRAFT_AI_TEXT_FAILURE)).toBeNull();
+  });
+
   it("U26 pins regenerate-text G1 failure copy literally", async () => {
     const completedView: ExerciseRequestDraftView = {
       request_id: "req-1",

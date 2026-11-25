@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ConfirmSheet } from "../components/ConfirmSheet.js";
 import {
   DRAFT_REGEN_SCOPE_ALL_LABEL,
@@ -43,6 +44,7 @@ export type RegenerateMediaSheetProps = {
   onPickChange: (pick: RegeneratePick) => void;
   onConfirm: () => void;
   busy?: boolean;
+  failedSaveAlert?: ReactNode;
   notePatientDetailError?: string | null;
   noteInputRef?: RefObject<HTMLTextAreaElement | null>;
 };
@@ -58,6 +60,7 @@ export function RegenerateMediaSheet({
   onPickChange,
   onConfirm,
   busy = false,
+  failedSaveAlert = null,
   notePatientDetailError = null,
   noteInputRef,
 }: RegenerateMediaSheetProps) {
@@ -104,6 +107,7 @@ export function RegenerateMediaSheet({
         </button>
       }
     >
+      {failedSaveAlert}
       {limitReached ? (
         <p className="ex-regen-limit" role="status">
           {DAILY_LIMIT_REACHED}

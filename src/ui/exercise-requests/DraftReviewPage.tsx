@@ -70,13 +70,6 @@ import {
 } from "../copy/exercise-requests.js";
 import { AUTO_SAVE_TRY_AGAIN } from "../copy/programs.js";
 import {
-  DRAFT_ITEM_LOAD_BACK,
-  DRAFT_ITEM_LOAD_HINT,
-  DRAFT_ITEM_LOAD_TITLE,
-  LOAD_TRYING_AGAIN,
-  LOAD_TRY_AGAIN,
-} from "../copy/shared-load-states.js";
-import {
   DraftReviewExerciseStill,
   DraftReviewExerciseVideo,
 } from "../exercise-visual/placements.js";
@@ -90,6 +83,17 @@ import {
   DELETE_DRAFT_ALREADY_GONE,
   DELETE_DRAFT_TOAST_SUCCESS,
 } from "../copy/delete-exercise-draft.js";
+import {
+  ExerciseRequestItemBusyState,
+  ExerciseRequestItemLoadBanner,
+} from "./ExerciseRequestsStates.js";
+import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 
 type GenerationFailure = "text" | "images" | "daily" | null;
 
@@ -115,6 +119,16 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const [regenPick, setRegenPick] = useState<RegeneratePick>("images");
   const [regenNote, setRegenNote] = useState("");
   const [regenBusy, setRegenBusy] = useState(false);
+  const [failedSave, setFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void | Promise<void>;
+    testId: string;
+  } | null>(null);
+  const [regenFailedSave, setRegenFailedSave] = useState<{
+    message: string;
+    onTryAgain: () => void | Promise<void>;
+    testId: string;
+  } | null>(null);
   const [regenError, setRegenError] = useState<string | null>(null);
   const [regenNotePatientError, setRegenNotePatientError] = useState<string | null>(
     null,
@@ -131,10 +145,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   const textFailureRetryRef = useRef<HTMLButtonElement>(null);
   const imageFailureRetryRef = useRef<HTMLButtonElement>(null);
   const requestsBackRef = useRef<HTMLAnchorElement>(null);
-  const detailTryAgainRef = useRef<HTMLButtonElement>(null);
-  const detailRetryFocusAfterRef = useRef(false);
   const [draftNotFoundWithdrawn, setDraftNotFoundWithdrawn] = useState(false);
-  const [detailRetrying, setDetailRetrying] = useState(false);
 
   const detailCacheKey = useMemo(
     () =>
@@ -172,6 +183,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     data: cachedView,
     loading: viewLoading,
     loadFailed: viewLoadFailed,
+    failureKind: viewFailureKind,
     refresh: refreshView,
   } = useSessionCachedRead<ExerciseRequestDraftView>({
     cacheKey: detailCacheKey,
@@ -192,21 +204,20 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   });
 
   const view = viewOverride ?? cachedView ?? null;
-  const loading = !sessionReady || viewLoading || quotaLoading;
-
-  useEffect(() => {
-    if (
-      !detailRetrying &&
-      detailRetryFocusAfterRef.current &&
-      (viewLoadFailed || !view)
-    ) {
-      detailRetryFocusAfterRef.current = false;
-      detailTryAgainRef.current?.focus();
-    }
-    if (!detailRetrying && view && !viewLoadFailed) {
-      detailRetryFocusAfterRef.current = false;
-    }
-  }, [detailRetrying, view, viewLoadFailed]);
+  const hasCachedView = cachedView !== null;
+  const pageLoading =
+    !sessionReady ||
+    (viewLoading && !viewLoadFailed) ||
+    (quotaLoading && cachedView === null && !viewLoadFailed);
+  const showNotFound =
+    !pageLoading && viewLoadFailed && viewFailureKind === "not_found";
+  const refreshViewFailed = sharedRefreshFailed(hasCachedView, viewLoadFailed);
+  const showReviewContent =
+    !pageLoading &&
+    !showNotFound &&
+    !draftNotFoundWithdrawn &&
+    view !== null &&
+    (!viewLoadFailed || refreshViewFailed);
 
   const isRequester =
     currentPractitioner.sessionIdentityReady &&
@@ -440,19 +451,37 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
   ]);
 
   const patchField = async (patch: DraftFieldPatch) => {
-    const updated = await requestsClient.updateDraft(requestId, patch);
-    setViewOverride(updated);
-    void refreshView({ force: true });
+    setFailedSave(null);
+    try {
+      const updated = await requestsClient.updateDraft(requestId, patch);
+      setViewOverride(updated);
+      void refreshView({ force: true });
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_draft_edits"),
+        onTryAgain: () => patchField(patch),
+        testId: "request-draft-edits-failed-save-alert",
+      });
+    }
   };
 
   const approve = async () => {
-    await requestsClient.approveRequest(requestId);
-    const own = isRequester;
-    showToast({
-      message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
-    });
-    onRequestsChanged?.();
-    navigate(fillPhysioAppRoutePattern("requests"));
+    setFailedSave(null);
+    try {
+      await requestsClient.approveRequest(requestId);
+      const own = isRequester;
+      showToast({
+        message: own ? TOAST_APPROVE_OWN : TOAST_APPROVE_OTHER,
+      });
+      onRequestsChanged?.();
+      navigate(fillPhysioAppRoutePattern("requests"));
+    } catch {
+      setFailedSave({
+        message: didi1273FailedSaveMessage("request_approve"),
+        onTryAgain: () => approve(),
+        testId: "request-approve-failed-save-alert",
+      });
+    }
   };
 
   const mapRegenMediaError = (error: ExerciseMediaRequestError): string => {
@@ -460,6 +489,13 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       return `${DAILY_LIMIT_REACHED} ${DRAFT_AI_LIMIT_TRY_TOMORROW}`;
     }
     return DRAFT_AI_IMAGE_FAILURE;
+  };
+
+  const isAiImageGenerationMediaError = (error: ExerciseMediaRequestError): boolean => {
+    const code = error.detail.error?.toLowerCase() ?? "";
+    return (
+      code.startsWith("image_generation_") && code !== "image_generation_network_failed"
+    );
   };
 
   const runRegenerate = async () => {
@@ -470,6 +506,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       return;
     }
     setRegenBusy(true);
+    setRegenFailedSave(null);
     setRegenError(null);
     setRegenNotePatientError(null);
     try {
@@ -539,34 +576,43 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         setRegenNotePatientError(DRAFT_REGEN_NOTE_REMOVE_PATIENT_DETAILS);
         return;
       }
+      if (
+        error instanceof ExerciseMediaRequestError &&
+        (error.detail.status === 429 || error.detail.error === "daily_limit_reached")
+      ) {
+        await refreshQuota({ force: true });
+        setRegenError(mapRegenMediaError(error));
+        return;
+      }
+      const imageOnlyRegen =
+        regenMode !== "general" || (regenPick !== "text" && regenPick !== "all");
+      if (imageOnlyRegen) {
+        if (
+          error instanceof ExerciseMediaRequestError &&
+          isAiImageGenerationMediaError(error)
+        ) {
+          setRegenError(mapRegenMediaError(error));
+        } else {
+          setRegenFailedSave({
+            message: didi1273FailedSaveMessage("exercise_regenerate_media"),
+            onTryAgain: () => runRegenerate(),
+            testId: "request-regenerate-media-failed-save-alert",
+          });
+        }
+        return;
+      }
       if (error instanceof ExerciseMediaRequestError) {
         setRegenError(mapRegenMediaError(error));
       } else if (error instanceof ExerciseRequestsRequestError) {
         setRegenError(DRAFT_AI_TEXT_FAILURE);
       } else {
-        setRegenError(
-          regenMode === "general" && (regenPick === "text" || regenPick === "all")
-            ? DRAFT_AI_TEXT_FAILURE
-            : DRAFT_AI_IMAGE_FAILURE,
-        );
+        setRegenError(DRAFT_AI_TEXT_FAILURE);
       }
     } finally {
       setTextRegenBusy(false);
       setRegenBusy(false);
     }
   };
-
-  if (loading && !viewLoadFailed && !detailRetrying) {
-    return (
-      <section className="ex-page" aria-busy={true}>
-        <div
-          className="ex-busy-skeleton"
-          data-testid="exercise-library-busy-skeleton"
-          aria-hidden
-        />
-      </section>
-    );
-  }
 
   if (draftNotFoundWithdrawn) {
     return (
@@ -586,39 +632,41 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
     );
   }
 
-  if (viewLoadFailed || !view) {
+  if (!showReviewContent) {
     return (
-      <section className="ex-page" aria-labelledby="ex-review-heading">
-        <Link
-          to={fillPhysioAppRoutePattern("requests")}
-          className="ex-back-link"
-          data-testid="ex-review-item-load-back"
-        >
-          {DRAFT_ITEM_LOAD_BACK}
-        </Link>
-        <div
-          className="ex-item-load-banner"
-          data-testid="ex-review-item-load-error"
-          role="alert"
-        >
-          <p>{DRAFT_ITEM_LOAD_TITLE}</p>
-          <p>{DRAFT_ITEM_LOAD_HINT}</p>
-          <button
-            ref={detailTryAgainRef}
-            type="button"
-            className="ex-secondary-btn"
-            disabled={detailRetrying}
-            onClick={() => {
-              setDetailRetrying(true);
-              detailRetryFocusAfterRef.current = true;
-              void refreshView({ force: true }).finally(() => {
-                setDetailRetrying(false);
-              });
-            }}
-          >
-            {detailRetrying ? LOAD_TRYING_AGAIN : LOAD_TRY_AGAIN}
-          </button>
-        </div>
+      <section
+        className="ex-page"
+        aria-busy={pageLoading ? true : undefined}
+        aria-labelledby={showNotFound ? undefined : "ex-review-heading"}
+      >
+        <SharedItemBackLink
+          surface="requests"
+          href={fillPhysioAppRoutePattern("requests")}
+        />
+        {showNotFound ? (
+          <SharedNotFoundState
+            item="draft"
+            surface="requests"
+            backHref={fillPhysioAppRoutePattern("requests")}
+            testId="exercise-request-detail-error-slot"
+          />
+        ) : viewLoadFailed && viewFailureKind === "error" ? (
+          <ExerciseRequestItemLoadBanner
+            loadFailed={viewLoadFailed}
+            hasContent={hasCachedView}
+            onTryAgain={() => refreshView({ force: true })}
+            testId="ex-review-item-load-error"
+          />
+        ) : (
+          <>
+            {pageLoading ? <ExerciseRequestItemBusyState /> : null}
+            <ExerciseRequestItemLoadBanner
+              loadFailed={refreshViewFailed}
+              hasContent={hasCachedView}
+              onTryAgain={() => refreshView({ force: true })}
+            />
+          </>
+        )}
       </section>
     );
   }
@@ -713,6 +761,20 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
       <h1 id="ex-review-heading" className="ex-page-title">
         {title}
       </h1>
+      {refreshViewFailed ? (
+        <ExerciseRequestItemLoadBanner
+          loadFailed={viewLoadFailed}
+          hasContent={hasCachedView}
+          onTryAgain={() => refreshView({ force: true })}
+        />
+      ) : null}
+      {failedSave ? (
+        <SharedFailedSaveAlert
+          message={failedSave.message}
+          onTryAgain={failedSave.onTryAgain}
+          testId={failedSave.testId}
+        />
+      ) : null}
       <div
         className={
           !firstDraftComplete || generationInProgress
@@ -939,6 +1001,7 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
         open={regenOpen}
         onClose={() => {
           setRegenOpen(false);
+          setRegenFailedSave(null);
         }}
         mode={regenMode}
         quota={quota}
@@ -950,6 +1013,15 @@ export function DraftReviewPage({ onRequestsChanged }: DraftReviewPageProps) {
           void runRegenerate();
         }}
         busy={regenBusy}
+        failedSaveAlert={
+          regenFailedSave ? (
+            <SharedFailedSaveAlert
+              message={regenFailedSave.message}
+              onTryAgain={regenFailedSave.onTryAgain}
+              testId={regenFailedSave.testId}
+            />
+          ) : null
+        }
         notePatientDetailError={regenNotePatientError}
         noteInputRef={regenNoteRef}
       />

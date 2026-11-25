@@ -9,7 +9,15 @@ import { useCurrentPractitionerIdentity } from "../api/practitioner-session-cont
 import { usePractitionerSession } from "../api/practitioner-session-context.js";
 import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
 import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
-import { EXERCISE_REQUESTS_LIST_ERROR_MESSAGE } from "../copy/exercise-requests-states.js";
+import {
+  SharedListSkeletonPlaceholders,
+  sharedInitialLoadFailed,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  ExerciseRequestsListBusyState,
+  ExerciseRequestsListLoadBanner,
+} from "./ExerciseRequestsStates.js";
 import {
   AI_DRAFTING,
   DRAFT_NOT_APPROVED,
@@ -96,6 +104,12 @@ export function RequestsAndDraftsPage() {
 
   const loading = cacheLoading;
   const requests = listData?.requests ?? [];
+  const hasCachedContent = listData !== null;
+  const initialListLoadFailed = sharedInitialLoadFailed(hasCachedContent, loadFailed);
+  const showListContent =
+    !loading &&
+    hasCachedContent &&
+    (!loadFailed || sharedRefreshFailed(hasCachedContent, loadFailed));
 
   const sessionBusy =
     loading ||
@@ -120,17 +134,22 @@ export function RequestsAndDraftsPage() {
       <p className="ex-page-intro">{REQUESTS_INTRO}</p>
       <p className="ex-requests-shared">{REQUESTS_SHARED_HINT}</p>
 
-      {loadFailed ? (
-        <div data-testid="exercise-requests-list-error-slot" className="ex-error-slot">
-          {EXERCISE_REQUESTS_LIST_ERROR_MESSAGE}
-        </div>
+      <ExerciseRequestsListLoadBanner
+        loadFailed={loadFailed}
+        hasContent={hasCachedContent}
+        onTryAgain={() => refresh({ force: true })}
+      />
+
+      {loading && !initialListLoadFailed ? <ExerciseRequestsListBusyState /> : null}
+      {initialListLoadFailed ? (
+        <SharedListSkeletonPlaceholders testId="exercise-requests-busy-skeleton" />
       ) : null}
 
-      {!loading && !loadFailed && requests.length === 0 ? (
+      {showListContent && requests.length === 0 ? (
         <p className="ex-requests-empty">{REQUESTS_EMPTY}</p>
       ) : null}
 
-      {!loading && !loadFailed && requests.length > 0 ? (
+      {showListContent && requests.length > 0 ? (
         <ul className="ex-requests-list" ref={listRef}>
           {requests.map((item) => {
             const title = item.draft_title ?? item.requested_name;

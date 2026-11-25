@@ -34,6 +34,18 @@ import {
   filterSummary,
 } from "../../src/ui/exercise-library/library-filters.js";
 import { UNSOURCED_EXERCISE_LIBRARY_UI_STRINGS } from "./exercise-library-unsourced-guard.js";
+import {
+  BACK_TO_EXERCISES,
+  LIST_LOAD_ERROR_SECONDARY,
+  TRY_AGAIN,
+  itemLoadErrorPrimary,
+  itemTokenForSurface,
+  listLoadErrorPrimary,
+  listTokenForSurface,
+  loadingItemStatus,
+  loadingListStatus,
+  loadingListVisible,
+} from "../../src/ui/copy/shared-load-states.js";
 
 export const LOADING_ERROR_REGION_TEST_IDS = [
   "exercise-library-busy-skeleton",
@@ -41,9 +53,29 @@ export const LOADING_ERROR_REGION_TEST_IDS = [
   "exercise-library-detail-error-slot",
 ] as const;
 
-/** Allowed visible text inside loading/error slot elements when copy slots are undefined. */
+const EXERCISES_LIST = listTokenForSurface("exercises");
+const EXERCISE_ITEM = itemTokenForSurface("exercises");
+
+function listLoadErrorRegionText(): string {
+  return `!${listLoadErrorPrimary(EXERCISES_LIST)}${LIST_LOAD_ERROR_SECONDARY}${TRY_AGAIN}`;
+}
+
+function itemLoadErrorRegionText(): string {
+  return `!${itemLoadErrorPrimary(EXERCISE_ITEM)}${LIST_LOAD_ERROR_SECONDARY}${TRY_AGAIN}`;
+}
+
+/** Approved text for each loading/error test id on exercise library surfaces. */
+export const LOADING_ERROR_REGION_ALLOWLIST: readonly string[] = [
+  loadingListVisible(EXERCISES_LIST),
+  `${loadingListVisible(EXERCISES_LIST)}${loadingListStatus(EXERCISES_LIST)}`,
+  loadingItemStatus(EXERCISE_ITEM),
+  listLoadErrorRegionText(),
+  itemLoadErrorRegionText(),
+];
+
+/** @deprecated Empty slots are legacy; use LOADING_ERROR_REGION_ALLOWLIST for wired banners. */
 export const LOADING_ERROR_REGION_ALLOWLIST_WHEN_SLOTS_UNDEFINED: readonly string[] =
-  [];
+  LOADING_ERROR_REGION_ALLOWLIST;
 
 const SHELL_TEXT_EXCLUSION_SELECTORS = [
   '[data-testid="shell-brand-mark"]',
@@ -97,6 +129,12 @@ export function exerciseLibraryListErrorPageAllowlistMine(): readonly string[] {
   return [
     ...physioShellAllowlist(),
     BACK_LIBRARY,
+    listLoadErrorPrimary(EXERCISES_LIST),
+    LIST_LOAD_ERROR_SECONDARY,
+    TRY_AGAIN,
+    loadingListVisible(EXERCISES_LIST),
+    loadingListStatus(EXERCISES_LIST),
+    "!",
     LIB_HEADING,
     LIB_TAB_MY,
     LIB_TAB_ALL,
@@ -133,6 +171,12 @@ export function exerciseLibraryListErrorPageAllowlistAll(): readonly string[] {
   return [
     ...physioShellAllowlist(),
     BACK_LIBRARY,
+    listLoadErrorPrimary(EXERCISES_LIST),
+    LIST_LOAD_ERROR_SECONDARY,
+    TRY_AGAIN,
+    loadingListVisible(EXERCISES_LIST),
+    loadingListStatus(EXERCISES_LIST),
+    "!",
     LIB_HEADING,
     LIB_TAB_MY,
     LIB_TAB_ALL,
@@ -166,29 +210,57 @@ export function exerciseLibraryListErrorPageSegmentLimitsAll(): Readonly<
 
 /** Sourced strings that may appear on exercise details after a load error. */
 export function exerciseLibraryDetailsErrorPageAllowlist(): readonly string[] {
-  return [...physioShellAllowlist(), BACK_LIBRARY, EXERCISE_DETAILS];
+  return [
+    ...physioShellAllowlist(),
+    BACK_TO_EXERCISES,
+    EXERCISE_DETAILS,
+    itemLoadErrorPrimary(EXERCISE_ITEM),
+    loadingItemStatus(EXERCISE_ITEM),
+    LIST_LOAD_ERROR_SECONDARY,
+    TRY_AGAIN,
+    "!",
+  ];
 }
 
 export function exerciseLibraryDetailsErrorPageSegmentLimits(): Readonly<
   Record<string, number>
 > {
   return mergeSegmentLimits({
-    [BACK_LIBRARY]: 1,
+    [BACK_TO_EXERCISES]: 1,
     [EXERCISE_DETAILS]: 1,
+    [itemLoadErrorPrimary(EXERCISE_ITEM)]: 1,
+    [loadingItemStatus(EXERCISE_ITEM)]: 1,
+    [LIST_LOAD_ERROR_SECONDARY]: 1,
+    [TRY_AGAIN]: 1,
+    "!": 1,
   });
 }
 
 /** Sourced strings that may appear on My copy editor after a load error. */
 export function exerciseLibraryMyCopyErrorPageAllowlist(): readonly string[] {
-  return [...physioShellAllowlist(), BACK_LIBRARY, MY_COPY];
+  return [
+    ...physioShellAllowlist(),
+    BACK_TO_EXERCISES,
+    MY_COPY,
+    itemLoadErrorPrimary(EXERCISE_ITEM),
+    loadingItemStatus(EXERCISE_ITEM),
+    LIST_LOAD_ERROR_SECONDARY,
+    TRY_AGAIN,
+    "!",
+  ];
 }
 
 export function exerciseLibraryMyCopyErrorPageSegmentLimits(): Readonly<
   Record<string, number>
 > {
   return mergeSegmentLimits({
-    [BACK_LIBRARY]: 1,
+    [BACK_TO_EXERCISES]: 1,
     [MY_COPY]: 1,
+    [itemLoadErrorPrimary(EXERCISE_ITEM)]: 1,
+    [loadingItemStatus(EXERCISE_ITEM)]: 1,
+    [LIST_LOAD_ERROR_SECONDARY]: 1,
+    [TRY_AGAIN]: 1,
+    "!": 1,
   });
 }
 
@@ -307,8 +379,21 @@ export function assertLoadingErrorRegionsOnlyAllowlisted(
   if (text.length === 0) {
     return;
   }
-  if (!allowlist.includes(text)) {
-    throw new Error(`Unexpected loading/error region text: "${text}"`);
+  if (allowlist.includes(text)) {
+    return;
+  }
+  for (const testId of LOADING_ERROR_REGION_TEST_IDS) {
+    const node = root.querySelector(`[data-testid="${testId}"]`);
+    if (!node) {
+      continue;
+    }
+    const regionText = (node.textContent ?? "").trim();
+    if (regionText.length === 0) {
+      continue;
+    }
+    if (!allowlist.includes(regionText)) {
+      throw new Error(`Unexpected loading/error region text: "${regionText}"`);
+    }
   }
 }
 

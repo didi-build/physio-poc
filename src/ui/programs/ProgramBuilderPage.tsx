@@ -67,6 +67,16 @@ import {
 } from "../copy/program-type-mismatch.js";
 import { TYPE_LABELS } from "../copy/my-defaults.js";
 import {
+  SharedFailedSaveAlert,
+  SharedItemBackLink,
+  SharedNotFoundState,
+  sharedRefreshFailed,
+} from "../shared-load-states/SharedLoadStates.js";
+import {
+  mappedFailedSaveMessage,
+  programAutosaveFailedSaveMessage,
+} from "../shared-load-states/failed-save.js";
+import {
   ProgramsBuilderBusyState,
   ProgramsBuilderErrorSlot,
 } from "./ProgramsStates.js";
@@ -97,7 +107,7 @@ export function ProgramBuilderPage({
   const [program, setProgram] = useState<ProgramBuilderView | null>(null);
   const programRef = useRef(program);
   programRef.current = program;
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [deleteProgramFailed, setDeleteProgramFailed] = useState(false);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
   const [nameDraft, setNameDraft] = useState("");
@@ -161,6 +171,9 @@ export function ProgramBuilderPage({
   }, [client]);
 
   const autoSave = useProgramAutoSave({});
+  const autosaveFailureMessage = programAutosaveFailedSaveMessage(
+    autoSave.lastFailedSaveKey,
+  );
   const autoSaveRef = useRef(autoSave);
   autoSaveRef.current = autoSave;
 
@@ -206,8 +219,10 @@ export function ProgramBuilderPage({
 
   const {
     data: cachedProgram,
-    loading,
+    loading: builderCacheLoading,
     loadFailed: builderLoadFailed,
+    failureKind: builderFailureKind,
+    refresh: refreshBuilder,
   } = useSessionCachedRead<ProgramBuilderView>({
     cacheKey: builderCacheKey,
     enabled: trimmedProgramCode.length > 0 && sessionReady,
@@ -220,17 +235,10 @@ export function ProgramBuilderPage({
       setRedirectToList(true);
       return;
     }
-    if (builderLoadFailed) {
-      setRedirectToList(true);
-      setProgram(null);
-      setLoadFailed(true);
-      return;
-    }
     if (!cachedProgram) {
       return;
     }
     setRedirectToList(false);
-    setLoadFailed(false);
     setProgram(cachedProgram);
     setNameDraft(cachedProgram.name ?? "");
     setNoteDrafts(noteDraftsFromProgram(cachedProgram));
@@ -678,6 +686,7 @@ export function ProgramBuilderPage({
     if (!program) {
       return;
     }
+    setDeleteProgramFailed(false);
     void client
       .deleteProgram(program.program_id)
       .then((result) => {
@@ -686,38 +695,55 @@ export function ProgramBuilderPage({
         navigate(fillPhysioAppRoutePattern("programs"), { replace: true });
       })
       .catch(() => {
-        setDeleteOpen(false);
+        setDeleteProgramFailed(true);
       });
   };
 
+  const hasCachedBuilder = cachedProgram !== null;
+  const builderLoading = !sessionReady || (builderCacheLoading && !builderLoadFailed);
+  const showBuilderNotFound =
+    !builderLoading && builderLoadFailed && builderFailureKind === "not_found";
+  const builderRefreshFailed = sharedRefreshFailed(hasCachedBuilder, builderLoadFailed);
   const builderView = program ?? cachedProgram ?? null;
-  const showBuilderLoading = loading && builderView === null;
+  const showBuilderContent =
+    !builderLoading &&
+    !showBuilderNotFound &&
+    builderView !== null &&
+    (!builderLoadFailed || builderRefreshFailed);
 
   if (redirectToList) {
     return <Navigate to={fillPhysioAppRoutePattern("programs")} replace />;
   }
 
-  if (showBuilderLoading) {
+  if (!showBuilderContent) {
     return (
-      <section className="pg-builder" aria-busy>
-        <ProgramsBuilderBusyState />
+      <section className="pg-builder" aria-busy={builderLoading ? true : undefined}>
+        <SharedItemBackLink
+          surface="programs"
+          href={fillPhysioAppRoutePattern("programs")}
+        />
+        {showBuilderNotFound ? (
+          <SharedNotFoundState
+            item="program"
+            surface="programs"
+            backHref={fillPhysioAppRoutePattern("programs")}
+            testId="programs-builder-error-slot"
+          />
+        ) : (
+          <>
+            {builderLoading ? <ProgramsBuilderBusyState /> : null}
+            <ProgramsBuilderErrorSlot
+              loadFailed={builderLoadFailed && builderFailureKind === "error"}
+              hasContent={hasCachedBuilder}
+              onTryAgain={() => refreshBuilder({ force: true })}
+            />
+          </>
+        )}
       </section>
     );
   }
 
-  if (!builderView && !loadFailed) {
-    return null;
-  }
-
-  if (loadFailed || !builderView) {
-    return (
-      <section className="pg-builder">
-        <ProgramsBuilderErrorSlot />
-      </section>
-    );
-  }
-
-  const displayProgram = program ?? builderView;
+  const displayProgram = program ?? builderView!;
 
   const rowActionsDisabled = rowMutationBusy;
   const publishStatusLine = formatAutoSaveStatus(
@@ -799,6 +825,7 @@ export function ProgramBuilderPage({
               className="pg-autosave--phone"
               state={autoSave.state}
               failureAlertShown={autoSave.failureAlertShown}
+              failureMessage={autosaveFailureMessage}
               showFailureAlert={!isDesktopLayout}
               onTryAgain={autoSave.tryAgain}
             />
@@ -1198,6 +1225,7 @@ export function ProgramBuilderPage({
           shareLinkStatus={displayProgram.share_link_status}
           saveUiState={autoSave.state}
           failureAlertShown={autoSave.failureAlertShown}
+          failureMessage={autosaveFailureMessage}
           showFailureAlert={isDesktopLayout}
           publishAllowed={autoSave.publishAllowed}
           primaryDisabled={displayProgram.rows.length === 0}
@@ -1233,6 +1261,7 @@ export function ProgramBuilderPage({
         titleId="pg-delete-title"
         onClose={() => {
           setDeleteOpen(false);
+          setDeleteProgramFailed(false);
         }}
         footer={
           <>
@@ -1241,6 +1270,7 @@ export function ProgramBuilderPage({
               className="pg-btn pg-btn--secondary"
               onClick={() => {
                 setDeleteOpen(false);
+                setDeleteProgramFailed(false);
               }}
             >
               {CANCEL}
@@ -1255,6 +1285,16 @@ export function ProgramBuilderPage({
           </>
         }
       >
+        {deleteProgramFailed ? (
+          <SharedFailedSaveAlert
+            message={mappedFailedSaveMessage({
+              kind: "delete_or_remove",
+              item: "program",
+            })}
+            onTryAgain={onDeleteProgram}
+            testId="programs-delete-program-error-slot"
+          />
+        ) : null}
         <DeleteProgramSheetBody program={displayProgram} />
       </ConfirmSheet>
 

@@ -21,6 +21,7 @@ export type BuilderPublishCardProps = {
   shareLinkStatus: ShareLinkStatus;
   saveUiState: AutoSaveUiState;
   failureAlertShown: boolean;
+  failureMessage: string;
   showFailureAlert?: boolean;
   publishAllowed: boolean;
   primaryDisabled?: boolean;
@@ -67,6 +68,7 @@ export function BuilderPublishCard({
   shareLinkStatus,
   saveUiState,
   failureAlertShown,
+  failureMessage,
   showFailureAlert = true,
   publishAllowed,
   primaryDisabled = false,
@@ -104,6 +106,7 @@ export function BuilderPublishCard({
         className="pg-autosave--desktop"
         state={saveUiState}
         failureAlertShown={failureAlertShown}
+        failureMessage={failureMessage}
         showFailureAlert={showFailureAlert}
         onTryAgain={onTryAgain}
       />
