@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   fillPhysioAppRoutePattern,
   ROUTINE_SEARCH_QUERY_PARAM,
 } from "../../app-routes.js";
 import type {
+  BodyRegionListItem,
   CommunityRoutineSummary,
   MyRoutineDraftItem,
   MyRoutineSavedItem,
@@ -87,10 +88,35 @@ export function RoutinesPage() {
   const [filters, setFilters] = useState<RoutineLibraryFilters>(
     DEFAULT_ROUTINE_FILTERS,
   );
+  const [bodyRegionOptions, setBodyRegionOptions] = useState<BodyRegionListItem[]>([]);
   const filterParams = useMemo(() => routineFiltersToApiParams(filters), [filters]);
   const trimmedQuery = query.trim();
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
+
+  useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+    const loadBodyRegions = client.listMeBodyRegions;
+    if (typeof loadBodyRegions !== "function") {
+      return;
+    }
+    let cancelled = false;
+    void loadBodyRegions
+      .call(client)
+      .then((regions) => {
+        if (!cancelled) {
+          setBodyRegionOptions(regions);
+        }
+      })
+      .catch(() => {
+        /* unmount or test teardown */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, sessionReady]);
 
   const listCacheKey = useMemo(
     () =>
@@ -273,6 +299,7 @@ export function RoutinesPage() {
         onChange={setFilters}
         conditionsAvailable={conditionsAvailable}
         conditionOptions={conditionOptions}
+        bodyRegionOptions={bodyRegionOptions}
       />
 
       <RoutinesListLoadBanner
