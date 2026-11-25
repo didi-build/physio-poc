@@ -4,14 +4,23 @@
 import "./setup.js";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fillPhysioAppRoutePattern } from "../../src/app-routes.js";
 import { PhysioApp } from "../../src/ui/App.js";
+import type { ProgramsClient } from "../../src/ui/api/programs-client.js";
 import type { ExerciseLibraryClient } from "../../src/ui/api/exercise-library-client.js";
 import type { ExerciseRequestsClient } from "../../src/ui/api/exercise-requests-client.js";
 import type { RoutinesClient } from "../../src/ui/api/routines-client.js";
 import { BODY_REGION } from "../../src/ui/copy/exercise-library.js";
+import { NAV_TAB_EXERCISES, NAV_TAB_PROGRAMS } from "../../src/ui/copy/nav.js";
+import { PROGRAMS_PAGE_TITLE } from "../../src/ui/copy/programs.js";
+import {
+  FAKE_UI_SESSION_B_ID,
+  FAKE_UI_DISPLAY_NAME_B,
+  fakeUiSessionView,
+  stubPractitionerSessionClient,
+} from "./fake-practitioner-session-fixture.js";
 import {
   EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE,
   EXERCISE_LIBRARY_REGION_PILL_LABELS,
@@ -43,6 +52,45 @@ function emptyExerciseLibraryClient(
   } as unknown as ExerciseLibraryClient;
 }
 
+function stubProgramsClient(): ProgramsClient {
+  return {
+    listPrograms: vi.fn().mockResolvedValue({ items: [], matched_code: null }),
+    listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
+  } as unknown as ProgramsClient;
+}
+
+function renderExerciseLibraryApp(
+  initialEntry: string,
+  routinesClient: RoutinesClient,
+  options: {
+    practitionerSessionClient?: ReturnType<typeof stubPractitionerSessionClient>;
+    exerciseLibraryClient?: ExerciseLibraryClient;
+  } = {},
+) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route
+          path="/*"
+          element={
+            <PhysioApp
+              exerciseLibraryClient={
+                options.exerciseLibraryClient ?? emptyExerciseLibraryClient()
+              }
+              exerciseRequestsClient={stubRequestsClient()}
+              programsClient={stubProgramsClient()}
+              routinesClient={routinesClient}
+              practitionerSessionClient={
+                options.practitionerSessionClient ?? stubPractitionerSessionClient()
+              }
+            />
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 function stubRequestsClient(): ExerciseRequestsClient {
   return {
     getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
@@ -71,14 +119,9 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
       .mockResolvedValue([...EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE]);
     const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
-    render(
-      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exerciseSearch")]}>
-        <PhysioApp
-          exerciseLibraryClient={emptyExerciseLibraryClient()}
-          exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={routinesClient}
-        />
-      </MemoryRouter>,
+    renderExerciseLibraryApp(
+      fillPhysioAppRoutePattern("exerciseSearch"),
+      routinesClient,
     );
 
     await waitFor(() => {
@@ -87,6 +130,72 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
 
     const labels = await openFiltersAndReadRegionPillLabels();
     expect(labels).toEqual([...EXERCISE_LIBRARY_REGION_PILL_LABELS]);
+  });
+
+  it("reuses session read cache for body regions when revisiting the library in one session", async () => {
+    const listMeBodyRegions = vi
+      .fn()
+      .mockResolvedValue([...EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE]);
+    const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
+
+    renderExerciseLibraryApp(
+      fillPhysioAppRoutePattern("exerciseSearch"),
+      routinesClient,
+    );
+
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
+
+    const user = userEvent.setup();
+    const mainNav = screen.getAllByRole("navigation", { name: "Main" })[0]!;
+    await user.click(within(mainNav).getByRole("link", { name: NAV_TAB_PROGRAMS }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: PROGRAMS_PAGE_TITLE })).toBeVisible();
+    });
+
+    await user.click(within(mainNav).getByRole("link", { name: NAV_TAB_EXERCISES }));
+    await user.click(screen.getByRole("tab", { name: "All exercises" }));
+
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
+
+    const labels = await openFiltersAndReadRegionPillLabels();
+    expect(labels).toEqual([...EXERCISE_LIBRARY_REGION_PILL_LABELS]);
+  });
+
+  it("refetches body regions after practitioner session changes", async () => {
+    const listMeBodyRegions = vi
+      .fn()
+      .mockResolvedValue([...EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE]);
+
+    renderExerciseLibraryApp(fillPhysioAppRoutePattern("exerciseSearch"), {
+      listMeBodyRegions,
+    } as unknown as RoutinesClient);
+
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
+
+    cleanup();
+
+    renderExerciseLibraryApp(
+      fillPhysioAppRoutePattern("exerciseSearch"),
+      { listMeBodyRegions } as unknown as RoutinesClient,
+      {
+        practitionerSessionClient: stubPractitionerSessionClient(
+          fakeUiSessionView({
+            practitioner_id: FAKE_UI_SESSION_B_ID,
+            display_name: FAKE_UI_DISPLAY_NAME_B,
+          }),
+        ),
+      },
+    );
+
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("when listMeBodyRegions fails, shows only All regions, search still runs, and rejection is handled", async () => {
@@ -106,14 +215,12 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
     const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
     try {
-      render(
-        <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exerciseSearch")]}>
-          <PhysioApp
-            exerciseLibraryClient={emptyExerciseLibraryClient({ searchApproved })}
-            exerciseRequestsClient={stubRequestsClient()}
-            routinesClient={routinesClient}
-          />
-        </MemoryRouter>,
+      renderExerciseLibraryApp(
+        fillPhysioAppRoutePattern("exerciseSearch"),
+        routinesClient,
+        {
+          exerciseLibraryClient: emptyExerciseLibraryClient({ searchApproved }),
+        },
       );
 
       await waitFor(() => {
@@ -140,14 +247,9 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
     const listMeBodyRegions = vi.fn().mockResolvedValue({ not: "a-list" });
     const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
-    render(
-      <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exerciseSearch")]}>
-        <PhysioApp
-          exerciseLibraryClient={emptyExerciseLibraryClient()}
-          exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={routinesClient}
-        />
-      </MemoryRouter>,
+    renderExerciseLibraryApp(
+      fillPhysioAppRoutePattern("exerciseSearch"),
+      routinesClient,
     );
 
     await waitFor(() => {

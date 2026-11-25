@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { BodyRegionListItem } from "../../services/routines/types.js";
 import { useRoutinesApi } from "../api/routines-context.js";
 import { usePractitionerSession } from "../api/practitioner-session-context.js";
+import { buildSessionReadCacheKey } from "../api/session-read-cache.js";
+import { useSessionReadCacheEpoch } from "../api/session-read-cache-context.js";
+import { useSessionCachedRead } from "../hooks/use-session-cached-read.js";
 import {
   ALL_REGIONS_FILTER_PILL,
   buildBodyRegionFilterPills,
@@ -11,27 +14,29 @@ import {
 export function useBodyRegionFilterPills(): readonly BodyRegionFilterPill[] {
   const client = useRoutinesApi();
   const sessionReady = usePractitionerSession().status === "ready";
-  const [regions, setRegions] = useState<BodyRegionListItem[]>([]);
+  const sessionEpoch = useSessionReadCacheEpoch();
 
-  useEffect(() => {
-    if (!sessionReady) {
-      return;
-    }
-    let cancelled = false;
-    void client
-      .listMeBodyRegions()
-      .then((list) => {
-        if (!cancelled && Array.isArray(list)) {
-          setRegions(list);
-        }
-      })
-      .catch(() => {
-        /* unmount or network failure; All regions pill remains */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, sessionReady]);
+  const bodyRegionsCacheKey = useMemo(
+    () =>
+      sessionReady && sessionEpoch
+        ? buildSessionReadCacheKey(sessionEpoch, {
+            resource: "routines.body_regions",
+          })
+        : null,
+    [sessionEpoch, sessionReady],
+  );
+
+  const { data: regionsData } = useSessionCachedRead<BodyRegionListItem[]>({
+    cacheKey: bodyRegionsCacheKey,
+    enabled: sessionReady,
+    retainOnError: false,
+    fetcher: async (signal) => {
+      const list = await client.listMeBodyRegions({ signal });
+      return Array.isArray(list) ? list : [];
+    },
+  });
+
+  const regions = regionsData ?? [];
 
   return useMemo(() => {
     if (regions.length === 0) {
