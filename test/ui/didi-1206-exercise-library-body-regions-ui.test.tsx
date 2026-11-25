@@ -91,6 +91,34 @@ function renderExerciseLibraryApp(
   );
 }
 
+function captureNextUnhandledRejection(): Promise<unknown> {
+  return new Promise((resolve) => {
+    const onProcessRejection = (reason: unknown) => {
+      process.off("unhandledRejection", onProcessRejection);
+      resolve(reason);
+    };
+    process.on("unhandledRejection", onProcessRejection);
+    const onWindowRejection = (event: PromiseRejectionEvent) => {
+      event.preventDefault();
+      window.removeEventListener("unhandledrejection", onWindowRejection);
+      process.off("unhandledRejection", onProcessRejection);
+      resolve(event.reason);
+    };
+    window.addEventListener("unhandledrejection", onWindowRejection);
+  });
+}
+
+async function expectNoStrayUnhandledRejection(windowMs: number): Promise<void> {
+  await expect(
+    Promise.race([
+      captureNextUnhandledRejection().then(() => "leaked" as const),
+      new Promise<"ok">((resolve) => {
+        setTimeout(() => resolve("ok"), windowMs);
+      }),
+    ]),
+  ).resolves.toBe("ok");
+}
+
 function stubRequestsClient(): ExerciseRequestsClient {
   return {
     getInProgressCount: vi.fn().mockResolvedValue({ in_progress_count: 0 }),
@@ -199,11 +227,7 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
   });
 
   it("when listMeBodyRegions fails, shows only All regions, search still runs, and rejection is handled", async () => {
-    const rejections: unknown[] = [];
-    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
-      rejections.push(event.reason);
-    };
-    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    const strayRejection = captureNextUnhandledRejection();
 
     const listMeBodyRegions = vi.fn().mockRejectedValue(new Error("fetch failed"));
     const searchApproved = vi.fn().mockResolvedValue({
@@ -214,33 +238,44 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
     });
     const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
-    try {
-      renderExerciseLibraryApp(
-        fillPhysioAppRoutePattern("exerciseSearch"),
-        routinesClient,
-        {
-          exerciseLibraryClient: emptyExerciseLibraryClient({ searchApproved }),
-        },
-      );
+    renderExerciseLibraryApp(
+      fillPhysioAppRoutePattern("exerciseSearch"),
+      routinesClient,
+      {
+        exerciseLibraryClient: emptyExerciseLibraryClient({ searchApproved }),
+      },
+    );
 
-      await waitFor(() => {
-        expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
-      });
-      await waitFor(() => {
-        expect(searchApproved).toHaveBeenCalled();
-      });
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(searchApproved).toHaveBeenCalled();
+    });
 
-      await new Promise((resolve) => setTimeout(resolve, 0));
-
-      const labels = await openFiltersAndReadRegionPillLabels();
-      expect(labels).toEqual(["All regions"]);
-      expect(rejections).toEqual([]);
+    await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Exercise library" }),
+        screen.queryByRole("heading", { name: "Exercise library" }),
       ).toBeInTheDocument();
-    } finally {
-      window.removeEventListener("unhandledrejection", onUnhandledRejection);
-    }
+      expect(
+        screen.queryByRole("button", { name: /Filters & sort/i }),
+      ).toBeInTheDocument();
+    });
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expectNoStrayUnhandledRejection(200);
+    await expect(
+      Promise.race([
+        strayRejection,
+        new Promise<"none">((resolve) => {
+          setTimeout(() => resolve("none"), 50);
+        }),
+      ]),
+    ).resolves.toBe("none");
+
+    const labels = await openFiltersAndReadRegionPillLabels();
+    expect(labels).toEqual(["All regions"]);
   });
 
   it("when listMeBodyRegions returns a non-array, shows only All regions", async () => {
@@ -254,6 +289,15 @@ describe("DIDI-1206 exercise library body region pills (UI)", () => {
 
     await waitFor(() => {
       expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Exercise library" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Filters & sort/i }),
+      ).toBeInTheDocument();
     });
 
     const labels = await openFiltersAndReadRegionPillLabels();
