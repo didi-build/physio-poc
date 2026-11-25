@@ -1077,7 +1077,11 @@ export function ProgramBuilderPage({
               {exercisesSectionTotalCount(displayProgram.rows.length)}
             </p>
           </div>
-          <p className="sr-only" aria-live="polite">
+          <p
+            className="sr-only"
+            aria-live="polite"
+            data-testid="pg-reorder-live-region"
+          >
             {reorderLiveMessage}
           </p>
           {builderDrag && draggingRowTitle ? (
