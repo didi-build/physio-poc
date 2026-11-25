@@ -88,11 +88,11 @@ import { useProgramLeaveGuard } from "./program-leave-guard.js";
 import { ProgramBuilderOriginBanner } from "./ProgramBuilderOriginBanner.js";
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion.js";
 import {
-  BUILDER_REORDER_EDGE_SCROLL_PX,
   BUILDER_REORDER_MOUSE_LIFT_PX,
   BUILDER_REORDER_TOUCH_HOLD_MS,
   BUILDER_REORDER_TOUCH_SLOP_PX,
   type ProgramBuilderDragState,
+  builderReorderEdgeScrollDelta,
   programBuilderDropIndexFromPointer,
   programBuilderRowsWhileDragging,
 } from "./program-builder-row-reorder.js";
@@ -179,6 +179,8 @@ export function ProgramBuilderPage({
   } | null>(null);
   const gripLiftedRef = useRef(false);
   const edgeScrollRafRef = useRef<number | null>(null);
+  const dragPointerClientYRef = useRef<number | null>(null);
+  const bottomActionBarRef = useRef<HTMLDivElement | null>(null);
   const [reorderLiveMessage, setReorderLiveMessage] = useState("");
   const prefersReducedMotion = usePrefersReducedMotion();
   const fixDeepLinkHandledRef = useRef<string | null>(null);
@@ -729,10 +731,76 @@ export function ProgramBuilderPage({
     gripLiftedRef.current = false;
   }, []);
 
+  const stopEdgeScrollLoop = useCallback(() => {
+    if (edgeScrollRafRef.current !== null) {
+      cancelAnimationFrame(edgeScrollRafRef.current);
+      edgeScrollRafRef.current = null;
+    }
+    dragPointerClientYRef.current = null;
+  }, []);
+
+  const bottomActionBarTopForScroll = useCallback(() => {
+    const bar = bottomActionBarRef.current;
+    if (bar) {
+      const rect = bar.getBoundingClientRect();
+      if (rect.height > 0) {
+        return rect.top;
+      }
+    }
+    return window.innerHeight;
+  }, []);
+
+  const edgeScrollDeltaForPointer = useCallback(
+    (clientY: number) =>
+      builderReorderEdgeScrollDelta(clientY, bottomActionBarTopForScroll()),
+    [bottomActionBarTopForScroll],
+  );
+
+  const edgeScrollLoopTick = useCallback(() => {
+    const clientY = dragPointerClientYRef.current;
+    if (clientY === null || !builderDragRef.current) {
+      stopEdgeScrollLoop();
+      return;
+    }
+    const delta = edgeScrollDeltaForPointer(clientY);
+    if (delta === 0) {
+      stopEdgeScrollLoop();
+      return;
+    }
+    window.scrollBy({ top: delta, behavior: "auto" });
+    edgeScrollRafRef.current = window.requestAnimationFrame(edgeScrollLoopTick);
+  }, [edgeScrollDeltaForPointer, stopEdgeScrollLoop]);
+
+  const syncEdgeScrollLoop = useCallback(
+    (clientY: number) => {
+      dragPointerClientYRef.current = clientY;
+      const delta = edgeScrollDeltaForPointer(clientY);
+      if (delta === 0) {
+        stopEdgeScrollLoop();
+        return;
+      }
+      if (edgeScrollRafRef.current === null) {
+        edgeScrollRafRef.current = window.requestAnimationFrame(edgeScrollLoopTick);
+      }
+    },
+    [edgeScrollDeltaForPointer, edgeScrollLoopTick, stopEdgeScrollLoop],
+  );
+
   const cancelBuilderDrag = useCallback(() => {
     clearGripPress();
+    stopEdgeScrollLoop();
     setBuilderDrag(null);
-  }, [clearGripPress]);
+  }, [clearGripPress, stopEdgeScrollLoop]);
+
+  useEffect(() => {
+    return () => {
+      stopEdgeScrollLoop();
+      if (gripPressTimerRef.current !== undefined) {
+        clearTimeout(gripPressTimerRef.current);
+        gripPressTimerRef.current = undefined;
+      }
+    };
+  }, [stopEdgeScrollLoop]);
 
   useEffect(() => {
     if (!builderDrag) {
@@ -758,20 +826,6 @@ export function ProgramBuilderPage({
     focusGripAfterRowIdRef.current = null;
     rowGripRefs.current.get(rowId)?.focus();
   }, [program?.rows]);
-
-  const scrollListForDrag = useCallback((clientY: number) => {
-    const edge = BUILDER_REORDER_EDGE_SCROLL_PX;
-    const viewportBottom = window.innerHeight;
-    let delta = 0;
-    if (clientY < edge) {
-      delta = -Math.max(1, edge - clientY);
-    } else if (clientY > viewportBottom - edge) {
-      delta = Math.max(1, clientY - (viewportBottom - edge));
-    }
-    if (delta !== 0) {
-      window.scrollBy({ top: delta, behavior: "auto" });
-    }
-  }, []);
 
   const onGripPointerDown = useCallback(
     (rowId: string, fromIndex: number) =>
@@ -831,23 +885,25 @@ export function ProgramBuilderPage({
       if (overIndex !== builderDragRef.current.overIndex) {
         setBuilderDrag({ rowId, overIndex });
       }
-      if (edgeScrollRafRef.current !== null) {
+      syncEdgeScrollLoop(event.clientY);
+    },
+    [clearGripPress, syncEdgeScrollLoop],
+  );
+
+  const onGripPointerCancel = useCallback(
+    (rowId: string) => () => {
+      const start = gripPressStartRef.current;
+      if (!start || start.rowId !== rowId) {
         return;
       }
-      edgeScrollRafRef.current = window.requestAnimationFrame(() => {
-        edgeScrollRafRef.current = null;
-        scrollListForDrag(event.clientY);
-      });
+      cancelBuilderDrag();
     },
-    [clearGripPress, scrollListForDrag],
+    [cancelBuilderDrag],
   );
 
   const onGripPointerEnd = useCallback(
     (rowId: string) => () => {
-      if (edgeScrollRafRef.current !== null) {
-        cancelAnimationFrame(edgeScrollRafRef.current);
-        edgeScrollRafRef.current = null;
-      }
+      stopEdgeScrollLoop();
       const drag = builderDragRef.current;
       const fromIndex =
         programRef.current?.rows.findIndex((row) => row.id === rowId) ?? -1;
@@ -868,7 +924,7 @@ export function ProgramBuilderPage({
       focusGripAfterRowIdRef.current = rowId;
       reorder(fromIndex, toIndex, row.text_snapshot.title);
     },
-    [clearGripPress, reorder],
+    [clearGripPress, reorder, stopEdgeScrollLoop],
   );
 
   const onDeleteProgram = () => {
@@ -1125,9 +1181,7 @@ export function ProgramBuilderPage({
                   (entry) => entry.id === row.id,
                 );
                 const dropLineBefore =
-                  builderDrag !== null &&
-                  visualIndex === builderDrag.overIndex &&
-                  row.id !== builderDrag.rowId;
+                  builderDrag !== null && visualIndex === builderDrag.overIndex;
                 return (
                   <ProgramBuilderRowCard
                     key={row.id}
@@ -1176,7 +1230,7 @@ export function ProgramBuilderPage({
                     onGripPointerDown={onGripPointerDown(row.id, index)}
                     onGripPointerMove={onGripPointerMove(row.id)}
                     onGripPointerUp={onGripPointerEnd(row.id)}
-                    onGripPointerCancel={onGripPointerEnd(row.id)}
+                    onGripPointerCancel={onGripPointerCancel(row.id)}
                     gripRef={(element) => {
                       if (element) {
                         rowGripRefs.current.set(row.id, element);
@@ -1499,6 +1553,7 @@ export function ProgramBuilderPage({
       </div>
 
       <BuilderPublishPhoneBar
+        ref={bottomActionBarRef}
         publishAllowed={autoSave.publishAllowed}
         primaryDisabled={displayProgram.rows.length === 0}
         primaryLabel={primaryLabel}

@@ -4,6 +4,7 @@
 import "./setup.js";
 import "../../src/ui/styles/programs.css";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -26,8 +27,15 @@ import type {
 } from "../../src/services/programs/types.js";
 import {
   BUILDER_ROWS_HINT,
+  ROW_NOTES_PLACEHOLDER,
   builderReorderDraggingStatus,
 } from "../../src/ui/copy/programs.js";
+import {
+  BUILDER_REORDER_EDGE_SCROLL_PX,
+  BUILDER_REORDER_TOUCH_HOLD_MS,
+  BUILDER_REORDER_TOUCH_SLOP_PX,
+  builderReorderEdgeScrollDelta,
+} from "../../src/ui/programs/program-builder-row-reorder.js";
 import { mockMinWidth1024 } from "./setup.js";
 
 afterEach(() => {
@@ -38,8 +46,16 @@ afterEach(() => {
 
 const GRIP_ALPHA_POSITION_1 =
   "Reorder Alpha move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.";
+const GRIP_ALPHA_POSITION_2 =
+  "Reorder Alpha move, position 2. Press and hold, then drag. Or hold Shift and use the arrow keys.";
+const GRIP_BETA_POSITION_1 =
+  "Reorder Beta move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.";
 const GRIP_BETA_POSITION_2 =
   "Reorder Beta move, position 2. Press and hold, then drag. Or hold Shift and use the arrow keys.";
+const DUPLICATE_BETA = "Duplicate Beta move";
+const REMOVE_BETA = "Remove Beta move";
+const TOUCH_HOLD_MS = 280;
+const TOUCH_SLOP_PX = 8;
 const GRIP_GAMMA_POSITION_3 =
   "Reorder Gamma move, position 3. Press and hold, then drag. Or hold Shift and use the arrow keys.";
 const MOVE_ALPHA_UP = "Move Alpha move up";
@@ -51,6 +67,32 @@ const MOVING_ALPHA_PLACE_1 = "Moving Alpha move. Release to drop it in place 1."
 
 function reorderLiveRegion(): HTMLElement | null {
   return screen.queryByTestId("pg-reorder-live-region");
+}
+
+function rowTitlesInDomOrder(): string[] {
+  return screen
+    .getAllByRole("heading", { level: 3 })
+    .map((node) => node.textContent ?? "");
+}
+
+async function liftRowWithMouse(grip: HTMLElement) {
+  fireEvent.pointerDown(grip, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 20,
+    isPrimary: true,
+  });
+  fireEvent.pointerMove(grip, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 30,
+    isPrimary: true,
+  });
+  await waitFor(() => {
+    expect(document.querySelector(".pg-rows-drag-status")).not.toBeNull();
+  });
 }
 
 function exerciseRow(id: string, title: string, position: number): ProgramBuilderRow {
@@ -187,6 +229,12 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     const live = reorderLiveRegion();
     expect(live).not.toBeNull();
     expect(live?.textContent).toBe(MOVED_ALPHA_POSITION_2_OF_2);
+    await waitFor(() => {
+      expect(document.activeElement).toHaveAttribute(
+        "aria-label",
+        GRIP_ALPHA_POSITION_2,
+      );
+    });
   });
 
   it("does not reorder when plain ArrowDown is pressed on the grip", async () => {
@@ -309,6 +357,12 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     const live = reorderLiveRegion();
     expect(live).not.toBeNull();
     expect(live?.textContent).toBe(MOVED_BETA_POSITION_1_OF_2);
+    await waitFor(() => {
+      expect(document.activeElement).toHaveAttribute(
+        "aria-label",
+        GRIP_BETA_POSITION_1,
+      );
+    });
   });
 
   it("reorders via pointer drag drop and announces", async () => {
@@ -427,7 +481,399 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     expect(reorderRows).not.toHaveBeenCalled();
   });
 
-  it("cancels a lift on Escape without saving a reorder", async () => {
+  it("cancels a lift on Escape over another slot without saving", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+      exerciseRow("row-c", "Gamma move", 2),
+    ];
+    const reorderRows = vi.fn();
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 3 })),
+        reorderRows,
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    const gammaCard = await screen.findByRole("article", { name: /Gamma move/i });
+    vi.spyOn(gammaCard, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 200,
+      top: 200,
+      left: 0,
+      bottom: 280,
+      right: 300,
+      width: 300,
+      height: 80,
+      toJSON: () => ({}),
+    });
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 250,
+      isPrimary: true,
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(reorderRows).not.toHaveBeenCalled();
+    expect(rowTitlesInDomOrder()).toEqual(["Alpha move", "Beta move", "Gamma move"]);
+    expect(document.querySelector(".pg-rows-drag-status")).toBeNull();
+    expect(screen.getByText(BUILDER_ROWS_HINT)).toBeInTheDocument();
+  });
+
+  it("shows exactly one drop line at the insertion slot while dragging", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+      exerciseRow("row-c", "Gamma move", 2),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 3 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    const gammaCard = await screen.findByRole("article", { name: /Gamma move/i });
+    vi.spyOn(gammaCard, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 200,
+      top: 200,
+      left: 0,
+      bottom: 280,
+      right: 300,
+      width: 300,
+      height: 80,
+      toJSON: () => ({}),
+    });
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 250,
+      isPrimary: true,
+    });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("pg-row-drop-line")).toHaveLength(1);
+    });
+  });
+
+  it("does not save row order when the pointer is cancelled mid-drag", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+      exerciseRow("row-c", "Gamma move", 2),
+    ];
+    const reorderRows = vi.fn();
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 3 })),
+        reorderRows,
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    const gammaCard = await screen.findByRole("article", { name: /Gamma move/i });
+    vi.spyOn(gammaCard, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 200,
+      top: 200,
+      left: 0,
+      bottom: 280,
+      right: 300,
+      width: 300,
+      height: 80,
+      toJSON: () => ({}),
+    });
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 250,
+      isPrimary: true,
+    });
+    fireEvent.pointerCancel(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    expect(reorderRows).not.toHaveBeenCalled();
+    expect(rowTitlesInDomOrder()).toEqual(["Alpha move", "Beta move", "Gamma move"]);
+  });
+
+  it("lifts a touch drag after 280 ms without movement beyond 8 px slop", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerDown(grip, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 20,
+        clientY: 20,
+        isPrimary: true,
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(TOUCH_HOLD_MS - 1);
+      });
+      expect(document.querySelector(".pg-rows-drag-status")).toBeNull();
+      expect(BUILDER_REORDER_TOUCH_HOLD_MS).toBe(TOUCH_HOLD_MS);
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(BUILDER_REORDER_TOUCH_SLOP_PX).toBe(TOUCH_SLOP_PX);
+      expect(document.querySelector(".pg-rows-drag-status")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a touch press when movement exceeds 8 px slop before 280 ms", async () => {
+    const rows = [exerciseRow("row-a", "Alpha move", 0)];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 1 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerDown(grip, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 20,
+        clientY: 20,
+        isPrimary: true,
+      });
+      fireEvent.pointerMove(grip, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 20,
+        clientY: 20 + TOUCH_SLOP_PX + 1,
+        isPrimary: true,
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(TOUCH_HOLD_MS);
+      });
+      expect(document.querySelector(".pg-rows-drag-status")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ignores Shift+arrow while a reorder save is in flight and keeps the grip focused", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    let resolveReorder: ((value: { program: ProgramBuilderView }) => void) | undefined;
+    const reorderRows = vi.fn().mockImplementation(
+      () =>
+        new Promise<{ program: ProgramBuilderView }>((resolve) => {
+          resolveReorder = resolve;
+        }),
+    );
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+        reorderRows,
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await userEvent.click(grip);
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
+    await waitFor(() => {
+      expect(reorderRows).toHaveBeenCalledTimes(1);
+    });
+    expect(grip).not.toBeDisabled();
+    await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
+    expect(reorderRows).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(grip);
+    resolveReorder?.({
+      program: builderView({
+        rows: [
+          exerciseRow("row-b", "Beta move", 0),
+          exerciseRow("row-a", "Alpha move", 1),
+        ],
+        exercise_count: 2,
+      }),
+    });
+  });
+
+  it("hides Duplicate, Remove and notes on compact peer rows while another row is lifted", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const alphaGrip = await screen.findByRole("button", {
+      name: GRIP_ALPHA_POSITION_1,
+    });
+    await liftRowWithMouse(alphaGrip);
+    const betaCard = await screen.findByRole("article", { name: /Beta move/i });
+    expect(within(betaCard).queryByRole("button", { name: DUPLICATE_BETA })).toBeNull();
+    expect(within(betaCard).queryByRole("button", { name: REMOVE_BETA })).toBeNull();
+    expect(within(betaCard).queryByPlaceholderText(ROW_NOTES_PLACEHOLDER)).toBeNull();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(
+        within(betaCard).queryByRole("button", { name: DUPLICATE_BETA }),
+      ).not.toBeNull();
+    });
+    expect(
+      within(betaCard).queryByRole("button", { name: REMOVE_BETA }),
+    ).not.toBeNull();
+    expect(
+      within(betaCard).queryByPlaceholderText(ROW_NOTES_PLACEHOLDER),
+    ).not.toBeNull();
+  });
+
+  it("keeps auto-scrolling while the pointer is held still in the bottom edge band", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const bar = await screen.findByTestId("pg-builder-bottom-action-bar");
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 400,
+      top: 400,
+      left: 0,
+      bottom: 460,
+      right: 300,
+      width: 300,
+      height: 60,
+      toJSON: () => ({}),
+    });
+    const scrollBy = vi.spyOn(window, "scrollBy");
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((cb) => {
+        rafCallbacks.push(cb);
+        return rafCallbacks.length;
+      });
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
+    const clientY = 430;
+    expect(
+      builderReorderEdgeScrollDelta(clientY, 400, BUILDER_REORDER_EDGE_SCROLL_PX),
+    ).toBeGreaterThan(0);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY,
+      isPrimary: true,
+    });
+    const tickCount = 3;
+    await act(async () => {
+      for (let i = 0; i < tickCount; i += 1) {
+        const pending = [...rafCallbacks];
+        rafCallbacks.length = 0;
+        for (const cb of pending) {
+          cb(0);
+        }
+      }
+    });
+    expect(scrollBy.mock.calls.length).toBeGreaterThanOrEqual(tickCount);
+    rafSpy.mockRestore();
+    scrollBy.mockRestore();
+  });
+
+  it("counts a pointer over the bottom action bar as inside the bottom edge band", () => {
+    const barTop = 400;
+    const overBar = 420;
+    expect(
+      builderReorderEdgeScrollDelta(overBar, barTop, BUILDER_REORDER_EDGE_SCROLL_PX),
+    ).toBeGreaterThan(0);
+  });
+
+  it("stops auto-scroll when the pointer leaves the edge band", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const bar = await screen.findByTestId("pg-builder-bottom-action-bar");
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 400,
+      top: 400,
+      left: 0,
+      bottom: 460,
+      right: 300,
+      width: 300,
+      height: 60,
+      toJSON: () => ({}),
+    });
+    const scrollBy = vi.spyOn(window, "scrollBy");
+    const rafCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 430,
+      isPrimary: true,
+    });
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    const callsAfterEdge = scrollBy.mock.calls.length;
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 200,
+      isPrimary: true,
+    });
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    expect(scrollBy.mock.calls.length).toBe(callsAfterEdge);
+    scrollBy.mockRestore();
+  });
+
+  it("stops auto-scroll on drop, Escape, and pointercancel", async () => {
     const rows = [
       exerciseRow("row-a", "Alpha move", 0),
       exerciseRow("row-b", "Beta move", 1),
@@ -440,28 +886,117 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       }),
       widthPx,
     );
-    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
-    fireEvent.pointerDown(grip, {
-      pointerId: 1,
-      pointerType: "mouse",
-      clientX: 20,
-      clientY: 20,
-      isPrimary: true,
+    const bar = await screen.findByTestId("pg-builder-bottom-action-bar");
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 400,
+      top: 400,
+      left: 0,
+      bottom: 460,
+      right: 300,
+      width: 300,
+      height: 60,
+      toJSON: () => ({}),
     });
+    const scrollBy = vi.spyOn(window, "scrollBy");
+    const rafCallbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
     fireEvent.pointerMove(grip, {
       pointerId: 1,
       pointerType: "mouse",
       clientX: 20,
-      clientY: 30,
+      clientY: 430,
       isPrimary: true,
     });
-    const statusWhileLifted = document.querySelector(".pg-rows-drag-status");
-    expect(statusWhileLifted).not.toBeNull();
-    expect(statusWhileLifted?.textContent).toBe(MOVING_ALPHA_PLACE_1);
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    const callsBeforeStop = scrollBy.mock.calls.length;
+    expect(callsBeforeStop).toBeGreaterThan(0);
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(reorderRows).not.toHaveBeenCalled();
-    expect(document.querySelector(".pg-rows-drag-status")).toBeNull();
-    expect(screen.getByText(BUILDER_ROWS_HINT)).toBeInTheDocument();
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    expect(scrollBy.mock.calls.length).toBe(callsBeforeStop);
+
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 430,
+      isPrimary: true,
+    });
+    fireEvent.pointerCancel(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    const callsAfterCancel = scrollBy.mock.calls.length;
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 430,
+      isPrimary: true,
+    });
+    fireEvent.pointerUp(grip, { pointerId: 1, pointerType: "mouse", isPrimary: true });
+    await act(async () => {
+      const cb = rafCallbacks.shift();
+      cb?.(0);
+    });
+    expect(scrollBy.mock.calls.length).toBe(callsAfterCancel);
+    scrollBy.mockRestore();
+  });
+
+  it("cleans up edge-scroll rAF when unmounted during a drag", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    const cancelFrame = vi.spyOn(window, "cancelAnimationFrame");
+    const { unmount } = renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const bar = await screen.findByTestId("pg-builder-bottom-action-bar");
+    vi.spyOn(bar, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 400,
+      top: 400,
+      left: 0,
+      bottom: 460,
+      right: 300,
+      width: 300,
+      height: 60,
+      toJSON: () => ({}),
+    });
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
+    fireEvent.pointerMove(grip, {
+      pointerId: 1,
+      pointerType: "mouse",
+      clientX: 20,
+      clientY: 430,
+      isPrimary: true,
+    });
+    unmount();
+    expect(cancelFrame).toHaveBeenCalled();
+    cancelFrame.mockRestore();
   });
 
   it("exposes the grip as a focusable control with the approved name", async () => {

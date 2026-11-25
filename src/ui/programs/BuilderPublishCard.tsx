@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type {
   ProgramAutoSaveStatus,
   ShareLinkStatus,
@@ -42,14 +43,19 @@ export type BuilderPublishPhoneBarProps = {
   onAddExercise?: () => void;
 };
 
-export function BuilderPublishPhoneBar({
-  publishAllowed,
-  primaryDisabled = false,
-  primaryLabel,
-  onPrimary,
-}: BuilderPublishPhoneBarProps) {
+export const BuilderPublishPhoneBar = forwardRef<
+  HTMLDivElement,
+  BuilderPublishPhoneBarProps
+>(function BuilderPublishPhoneBar(
+  { publishAllowed, primaryDisabled = false, primaryLabel, onPrimary },
+  ref,
+) {
   return (
-    <div className="pg-publish-phone-bar">
+    <div
+      ref={ref}
+      className="pg-publish-phone-bar"
+      data-testid="pg-builder-bottom-action-bar"
+    >
       <button
         type="button"
         className="pg-btn pg-btn--primary pg-publish-phone-bar-btn"
@@ -60,7 +66,7 @@ export function BuilderPublishPhoneBar({
       </button>
     </div>
   );
-}
+});
 
 export function BuilderPublishCard({
   autoSaveStatus,

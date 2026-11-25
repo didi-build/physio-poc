@@ -39,3 +39,18 @@ export function programBuilderDropIndexFromPointer(
     return clientY > bounds.top + bounds.height / 2;
   }).length;
 }
+
+/** Scroll delta for drag auto-scroll (0 when the pointer is outside both edge bands). */
+export function builderReorderEdgeScrollDelta(
+  clientY: number,
+  bottomActionBarTop: number,
+  edgePx: number = BUILDER_REORDER_EDGE_SCROLL_PX,
+): number {
+  if (clientY < edgePx) {
+    return -Math.max(1, edgePx - clientY);
+  }
+  if (clientY > bottomActionBarTop - edgePx) {
+    return Math.max(1, clientY - (bottomActionBarTop - edgePx));
+  }
+  return 0;
+}
