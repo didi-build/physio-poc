@@ -20,7 +20,11 @@ import {
   RoutinesClient,
   setRoutinesClientForTests,
 } from "../../src/ui/api/routines-client.js";
-import { BODY_REGION } from "../../src/ui/copy/routines.js";
+import { ALL_ROUTINES_EMPTY_HEADING, BODY_REGION } from "../../src/ui/copy/routines.js";
+import {
+  ROUTINES_LIBRARY_BODY_REGIONS_FIXTURE,
+  stubListMeBodyRegionsResolved,
+} from "./routines-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -29,12 +33,6 @@ afterEach(() => {
   setRoutinesClientForTests(null);
   vi.restoreAllMocks();
 });
-
-const SEEDED_REGIONS_RESPONSE = [
-  { id: "br-ankle", label: "ankle" },
-  { id: "br-hip", label: "hip" },
-  { id: "br-knee", label: "knee" },
-] as const;
 
 function stubLibraryClient(): ExerciseLibraryClient {
   return {
@@ -97,9 +95,24 @@ function bodyRegionFilterGroup() {
   return group as HTMLElement;
 }
 
+function renderRoutinesPage(client: RoutinesClient) {
+  return render(
+    <MemoryRouter initialEntries={["/routines"]}>
+      <PhysioApp
+        exerciseLibraryClient={stubLibraryClient()}
+        exerciseRequestsClient={stubRequestsClient()}
+        programsClient={stubProgramsClient()}
+        routinesClient={client}
+      />
+    </MemoryRouter>,
+  );
+}
+
 describe("DIDI-1211 routines library region pills", () => {
   it("loads region pills from listMeBodyRegions and hides unseeded regions", async () => {
-    const listMeBodyRegions = vi.fn().mockResolvedValue([...SEEDED_REGIONS_RESPONSE]);
+    const listMeBodyRegions = vi
+      .fn()
+      .mockResolvedValue([...ROUTINES_LIBRARY_BODY_REGIONS_FIXTURE]);
     const client = {
       searchCommunity: vi.fn().mockResolvedValue(emptySearch()),
       listMyRoutines: vi.fn().mockResolvedValue(emptyMy()),
@@ -107,16 +120,7 @@ describe("DIDI-1211 routines library region pills", () => {
     } as unknown as RoutinesClient;
 
     const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={["/routines"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          exerciseRequestsClient={stubRequestsClient()}
-          programsClient={stubProgramsClient()}
-          routinesClient={client}
-        />
-      </MemoryRouter>,
-    );
+    renderRoutinesPage(client);
 
     await waitFor(() => {
       expect(listMeBodyRegions).toHaveBeenCalled();
@@ -127,7 +131,10 @@ describe("DIDI-1211 routines library region pills", () => {
     expect(
       within(group).getByRole("button", { name: "All regions" }),
     ).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: "Knee" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalled();
+      expect(within(group).queryByRole("button", { name: "Knee" })).not.toBeNull();
+    });
     expect(within(group).getByRole("button", { name: "Hip" })).toBeInTheDocument();
     expect(within(group).getByRole("button", { name: "Ankle" })).toBeInTheDocument();
     expect(
@@ -139,7 +146,7 @@ describe("DIDI-1211 routines library region pills", () => {
   });
 
   it("passes lowercase body_region from the selected pill to community search", async () => {
-    const listMeBodyRegions = vi.fn().mockResolvedValue([...SEEDED_REGIONS_RESPONSE]);
+    const listMeBodyRegions = stubListMeBodyRegionsResolved();
     const searchCommunity = vi.fn().mockResolvedValue(emptySearch());
     const client = {
       searchCommunity,
@@ -148,30 +155,57 @@ describe("DIDI-1211 routines library region pills", () => {
     } as unknown as RoutinesClient;
 
     const user = userEvent.setup();
-    render(
-      <MemoryRouter initialEntries={["/routines"]}>
-        <PhysioApp
-          exerciseLibraryClient={stubLibraryClient()}
-          exerciseRequestsClient={stubRequestsClient()}
-          programsClient={stubProgramsClient()}
-          routinesClient={client}
-        />
-      </MemoryRouter>,
-    );
+    renderRoutinesPage(client);
 
     await waitFor(() => {
       expect(listMeBodyRegions).toHaveBeenCalled();
     });
     await user.click(screen.getByRole("button", { name: /Filters & sort/ }));
-    await user.click(
-      within(bodyRegionFilterGroup()).getByRole("button", { name: "Knee" }),
-    );
+    const group = bodyRegionFilterGroup();
+    await waitFor(() => {
+      expect(within(group).queryByRole("button", { name: "Knee" })).not.toBeNull();
+    });
+    await user.click(within(group).getByRole("button", { name: "Knee" }));
 
     await waitFor(() => {
       expect(searchCommunity).toHaveBeenCalledWith(
         expect.objectContaining({ body_region: "knee" }),
         expect.anything(),
       );
+    });
+  });
+
+  it("keeps only All regions when listMeBodyRegions rejects and still loads the routines list", async () => {
+    const listMeBodyRegions = vi.fn().mockRejectedValue(new Error("regions_failed"));
+    const searchCommunity = vi.fn().mockResolvedValue(emptySearch());
+    const client = {
+      searchCommunity,
+      listMyRoutines: vi.fn().mockResolvedValue(emptyMy()),
+      listMeBodyRegions,
+    } as unknown as RoutinesClient;
+
+    const user = userEvent.setup();
+    renderRoutinesPage(client);
+
+    await waitFor(() => {
+      expect(searchCommunity).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalled();
+    });
+    await user.click(screen.getByRole("button", { name: /Filters & sort/ }));
+
+    const group = bodyRegionFilterGroup();
+    expect(
+      within(group).getByRole("button", { name: "All regions" }),
+    ).toBeInTheDocument();
+    expect(within(group).queryByRole("button", { name: "Knee" })).toBeNull();
+    expect(within(group).queryByRole("button", { name: "Hip" })).toBeNull();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { level: 2, name: ALL_ROUTINES_EMPTY_HEADING }),
+      ).toBeInTheDocument();
     });
   });
 });

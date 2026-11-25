@@ -98,13 +98,9 @@ export function RoutinesPage() {
     if (!sessionReady) {
       return;
     }
-    const loadBodyRegions = client.listMeBodyRegions;
-    if (typeof loadBodyRegions !== "function") {
-      return;
-    }
     let cancelled = false;
-    void loadBodyRegions
-      .call(client)
+    void client
+      .listMeBodyRegions()
       .then((regions) => {
         if (!cancelled) {
           setBodyRegionOptions(regions);

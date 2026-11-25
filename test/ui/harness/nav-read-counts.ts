@@ -62,6 +62,10 @@ export function wrapRoutinesClientWithHarnessCounts(
     bumpHarnessNavRead("routines.detail");
     return inner.getRoutineDetails(routineId, options);
   };
+  wrapped.listMeBodyRegions = (options) => {
+    bumpHarnessNavRead("routines.body_regions");
+    return inner.listMeBodyRegions(options);
+  };
   return wrapped;
 }
 

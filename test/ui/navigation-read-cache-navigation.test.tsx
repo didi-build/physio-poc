@@ -123,6 +123,11 @@ describe("navigation read cache navigation (DIDI-1185)", () => {
       condition_options: [],
     });
     const routinesClient = {
+      listMeBodyRegions: vi.fn().mockResolvedValue([
+        { id: "br-ankle", label: "ankle" },
+        { id: "br-hip", label: "hip" },
+        { id: "br-knee", label: "knee" },
+      ]),
       searchCommunity,
       listMyRoutines,
     } as unknown as RoutinesClient;

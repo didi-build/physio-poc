@@ -1110,6 +1110,11 @@ describe("DIDI-1082 shared load states behaviour", () => {
           exerciseRequestsClient={stubRequestsClient()}
           routinesClient={
             {
+              listMeBodyRegions: vi.fn().mockResolvedValue([
+                { id: "br-ankle", label: "ankle" },
+                { id: "br-hip", label: "hip" },
+                { id: "br-knee", label: "knee" },
+              ]),
               searchCommunity: hangFn,
               listMyRoutines: vi.fn(),
             } as unknown as RoutinesClient

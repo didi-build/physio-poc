@@ -49,6 +49,7 @@ import {
   NAV_TAB_REQUESTS_DESKTOP,
   NAV_TAB_REQUESTS_PHONE,
 } from "../../src/ui/copy/nav.js";
+import { stubListMeBodyRegionsResolved } from "./routines-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -85,6 +86,7 @@ function stubLibraryClient(): ExerciseLibraryClient {
 
 function stubRoutinesClient(): RoutinesClient {
   return {
+    listMeBodyRegions: stubListMeBodyRegionsResolved(),
     searchCommunity: vi.fn().mockResolvedValue({
       routines: [],
       next_cursor: null,
