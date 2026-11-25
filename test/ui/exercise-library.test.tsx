@@ -28,6 +28,7 @@ import {
   ExerciseRequestsClient,
   setExerciseRequestsClientForTests,
 } from "../../src/ui/api/exercise-requests-client.js";
+import type { RoutinesClient } from "../../src/ui/api/routines-client.js";
 import type { ExerciseDetailsResult } from "../../src/services/exercise-library/types.js";
 import { ExerciseLibraryApiProvider } from "../../src/ui/api/exercise-library-context.js";
 import {
@@ -73,7 +74,10 @@ import {
   buildBodyRegionFilterPills,
   DEFAULT_FILTERS,
 } from "../../src/ui/exercise-library/library-filters.js";
-import { stubRoutinesClientForExerciseLibrary } from "./exercise-library-body-regions-fixture.js";
+import {
+  EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE,
+  stubRoutinesClientForExerciseLibrary,
+} from "./exercise-library-body-regions-fixture.js";
 import { MyCopyEditorPage } from "../../src/ui/exercise-library/MyCopyEditorPage.js";
 import { myCopyStatusLine } from "../../src/ui/exercise-library/my-copy-status.js";
 import { ToastProvider } from "../../src/ui/components/Toast.js";
@@ -306,6 +310,9 @@ describe("Exercise library UI", () => {
   });
 
   it("applies body region and sort filters through the client", async () => {
+    const listMeBodyRegions = vi
+      .fn()
+      .mockResolvedValue([...EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE]);
     const searchApproved = vi.fn().mockResolvedValue({
       exercises: [],
       next_cursor: null,
@@ -321,13 +328,14 @@ describe("Exercise library UI", () => {
       },
     });
     const client = mockClient({ searchApproved, listMyExercises });
+    const routinesClient = { listMeBodyRegions } as unknown as RoutinesClient;
 
     render(
       <MemoryRouter initialEntries={["/exercises/search"]}>
         <PhysioApp
           exerciseLibraryClient={client}
           exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={stubRoutinesClientForExerciseLibrary()}
+          routinesClient={routinesClient}
         />
       </MemoryRouter>,
     );
@@ -335,13 +343,14 @@ describe("Exercise library UI", () => {
     await waitFor(() => {
       expect(searchApproved).toHaveBeenCalled();
     });
+    await waitFor(() => {
+      expect(listMeBodyRegions).toHaveBeenCalledTimes(1);
+    });
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /Filters & sort/i }));
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Knee" })).toBeInTheDocument();
-    });
+    expect(await screen.findByRole("button", { name: "Knee" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Knee" }));
     await user.click(screen.getByRole("radio", { name: "A to Z" }));
 
