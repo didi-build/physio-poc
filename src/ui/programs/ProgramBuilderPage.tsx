@@ -1508,29 +1508,27 @@ export function ProgramBuilderPage({
               })}
             </div>
           )}
-          {!builderDrag ? (
-            <>
-              <button
-                type="button"
-                className="pg-btn pg-btn--primary"
-                onClick={() => {
-                  setAddExerciseOpen(true);
-                }}
-              >
-                {ADD_EXERCISE}
-              </button>
-              <p className="pg-footnote">{ROW_DEFAULTS_FOOTNOTE}</p>
-              <button
-                type="button"
-                className="pg-btn pg-btn--danger"
-                onClick={() => {
-                  setDeleteOpen(true);
-                }}
-              >
-                {DELETE_PROGRAM}
-              </button>
-            </>
-          ) : null}
+          <>
+            <button
+              type="button"
+              className="pg-btn pg-btn--primary"
+              onClick={() => {
+                setAddExerciseOpen(true);
+              }}
+            >
+              {ADD_EXERCISE}
+            </button>
+            <p className="pg-footnote">{ROW_DEFAULTS_FOOTNOTE}</p>
+            <button
+              type="button"
+              className="pg-btn pg-btn--danger"
+              onClick={() => {
+                setDeleteOpen(true);
+              }}
+            >
+              {DELETE_PROGRAM}
+            </button>
+          </>
         </div>
         <BuilderPublishCard
           autoSaveStatus={displayProgram.auto_save_status}

@@ -321,7 +321,7 @@ export function ProgramBuilderRowCard({
     return TYPE_STRETCH_HINT;
   }
 
-  const showRowDetails = !dragCompact || dragLifted;
+  const showRowDetails = !dragCompact;
   const compactPeer = dragCompact && !dragLifted;
 
   return (

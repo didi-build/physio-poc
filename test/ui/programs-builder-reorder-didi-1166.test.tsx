@@ -16,6 +16,7 @@ import { userEvent } from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PhysioApp } from "../../src/ui/App.js";
+import { ProgramBuilderRowCard } from "../../src/ui/programs/ProgramBuilderRowCard.js";
 import {
   ExerciseLibraryClient,
   setExerciseLibraryClientForTests,
@@ -52,10 +53,16 @@ const GRIP_BETA_POSITION_1 =
   "Reorder Beta move, position 1. Press and hold, then drag. Or hold Shift and use the arrow keys.";
 const GRIP_BETA_POSITION_2 =
   "Reorder Beta move, position 2. Press and hold, then drag. Or hold Shift and use the arrow keys.";
+const ADD_EXERCISE_LABEL = "Add exercise";
+const DELETE_PROGRAM_LABEL = "Delete program";
 const DUPLICATE_BETA = "Duplicate Beta move";
 const REMOVE_BETA = "Remove Beta move";
+const DUPLICATE_ALPHA = "Duplicate Alpha move";
+const REMOVE_ALPHA = "Remove Alpha move";
+const ADJUST_ALPHA_DOSE = "Adjust Alpha move";
 const TOUCH_HOLD_MS = 280;
 const TOUCH_SLOP_PX = 8;
+const EDGE_SCROLL_PX = 48;
 const GRIP_GAMMA_POSITION_3 =
   "Reorder Gamma move, position 3. Press and hold, then drag. Or hold Shift and use the arrow keys.";
 const MOVE_ALPHA_UP = "Move Alpha move up";
@@ -517,10 +524,26 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       isPrimary: true,
     });
     fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerUp(grip, { pointerId: 1, pointerType: "mouse", isPrimary: true });
     expect(reorderRows).not.toHaveBeenCalled();
     expect(rowTitlesInDomOrder()).toEqual(["Alpha move", "Beta move", "Gamma move"]);
     expect(document.querySelector(".pg-rows-drag-status")).toBeNull();
     expect(screen.getByText(BUILDER_ROWS_HINT)).toBeInTheDocument();
+  });
+
+  it("does not show a drop line before a drag starts", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    expect(screen.queryAllByTestId("pg-row-drop-line")).toHaveLength(0);
   });
 
   it("shows exactly one drop line at the insertion slot while dragging", async () => {
@@ -557,8 +580,12 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
       isPrimary: true,
     });
     await waitFor(() => {
-      expect(screen.getAllByTestId("pg-row-drop-line")).toHaveLength(1);
+      expect(screen.queryAllByTestId("pg-row-drop-line")).toHaveLength(1);
     });
+    const lifted = document.querySelector(".pg-row--drag-lifted");
+    expect(lifted).not.toBeNull();
+    const line = screen.queryAllByTestId("pg-row-drop-line")[0];
+    expect(lifted!.previousElementSibling).toBe(line);
   });
 
   it("does not save row order when the pointer is cancelled mid-drag", async () => {
@@ -641,6 +668,40 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     }
   });
 
+  it("still lifts a touch drag when movement is exactly 8 px slop within 280 ms", async () => {
+    const rows = [exerciseRow("row-a", "Alpha move", 0)];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 1 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    vi.useFakeTimers();
+    try {
+      fireEvent.pointerDown(grip, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 20,
+        clientY: 20,
+        isPrimary: true,
+      });
+      fireEvent.pointerMove(grip, {
+        pointerId: 1,
+        pointerType: "touch",
+        clientX: 20,
+        clientY: 20 + TOUCH_SLOP_PX,
+        isPrimary: true,
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(TOUCH_HOLD_MS);
+      });
+      expect(document.querySelector(".pg-rows-drag-status")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cancels a touch press when movement exceeds 8 px slop before 280 ms", async () => {
     const rows = [exerciseRow("row-a", "Alpha move", 0)];
     renderBuilder(
@@ -713,6 +774,53 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
         exercise_count: 2,
       }),
     });
+  });
+
+  it("keeps Add exercise and Delete program visible during a drag", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
+    expect(screen.queryByRole("button", { name: ADD_EXERCISE_LABEL })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: DELETE_PROGRAM_LABEL })).not.toBeNull();
+  });
+
+  it("shows only grip, title, and type line on the lifted row", async () => {
+    const rows = [
+      exerciseRow("row-a", "Alpha move", 0),
+      exerciseRow("row-b", "Beta move", 1),
+    ];
+    renderBuilder(
+      stubProgramsClient({
+        getProgram: vi.fn().mockResolvedValue(builderView({ rows, exercise_count: 2 })),
+      }),
+      widthPx,
+    );
+    const grip = await screen.findByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    await liftRowWithMouse(grip);
+    const lifted = document.querySelector(".pg-row--drag-lifted");
+    expect(lifted).not.toBeNull();
+    const liftedScope = within(lifted as HTMLElement);
+    expect(
+      liftedScope.getByRole("button", { name: GRIP_ALPHA_POSITION_1 }),
+    ).toBeInTheDocument();
+    expect(
+      liftedScope.getByRole("heading", { level: 3, name: "Alpha move" }),
+    ).toBeInTheDocument();
+    expect(liftedScope.getByText("Concentric")).toBeInTheDocument();
+    expect(liftedScope.queryByRole("button", { name: DUPLICATE_ALPHA })).toBeNull();
+    expect(liftedScope.queryByRole("button", { name: REMOVE_ALPHA })).toBeNull();
+    expect(liftedScope.queryByPlaceholderText(ROW_NOTES_PLACEHOLDER)).toBeNull();
+    expect(liftedScope.queryByRole("button", { name: ADJUST_ALPHA_DOSE })).toBeNull();
+    expect((lifted as HTMLElement).querySelector(".pg-row-dose-text")).toBeNull();
   });
 
   it("hides Duplicate, Remove and notes on compact peer rows while another row is lifted", async () => {
@@ -802,7 +910,14 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
         }
       }
     });
+    const scrollDeltas = scrollBy.mock.calls.map((call) => {
+      const arg = call[0];
+      return typeof arg === "object" && arg !== null && "top" in arg
+        ? Number((arg as ScrollToOptions).top ?? 0)
+        : 0;
+    });
     expect(scrollBy.mock.calls.length).toBeGreaterThanOrEqual(tickCount);
+    expect(scrollDeltas.every((delta) => delta > 0)).toBe(true);
     rafSpy.mockRestore();
     scrollBy.mockRestore();
   });
@@ -813,6 +928,37 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     expect(
       builderReorderEdgeScrollDelta(overBar, barTop, BUILDER_REORDER_EDGE_SCROLL_PX),
     ).toBeGreaterThan(0);
+  });
+
+  it("pins the 48 px edge band and returns zero scroll just outside the bottom band", () => {
+    const barTop = 400;
+    expect(BUILDER_REORDER_EDGE_SCROLL_PX).toBe(EDGE_SCROLL_PX);
+    expect(
+      builderReorderEdgeScrollDelta(
+        barTop - EDGE_SCROLL_PX + 1,
+        barTop,
+        EDGE_SCROLL_PX,
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      builderReorderEdgeScrollDelta(barTop - EDGE_SCROLL_PX, barTop, EDGE_SCROLL_PX),
+    ).toBe(0);
+  });
+
+  it("returns larger scroll deltas deeper in the bottom edge band", () => {
+    const barTop = 400;
+    const shallowY = barTop - EDGE_SCROLL_PX + 1;
+    const deepY = barTop - 5;
+    const shallow = builderReorderEdgeScrollDelta(shallowY, barTop, EDGE_SCROLL_PX);
+    const deep = builderReorderEdgeScrollDelta(deepY, barTop, EDGE_SCROLL_PX);
+    expect(deep).toBeGreaterThan(shallow);
+  });
+
+  it("scrolls upward in the top edge band", () => {
+    expect(
+      builderReorderEdgeScrollDelta(EDGE_SCROLL_PX - 1, 400, EDGE_SCROLL_PX),
+    ).toBeLessThan(0);
+    expect(builderReorderEdgeScrollDelta(EDGE_SCROLL_PX, 400, EDGE_SCROLL_PX)).toBe(0);
   });
 
   it("stops auto-scroll when the pointer leaves the edge band", async () => {
@@ -1018,5 +1164,65 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     expect(grip).toHaveClass("pg-row-grip-btn");
     expect(grip?.querySelector("svg")).not.toBeNull();
     expect(screen.queryByRole("button", { name: GRIP_BETA_POSITION_2 })).toBeNull();
+  });
+});
+
+describe("ProgramBuilderRowCard reorder keyboard (unit)", () => {
+  it("does not call onReorderStep when reorderBusy is set", () => {
+    const onReorderStep = vi.fn();
+    const row = exerciseRow("row-a", "Alpha move", 0);
+    render(
+      <ProgramBuilderRowCard
+        row={row}
+        index={0}
+        total={2}
+        noteDraft=""
+        reorderBusy
+        onReorderStep={onReorderStep}
+        onDuplicate={() => {}}
+        onRemove={() => {}}
+        onNoteChange={() => {}}
+        onTypeChange={() => {}}
+        onSelectVersion={() => {}}
+        onDoseAdjustOpen={() => {}}
+        onDoseDraftChange={() => {}}
+        onDoseAdjustClose={() => {}}
+        onDoseDraftDiscard={() => {}}
+        onParamsReset={() => {}}
+        doseDraft={undefined}
+        doseEditorOpen={false}
+      />,
+    );
+    const grip = screen.getByRole("button", { name: GRIP_ALPHA_POSITION_1 });
+    fireEvent.keyDown(grip, { key: "ArrowDown", code: "ArrowDown", shiftKey: true });
+    expect(onReorderStep).not.toHaveBeenCalled();
+  });
+
+  it("disables screen-reader Move up and Move down while reorderBusy", () => {
+    const row = exerciseRow("row-b", "Beta move", 1);
+    render(
+      <ProgramBuilderRowCard
+        row={row}
+        index={1}
+        total={3}
+        noteDraft=""
+        reorderBusy
+        onReorderStep={() => {}}
+        onDuplicate={() => {}}
+        onRemove={() => {}}
+        onNoteChange={() => {}}
+        onTypeChange={() => {}}
+        onSelectVersion={() => {}}
+        onDoseAdjustOpen={() => {}}
+        onDoseDraftChange={() => {}}
+        onDoseAdjustClose={() => {}}
+        onDoseDraftDiscard={() => {}}
+        onParamsReset={() => {}}
+        doseDraft={undefined}
+        doseEditorOpen={false}
+      />,
+    );
+    expect(screen.getByRole("button", { name: MOVE_BETA_UP })).toBeDisabled();
+    expect(screen.getByRole("button", { name: MOVE_BETA_DOWN })).toBeDisabled();
   });
 });
