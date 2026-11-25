@@ -49,4 +49,15 @@ describe("DIDI-1206 exercise library body region filter pills", () => {
       "All regions · Strengthening & stretching · Most used",
     );
   });
+
+  it("filterSummary capitalizes bodyRegion when pills omit that value", () => {
+    const pills = buildBodyRegionFilterPills(endpointRegions);
+    const active: LibraryFilters = {
+      ...DEFAULT_FILTERS,
+      bodyRegion: "shoulder",
+    };
+    expect(filterSummary(active, pills)).toBe(
+      "Shoulder · Strengthening & stretching · Most used",
+    );
+  });
 });

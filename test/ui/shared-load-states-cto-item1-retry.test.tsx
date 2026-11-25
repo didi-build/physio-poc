@@ -55,6 +55,10 @@ import type {
 import type { ProgramBuilderView } from "../../src/services/programs/types.js";
 import type { ProgramShareConnectorView } from "../../src/services/programs/program-publish-service.js";
 import { setExerciseMediaClientForTests } from "../../src/ui/api/exercise-media-client.js";
+import {
+  stubRoutinesClientForExerciseLibrary,
+  withExerciseLibraryBodyRegions,
+} from "./exercise-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -116,7 +120,9 @@ function renderPhysio(
         exerciseLibraryClient={extras.exerciseLibraryClient ?? stubLibraryClient()}
         exerciseRequestsClient={extras.exerciseRequestsClient ?? stubRequestsClient()}
         programsClient={extras.programsClient}
-        routinesClient={extras.routinesClient}
+        routinesClient={withExerciseLibraryBodyRegions(
+          extras.routinesClient ?? stubRoutinesClientForExerciseLibrary(),
+        )}
       />
     </MemoryRouter>,
   );

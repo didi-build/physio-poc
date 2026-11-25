@@ -17,9 +17,6 @@ export function useBodyRegionFilterPills(): readonly BodyRegionFilterPill[] {
     if (!sessionReady) {
       return;
     }
-    if (typeof client.listMeBodyRegions !== "function") {
-      return;
-    }
     let cancelled = false;
     void client
       .listMeBodyRegions()

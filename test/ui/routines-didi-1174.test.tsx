@@ -74,6 +74,7 @@ function stubRequestsClient(): ExerciseRequestsClient {
 
 function stubRoutinesClient(): RoutinesClient {
   return {
+    listMeBodyRegions: vi.fn().mockResolvedValue([{ id: "br-knee", label: "knee" }]),
     searchCommunity: vi.fn().mockResolvedValue({
       routines: [],
       next_cursor: null,

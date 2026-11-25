@@ -74,8 +74,10 @@ import {
   buildBodyRegionFilterPills,
   DEFAULT_FILTERS,
 } from "../../src/ui/exercise-library/library-filters.js";
+import { BODY_REGION } from "../../src/ui/copy/exercise-library.js";
 import {
   EXERCISE_LIBRARY_BODY_REGIONS_FIXTURE,
+  EXERCISE_LIBRARY_REGION_PILL_LABELS,
   stubRoutinesClientForExerciseLibrary,
 } from "./exercise-library-body-regions-fixture.js";
 import { MyCopyEditorPage } from "../../src/ui/exercise-library/MyCopyEditorPage.js";
@@ -350,7 +352,12 @@ describe("Exercise library UI", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /Filters & sort/i }));
 
-    expect(await screen.findByRole("button", { name: "Knee" })).toBeInTheDocument();
+    const regionGroup = await screen.findByRole("group", { name: BODY_REGION });
+    expect(
+      within(regionGroup)
+        .getAllByRole("button")
+        .map((button) => button.textContent ?? ""),
+    ).toEqual([...EXERCISE_LIBRARY_REGION_PILL_LABELS]);
     await user.click(screen.getByRole("button", { name: "Knee" }));
     await user.click(screen.getByRole("radio", { name: "A to Z" }));
 
