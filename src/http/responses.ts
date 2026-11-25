@@ -1,4 +1,7 @@
-const JSON_HEADERS = { "content-type": "application/json" };
+const JSON_HEADERS = {
+  "content-type": "application/json",
+  "cache-control": "no-store",
+};
 
 export function jsonUnauthorized(): Response {
   return Response.json(

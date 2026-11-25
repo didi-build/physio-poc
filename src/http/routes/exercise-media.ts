@@ -16,7 +16,6 @@ import {
 import type { PractitionerSession } from "../../auth/auth-port.js";
 import { rejectBodyPractitionerId } from "../reject-body-practitioner-id.js";
 import { requirePractitioner } from "../require-practitioner.js";
-import { jsonUnauthorized } from "../responses.js";
 import {
   EXERCISE_MEDIA_REQUEST_BODY_TOO_LARGE,
   readBoundedExerciseMediaJsonObject,
@@ -172,14 +171,13 @@ export async function handleExerciseMediaRequest(
         400,
       );
     }
+    const acceptedPractitioner = requirePractitioner(sessionPractitioner);
+    if (acceptedPractitioner instanceof Response) {
+      return withServeCacheControl(acceptedPractitioner);
+    }
     try {
-      if (access === "internal") {
-        if (!sessionPractitioner) {
-          return withServeCacheControl(jsonUnauthorized());
-        }
-      }
       const sessionPractitionerId =
-        access === "internal" ? sessionPractitioner?.practitionerId : undefined;
+        access === "internal" ? acceptedPractitioner : undefined;
       const view = await mediaService(deps).getMediaForServing(
         serveMatch[1] ?? "",
         access,
@@ -197,7 +195,7 @@ export async function handleExerciseMediaRequest(
       if (response) {
         return withServeCacheControl(response);
       }
-      throw error;
+      return serveJson({ error: "internal_error" }, 500);
     }
   }
 
