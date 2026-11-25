@@ -292,6 +292,153 @@ describe("DIDI-1081 daily cap through regenerateMedia", () => {
     }
   });
 
+  it("does not count a row at the next UTC day 00:00:00.000Z toward the current day's cap", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const versionId = id("ver-next-midnight-1081");
+      const { practitionerId, exerciseId } = await seedDraftVersionWithMedia(
+        storage,
+        versionId,
+      );
+      const service = createService(storage, {
+        clock: () => new Date("2026-10-30T18:00:00.000Z"),
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+        countTowardDailyQuota: false,
+      });
+      await insertRegenerationRows(storage, {
+        practitionerId,
+        exerciseId,
+        versionId,
+        count: DAILY_MEDIA_REGENERATION_CAP - 1,
+        createdAt: "2026-10-30T10:00:00.000Z",
+        idPrefix: "same-day-four",
+      });
+      await storage.run(
+        `INSERT INTO media_regenerations (
+          id, practitioner_id, exercise_id, exercise_version_id, scope, had_note, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id("tomorrow-midnight-row"),
+          practitionerId,
+          exerciseId,
+          versionId,
+          "start",
+          0,
+          "2026-10-31T00:00:00.000Z",
+        ],
+      );
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+        }),
+      ).resolves.toMatchObject({ outcome: "draft_updated" });
+      expect(
+        await regenRowCountInUtcWindow(
+          storage,
+          practitionerId,
+          "2026-10-30T00:00:00.000Z",
+          "2026-10-31T00:00:00.000Z",
+        ),
+      ).toBe(DAILY_MEDIA_REGENERATION_CAP);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not count five rows stored entirely on the next UTC calendar day", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const versionId = id("ver-future-day-1081");
+      const { practitionerId, exerciseId } = await seedDraftVersionWithMedia(
+        storage,
+        versionId,
+      );
+      const service = createService(storage, {
+        clock: () => new Date("2026-10-30T12:00:00.000Z"),
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+        countTowardDailyQuota: false,
+      });
+      await insertRegenerationRows(storage, {
+        practitionerId,
+        exerciseId,
+        versionId,
+        count: DAILY_MEDIA_REGENERATION_CAP,
+        createdAt: "2026-10-31T14:00:00.000Z",
+        idPrefix: "tomorrow-only",
+      });
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+        }),
+      ).resolves.toMatchObject({ outcome: "draft_updated" });
+      expect(
+        await regenRowCountInUtcWindow(
+          storage,
+          practitionerId,
+          "2026-10-30T00:00:00.000Z",
+          "2026-10-31T00:00:00.000Z",
+        ),
+      ).toBe(1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not count five rows from an earlier UTC calendar day toward today", async () => {
+    const storage = await openMigratedDatabase();
+    try {
+      const versionId = id("ver-two-days-ago-1081");
+      const { practitionerId, exerciseId } = await seedDraftVersionWithMedia(
+        storage,
+        versionId,
+      );
+      const service = createService(storage, {
+        clock: () => new Date("2026-10-30T12:00:00.000Z"),
+      });
+      await service.generateInitialMediaForVersion({
+        practitionerId,
+        exerciseVersionId: versionId,
+        countTowardDailyQuota: false,
+      });
+      await insertRegenerationRows(storage, {
+        practitionerId,
+        exerciseId,
+        versionId,
+        count: DAILY_MEDIA_REGENERATION_CAP,
+        createdAt: "2026-10-28T09:00:00.000Z",
+        idPrefix: "two-days-ago",
+      });
+      await expect(
+        service.regenerateMedia({
+          practitionerId,
+          exerciseVersionId: versionId,
+          scope: "start",
+        }),
+      ).resolves.toMatchObject({ outcome: "draft_updated" });
+      expect(
+        await regenRowCountInUtcWindow(
+          storage,
+          practitionerId,
+          "2026-10-30T00:00:00.000Z",
+          "2026-10-31T00:00:00.000Z",
+        ),
+      ).toBe(1);
+      expect(await regenRowCount(storage, practitionerId)).toBe(6);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("counts a row at exactly today's 00:00:00.000Z toward the cap", async () => {
     const storage = await openMigratedDatabase();
     try {
