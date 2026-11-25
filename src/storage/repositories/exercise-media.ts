@@ -1,5 +1,9 @@
 import type { SqlStoragePort } from "../ports/sql-storage.js";
 import type { MediaVisibility } from "../ports/media-storage.js";
+import {
+  tryInsertMediaRegenerationUnderDailyCap,
+  type MediaRegenerationDailyCapInsert,
+} from "./media-regeneration-daily-cap.js";
 
 export type ExerciseMediaSetRow = {
   id: string;
@@ -109,6 +113,25 @@ export class MediaRegenerationsRepository {
       [practitionerId, utcDayStartIso, utcDayEndIso],
     );
     return row?.count ?? 0;
+  }
+
+  async tryInsertUnderDailyCap(
+    input: MediaRegenerationDailyCapInsert,
+    utcDayStartIso: string,
+    utcDayEndIso: string,
+    dailyCap: number,
+  ): Promise<boolean> {
+    return tryInsertMediaRegenerationUnderDailyCap(
+      this.sql,
+      input,
+      utcDayStartIso,
+      utcDayEndIso,
+      dailyCap,
+    );
+  }
+
+  async deleteById(id: string): Promise<void> {
+    await this.sql.run("DELETE FROM media_regenerations WHERE id = ?", [id]);
   }
 }
 
