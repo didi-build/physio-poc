@@ -69,7 +69,11 @@ import {
 } from "./exercise-library-loading-error-copy-guard.js";
 import { ExerciseDetailsPage } from "../../src/ui/exercise-library/ExerciseDetailsPage.js";
 import { FiltersSortPanel } from "../../src/ui/exercise-library/FiltersSortPanel.js";
-import { DEFAULT_FILTERS } from "../../src/ui/exercise-library/library-filters.js";
+import {
+  buildBodyRegionFilterPills,
+  DEFAULT_FILTERS,
+} from "../../src/ui/exercise-library/library-filters.js";
+import { stubRoutinesClientForExerciseLibrary } from "./exercise-library-body-regions-fixture.js";
 import { MyCopyEditorPage } from "../../src/ui/exercise-library/MyCopyEditorPage.js";
 import { myCopyStatusLine } from "../../src/ui/exercise-library/my-copy-status.js";
 import { ToastProvider } from "../../src/ui/components/Toast.js";
@@ -100,6 +104,7 @@ function renderPhysio(initialEntry: string, client: ExerciseLibraryClient) {
       <PhysioApp
         exerciseLibraryClient={client}
         exerciseRequestsClient={stubRequestsClient()}
+        routinesClient={stubRoutinesClientForExerciseLibrary()}
       />
     </MemoryRouter>,
   );
@@ -287,7 +292,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={["/exercises/search?q=slr"]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -315,7 +324,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={["/exercises/search"]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -326,6 +339,9 @@ describe("Exercise library UI", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /Filters & sort/i }));
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Knee" })).toBeInTheDocument();
+    });
     await user.click(screen.getByRole("button", { name: "Knee" }));
     await user.click(screen.getByRole("radio", { name: "A to Z" }));
 
@@ -466,7 +482,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={["/exercises/search?q=Squat"]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -516,7 +536,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -562,7 +586,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -630,7 +658,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -656,7 +688,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -689,7 +725,11 @@ describe("Exercise library UI", () => {
       <MemoryRouter
         initialEntries={[fillPhysioAppRoutePattern("exerciseSearch") + "?q=UniqueName"]}
       >
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -713,7 +753,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -842,7 +886,11 @@ describe("Exercise library UI", () => {
 
     render(
       <MemoryRouter initialEntries={[fillPhysioAppRoutePattern("exercises")]}>
-        <PhysioApp exerciseLibraryClient={client} />
+        <PhysioApp
+          exerciseLibraryClient={client}
+          exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
+        />
       </MemoryRouter>,
     );
 
@@ -1210,9 +1258,18 @@ describe("Exercise library UI", () => {
 
 describe("FiltersSortPanel", () => {
   it("renders filter summary when collapsed", () => {
+    const bodyRegionPills = buildBodyRegionFilterPills([
+      { label: "knee" },
+      { label: "hip" },
+      { label: "ankle" },
+    ]);
     render(
       <ToastProvider>
-        <FiltersSortPanel filters={DEFAULT_FILTERS} onChange={() => {}} />
+        <FiltersSortPanel
+          filters={DEFAULT_FILTERS}
+          onChange={() => {}}
+          bodyRegionPills={bodyRegionPills}
+        />
       </ToastProvider>,
     );
     expect(screen.getByText(/All regions/)).toBeInTheDocument();

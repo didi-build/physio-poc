@@ -205,8 +205,15 @@ export type HarnessFixtureId =
   | "routines-1025-detail-actions"
   | "app-wide-cache-nav";
 
+const HARNESS_BODY_REGIONS = [
+  { id: "br-ankle", label: "ankle" },
+  { id: "br-hip", label: "hip" },
+  { id: "br-knee", label: "knee" },
+] as const;
+
 function baseRoutinesClient(): RoutinesClient {
   return {
+    listMeBodyRegions: async () => [...HARNESS_BODY_REGIONS],
     searchCommunity: async () => ({
       routines: [],
       next_cursor: null,

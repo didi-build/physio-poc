@@ -19,9 +19,10 @@ import {
   TYPE_STRETCH_LABEL,
 } from "../copy/exercise-library.js";
 import {
-  BODY_REGION_PILLS,
+  ALL_REGIONS_FILTER_PILL,
   countActiveFilters,
   filterSummary,
+  type BodyRegionFilterPill,
   type LibraryFilters,
   type TypeFilterChoice,
 } from "./library-filters.js";
@@ -45,9 +46,14 @@ const SORT_OPTIONS = [
 export type FiltersSortPanelProps = {
   filters: LibraryFilters;
   onChange: (next: LibraryFilters) => void;
+  bodyRegionPills?: readonly BodyRegionFilterPill[];
 };
 
-export function FiltersSortPanel({ filters, onChange }: FiltersSortPanelProps) {
+export function FiltersSortPanel({
+  filters,
+  onChange,
+  bodyRegionPills = [ALL_REGIONS_FILTER_PILL],
+}: FiltersSortPanelProps) {
   const [open, setOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
   const panelId = useId();
@@ -76,7 +82,9 @@ export function FiltersSortPanel({ filters, onChange }: FiltersSortPanelProps) {
           ) : null}
         </span>
         {!open ? (
-          <span className="ex-filters-summary">{filterSummary(filters)}</span>
+          <span className="ex-filters-summary">
+            {filterSummary(filters, bodyRegionPills)}
+          </span>
         ) : null}
       </button>
       {open ? (
@@ -90,9 +98,9 @@ export function FiltersSortPanel({ filters, onChange }: FiltersSortPanelProps) {
               role="group"
               aria-labelledby={`${panelId}-region`}
             >
-              {BODY_REGION_PILLS.map((pill) => (
+              {bodyRegionPills.map((pill) => (
                 <button
-                  key={pill.label}
+                  key={pill.value ?? "all-regions"}
                   type="button"
                   className={`ex-pill${filters.bodyRegion === pill.value ? " ex-pill--active" : ""}`}
                   aria-pressed={filters.bodyRegion === pill.value}
