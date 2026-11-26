@@ -110,6 +110,10 @@ import {
 import { isLoadNotFoundError } from "../../src/ui/shared-load-states/classify-load-error.js";
 import { AUTO_SAVE_NOT_SAVED } from "../../src/ui/copy/programs.js";
 import type { ExerciseRequestDraftView } from "../../src/services/exercise-requests/types.js";
+import {
+  stubRoutinesClientForExerciseLibrary,
+  withExerciseLibraryBodyRegions,
+} from "./exercise-library-body-regions-fixture.js";
 
 function exerciseRequestDraftReviewFixture(
   overrides: Partial<ExerciseRequestDraftView> = {},
@@ -339,6 +343,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
         <PhysioApp
           exerciseLibraryClient={stubLibraryListClient()}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
           programsClient={
             {
               listPrograms,
@@ -411,6 +416,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             searchApproved: vi.fn(),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -440,6 +446,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             ),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -470,6 +477,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
               .mockRejectedValue(new Error("exercise_not_found")),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -495,6 +503,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -539,6 +548,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -569,6 +579,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             getExerciseDetails: vi.fn().mockRejectedValue(new Error("network")),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -594,11 +605,9 @@ describe("DIDI-1082 shared load states behaviour", () => {
         <PhysioApp
           exerciseLibraryClient={mockClient({})}
           exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={
-            {
-              getRoutineDetails: vi.fn().mockRejectedValue(new Error("network")),
-            } as unknown as RoutinesClient
-          }
+          routinesClient={withExerciseLibraryBodyRegions({
+            getRoutineDetails: vi.fn().mockRejectedValue(new Error("network")),
+          } as unknown as RoutinesClient)}
         />
       </MemoryRouter>,
     );
@@ -624,13 +633,11 @@ describe("DIDI-1082 shared load states behaviour", () => {
         <PhysioApp
           exerciseLibraryClient={mockClient({})}
           exerciseRequestsClient={stubRequestsClient()}
-          routinesClient={
-            {
-              getRoutineDetails: vi
-                .fn()
-                .mockRejectedValue(new Error("routine_not_found")),
-            } as unknown as RoutinesClient
-          }
+          routinesClient={withExerciseLibraryBodyRegions({
+            getRoutineDetails: vi
+              .fn()
+              .mockRejectedValue(new Error("routine_not_found")),
+          } as unknown as RoutinesClient)}
         />
       </MemoryRouter>,
     );
@@ -692,6 +699,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             searchApproved: vi.fn(),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -715,6 +723,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             searchApproved: vi.fn(),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
           programsClient={
             {
               listPrograms,
@@ -954,6 +963,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
         <PhysioApp
           exerciseLibraryClient={client}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       </MemoryRouter>,
     );
@@ -1073,6 +1083,7 @@ describe("DIDI-1082 shared load states behaviour", () => {
             searchApproved: vi.fn(),
           })}
           exerciseRequestsClient={stubRequestsClient()}
+          routinesClient={stubRoutinesClientForExerciseLibrary()}
         />
       ),
     },
@@ -1240,12 +1251,10 @@ describe("DIDI-1082 shared load states behaviour", () => {
               listDeletedPrograms: vi.fn().mockResolvedValue({ items: [] }),
             } as unknown as ProgramsClient
           }
-          routinesClient={
-            {
-              searchCommunity,
-              listMyRoutines,
-            } as unknown as RoutinesClient
-          }
+          routinesClient={withExerciseLibraryBodyRegions({
+            searchCommunity,
+            listMyRoutines,
+          } as unknown as RoutinesClient)}
         />
       </MemoryRouter>,
     );

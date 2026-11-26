@@ -1,4 +1,6 @@
 import type { ExerciseSearchSort } from "../../services/exercise-library/types.js";
+import { ALL_REGIONS } from "../copy/exercise-library.js";
+import { capitalizeBodyRegionLabel } from "../routines/body-region-display.js";
 
 export type LibraryTab = "mine" | "all";
 
@@ -16,12 +18,28 @@ export const DEFAULT_FILTERS: LibraryFilters = {
   sort: "most_used",
 };
 
-export const BODY_REGION_PILLS = [
-  { label: "All regions", value: null as string | null },
-  { label: "Knee", value: "knee" },
-  { label: "Hip", value: "hip" },
-  { label: "Ankle", value: "ankle" },
-] as const;
+export type BodyRegionFilterPill = {
+  label: string;
+  value: string | null;
+};
+
+export const ALL_REGIONS_FILTER_PILL: BodyRegionFilterPill = {
+  label: ALL_REGIONS,
+  value: null,
+};
+
+/** Build region filter pills from listMeBodyRegions rows ({ id, label }). */
+export function buildBodyRegionFilterPills(
+  regions: readonly { label: string }[],
+): BodyRegionFilterPill[] {
+  return [
+    ALL_REGIONS_FILTER_PILL,
+    ...regions.map((region) => ({
+      label: capitalizeBodyRegionLabel(region.label),
+      value: region.label,
+    })),
+  ];
+}
 
 export function filtersToApiParams(filters: LibraryFilters): {
   category?: "Stretching" | "Strengthening";
@@ -49,12 +67,15 @@ export function countActiveFilters(filters: LibraryFilters): number {
   return count;
 }
 
-export function filterSummary(filters: LibraryFilters): string {
+export function filterSummary(
+  filters: LibraryFilters,
+  bodyRegionPills?: readonly BodyRegionFilterPill[],
+): string {
   const regionLabel =
     filters.bodyRegion === null
-      ? "All regions"
-      : (BODY_REGION_PILLS.find((p) => p.value === filters.bodyRegion)?.label ??
-        filters.bodyRegion);
+      ? ALL_REGIONS
+      : (bodyRegionPills?.find((p) => p.value === filters.bodyRegion)?.label ??
+        capitalizeBodyRegionLabel(filters.bodyRegion));
   const typeLabel =
     filters.typeChoice === "both" ? "Strengthening & stretching" : filters.typeChoice;
   const sortLabel =

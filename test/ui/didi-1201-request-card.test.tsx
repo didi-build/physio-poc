@@ -23,6 +23,7 @@ import {
   SUBMIT_REQUEST,
   TRY_ALL_OR_REQUEST,
 } from "../../src/ui/copy/exercise-library.js";
+import { stubRoutinesClientForExerciseLibrary } from "./exercise-library-body-regions-fixture.js";
 
 afterEach(() => {
   cleanup();
@@ -72,7 +73,11 @@ function renderAllExercises(
 ) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
-      <PhysioApp exerciseLibraryClient={library} exerciseRequestsClient={requests} />
+      <PhysioApp
+        exerciseLibraryClient={library}
+        exerciseRequestsClient={requests}
+        routinesClient={stubRoutinesClientForExerciseLibrary()}
+      />
     </MemoryRouter>,
   );
 }
@@ -160,6 +165,9 @@ describe("DIDI-1201 request card on All exercises empty states", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /Filters & sort/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Knee" })).toBeInTheDocument();
+    });
     await user.click(screen.getByRole("button", { name: "Knee" }));
     await user.click(screen.getByRole("button", { name: "Done" }));
 

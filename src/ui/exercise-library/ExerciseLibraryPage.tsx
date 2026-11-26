@@ -66,6 +66,7 @@ import {
 } from "../shared-load-states/SharedLoadStates.js";
 import { didi1273FailedSaveMessage } from "../shared-load-states/failed-save.js";
 import { FiltersSortPanel, LibrarySearchBar } from "./FiltersSortPanel.js";
+import { useBodyRegionFilterPills } from "./use-body-region-filter-pills.js";
 import {
   DEFAULT_FILTERS,
   filtersToApiParams,
@@ -179,6 +180,7 @@ export function ExerciseLibraryPage({
   const formOpenedAtRef = useRef<string>(new Date().toISOString());
   const location = useLocation();
 
+  const bodyRegionPills = useBodyRegionFilterPills();
   const apiFilterParams = useMemo(() => filtersToApiParams(filters), [filters]);
   const sessionEpoch = useSessionReadCacheEpoch();
   const sessionReady = usePractitionerSession().status === "ready";
@@ -472,7 +474,11 @@ export function ExerciseLibraryPage({
           onChange={onQueryChange}
         />
       </div>
-      <FiltersSortPanel filters={filters} onChange={setFilters} />
+      <FiltersSortPanel
+        filters={filters}
+        onChange={setFilters}
+        bodyRegionPills={bodyRegionPills}
+      />
 
       <ExerciseLibraryListLoadBanner
         loadFailed={loadFailed}
