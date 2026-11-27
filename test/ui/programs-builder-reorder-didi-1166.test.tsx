@@ -815,7 +815,7 @@ describe.each([390, 1280])("Programs builder reorder (DIDI-1166, %i px)", (width
     expect(
       liftedScope.getByRole("heading", { level: 3, name: "Alpha move" }),
     ).toBeInTheDocument();
-    expect(liftedScope.getByText("Concentric")).toBeInTheDocument();
+    expect(liftedScope.queryAllByText("Concentric")).toHaveLength(1);
     expect(liftedScope.queryByRole("button", { name: DUPLICATE_ALPHA })).toBeNull();
     expect(liftedScope.queryByRole("button", { name: REMOVE_ALPHA })).toBeNull();
     expect(liftedScope.queryByPlaceholderText(ROW_NOTES_PLACEHOLDER)).toBeNull();
